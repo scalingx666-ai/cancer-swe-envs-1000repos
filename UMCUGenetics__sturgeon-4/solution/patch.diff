@@ -1,0 +1,524 @@
+diff --git a/.gitignore b/.gitignore
+index f9525bd..24077a4 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -75,6 +75,7 @@ demo/mega/out
+ demo/mega/out_live
+ demo/tmp
+ demo/bed/out
++demo/modkit
+ 
+ main.build
+ main.dist
+@@ -83,3 +84,4 @@ main.onefile-build
+ bin
+ 
+ dev
++tmp
+diff --git a/README.md b/README.md
+index 784361b..a3edf77 100644
+--- a/README.md
++++ b/README.md
+@@ -91,6 +91,29 @@ Convert input files (bam or txt) to bed files that can be used as input to predi
+ 
+ It is critical that the data is correctly aligned to a reference genome, otherwise the results will be wrong. We have used the Telomere-to-telomere reference genome (CHM13v2) for all of our work, and it is the default setting for this program. We encourage you to also use it, as we have not thoroughly tested other reference genomes. If you have aligned your data to `hg38`, we encourage you to re-align (or "lift it" with [CrossMap](https://crossmap.sourceforge.net/#)) it to the T2T reference genome. If you still prefer to use `hg38`, then you can pass `--reference-genome hg38` to use the correct probe coordinates. The `hg38` coordinates have been generated via liftover, this lead to the loss of 26 out of 427680 probes.
+ 
++### Extract modification calls (modkit)
++
++If you have bam files that contain modifications basecalled with Guppy or Dorado, this is the recommended option. You will have to install [modkit](https://github.com/nanoporetech/modkit), the official ONT tool to extract modifications. Once installed, given a bam file you should do the following:
++
++If, besides 5mC you also have 5hmC modification calls, you should add them up via:
++```
++modkit adjust-mods --convert h m INPUT.bam OUTPUT.bam
++```
++The reasoning behind this is that both 5mC and 5hmC poorly react to bisulfite treatment [Huang et al., 2010](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2811190/), therefore 5hmC sites would appear as 5mC in a methylation microarray experiment. We trained on those kind of experiments, we therefore think that adding the two scores up reflects the most the training data. 
++
++You can then extract the 5mC scores using:
++```
++modkit extract OUTPUT.bam OUTPUT.txt
++```
++
++This `OUTPUT.txt` can then be directly used in sturgeon using:
++```
++sturgeon inputtobed -i MODKIT_OUTPUT_DIR -o OUTPUT_DIR -s modkit
++```
++
++Please note that Sturgeon will only use 5mC scores, other modification scores will be filtered out.
++Please refer to the [modkit wiki](https://nanoporetech.github.io/modkit/quick_start.html) in case these commands change.
++
+ ### Alignment bam files (Guppy)
+ 
+ Convert a bam that contains methylation calls into the adequate format (.bed) so that it can be used for prediction.
+diff --git a/pyproject.toml b/pyproject.toml
+index d5695c8..8e23859 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -6,7 +6,7 @@ build-backend="hatchling.build"
+ 
+ [project]
+ name = "sturgeon"
+-version = "0.3.6"
++version = "0.4.2"
+ authors = [
+     { name="Marc Pagès-Gallego" },
+     { name="Carlo Vermeulen" },
+diff --git a/sturgeon/__init__.py b/sturgeon/__init__.py
+index 4c364ce..1d0b606 100644
+--- a/sturgeon/__init__.py
++++ b/sturgeon/__init__.py
+@@ -1,3 +1,3 @@
+-__version__ = "0.3.6"
++__version__ = "0.4.2"
+ 
+ import sturgeon.callmapping
+diff --git a/sturgeon/callmapping.py b/sturgeon/callmapping.py
+index 2450c86..730d92c 100644
+--- a/sturgeon/callmapping.py
++++ b/sturgeon/callmapping.py
+@@ -13,6 +13,8 @@
+ except ImportError:
+     warnings.warn('Error loading modbampy, bam functionalities will not work')
+ 
++from sturgeon.utils import read_probes_file
++
+ @contextmanager
+ def SuppressPandasWarning():
+     with pd.option_context("mode.chained_assignment", None):
+@@ -270,12 +272,7 @@ def bam_path_to_bed(
+     pos_threshold: Optional[float] = 0.7,
+ ):
+ 
+-    probes_df = pd.read_csv(
+-        probes_file, 
+-        header = 0, 
+-        index_col = None, 
+-        sep = ' ',
+-    )
++    probes_df = read_probes_file(probes_df)
+ 
+     output_files = list()
+ 
+@@ -352,12 +349,7 @@ def mega_file_to_bed(
+     pos_threshold: Optional[float] = 0.7,
+ ) -> pd.DataFrame:
+ 
+-    probes_df = pd.read_csv(
+-        probes_file, 
+-        header = 0, 
+-        index_col = None, 
+-        sep = ' ',
+-    )
++    probes_df = read_probes_file(probes_file)
+ 
+     logging.info(
+         '''
+@@ -480,5 +472,155 @@ def mega_path_to_bed(
+     )
+ 
+ 
+-                
++def modkit_file_to_bed(
++    input_file: str,
++    probes_file: str,
++    margin: Optional[int] = 25,
++    neg_threshold: Optional[float] = 0.3,
++    pos_threshold: Optional[float] = 0.7,
++    fivemc_code:str = 'm',
++) -> pd.DataFrame:
++    
++    mandatory_columns = [
++        "read_id", 
++        "chrom",
++        "ref_position",
++        "mod_qual",
++        "mod_code",
++        "canonical_base",
++        "modified_primary_base",
++    ]
++    modkit_df = pd.read_csv(
++        input_file, 
++        sep = '\t', 
++        header = 0, 
++        index_col = None, 
++        usecols= mandatory_columns
++    )
++
++    modkit_df = modkit_df[modkit_df['mod_code'] == fivemc_code]
++    modkit_df = modkit_df[modkit_df['canonical_base'] == 'C']
++    modkit_df = modkit_df[modkit_df['modified_primary_base'] == 'C']
++
++    modkit_df = modkit_df.rename(columns={
++        'chrom': 'chr',
++        'ref_position': 'reference_pos',
++        'mod_qual': 'score'
++    })
++    modkit_df = modkit_df.drop(columns=[
++        'mod_code',
++        'canonical_base',
++        'modified_primary_base'
++    ])
++    modkit_df = modkit_df[modkit_df['reference_pos'] != -1]
++    modkit_df = modkit_df[modkit_df['chr'] != '.']
++
++    probes_df = read_probes_file(probes_file)
++
++    probes_methyl_df = deepcopy(probes_df)
++    logging.info('Processing modkit file: {}'.format(input_file))
++
++    chromosomes = np.unique(probes_df['chr'])
++
++    probes_methyl_df['methylation_calls'] = 0
++    probes_methyl_df['unmethylation_calls'] = 0
++    probes_methyl_df['total_calls'] = 0
++
++    calls_per_probe = list()
++    for chrom in chromosomes:
++
++        calls_per_probe_chr =  map_methyl_calls_to_probes_chr(
++            probes_df =  probes_methyl_df[probes_methyl_df['chr'] == chrom.item()],
++            methyl_calls_per_read = modkit_df[modkit_df['chr'] == 'chr'+str(chrom.item())],
++            margin = margin, 
++            neg_threshold = neg_threshold,
++            pos_threshold = pos_threshold,
++        )
++        calls_per_probe.append(calls_per_probe_chr)
++
++        calls = calls_per_probe_chr['total_calls'].sum()
++        logging.debug(
++            '''
++            Found a total of {} methylation array sites on chromosome {}
++            '''.format(calls, chrom)
++        )
++
++    calls_per_probe = pd.concat(calls_per_probe)
++    return calls_per_probe
++
++
++def modkit_path_to_bed(
++    input_path: List[str],
++    output_path: str,
++    probes_file: str,
++    margin: Optional[int] = 25,
++    neg_threshold: Optional[float] = 0.3,
++    pos_threshold: Optional[float] = 0.7,
++    fivemc_code:str = 'c',
++):
++    
++    output_files = list()
++    for modkit_file in input_path:
++
++        logging.info(
++            '''
++            Found methylation modkit file: {}
++            '''.format(modkit_file)
++        )
++        
++        modkit_name = Path(modkit_file).stem
++
++        output_file = os.path.join(
++            output_path,
++            modkit_name + '_probes_methyl_calls.txt'
++        )
++        output_files.append(output_file)
++
++        if os.path.exists(output_file):
++            logging.info(
++                '''
++                Skipping, probe_methyl_calls exists: {}
++                '''.format(output_file)
++            )
++            continue
++
++        calls_per_probe = modkit_file_to_bed(
++            input_file = modkit_file,
++            probes_file = probes_file,
++            margin = margin,
++            neg_threshold = neg_threshold,
++            pos_threshold = pos_threshold,
++            fivemc_code = fivemc_code,
++        )
++
++        if calls_per_probe is None:
++            logging.info(
++                '''
++                Modkit file processing gave an error, skipping: {}
++                '''.format(modkit_file)
++            )
++            continue
++
++        calls_per_probe.to_csv(
++            output_file, header = True, index = False, sep = '\t'
++        )
++
++    merged_output_file = os.path.join(
++        output_path, 
++        'merged_probes_methyl_calls.txt'
++    )
++    merge_probes_methyl_calls(
++        output_files, 
++        merged_output_file
++    )
++
++    bed_output_file = os.path.join(
++        output_path,
++        'merged_probes_methyl_calls.bed'
++    )
++    probes_methyl_calls_to_bed(
++        merged_output_file,
++        bed_output_file
++    )
++
+         
+diff --git a/sturgeon/cli/inputtobed.py b/sturgeon/cli/inputtobed.py
+index f47ff6f..5bdb064 100644
+--- a/sturgeon/cli/inputtobed.py
++++ b/sturgeon/cli/inputtobed.py
+@@ -2,8 +2,12 @@
+ from typing import Optional, List
+ import logging
+ 
+-from sturgeon.callmapping import bam_path_to_bed, mega_path_to_bed
+-from sturgeon.utils import validate_megalodon_file
++from sturgeon.callmapping import (
++    bam_path_to_bed, 
++    mega_path_to_bed, 
++    modkit_path_to_bed,
++)
++from sturgeon.utils import validate_megalodon_file, validate_modkit_file
+ import pysam
+ 
+ def filetobed(
+@@ -15,6 +19,7 @@ def filetobed(
+     margin: Optional[int] = 25,
+     neg_threshold: Optional[float] = 0.3,
+     pos_threshold: Optional[float] = 0.7,
++    fivemc_code: str = 'm',
+ ):
+ 
+     logging.info("Sturgeon start up")
+@@ -83,6 +88,18 @@ def filetobed(
+             pos_threshold = pos_threshold,
+         )
+ 
++    elif source == 'modkit':
++        
++        modkittobed(
++            input_path = input_path,
++            output_path = output_path,
++            probes_file = probes_file,
++            margin = margin,
++            neg_threshold = neg_threshold,
++            pos_threshold = pos_threshold,
++            fivemc_code = fivemc_code,
++        )
++
+ 
+ def bamtobed(
+     input_path: List[str],
+@@ -198,10 +215,58 @@ def megatobed(
+         pos_threshold = pos_threshold,
+     )
+ 
+-
++def modkittobed(
++    input_path: List[str],
++    output_path: str,
++    probes_file: str,
++    margin: Optional[int] = 25,
++    neg_threshold: Optional[float] = 0.3,
++    pos_threshold: Optional[float] = 0.7,
++    fivemc_code: str = 'm',
++):
+     
++    logging.info("Modkit to bed program")
++
++    txt_files = list()
++    if os.path.isfile(input_path):
++        txt_files.append(input_path)
++    elif os.path.isdir(input_path):
++        for f in os.listdir(input_path):
++            if not f.endswith('.txt'):
++                continue
++            txt_files.append(os.path.join(input_path, f)) 
++    else:
++        err_msg = '''
++        --input-path must be a directory or file, given: {}
++        '''.format(input_path)
++        logging.error(err_msg)
++        raise ValueError(err_msg)
+ 
++    modkit_files = list()
++    for m in txt_files:
++        success, msg = validate_modkit_file(m)
++        if success:
++            modkit_files.append(m)
++        else:
++            logging.error(
++                '''
++                File {}, did not pass validation either not a modkit file or
++                an invalid modkit file. Reason: {}.
++                '''.format(m, msg)
++            )
+ 
++    logging.info("Found a total of {} modkit files".format(len(modkit_files)))
++    logging.info("Output will be saved in: {}".format(output_path))
++
++    modkit_path_to_bed(
++        input_path = modkit_files,
++        output_path = output_path,
++        probes_file = probes_file,
++        margin = margin,
++        neg_threshold = neg_threshold,
++        pos_threshold = pos_threshold,
++        fivemc_code = fivemc_code,
++    )
+ 
+ 
+ 
+diff --git a/sturgeon/cli/live.py b/sturgeon/cli/live.py
+index 1b2da10..4b2ed79 100644
+--- a/sturgeon/cli/live.py
++++ b/sturgeon/cli/live.py
+@@ -24,8 +24,10 @@
+     creation_date, 
+     validate_megalodon_file,
+ )
++
+ from sturgeon.prediction import predict_sample, load_model
+ from sturgeon.plot import plot_prediction, plot_prediction_over_time
++from sturgeon.utils import read_probes_file
+ 
+ 
+ def live(
+@@ -53,12 +55,7 @@ def live(
+ 
+     if source == 'guppy':
+ 
+-        probes_df = pd.read_csv(
+-            probes_file, 
+-            header = 0, 
+-            index_col = None, 
+-            sep = ' ',
+-        )
++        probes_df = read_probes_file(probes_file)
+         
+         live_guppy(
+             input_path = input_path,
+diff --git a/sturgeon/parsers.py b/sturgeon/parsers.py
+index 0dca027..bf0b6eb 100644
+--- a/sturgeon/parsers.py
++++ b/sturgeon/parsers.py
+@@ -194,7 +194,7 @@ def register_inputtobed(parser):
+         '-s', '--source',
+         type = str,
+         required = True,
+-        choices = ['guppy', 'megalodon'],
++        choices = ['guppy', 'megalodon', 'modkit'],
+         help='Output file format'
+     )
+ 
+@@ -243,6 +243,14 @@ def register_inputtobed(parser):
+         Positions with scores above this threshold will be considered methylated
+         '''
+     )
++    subparser.add_argument(
++        '--fivemc-code',
++        type=str,
++        default = 'm',
++        help='''
++        Onle letter code used to annotate 5mC in modkit files
++        '''
++    )
+ 
+     subparser.set_defaults(func=run_inputtobed)
+ 
+@@ -259,6 +267,7 @@ def run_inputtobed(args):
+         margin = args.margin,
+         neg_threshold = args.neg_threshold,
+         pos_threshold = args.pos_threshold,
++        fivemc_code = args.fivemc_code,
+     )
+ 
+ def register_models(parser):
+diff --git a/sturgeon/utils.py b/sturgeon/utils.py
+index 4706466..650afdd 100644
+--- a/sturgeon/utils.py
++++ b/sturgeon/utils.py
+@@ -73,6 +73,36 @@ def load_bed_file(bed_file: str):
+     )
+     return bed_df
+ 
++def read_probes_file(probes_file: str):
++
++    samtools_bed_file = False
++    with open(probes_file, 'r') as handle:
++        for line in handle:
++            break
++        if line.startswith('#'):
++            samtools_bed_file = True
++            column_header = line.strip('#').strip('\n').split('\t')
++
++    if samtools_bed_file:
++        probes_df = pd.read_csv(
++            probes_file,
++            header = None,
++            index_col = None,
++            sep = '\t',
++            comment='#',
++            names=column_header,
++        )
++    # normal probes file
++    else:
++        probes_df = pd.read_csv(
++            probes_file,
++            header = 0,
++            index_col = None,
++            sep = ' ',
++        )
++
++    return probes_df
++
+ def validate_megalodon_file(megalodon_file):
+     """Very simple check of the first line in the file to check
+     for correct column names.
+@@ -108,6 +138,40 @@ def validate_megalodon_file(megalodon_file):
+     return True, None
+ 
+ 
++def validate_modkit_file(modkit_file):
++    """Very simple check of the first line in the file to check
++    for correct column names.
++
++    Args:
++        modkit_file (str): path to the file to be validated
++
++    Returns:
++        (bool, str): True, None if it passes the validation; False, error message
++        if it failes.
++    """
++
++    mandatory_columns = [
++        "read_id", 
++        "chrom",
++        "ref_position",
++        "mod_qual",
++        "mod_code",
++        "canonical_base",
++        "modified_primary_base",
++    ]
++
++    with open(modkit_file, 'r') as f:
++        for line in f:
++            break
++
++    column_names = line.strip('\n').split('\t')
++    for mc in mandatory_columns:
++        if mc not in column_names:
++            err_msg = "{} column missing in modkit file".format(mc)
++            return False, err_msg
++
++    return True, None
++
+ def validate_bed_file(bed_df: pd.DataFrame, probes_df: pd.DataFrame):
+     """Validate the contents of a bed file
+ 

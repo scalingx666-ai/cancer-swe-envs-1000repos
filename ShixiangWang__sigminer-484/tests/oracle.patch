@@ -1,0 +1,1557 @@
+diff --git a/NAMESPACE b/NAMESPACE
+index 2a5fc0fd..69cad975 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -23,6 +23,7 @@ export(bp_get_clustered_sigs)
+ export(bp_get_rank_score)
+ export(bp_get_sig_obj)
+ export(bp_get_stats)
++export(bp_select_k)
+ export(bp_show_survey)
+ export(bp_show_survey2)
+ export(cosine)
+diff --git a/R/best_practice.R b/R/best_practice.R
+index f80ce78d..37d9ed84 100644
+--- a/R/best_practice.R
++++ b/R/best_practice.R
+@@ -106,6 +106,15 @@
+ #' iteration budget comes from option `sigminer.rust_iters` (default 2000).
+ #' Cannot be combined with `pynmf = TRUE`. Partial matches are accepted
+ #' ("rus" means "rust").
++#' @param k_select one of "legacy" (default) or "arbitrate". "legacy" keeps
++#' the extraction and its `suggested` ranking byte-for-byte. "arbitrate"
++#' additionally runs the ported three-layer K survey (parity plan P2: CV
++#' argmin, stability veto, diagnostic Wilcoxon layer; see
++#' [bp_select_k()]) over the same `range` on the observed catalogue and
++#' annotates the result: `k_evidence` carries the per-rank evidence table,
++#' `suggested_legacy` preserves the ranking suggestion and `suggested`
++#' reports the arbitrated rank (degrade semantics: the annotation never
++#' errors the extraction). Partial matches are accepted.
+ #' @return It depends on the called function.
+ #' @name bp
+ #' @author Shixiang Wang <w_shixiang@163.com>
+@@ -236,8 +245,10 @@ bp_extract_signatures <- function(nmf_matrix,
+                                   pynmf = FALSE,
+                                   use_conda = TRUE,
+                                   py_path = "/Users/wsx/anaconda3/bin/python",
+-                                  backend = c("R", "rust")) {
++                                  backend = c("R", "rust"),
++                                  k_select = c("legacy", "arbitrate")) {
+   backend <- .r_assert_backend(backend)
++  k_select <- match.arg(k_select, choices = c("legacy", "arbitrate"))
+   if (identical(backend, "rust")) {
+     if (isTRUE(pynmf)) {
+       stop("'backend = \"rust\"' and 'pynmf = TRUE' are mutually exclusive: ",
+@@ -663,6 +674,20 @@ bp_extract_signatures <- function(nmf_matrix,
+     solutions$suggested <- NA_integer_
+   }
+ 
++  if (identical(k_select, "arbitrate")) {
++    # Opt-in K arbitration annotation (parity plan P2, port of the msuiter
++    # ms_select_k arbitration): the three-layer survey runs over the same
++    # rank grid on the observed catalogue; degrade semantics keep the
++    # extraction safe (the standalone raising surface is bp_select_k()).
++    send_info("Arbitrating the signature number (k_select = \"arbitrate\").")
++    solutions$k_evidence <- .bp_route_arbitrate(raw_catalogue_matrix,
++      grid = range, seed = seed)
++    solutions$suggested_legacy <- solutions$suggested
++    solutions$suggested <- as.integer(
++      solutions$k_evidence$k[solutions$k_evidence$selected][1L])
++    send_success("Arbitrated signature number: ", solutions$suggested, ".")
++  }
++
+   solutions$catalog_matrix <- raw_catalogue_matrix
+   class(solutions) <- "ExtractionResult"
+ 
+diff --git a/R/bp_k_arbitration.R b/R/bp_k_arbitration.R
+new file mode 100644
+index 00000000..bd4ee0bd
+--- /dev/null
++++ b/R/bp_k_arbitration.R
+@@ -0,0 +1,172 @@
++# bp_k_arbitration.R: the pure K-arbitration core of the bp de-novo
++# survey route (parity plan P2). Semantic port of the msuiter
++# ms_select_k() arbitration (msuiter R/kselect-select.R, main @
++# dad30440): CV argmin (layer 1) -> stability veto (layer 2) ->
++# diagnostics only (layer 3). The core is a pure function over the
++# per-rank evidence frame: it neither fits nor samples, which is what
++# makes its acceptance fixtures msuiter-absent-safe (the reference
++# verdicts are committed as numbers, produced on the controller host by
++# fixtures/bp-k-arb/generate_verdicts.R).
++
++# Layer-2 veto thresholds: the documented upstream defaults
++# (SigProfiler sigpro.py:352-354 semantics as referenced by the msuiter
++# memo; a REFERENCE, not a recalibration claim -- any change here is a
++# contract change and must re-run the agreement fixtures).
++.BP_VETO_AVG_MIN <- 0.8
++.BP_VETO_CLUSTER_MIN <- 0.2
++.BP_VETO_SUM_MIN <- 1.0
++
++# The k-evidence column schema consumed (and returned) by the core. The
++# survey layer produces the full frame; the core reads these columns.
++.BP_K_EVIDENCE_REQUIRED <- c("k", "cv_test_deviance", "avg_stability",
++  "min_cluster_stability", "passes_veto", "veto_reason", "is_argmin",
++  "selected")
++
++# Layer-2 flag + reason for one rank from its consensus stability stats.
++# NA stability (a degenerate consensus) fails the veto conservatively.
++# Vectorised over the evidence frame; returns "" when the rank passes.
++.bp_veto_reason <- function(avg_stability, min_cluster_stability) {
++  if (length(avg_stability) != length(min_cluster_stability)) {
++    stop("`avg_stability` and `min_cluster_stability` must have equal length",
++      domain = NA)
++  }
++  if (!length(avg_stability)) {
++    return(character(0))
++  }
++  reasons <- character(length(avg_stability))
++  for (i in seq_along(reasons)) {
++    avg <- avg_stability[i]
++    mn <- min_cluster_stability[i]
++    if (length(avg) != 1L || is.na(avg) || length(mn) != 1L || is.na(mn)) {
++      reasons[i] <- "stability statistics unavailable"
++      next
++    }
++    hit <- character(0)
++    if (avg < .BP_VETO_AVG_MIN) {
++      hit <- c(hit, sprintf("avg_stability %.4g < %.1f", avg, .BP_VETO_AVG_MIN))
++    }
++    if (mn < .BP_VETO_CLUSTER_MIN) {
++      hit <- c(hit, sprintf("min_cluster_stability %.4g < %.1f", mn,
++        .BP_VETO_CLUSTER_MIN))
++    }
++    if (avg + mn < .BP_VETO_SUM_MIN) {
++      hit <- c(hit, sprintf("avg + min_cluster_stability %.4g < %.1f",
++        avg + mn, .BP_VETO_SUM_MIN))
++    }
++    reasons[i] <- if (length(hit)) paste(hit, collapse = "; ") else ""
++  }
++  reasons
++}
++
++# Layer-1 argmin mark over the finite CV entries of one grid: the first
++# minimum, i.e. the lowest rank on ties (which.min semantics, matching
++# the reference implementation's documented intent). Non-finite entries
++# (NA -- no finite fold -- or Inf) never carry the mark; an all-NON-finite
++# curve marks nothing (the fallback scan then decides).
++.bp_cv_argmin <- function(cv) {
++  finite <- which(is.finite(cv))
++  if (!length(finite)) {
++    return(integer(0))
++  }
++  finite[which.min(cv[finite])]
++}
++
++# Validate the evidence frame at the boundary; KISS-friendly messages all
++# name the offending part so a survey-layer bug is locatable from the
++# error text alone.
++.bp_k_evidence_check <- function(ev) {
++  if (!is.data.frame(ev)) {
++    stop("the K evidence must be a data.frame of per-rank rows", domain = NA)
++  }
++  missing <- setdiff(.BP_K_EVIDENCE_REQUIRED, names(ev))
++  if (length(missing)) {
++    stop(sprintf("the K evidence frame is missing required column(s): %s",
++      paste0(dQuote(missing), collapse = ", ")), domain = NA)
++  }
++  if (nrow(ev) < 1L) {
++    stop("the K evidence frame must carry at least one rank row", domain = NA)
++  }
++  if (!is.numeric(ev$k) || anyNA(ev$k) || !all(is.finite(ev$k)) ||
++      !all(ev$k == floor(ev$k)) || !all(ev$k >= 1L)) {
++    stop("the evidence `k` column must be positive whole numbers", domain = NA)
++  }
++  if (any(duplicated(ev$k))) {
++    stop("the evidence `k` column must be unique (one row per rank)", domain = NA)
++  }
++  if (!identical(ev$k, sort(ev$k))) {
++    stop("the evidence `k` column must be strictly increasing", domain = NA)
++  }
++  for (col in c("passes_veto", "is_argmin", "selected")) {
++    if (!is.logical(ev[[col]]) || anyNA(ev[[col]])) {
++      stop(sprintf("the evidence `%s` column must be logical (no NA)", col),
++        domain = NA)
++    }
++  }
++  if (!is.character(ev$veto_reason) || anyNA(ev$veto_reason)) {
++    stop("the evidence `veto_reason` column must be character (no NA)",
++      domain = NA)
++  }
++  if (sum(ev$is_argmin) > 1L) {
++    stop("at most one evidence row may carry the `is_argmin` mark", domain = NA)
++  }
++  invisible(ev)
++}
++
++# The three-layer arbitration over a validated evidence frame.
++#
++#   cv     layer-1 switch: FALSE erases the argmin mark (layer 1 absent)
++#          and the fallback scan degenerates to plain rank order.
++#   mode   "explicit" -- no rank passing raises (the standalone surface;
++#          full evidence frame is what the caller passed in and stays
++#          available to it); "degrade" -- the default-pipeline shape:
++#          fall back to the argmin (or the lowest rank) with a warning,
++#          never an error, matching the reference pipeline behaviour where
++#          the user's K is fixed and the arbitration only annotates.
++#
++# Returns a NEW frame (the input is never mutated) with is_argmin and
++# selected normalised: exactly one selected row, the layer-2 flag respected
++# throughout.
++.bp_k_arbitrate <- function(ev, cv = TRUE, mode = c("explicit", "degrade")) {
++  mode <- match.arg(mode, c("explicit", "degrade"))
++  if (!is.logical(cv) || length(cv) != 1L || is.na(cv)) {
++    stop("`cv` must be a single TRUE or FALSE", domain = NA)
++  }
++  .bp_k_evidence_check(ev)
++  ev <- ev[seq_len(nrow(ev)), , drop = FALSE]   # fresh copy; never mutate input
++  if (!isTRUE(cv)) {
++    ev$is_argmin <- rep(FALSE, nrow(ev))
++  }
++  # Fallback scan order: CV-error ascending (NA = no finite fold last,
++  # lower rank first on ties), or plain rank order when layer 1 is absent.
++  ord <- if (isTRUE(cv)) {
++    order(ev$cv_test_deviance, ev$k, na.last = TRUE)
++  } else {
++    order(ev$k)
++  }
++  ai <- which(ev$is_argmin)
++  passing <- which(ev$passes_veto)
++  sel_idx <- NULL
++  if (length(ai) == 1L && ev$passes_veto[ai]) {
++    sel_idx <- ai
++  } else if (length(passing)) {
++    in_ord <- passing[order(match(passing, ord))]
++    sel_idx <- in_ord[1L]
++  }
++  if (is.null(sel_idx)) {
++    reasons <- paste(sprintf("k=%d: %s", ev$k, ev$veto_reason), collapse = "; ")
++    if (identical(mode, "explicit")) {
++      stop(sprintf(paste0("K arbitration is undecidable: no rank in the grid ",
++        "passes the stability veto (layer-2 rule: avg >= 0.8, min_cluster >= ",
++        "0.2, sum >= 1.0). Veto reasons: ", "%s"), reasons), domain = NA)
++    }
++    fallback <- if (length(ai)) ai[1L] else ord[1L]
++    warning(sprintf(paste0("K arbitration is undecidable: no rank passes the ",
++      "stability veto; falling back to k = %d (evidence frame retained in ",
++      "the survey result). Veto reasons: %s"), ev$k[fallback], reasons),
++      domain = NA, call. = FALSE)
++    sel_idx <- fallback
++  }
++  ev$selected <- rep(FALSE, nrow(ev))
++  ev$selected[sel_idx] <- TRUE
++  ev
++}
+diff --git a/R/bp_k_survey.R b/R/bp_k_survey.R
+new file mode 100644
+index 00000000..990ce3ed
+--- /dev/null
++++ b/R/bp_k_survey.R
+@@ -0,0 +1,462 @@
++# bp_k_survey.R: the per-rank CV-survey engine feeding the bp K-arbitration
++# core (parity plan P2). Semantic port of the msuiter ms_select_k() survey
++# (msuiter R/kselect-select.R, main @ dad30440): the SUITOR-style fold CV
++# curve (layer-1 evidence), the replicate-ensemble consensus stability
++# (layer-2 evidence) and the diagnostic-only Wilcoxon columns (layer 3;
++# the reference's deliberate divergence -- diagnostics never arbitrate).
++#
++# Seed law (single root seed): every stochastic draw -- fold partition,
++# NMF inits, ensemble replicates -- is derived from ONE root seed through
++# .bp_derived_seed(); one root seed yields byte-identical verdicts and
++# diagnostics, and there is no ambient-RNG dependence anywhere in the
++# survey (every NMF call re-seeds internally from its derived stream).
++#
++# Divergences from the reference, recorded for the design digest: the
++# reference kernel masks SUITOR cells inside its rust engine -- this port
++# masks cells at the R level (train = masked-to-zero counts, held-out
++# cells scored against the training basis through a fixed-round KL
++# multiplicative projection); n_seeds_converged is computed here rather
++# than left a placeholder; the stability scale is the documented
++# agreement mapping 2C - 1 of the cophenetic co-assignment frequency.
++
++# Survey budgets (named constants; the reference-side analogues are the
++# ms_select_k defaults replicates/k_folds/n_seeds, cited as a reference,
++# not recalibrated -- contract: changing these changes verdicts and
++# requires re-running the agreement fixtures).
++.BP_SURVEY_REPLICATES <- 4L        # ensemble fits per rank (stability)
++.BP_SURVEY_FOLDS <- 8L             # SUITOR folds over the held-out cells
++.BP_SURVEY_NSEEDS <- 2L            # best-of-n fits per (rank, fold)
++.BP_SURVEY_PROJ_ITERS <- 40L       # KL-multiplicative projection rounds
++.BP_SURVEY_NMF_METHOD <- "brunet"  # the house NMF fit method
++.BP_K_TINY <- 1e-300               # log/quotient-domain guard
++
++# The full contractual evidence schema (column order is contractual,
++# mirroring the reference's .ms_k_evidence_columns): the 8 columns the
++# arbitration core consumes (.BP_K_EVIDENCE_REQUIRED) plus the 7 survey
++# diagnostic columns.
++.BP_K_EVIDENCE_COLUMNS <- c("k", "cv_test_deviance", "cv_test_mse",
++  "cv_train_mse", "fold_test_deviance", "n_seeds_converged",
++  "avg_stability", "min_cluster_stability", "per_signature_stability",
++  "wilcoxon_p_vs_prev", "wilcoxon_l2_median_delta", "passes_veto",
++  "is_argmin", "selected", "veto_reason")
++
++# One Park-Miller LCG (a = 16807, m = 2^31 - 1; mirror of the committed
++# fixture builder tests/testthat/fixtures/bp-k-arb/synthetic_cells.R --
++# all intermediates below 2^53, IEEE-exact, so streams are bit-replayable).
++.bp_lcg_unit <- function(n, seed) {
++  m <- 2147483647
++  state <- abs(seed) %% (m - 1) + 1                # state in [1, m - 1]
++  out <- numeric(n)
++  for (i in seq_len(n)) {
++    state <- (16807 * state) %% m
++    out[i] <- state / m
++  }
++  out
++}
++
++# The single-root-seed stream derivation: fold each extra coordinate into
++# the state with one LCG step, so every (root, purpose, rank, replicate)
++# tuple owns an independent-but-reproducible stream. Character coordinates
++# (the purpose labels) are folded through their character codes, so the
++# derivation stays RNG-free and host-reproducible without a hash package.
++.bp_derived_seed <- function(root, ...) {
++  m <- 2147483647
++  s <- abs(root) %% (m - 1) + 1
++  coords <- list(...)
++  for (x in coords) {
++    if (is.character(x)) {
++      codes <- as.numeric(utf8ToInt(paste0(x, collapse = "")))
++      t <- sum(codes) * 131 + length(codes)
++    } else {
++      t <- as.numeric(x)
++    }
++    t <- abs(t) %% (m - 1) + 1
++    s <- (16807 * s) %% m
++    s <- (s + 16807 * t) %% m
++  }
++  as.integer(if (s < 1) 1 else s)
++}
++
++# Scalar whole-number gate for the survey budgets.
++.bp_whole_scalar <- function(value, min, name) {
++  if (!is.numeric(value) || length(value) != 1L || is.na(value) ||
++      !is.finite(value) || value != floor(value) || value < min) {
++    stop(sprintf("`%s` must be a single whole number >= %d", name, min),
++      domain = NA)
++  }
++  as.integer(value)
++}
++
++# KL divergence sum(x log(x/mu) - x + mu) with the x = 0 convention (the
++# log term drops out), optionally restricted to a cell mask. The survey's
++# own deviance, so the CV curve is self-consistent across ranks without
++# reaching into NMF internals.
++.bp_kl_deviance <- function(x, mu, mask = NULL) {
++  if (is.null(mask)) {
++    mask <- matrix(TRUE, nrow = nrow(x), ncol = ncol(x))
++  }
++  mu <- pmax(mu, .BP_K_TINY)
++  log.pos <- x > 0 & mask
++  log.part <- x[log.pos] * log(x[log.pos] / mu[log.pos])
++  sum(log.part) - sum(x[mask]) + sum(mu[mask])
++}
++
++# One deterministic NMF fit: the house route (check_nmf_matrix hygiene,
++# method "brunet"), serial backend, single run -- pure in (data, k, seed).
++# The information-level non-convergence chatter of the fit is silenced here
++# (not swallowed): non-factorisations surface as a non-finite deviance at
++# the convergence gate below.
++.bp_nmf_fit <- function(x, k, seed) {
++  fit <- suppressWarnings(NMF::nmf(check_nmf_matrix(x), rank = k,
++    method = .BP_SURVEY_NMF_METHOD, nrun = 1L, seed = seed,
++    .options = "nm", .pbackend = "serial"))
++  if (!inherits(fit, "NMFfit")) {
++    fit <- fit[[1L]]                              # nrun > 1 shapes
++  }
++  list(W = NMF::basis(fit), H = NMF::coef(fit))
++}
++
++# Best-of-n fit over derived per-seed streams: the factorisation with the
++# smallest deviance on the observed cells (first wins on ties ->
++# deterministic even against seed pathologies). n_converged is the honest
++# convergence tally.
++.bp_nmf_best_of_n <- function(x, k, n_seeds, seed_root, purpose,
++                              mask = NULL) {
++  best <- NULL
++  best_dev <- Inf
++  n_conv <- 0L
++  for (i in seq_len(n_seeds)) {
++    fit <- .bp_nmf_fit(x, k, .bp_derived_seed(seed_root, purpose, k, i))
++    if (is.null(fit$W) || is.null(fit$H) ||
++        !all(is.finite(fit$W)) || !all(is.finite(fit$H))) {
++      next
++    }
++    mu <- fit$W %*% fit$H
++    if (!all(is.finite(mu))) {
++      next
++    }
++    dev <- .bp_kl_deviance(x, mu, mask)
++    if (is.finite(dev) && dev < best_dev) {
++      best_dev <- dev
++      best <- fit
++      n_conv <- n_conv + 1L
++    }
++  }
++  list(fit = best, dev = if (is.null(best)) as.numeric(NA) else best_dev,
++    n_converged = n_conv)
++}
++
++# SUITOR fold plan: a balanced, rank-independent deterministic partition of
++# the COUNTS CELLS (the reference kernel holds out cells, "at least one
++# row per column"), drawn from the root-seed stream; the permutation-cut
++# construction makes every fold non-empty by design and keeps the fold
++# curves of all ranks comparable (same partition across the grid).
++.bp_cell_folds <- function(n_rows, n_cols, k_folds, root) {
++  n <- n_rows * n_cols
++  draws <- .bp_lcg_unit(n, .bp_derived_seed(root, "cells"))
++  perm <- order(draws, seq_len(n))                # stable: index breaks ties
++  fold <- integer(n)
++  fold[perm] <- (seq_len(n) - 1L) %% k_folds + 1L
++  matrix(fold, nrow = n_rows, ncol = n_cols)
++}
++
++# KL-multiplicative projection of the held-out cells onto the training
++# basis: Lee-Seung KL update for H only. `mask` marks the held-out cells
++# (TRUE); the update is driven by the observed cells (`observed = x *
++# !mask`), whose reconstruction regularizes the denominator; held-out cells
++# neither drive the update nor need their (masked) observation. Fixed
++# round count, no RNG -> deterministic.
++.bp_project_exposures <- function(x, W, mask) {
++  k <- ncol(W)
++  m <- ncol(x)
++  observed <- x * (!mask)                          # held-out cells -> 0
++  H <- matrix(rep(max(mean(observed), .BP_K_TINY), k * m), nrow = k,
++    ncol = m)
++  for (i in seq_len(.BP_SURVEY_PROJ_ITERS)) {
++    WH <- W %*% H
++    num <- t(W) %*% observed
++    den <- t(W) %*% (WH * (!mask))
++    H <- H * num / pmax(den, .BP_K_TINY)
++  }
++  H
++}
++
++# The fold-CV curve for one rank: the mean held-out KL deviance over the
++# folds (layer-1 evidence), the mean training deviance of the fold fits
++# and the per-fold held-out deviances. A fold whose fits all fail the
++# convergence gate demotes its held-out entry to NA (finite-only curves
++# downstream, matching the ported argmin law).
++.bp_cv_rank_curve <- function(counts, k, foldmat, k_folds, root, n_seeds) {
++  te <- rep(as.numeric(NA), k_folds)
++  tr <- rep(as.numeric(NA), k_folds)
++  conv <- 0L
++  for (f in seq_len(k_folds)) {
++    mask <- foldmat == f
++    observed <- counts * (!mask)                  # train on observed cells
++    fit <- .bp_nmf_best_of_n(observed, k, n_seeds, root, "cv", mask)
++    conv <- conv + fit$n_converged
++    if (is.null(fit$fit)) {
++      next
++    }
++    H <- .bp_project_exposures(observed, fit$fit$W, mask)
++    mu <- fit$fit$W %*% H
++    te[f] <- .bp_kl_deviance(counts, mu, mask)
++    tr[f] <- .bp_kl_deviance(observed, mu, !mask)
++  }
++  list(cv_test = if (all(is.na(te))) as.numeric(NA) else
++      mean(te, na.rm = TRUE),
++    cv_train = if (all(is.na(tr))) as.numeric(NA) else
++      mean(tr, na.rm = TRUE),
++    folds = te, converged = conv)
++}
++
++# Replicate-ensemble consensus stability for one rank: each replicate
++# partition is the dominant-signature assignment of its fit; the
++# cophenetic matrix C(i, j) is the across-replicate co-assignment
++# frequency; average-linkage clustering on 1 - C cuts k clusters and each
++# cluster enters as its mean pairwise agreement mapped to the [-1, 1]
++# agreement scale (2C - 1): perfectly reproducible clusters score 1,
++# anti-reproducible junk components score near -1 -- the reading the
++# reference reports for avg_stability / min_cluster_stability /
++# per_signature_stability. Also returns the per-sample L2 reconstruction
++# residual of the ensemble's best full-data fit (layer-3 input).
++.bp_ensemble_stability <- function(counts, k, replicates, seed) {
++  m <- ncol(counts)
++  C <- matrix(0, nrow = m, ncol = m)
++  fitted <- 0L
++  best <- NULL
++  best_dev <- Inf
++  for (r in seq_len(replicates)) {
++    fit <- .bp_nmf_fit(counts, k, .bp_derived_seed(seed, "stab", k, r))
++    if (is.null(fit$H) || anyNA(fit$H) || !all(is.finite(fit$H))) {
++      next
++    }
++    a <- apply(fit$H, 2L, which.max)              # dominant signature
++    if (anyNA(a)) {
++      next
++    }
++    C <- C + outer(a, a, "==")
++    fitted <- fitted + 1L
++    dev <- .bp_kl_deviance(counts, fit$W %*% fit$H)
++    if (is.finite(dev) && dev < best_dev) {
++      best_dev <- dev
++      best <- fit
++    }
++  }
++  if (fitted < 2L) {
++    # fewer than two usable partitions: an honest "unavailable" -- the
++    # veto fails such ranks conservatively (stability-statistics law).
++    return(list(avg = as.numeric(NA), min = as.numeric(NA),
++      per_signature = numeric(0), resid = NULL))
++  }
++  C <- C / fitted
++  dend <- stats::hclust(stats::as.dist(1 - C, diag = TRUE, upper = TRUE),
++    method = "average")
++  cl <- stats::cutree(dend, k = k)
++  stabs <- vapply(split(seq_len(m), cl), function(idx) {
++    2 * mean(C[idx, idx, drop = FALSE]) - 1
++  }, numeric(1L))
++  names(stabs) <- paste0("cluster", seq_along(stabs))
++  resid <- NULL
++  if (!is.null(best)) {
++    mu <- best$W %*% best$H
++    resid <- vapply(seq_len(m), function(j)
++      sqrt(sum((counts[, j] - mu[, j])^2)), numeric(1L))
++  }
++  list(avg = mean(stabs), min = min(stabs), per_signature = stabs,
++    resid = resid)
++}
++
++# Layer-3 diagnostics (diagnostic-only by the reference's ruling: the
++# Wilcoxon layer never arbitrates). Paired signed-rank p of the per-sample
++# L2 residuals against the previous grid rank; NA at the first rank and
++# when the residual does not move (reference parity).
++.bp_wilcoxon_pair <- function(resid_prev, resid) {
++  if (is.null(resid_prev) || is.null(resid) ||
++      length(resid_prev) != length(resid)) {
++    return(as.numeric(NA))
++  }
++  d <- resid - resid_prev
++  if (all(d == 0)) {
++    return(as.numeric(NA))
++  }
++  suppressWarnings(stats::wilcox.test(d, correct = FALSE,
++    exact = FALSE)$p.value)
++}
++
++# Boundary validation for the survey surface (fail fast, named messages).
++.bp_survey_check <- function(counts, k_grid, replicates, k_folds, n_seeds,
++                             cv, seed) {
++  if (!is.matrix(counts) || !is.numeric(counts) || is.null(rownames(counts)) ||
++      is.null(colnames(counts))) {
++    stop("the K survey input `counts` must be a numeric matrix with row ",
++      "and column names", domain = NA)
++  }
++  if (anyNA(counts) || !all(is.finite(counts)) || any(counts < 0)) {
++    stop("the K survey `counts` must be finite and non-negative",
++      domain = NA)
++  }
++  if (!is.numeric(k_grid) || length(k_grid) < 1L || anyNA(k_grid) ||
++      !all(is.finite(k_grid)) || !all(k_grid == floor(k_grid)) ||
++      any(k_grid < 1)) {
++    stop("k_grid must be positive whole numbers", domain = NA)
++  }
++  bound <- min(nrow(counts), ncol(counts))
++  if (any(k_grid > bound)) {
++    stop(sprintf("every k in k_grid must not exceed min(channels, samples) = %d",
++      bound), domain = NA)
++  }
++  if (!is.logical(cv) || length(cv) != 1L || is.na(cv)) {
++    stop("cv must be a single TRUE or FALSE", domain = NA)
++  }
++  seed <- .bp_whole_scalar(seed, 0, "seed")
++  replicates <- .bp_whole_scalar(replicates, 2L, "replicates")
++  k_folds <- .bp_whole_scalar(k_folds, 2L, "k_folds")
++  n_seeds <- .bp_whole_scalar(n_seeds, 1L, "n_seeds")
++  if (k_folds > nrow(counts)) {
++    stop(sprintf("k_folds must not exceed the channel count (%d)",
++      nrow(counts)), domain = NA)
++  }
++  invisible(list(seed = seed, replicates = replicates, k_folds = k_folds,
++    n_seeds = n_seeds))
++}
++
++# The survey over one grid: builds the full contractual evidence frame
++# (column order .BP_K_EVIDENCE_COLUMNS). Pure over (counts, grid, budget,
++# root seed); the stochastic layers all draw from that one seed.
++.bp_k_survey <- function(counts, k_grid, replicates, k_folds, n_seeds,
++                         cv, seed) {
++  grid <- sort(unique(as.integer(k_grid)))
++  n <- length(grid)
++  n_cells <- nrow(counts) * ncol(counts)
++  foldmat <- .bp_cell_folds(nrow(counts), ncol(counts), k_folds, seed)
++  te <- rep(as.numeric(NA), n)
++  tr <- rep(as.numeric(NA), n)
++  folds_list <- vector("list", n)
++  conv <- rep(0L, n)
++  avg <- rep(as.numeric(NA), n)
++  mn <- rep(as.numeric(NA), n)
++  per_sig <- vector("list", n)
++  wx_p <- rep(as.numeric(NA), n)
++  wx_med <- rep(as.numeric(NA), n)
++  prev_resid <- NULL
++  for (i in seq_len(n)) {
++    k <- grid[i]
++    if (isTRUE(cv)) {
++      curve <- .bp_cv_rank_curve(counts, k, foldmat, k_folds, seed, n_seeds)
++      te[i] <- curve$cv_test
++      tr[i] <- curve$cv_train
++      folds_list[[i]] <- curve$folds
++      conv[i] <- curve$converged
++    } else {
++      folds_list[[i]] <- rep(as.numeric(NA), k_folds)
++    }
++    stab <- .bp_ensemble_stability(counts, k, replicates, seed)
++    avg[i] <- stab$avg
++    mn[i] <- stab$min
++    per_sig[[i]] <- stab$per_signature
++    wx_med[i] <- if (is.null(stab$resid)) as.numeric(NA) else
++      stats::median(stab$resid)
++    wx_p[i] <- .bp_wilcoxon_pair(prev_resid, stab$resid)
++    prev_resid <- stab$resid
++  }
++  ev <- data.frame(
++    k = grid,
++    cv_test_deviance = te,
++    cv_test_mse = ifelse(is.na(te), as.numeric(NA), sqrt(te / n_cells)),
++    cv_train_mse = ifelse(is.na(tr), as.numeric(NA),
++      sqrt(tr / (n_cells * max(k_folds - 1L, 1L)))),
++    stringsAsFactors = FALSE)
++  ev$fold_test_deviance <- folds_list
++  ev$n_seeds_converged <- conv
++  ev$avg_stability <- avg
++  ev$min_cluster_stability <- mn
++  ev$per_signature_stability <- per_sig
++  ev$wilcoxon_p_vs_prev <- wx_p
++  ev$wilcoxon_l2_median_delta <- wx_med
++  ev$veto_reason <- .bp_veto_reason(avg, mn)
++  ev$passes_veto <- !nzchar(ev$veto_reason)
++  ev$is_argmin <- rep(FALSE, n)
++  if (isTRUE(cv)) {
++    ai <- .bp_cv_argmin(te)
++    if (length(ai)) {
++      ev$is_argmin[ai] <- TRUE
++    }
++  }
++  ev$selected <- rep(FALSE, n)
++  ev[, .BP_K_EVIDENCE_COLUMNS]
++}
++
++#' Select the number of signatures for a channel-by-sample count matrix
++#'
++#' `bp_select_k()` runs the bp-route K survey over a rank grid and applies
++#' the ported three-layer arbitration (parity plan P2, semantic port of
++#' the msuiter `ms_select_k()` at main@dad30440): the SUITOR-style CV
++#' argmin (layer 1, first minimum / lowest rank on ties; switchable off
++#' with `cv = FALSE`), the consensus stability veto (layer 2, upstream
++#' reference thresholds `avg >= 0.8`, `min_cluster >= 0.2`, sum `>= 1.0`)
++#' and diagnostic-only Wilcoxon columns (layer 3 -- they never
++#' arbitrate). All stochastic layers derive from the single `seed`
++#' (seed-law: same seed, byte-identical verdict and diagnostics).
++#'
++#' @param counts a numeric channel-by-sample count matrix with row and
++#'   column names, finite and non-negative (the extraction catalogue).
++#' @param k_grid positive whole-number ranks to evaluate, each no larger
++#'   than `min(nrow(counts), ncol(counts))`; evaluated ascending.
++#' @param replicates single whole number `>= 2`: ensemble fits per rank
++#'   feeding the consensus stability.
++#' @param k_folds single whole number in `[2, nrow(counts)]`: SUITOR
++#'   folds over the held-out cells.
++#' @param n_seeds single whole number `>= 1`: best-of-n fits per fold.
++#' @param cv single logical: run layer 1? `FALSE` demotes the CV columns
++#'   to NA and arbitrates on the stability veto alone.
++#' @param seed single whole number `>= 0`: the root seed of every
++#'   derived stream in the survey.
++#'
++#' @return A named list with `k` (the selected rank, single positive
++#'   integer) and `k_evidence` (the full-surface evidence table, one row
++#'   per grid rank, column order is the contractual .BP_K_EVIDENCE_COLUMNS). An
++#'   undecidable grid (no rank passes the veto) raises with the
++#'   undecidable diagnosis -- the pipeline-integration analogue degrades
++#'   instead (see `bp_extract_signatures(k_select = "arbitrate")`).
++#'
++#' @examples
++#' # A planted two-signature catalogue (synthetic, deterministic): two
++#' # blocks of channels with anti-phased sample loadings. The arbitration
++#' # reads the planted K = 2 off the CV curve and the stability veto.
++#' m <- matrix(1, 60, 20,
++#'   dimnames = list(paste0("ch", 1:60), paste0("smp", 1:20)))
++#' m[1:6, 1:10] <- 40
++#' m[31:36, 11:20] <- 40
++#' m[31:36, 1:10] <- 8
++#' m[1:6, 11:20] <- 8
++#' res <- bp_select_k(m, k_grid = 2:3, seed = 7L)
++#' if (!identical(res$k, 2L)) stop("the survey must arbitrate K = 2")
++#' if (!is.data.frame(res$k_evidence) || !any(res$k_evidence$selected))
++#'   stop("the evidence table must carry exactly one selected row")
++#'
++#' @seealso `.bp_k_arbitrate()` for the private arbitration core,
++#'   [bp_extract_signatures()] for the opt-in route integration.
++#' @export
++bp_select_k <- function(counts, k_grid = 2:5,
++                        replicates = .BP_SURVEY_REPLICATES,
++                        k_folds = .BP_SURVEY_FOLDS,
++                        n_seeds = .BP_SURVEY_NSEEDS,
++                        cv = TRUE, seed = 1L) {
++  budget <- .bp_survey_check(counts, k_grid, replicates, k_folds, n_seeds,
++    cv, seed)
++  ev <- .bp_k_survey(counts, k_grid, budget$replicates, budget$k_folds,
++    budget$n_seeds, cv, budget$seed)
++  ev <- .bp_k_arbitrate(ev, cv = cv, mode = "explicit")
++  list(k = as.integer(ev$k[ev$selected][1L]), k_evidence = ev)
++}
++
++# The route-side wrapper (called from bp_extract_signatures when
++# k_select = "arbitrate"): survey + arbitration under the reference's
++# default-pipeline DEGRADE semantics -- the annotation never errors the
++# extraction (the standalone surface bp_select_k() raises instead).
++.bp_route_arbitrate <- function(counts, grid, seed) {
++  ev <- .bp_k_survey(counts, grid, .BP_SURVEY_REPLICATES, .BP_SURVEY_FOLDS,
++    .BP_SURVEY_NSEEDS, cv = TRUE, seed = seed)
++  .bp_k_arbitrate(ev, cv = TRUE, mode = "degrade")
++}
+diff --git a/_pkgdown.yml b/_pkgdown.yml
+index 9b69d80e..1f676b2c 100644
+--- a/_pkgdown.yml
++++ b/_pkgdown.yml
+@@ -42,6 +42,7 @@ reference:
+     - sig_auto_extract
+     - sigprofiler
+     - bp_attribute_activity
++    - bp_select_k
+     #- bp_cluster_iter_list
+     #- bp_extract_signatures
+     #- bp_extract_signatures_iter
+diff --git a/man/bp.Rd b/man/bp.Rd
+index f1dda7e1..7f9af04f 100644
+--- a/man/bp.Rd
++++ b/man/bp.Rd
+@@ -32,7 +32,8 @@ bp_extract_signatures(
+   pynmf = FALSE,
+   use_conda = TRUE,
+   py_path = "/Users/wsx/anaconda3/bin/python",
+-  backend = c("R", "rust")
++  backend = c("R", "rust"),
++  k_select = c("legacy", "arbitrate")
+ )
+ 
+ bp_extract_signatures_iter(
+@@ -159,6 +160,16 @@ iteration budget comes from option \code{sigminer.rust_iters} (default 2000).
+ Cannot be combined with \code{pynmf = TRUE}. Partial matches are accepted
+ ("rus" means "rust").}
+ 
++\item{k_select}{one of "legacy" (default) or "arbitrate". "legacy" keeps
++the extraction and its \code{suggested} ranking byte-for-byte. "arbitrate"
++additionally runs the ported three-layer K survey (parity plan P2: CV
++argmin, stability veto, diagnostic Wilcoxon layer; see
++\code{\link[=bp_select_k]{bp_select_k()}}) over the same \code{range} on the observed catalogue and
++annotates the result: \code{k_evidence} carries the per-rank evidence table,
++\code{suggested_legacy} preserves the ranking suggestion and \code{suggested}
++reports the arbitrated rank (degrade semantics: the annotation never
++errors the extraction). Partial matches are accepted.}
++
+ \item{sim_threshold}{a similarity threshold for selecting samples to auto-rerun
+ the extraction procedure (i.e. \code{bp_extract_signatures()}), default is \code{0.95}.}
+ 
+diff --git a/man/bp_select_k.Rd b/man/bp_select_k.Rd
+new file mode 100644
+index 00000000..1878d056
+--- /dev/null
++++ b/man/bp_select_k.Rd
+@@ -0,0 +1,76 @@
++% Generated by roxygen2: do not edit by hand
++% Please edit documentation in R/bp_k_survey.R
++\name{bp_select_k}
++\alias{bp_select_k}
++\title{Select the number of signatures for a channel-by-sample count matrix}
++\usage{
++bp_select_k(
++  counts,
++  k_grid = 2:5,
++  replicates = .BP_SURVEY_REPLICATES,
++  k_folds = .BP_SURVEY_FOLDS,
++  n_seeds = .BP_SURVEY_NSEEDS,
++  cv = TRUE,
++  seed = 1L
++)
++}
++\arguments{
++\item{counts}{a numeric channel-by-sample count matrix with row and
++column names, finite and non-negative (the extraction catalogue).}
++
++\item{k_grid}{positive whole-number ranks to evaluate, each no larger
++than \code{min(nrow(counts), ncol(counts))}; evaluated ascending.}
++
++\item{replicates}{single whole number \verb{>= 2}: ensemble fits per rank
++feeding the consensus stability.}
++
++\item{k_folds}{single whole number in \verb{[2, nrow(counts)]}: SUITOR
++folds over the held-out cells.}
++
++\item{n_seeds}{single whole number \verb{>= 1}: best-of-n fits per fold.}
++
++\item{cv}{single logical: run layer 1? \code{FALSE} demotes the CV columns
++to NA and arbitrates on the stability veto alone.}
++
++\item{seed}{single whole number \verb{>= 0}: the root seed of every
++derived stream in the survey.}
++}
++\value{
++A named list with \code{k} (the selected rank, single positive
++integer) and \code{k_evidence} (the full-surface evidence table, one row
++per grid rank, column order is the contractual .BP_K_EVIDENCE_COLUMNS). An
++undecidable grid (no rank passes the veto) raises with the
++undecidable diagnosis -- the pipeline-integration analogue degrades
++instead (see \code{bp_extract_signatures(k_select = "arbitrate")}).
++}
++\description{
++\code{bp_select_k()} runs the bp-route K survey over a rank grid and applies
++the ported three-layer arbitration (parity plan P2, semantic port of
++the msuiter \code{ms_select_k()} at main@dad30440): the SUITOR-style CV
++argmin (layer 1, first minimum / lowest rank on ties; switchable off
++with \code{cv = FALSE}), the consensus stability veto (layer 2, upstream
++reference thresholds \code{avg >= 0.8}, \code{min_cluster >= 0.2}, sum \verb{>= 1.0})
++and diagnostic-only Wilcoxon columns (layer 3 -- they never
++arbitrate). All stochastic layers derive from the single \code{seed}
++(seed-law: same seed, byte-identical verdict and diagnostics).
++}
++\examples{
++# A planted two-signature catalogue (synthetic, deterministic): two
++# blocks of channels with anti-phased sample loadings. The arbitration
++# reads the planted K = 2 off the CV curve and the stability veto.
++m <- matrix(1, 60, 20,
++  dimnames = list(paste0("ch", 1:60), paste0("smp", 1:20)))
++m[1:6, 1:10] <- 40
++m[31:36, 11:20] <- 40
++m[31:36, 1:10] <- 8
++m[1:6, 11:20] <- 8
++res <- bp_select_k(m, k_grid = 2:3, seed = 7L)
++if (!identical(res$k, 2L)) stop("the survey must arbitrate K = 2")
++if (!is.data.frame(res$k_evidence) || !any(res$k_evidence$selected))
++  stop("the evidence table must carry exactly one selected row")
++
++}
++\seealso{
++\code{.bp_k_arbitrate()} for the private arbitration core,
++\code{\link[=bp_extract_signatures]{bp_extract_signatures()}} for the opt-in route integration.
++}
+diff --git a/tests/testthat/fixtures/bp-k-arb/generate_verdicts.R b/tests/testthat/fixtures/bp-k-arb/generate_verdicts.R
+new file mode 100644
+index 00000000..c811e6cb
+--- /dev/null
++++ b/tests/testthat/fixtures/bp-k-arb/generate_verdicts.R
+@@ -0,0 +1,140 @@
++# generate_verdicts.R -- provenance generator for the bp K-arbitration
++# fixtures (parity plan P2). Run on the controller host to regenerate the
++# two .rds files next to this script:
++#
++#   Rscript generate_verdicts.R <fixture-dir>
++#
++# NEVER run it from R CMD check / CI: it loads the msuiter reference via
++# pkgload::load_all from a checkout path (the package is not on CRAN and
++# must never appear in DESCRIPTION -- sigminer CI convention: the lockfile
++# hard-fails on non-CRAN entries). The .rds payloads are plain numbers;
++# the testthat units consume them with zero msuiter presence.
++#
++# Data law (D3): every numeric here is SYNTHETIC. The calibration cells
++# come from the deterministic RNG-free builder below (Park-Miller LCG on a
++# pinned root seed); no COSMIC or real-data-derived numbers are involved.
++#
++# Reference implementation: msuiter main@dad30440, R/kselect-select.R
++# (.ms_k_arbitrate / .ms_veto_reason / ms_select_k). Reference host facts:
++# R 4.5.2, controller host, captured 2026-10-15; the original recordings
++# live in the lane logs /tmp/p2karb/logs/03-*.log and 04-*.log.
++
++MSUITER_CHECKOUT <- "/Users/wsx/Documents/GitHub/msuiter"
++ROOT_SEED <- 20261015L           # the single root seed of the whole campaign
++K_GRID <- 2:5L                   # evaluated grid per calibration cell
++
++# ---- calibration cells: the committed deterministic builder ----------------
++# synthetic_cells.R next to this script is the single source of truth for
++# the cells (the testthat units source it too, so the tested cells and the
++# recorded reference cells are the same numbers by construction). Under the
++# Rscript wrapper the script path arrives as the "--file=..." element of
++# the full command line.
++.cmdline <- commandArgs(trailing = FALSE)
++.file.arg <- grep("^--file=", .cmdline)
++if (!length(.file.arg)) {
++  stop("cannot locate this script via --file=; invoke as 'Rscript generate_verdicts.R <fixture-dir>'", domain = NA)
++}
++.own.dir <- dirname(normalizePath(sub("^--file=", "", .cmdline[[.file.arg[1L]]])))
++source(file.path(.own.dir, "synthetic_cells.R"))
++
++# ---- the reference runs ---------------------------------------------------
++
++main <- function(outdir) {
++  suppressMessages(pkgload::load_all(MSUITER_CHECKOUT,
++    export_all = FALSE, attach_testthat = FALSE))
++  arb <- get(".ms_k_arbitrate", envir = asNamespace("msuiter"))
++  veto <- get(".ms_veto_reason", envir = asNamespace("msuiter"))
++
++  # (1) core-level cases: hand-built evidence frames through the reference
++  # arbitration core, recorded with their run parameters for replay.
++  mk_ev <- function(k, cv, avg, mn) {
++    vr <- mapply(veto, avg, mn, USE.NAMES = FALSE)
++    data.frame(
++      k = as.integer(k),
++      cv_test_deviance = cv,
++      avg_stability = avg,
++      min_cluster_stability = mn,
++      passes_veto = vr == "",
++      veto_reason = vr,
++      is_argmin = rep(FALSE, length(k)),
++      selected = rep(FALSE, length(k)),
++      stringsAsFactors = FALSE)
++  }
++  with_argmin <- function(ev, k) {
++    ev$is_argmin[ev$k == k] <- TRUE
++    ev
++  }
++  cases <- list()
++  add <- function(name, ev, cv, mode) {
++    warned <- FALSE
++    explicit <- identical(mode, "explicit")
++    run <- function() arb(ev, cv = cv, explicit = explicit)
++    got <- tryCatch(
++      if (explicit) run() else withCallingHandlers(
++        warning = function(w) { warned <<- TRUE; NULL },
++        expr = run()),
++      error = function(e) structure(list(), class = class(e)))
++    is_err <- inherits(got, "error") && !is.data.frame(got)
++    cases[[name]] <<- list(
++      ev = ev, cv = cv, mode = mode,
++      expect_error = is_err,
++      error_class = if (is_err) class(got)[[1L]] else NA,
++      warned = warned,
++      selected = if (is_err) NULL else got$selected,
++      is_argmin_out = if (is_err) NULL else got$is_argmin)
++    cat(name, if (is_err) "-> reference error (undecidable)" else
++      sprintf("-> reference selected k = %d",
++        got$k[which(got$selected)[1L]]),
++      if (warned) " [warned]" else "", "\n")
++  }
++  # the seven pinned scenarios (S1..S7) of the parity design
++  add("S1_argmin_passes",
++    with_argmin(mk_ev(2:5, c(300, 240, 260, 280), c(.9, .95, .85, .82),
++      c(.35, .4, .3, .25)), 3L), TRUE, "explicit")
++  add("S2_argmin_vetoed_fallback",
++    with_argmin(mk_ev(2:5, c(300, 240, 260, 280), c(.9, .5, .85, .82),
++      c(.35, .1, .3, .25)), 3L), TRUE, "explicit")
++  add("S3_cv_off_lowest_passing",
++    mk_ev(2:5, c(300, 240, 260, 280), c(.5, .5, .85, .82),
++      c(.1, .1, .3, .25)), FALSE, "explicit")
++  add("S4_none_passes_explicit_error",
++    with_argmin(mk_ev(2:5, c(300, 240, 260, 280), rep(.4, 4), rep(.1, 4)),
++      3L), TRUE, "explicit")
++  add("S5_none_passes_degrade_to_argmin",
++    with_argmin(mk_ev(2:5, c(300, 240, 260, 280), rep(.4, 4), rep(.1, 4)),
++      3L), TRUE, "degrade")
++  add("S6_cv_tie_lowest_rank",
++    with_argmin(mk_ev(2:5, c(300, 240, 240, 280), c(.9, .95, .9, .82),
++      c(.35, .4, .35, .25)), 3L), TRUE, "explicit")
++  add("S7_vetoed_argmin_tie_fallback",
++    with_argmin(mk_ev(2:5, c(240, 240, 260, 280), c(.4, .95, .9, .82),
++      c(.1, .4, .35, .25)), 2L), TRUE, "explicit")
++  saveRDS(list(root_seed = ROOT_SEED, cases = cases),
++    file.path(outdir, "msuiter_core_cases.rds"))
++
++  # (2) pipeline-level verdicts: the full reference arbiter over the
++  # three-tier calibration cells.
++  verdicts <- list()
++  for (cell in cal_cells()) {
++    cat(cell$name, "planted_k =", cell$planted_k,
++      "dim:", nrow(cell$counts), "x", ncol(cell$counts), "\n")
++    cat1 <- ms_catalog(cell$counts,
++      list(name = paste0("SYN", cell$name), labels = rownames(cell$counts)),
++      colnames(cell$counts), provenance = list(genome = "GRCh38"))
++    res <- ms_select_k(cat1, k_grid = K_GRID, seed = ROOT_SEED)
++    cat("  reference verdict k =", res$k, "\n")
++    verdicts[[cell$name]] <- list(name = cell$name, planted_k = cell$planted_k,
++      k = res$k, dim = dim(cell$counts),
++      evidence = res$k_evidence[, c("k", "cv_test_deviance", "avg_stability",
++        "min_cluster_stability", "passes_veto", "is_argmin", "selected")])
++  }
++  saveRDS(list(root_seed = ROOT_SEED, k_grid = K_GRID, cells = verdicts),
++    file.path(outdir, "msuiter_verdicts.rds"))
++  cat("fixtures written to ", outdir, "\n", sep = "")
++}
++
++args <- commandArgs(trailing = TRUE)
++if (!length(args)) {
++  stop("usage: Rscript generate_verdicts.R <fixture-dir>", domain = NA)
++}
++main(args[[1L]])
+diff --git a/tests/testthat/fixtures/bp-k-arb/msuiter_core_cases.rds b/tests/testthat/fixtures/bp-k-arb/msuiter_core_cases.rds
+new file mode 100644
+index 00000000..da1ef62c
+Binary files /dev/null and b/tests/testthat/fixtures/bp-k-arb/msuiter_core_cases.rds differ
+diff --git a/tests/testthat/fixtures/bp-k-arb/msuiter_verdicts.rds b/tests/testthat/fixtures/bp-k-arb/msuiter_verdicts.rds
+new file mode 100644
+index 00000000..dd31c933
+Binary files /dev/null and b/tests/testthat/fixtures/bp-k-arb/msuiter_verdicts.rds differ
+diff --git a/tests/testthat/fixtures/bp-k-arb/synthetic_cells.R b/tests/testthat/fixtures/bp-k-arb/synthetic_cells.R
+new file mode 100644
+index 00000000..3fa92637
+--- /dev/null
++++ b/tests/testthat/fixtures/bp-k-arb/synthetic_cells.R
+@@ -0,0 +1,89 @@
++# synthetic_cells.R -- committed deterministic calibration-cell builder for
++# the bp K-arbitration parity fixtures (parity plan P2).
++#
++# PURE MODULE: definitions only, no side effects, no reference-package
++# dependency. Consumed by the testthat units (which build the cells on the
++# fly under the pinned root seed and assert the committed msuiter verdicts
++# in msuiter_verdicts.rds) and sourced by the provenance generator
++# generate_verdicts.R next to this file.
++#
++# Data law (D3): every number this builder produces is SYNTHETIC -- Park-
++# Miller LCG draws on pinned seeds, no COSMIC, no real-data-derived values.
++
++CAL_ROOT_SEED <- 20261015L           # the single root seed of the campaign
++CAL_K_GRID <- 2:5L                   # evaluated grid per calibration cell
++
++CAL_CHANNELS <- 96L
++CAL_PEAK_MASS <- 0.55
++CAL_FLANK1_MASS <- 0.25
++CAL_FLANK2_MASS <- 0.125
++CAL_RESID_MASS <- 0.075
++CAL_SIG_MASS <- c(0.85, 0.15)
++CAL_BURDEN <- 100L
++CAL_BLOCK <- 12L
++
++# Park-Miller LCG (a = 16807, m = 2^31 - 1). Every intermediate stays
++# below 2^53, so each product/remainder is exactly representable in an
++# IEEE-754 double: bit-reproducible across hosts without integer-vector
++# tricks.
++CAL_LCG_M <- 2147483647
++.cal_draw_unit <- function(n, seed) {
++  state <- abs(seed) %% (CAL_LCG_M - 1L) + 1L        # state in [1, m - 1]
++  out <- numeric(n)
++  for (i in seq_len(n)) {
++    state <- (16807L * state) %% CAL_LCG_M
++    out[i] <- state / CAL_LCG_M
++  }
++  out
++}
++
++# Three-tier design: cell i plants planted[i] signatures. Signature s owns
++# a contiguous CAL_BLOCK-channel window (peak + two flanking channels) plus
++# an LCG-dithered residual spread over the rest; each sample loads on
++# exactly two signatures with the CAL_SIG_MASS split, the pair rotating
++# deterministically across samples. Above the planted K the extra basis
++# explains noise only and yields unstable extra components (veto-
++# detectable); below it the held-out deviance rises, so the CV argmin
++# lands on the planted K.
++cal_cells <- function(root_seed = CAL_ROOT_SEED) {
++  planted <- c(2L, 3L, 4L)
++  n_samples <- c(36L, 42L, 48L)
++  cells <- vector("list", length(planted))
++  for (i in seq_along(cells)) {
++    k <- planted[i]
++    seed <- root_seed + 1000L * i
++    W <- matrix(0, nrow = CAL_CHANNELS, ncol = k)
++    rownames(W) <- paste0("ch", seq_len(CAL_CHANNELS))
++    offset <- seed %% 6L
++    for (s in seq_len(k)) {
++      start <- ((s - 1L) * CAL_BLOCK + offset * 3L) %% (CAL_CHANNELS - 2L) + 1L
++      W[start, s] <- CAL_PEAK_MASS
++      W[start + 1L, s] <- CAL_FLANK1_MASS
++      W[start + 2L, s] <- CAL_FLANK2_MASS
++      idx <- seq_len(CAL_CHANNELS)[-c(start, start + 1L, start + 2L)]
++      resid <- .cal_draw_unit(CAL_CHANNELS - 3L, seed + 77L * s)
++      W[idx, s] <- CAL_RESID_MASS * resid / sum(resid)
++    }
++    H <- matrix(0, nrow = k, ncol = n_samples[i])
++    colnames(H) <- paste0("smp", seq_len(n_samples[i]))
++    u <- .cal_draw_unit(2L * n_samples[i], seed + 991L)
++    ua <- as.integer(floor(u[seq_len(n_samples[i])] * 1e6))
++    ub <- as.integer(floor(u[seq_len(n_samples[i]) + n_samples[i]] * 1e6))
++    for (j in seq_len(n_samples[i])) {
++      a <- 1L + (ua[j] %% k)
++      b <- 1L + (ub[j] %% (k - 1L))
++      if (b >= a) b <- b + 1L
++      H[a, j] <- CAL_BURDEN * CAL_SIG_MASS[1]
++      H[b, j] <- CAL_BURDEN * CAL_SIG_MASS[2]
++    }
++    mu <- W %*% H
++    dither <- matrix(.cal_draw_unit(CAL_CHANNELS * n_samples[i], seed + 313L),
++      nrow = CAL_CHANNELS)
++    counts <- floor(mu + dither)
++    rownames(counts) <- rownames(W)
++    colnames(counts) <- colnames(H)
++    cells[[i]] <- list(name = paste0("tier_k", k), planted_k = k,
++      counts = counts)
++  }
++  cells
++}
+diff --git a/tests/testthat/test-bp-k-arbitration-core.R b/tests/testthat/test-bp-k-arbitration-core.R
+new file mode 100644
+index 00000000..7141f1c1
+--- /dev/null
++++ b/tests/testthat/test-bp-k-arbitration-core.R
+@@ -0,0 +1,146 @@
++# Tests for the pure K-arbitration core used by the bp de-novo route
++# (parity-plan P2: port of the msuiter ms_select_k arbitration -- CV
++# argmin -> stability veto -> diagnostics). The expected verdicts are the
++# reference outcomes produced by the msuiter reference core itself; the
++# provenance of the consumed fixture is recorded beside the fixture file.
++#
++# The units exercise the namespace-internal core directly (pkgload-loaded
++# namespace exposes internals to the test env), so the semantics are
++# pinned independently of the stochastic route that feeds it.
++
++# Mirror of the reference frame schema (k, cv + stability columns); the
++# core consumes exactly these, the rest of the evidence schema is filled
++# by the survey layer.
++kcore_ev <- function(k, cv, avg, mn) {
++  vr <- .bp_veto_reason(avg, mn)
++  data.frame(
++    k = as.integer(k),
++    cv_test_deviance = cv,
++    avg_stability = avg,
++    min_cluster_stability = mn,
++    passes_veto = nzchar(vr) == FALSE,
++    veto_reason = vr,
++    is_argmin = rep(FALSE, length(k)),
++    selected = rep(FALSE, length(k)),
++    stringsAsFactors = FALSE)
++}
++kcore_set_argmin <- function(ev, k) {
++  ev$is_argmin[ev$k == k] <- TRUE
++  ev
++}
++
++test_that("the layer-2 veto mirrors the documented upstream thresholds", {
++  # thresholds: avg >= 0.8 AND min_cluster >= 0.2 AND avg + min >= 1.0
++  expect_equal(.bp_veto_reason(0.9, 0.3), "")
++  expect_equal(.bp_veto_reason(0.8, 0.2), "")            # boundary inclusive
++  expect_equal(.bp_veto_reason(0.8, 0.3), "")
++  expect_equal(.bp_veto_reason(0.9, 0.2), "")
++  expect_match(.bp_veto_reason(0.75, 0.3),
++    "avg_stability 0.75 < 0.8")
++  expect_match(.bp_veto_reason(0.9, 0.15),
++    "min_cluster_stability 0.15 < 0.2")
++  # avg 0.9 passes; min 0.05 fails the min bound AND the sum bound (0.95)
++  expect_equal(.bp_veto_reason(0.9, 0.05),
++    paste("min_cluster_stability 0.05 < 0.2",
++      "avg + min_cluster_stability 0.95 < 1.0", sep = "; "))
++  # NA stability fails conservatively with a single reason
++  expect_equal(.bp_veto_reason(as.double(NA), 0.5),
++    "stability statistics unavailable")
++  expect_equal(.bp_veto_reason(0.9, as.double(NA)),
++    "stability statistics unavailable")
++})
++
++test_that("S1: the CV argmin passing the veto is selected", {
++  ev <- kcore_set_argmin(
++    kcore_ev(2:5, c(300, 240, 260, 280), c(.9, .95, .85, .82),
++      c(.35, .4, .3, .25)), 3L)
++  out <- .bp_k_arbitrate(ev, cv = TRUE, mode = "explicit")
++  expect_true(out$selected[2L])                # row for k = 3
++  expect_equal(sum(out$selected), 1L)
++})
++
++test_that("S2: a vetoed argmin falls back to the first passing rank in CV-error order", {
++  # k=3 is the argmin (cv 240) but unstable; passers k=4 (260), k=5 (280),
++  # k=2 (300) -> fallback scan on CV-error ascending picks k=4
++  ev <- kcore_set_argmin(
++    kcore_ev(2:5, c(300, 240, 260, 280), c(.9, .5, .85, .82),
++      c(.35, .1, .3, .25)), 3L)
++  out <- .bp_k_arbitrate(ev, cv = TRUE, mode = "explicit")
++  expect_false(out$selected[2L])
++  expect_true(out$selected[3L])
++})
++
++test_that("S3: with layer 1 switched off the lowest passing rank wins", {
++  ev <- kcore_ev(2:5, c(300, 240, 260, 280), c(.5, .5, .85, .82),
++    c(.1, .1, .3, .25))
++  out <- .bp_k_arbitrate(ev, cv = FALSE, mode = "explicit")
++  expect_false(any(out$is_argmin))             # layer 1 absent erases the column
++  expect_true(out$selected[3L])                # k=4, the lowest passing rank
++})
++
++test_that("S4: no rank passing raises in the explicit mode", {
++  ev <- kcore_set_argmin(
++    kcore_ev(2:5, c(300, 240, 260, 280), rep(.4, 4), rep(.1, 4)), 3L)
++  expect_error(.bp_k_arbitrate(ev, cv = TRUE, mode = "explicit"),
++    "undecidable")
++})
++
++test_that("S5: no rank passing degrades to the argmin with a warning in pipeline mode", {
++  ev <- kcore_set_argmin(
++    kcore_ev(2:5, c(300, 240, 260, 280), rep(.4, 4), rep(.1, 4)), 3L)
++  expect_warning(out <- .bp_k_arbitrate(ev, cv = TRUE, mode = "degrade"),
++    "undecidable")
++  expect_true(out$selected[2L])                # the argmin (k = 3)
++})
++
++test_that("S6: the lowest tied rank carries the argmin mark into the core", {
++  # all ranks pass -> the carried argmin (lowest of the cv tie at 240) wins
++  ev <- kcore_set_argmin(
++    kcore_ev(2:5, c(300, 240, 240, 280), c(.9, .95, .9, .82),
++      c(.35, .4, .35, .25)), 3L)
++  out <- .bp_k_arbitrate(ev, cv = TRUE, mode = "explicit")
++  expect_true(out$selected[2L])                # k = 3
++})
++
++test_that("S7: fallback among passers breaks CV ties by the lower rank", {
++  # argmin k=2 (240) vetoed; passers k=3 (240), k=4 (260), k=5 (280);
++  # the scan takes k=3 first
++  ev <- kcore_set_argmin(
++    kcore_ev(2:5, c(240, 240, 260, 280), c(.4, .95, .9, .82),
++      c(.1, .4, .35, .25)), 2L)
++  out <- .bp_k_arbitrate(ev, cv = TRUE, mode = "explicit")
++  expect_true(out$selected[2L])                # k = 3
++  # vetoing k=3 leaves passers k=4 and k=5 tied at 260 -> the scan takes
++  # the lower rank k=4
++  ev2 <- kcore_set_argmin(
++    kcore_ev(2:5, c(240, 240, 260, 260), c(.4, .4, .9, .85),
++      c(.1, .4, .35, .3)), 2L)
++  out2 <- .bp_k_arbitrate(ev2, cv = TRUE, mode = "explicit")
++  expect_true(out2$selected[3L])               # k = 4
++})
++
++test_that("the argmin mark is computed on finite CV values only, lowest rank on ties", {
++  # survey layer fills is_argmin; port law: among finite cv entries the
++  # first minimum (which.min = lowest rank on ties); all-NA curve -> none
++  expect_equal(.bp_cv_argmin(c(300, 240, 240, 280)), 2L)
++  expect_equal(.bp_cv_argmin(rep(as.double(NA), 4)), integer(0))
++  expect_equal(.bp_cv_argmin(c(as.double(NA), 240, 100, 280)), 3L)
++  expect_equal(.bp_cv_argmin(c(240, as.double(NA), 240, 280)), 1L)
++})
++
++test_that("input validation fails fast with named messages", {
++  good <- kcore_ev(2:3, c(300, 240), c(.9, .9), c(.3, .3))
++  expect_error(.bp_k_arbitrate(as.data.frame(list(k = 1)), cv = TRUE,
++    mode = "explicit"), "column")
++  expect_error(.bp_k_arbitrate(transform(good, k = c(3L, 2L)), cv = TRUE,
++    mode = "explicit"), "increasing")
++  expect_error(.bp_k_arbitrate(transform(good, k = c(2L, 2L)), cv = TRUE,
++    mode = "explicit"), "unique")
++  expect_error(.bp_k_arbitrate(good, cv = NA, mode = "explicit"), "cv")
++  expect_error(.bp_k_arbitrate(good, cv = TRUE, mode = "wat"), "should be one of")
++  expect_error(.bp_k_arbitrate(transform(good, passes_veto = c("yes", "no")),
++    cv = TRUE, mode = "explicit"), "column")
++  # at most one row may carry the layer-1 argmin mark
++  expect_error(.bp_k_arbitrate(transform(good, is_argmin = c(TRUE, TRUE)),
++    cv = TRUE, mode = "explicit"), "argmin")
++})
+diff --git a/tests/testthat/test-bp-k-arbitration-pipeline.R b/tests/testthat/test-bp-k-arbitration-pipeline.R
+new file mode 100644
+index 00000000..7d13a28e
+--- /dev/null
++++ b/tests/testthat/test-bp-k-arbitration-pipeline.R
+@@ -0,0 +1,201 @@
++# Pipeline-level acceptance units for the ported K-arbitration (parity plan
++# P2): bp_select_k() -- the CV-survey + three-layer arbitration over a rank
++# grid -- and its opt-in hookup into the bp extraction route.
++#
++# Load-bearing parity evidence: the expected verdicts are the committed
++# msuiter reference captures fixtures/bp-k-arb/msuiter_verdicts.rds
++# (produced on the controller host by the committed generator; provenance
++# header there). The calibration cells themselves are rebuilt on the fly
++# from the committed pure builder synthetic_cells.R under the pinned root
++# seed, so tested cells and recorded cells are the same numbers by
++# construction. Everything is SYNTHETIC (D3).
++
++# ---- fixture plumbing -------------------------------------------------------
++
++karb_cells_env <- new.env()
++source(file.path(test_path(), "fixtures", "bp-k-arb", "synthetic_cells.R"),
++  local = karb_cells_env)
++
++karb_verdict_capture <- function() {
++  cap <- readRDS(file.path(test_path(), "fixtures", "bp-k-arb",
++    "msuiter_verdicts.rds"))
++  # Boundary validation of the consumed capture (input-validation law).
++  if (!is.list(cap) || !all(c("root_seed", "k_grid", "cells") %in% names(cap))) {
++    stop("verdict capture must carry root_seed, k_grid and cells", domain = NA)
++  }
++  for (nm in names(cap$cells)) {
++    cl <- cap$cells[[nm]]
++    if (!all(c("name", "planted_k", "k", "dim", "evidence") %in% names(cl))) {
++      stop(sprintf("verdict cell `%s` is missing recorded fields", nm),
++        domain = NA)
++    }
++    if (!is.data.frame(cl$evidence) || nrow(cl$evidence) != length(cap$k_grid)) {
++      stop(sprintf("verdict cell `%s` carries an invalid evidence table", nm),
++        domain = NA)
++    }
++  }
++  cap
++}
++
++# ---- T1: K-agreement with the committed reference verdicts -----------------
++
++test_that("bp_select_k reaches the committed msuiter verdict on every tier", {
++  cap <- karb_verdict_capture()
++  cells <- karb_cells_env$cal_cells(karb_cells_env$CAL_ROOT_SEED)
++  expect_equal(vapply(cells, function(cl) cl$name, character(1L)),
++    names(cap$cells))
++  for (cl in cells) {
++    expect_equal(dim(cl$counts), cap$cells[[cl$name]]$dim, info = cl$name)
++    res <- bp_select_k(cl$counts, k_grid = cap$k_grid,
++      seed = cap$root_seed)
++    expect_equal(res$k, cap$cells[[cl$name]]$k, info = cl$name)
++    expect_equal(res$k, cl$planted_k, info = cl$name)
++    ev <- res$k_evidence
++    expect_equal(ev$k, as.integer(cap$k_grid), info = cl$name)
++    expect_equal(sum(ev$selected), 1L, info = cl$name)
++    sel <- ev[ev$selected, ]
++    expect_true(sel$passes_veto, info = cl$name)
++    expect_false(anyNA(ev$cv_test_deviance), info = cl$name)
++    expect_false(anyNA(ev$passes_veto), info = cl$name)
++  }
++})
++
++# ---- T2: single-root-seed law ----------------------------------------------
++
++test_that("one root seed yields byte-identical verdicts and diagnostics", {
++  cells <- karb_cells_env$cal_cells(karb_cells_env$CAL_ROOT_SEED)
++  cl <- cells[[2L]]
++  a <- bp_select_k(cl$counts, k_grid = 2:5, seed = 20261015L)
++  b <- bp_select_k(cl$counts, k_grid = 2:5, seed = 20261015L)
++  expect_equal(a$k, b$k)
++  expect_identical(serialize(a$k_evidence, connection = NULL),
++    serialize(b$k_evidence, connection = NULL))
++  # A different root seed is a different stream: the diagnostics must
++  # actually move (no frozen pseudoreplication); the decision columns stay
++  # well-formed for any stream.
++  d <- bp_select_k(cl$counts, k_grid = 2:5, seed = 99991L)
++  expect_false(identical(serialize(a$k_evidence, connection = NULL),
++    serialize(d$k_evidence, connection = NULL)))
++  expect_equal(sum(d$k_evidence$selected), 1L)
++})
++
++# ---- T3: a sabotaged stability at the argmin flips the verdict -------------
++
++test_that("an unstable CV argmin flips K to the best passing rank", {
++  cells <- karb_cells_env$cal_cells(karb_cells_env$CAL_ROOT_SEED)
++  cl <- cells[[3L]]                             # planted tier K = 4
++  honest <- bp_select_k(cl$counts, k_grid = 2:5, seed = 20261015L)
++  expect_equal(honest$k, 4L)                   # argmin lands on the planted tier
++
++  real_stability <- get(".bp_ensemble_stability", envir = asNamespace(
++    "sigminer"))
++  ns <- asNamespace("sigminer")
++  unlockBinding(".bp_ensemble_stability", ns)
++  on.exit({
++    assign(".bp_ensemble_stability", real_stability, envir = ns)
++    lockBinding(".bp_ensemble_stability", ns)
++  }, add = TRUE)
++  assign(".bp_ensemble_stability", function(counts, k, replicates, seed) {
++    if (identical(as.integer(k), 4L)) {
++      # the argmin rank is declared unstable, exactly the S2 shape
++      list(avg = 0.3, min = 0.05, per_signature = c(0.3, 0.05))
++    } else {
++      real_stability(counts, k, replicates, seed)
++    }
++  }, envir = ns)
++
++  flipped <- bp_select_k(cl$counts, k_grid = 2:5, seed = 20261015L)
++  ev <- flipped$k_evidence
++  expect_false(identical(flipped$k, 4L))
++  sel <- ev[ev$selected, ]
++  expect_true(sel$passes_veto)
++  expect_false(sel$is_argmin)                  # not the (vetoed) argmin row
++  # and it is the best passing rank in CV order (fallback-scan semantics)
++  cand <- ev[ev$passes_veto & !ev$is_argmin, ]
++  ord <- order(cand$cv_test_deviance, cand$k, na.last = TRUE)
++  expect_equal(flipped$k, cand$k[ord[1L]])
++})
++
++# ---- T4: diagnostics are observable on the returned object ------------------
++
++test_that("the returned evidence table carries the full diagnostic schema", {
++  cells <- karb_cells_env$cal_cells(karb_cells_env$CAL_ROOT_SEED)
++  res <- bp_select_k(cells[[1L]]$counts, k_grid = 2:5, seed = 20261015L)
++  ev <- res$k_evidence
++  want <- c("k", "cv_test_deviance", "cv_test_mse", "cv_train_mse",
++    "fold_test_deviance", "n_seeds_converged", "avg_stability",
++    "min_cluster_stability", "per_signature_stability",
++    "wilcoxon_p_vs_prev", "wilcoxon_l2_median_delta", "passes_veto",
++    "is_argmin", "selected", "veto_reason")
++  expect_equal(names(ev), want)
++  expect_type(ev$veto_reason, "character")
++  expect_type(ev$selected, "logical")
++  expect_true(is.list(ev$fold_test_deviance))
++  expect_equal(vapply(ev$fold_test_deviance, length, integer(1L)),
++    rep(8L, 4L))
++  expect_true(is.list(ev$per_signature_stability))
++})
++
++# ---- T5: cv = FALSE demotes to the veto-only scan ----------------------------
++
++test_that("cv = FALSE arbitrates on the stability veto alone", {
++  cells <- karb_cells_env$cal_cells(karb_cells_env$CAL_ROOT_SEED)
++  res <- bp_select_k(cells[[1L]]$counts, k_grid = 2:5, cv = FALSE,
++    seed = 20261015L)
++  ev <- res$k_evidence
++  expect_false(any(ev$is_argmin))              # layer 1 absent -> mark erased
++  expect_true(all(is.na(ev$cv_test_deviance))) # CV columns demoted to NA
++  fold_ok <- vapply(ev$fold_test_deviance, function(z) {
++    length(z) == 8L && all(is.na(z))
++  }, logical(1L))
++  expect_true(all(fold_ok))
++  cand <- ev[ev$passes_veto, ]
++  expect_true(nrow(cand) > 0L)
++  expect_equal(res$k, min(cand$k))             # lowest passing rank wins
++})
++
++# ---- T6: input validation fails fast at the boundary ------------------------
++
++test_that("bp_select_k validates its inputs with named messages", {
++  good <- karb_cells_env$cal_cells(karb_cells_env$CAL_ROOT_SEED)[[1L]]$counts
++  expect_error(bp_select_k(matrix(1:4, 2), k_grid = 2:3, seed = 1L),
++    "numeric matrix")
++  bad <- good
++  bad[1L, 1L] <- -1
++  expect_error(bp_select_k(bad, k_grid = 2:3, seed = 1L), "non-negative")
++  expect_error(bp_select_k(good, k_grid = c(2L, 0L), seed = 1L),
++    "positive whole numbers")
++  expect_error(bp_select_k(good, k_grid = 2:100L, seed = 1L),
++    "must not exceed")
++  expect_error(bp_select_k(good, k_grid = 2:3, seed = 1L, cv = NA),
++    "single TRUE or FALSE")
++  expect_error(bp_select_k(good, k_grid = 2:3, seed = 1.5), "whole number")
++  expect_error(bp_select_k(good, k_grid = 2:3, seed = 1L, replicates = 1L),
++    "replicates")
++  expect_error(bp_select_k(good, k_grid = 2:3, seed = 1L, k_folds = 200L),
++    "channel count")
++})
++
++# ---- T7: opt-in hook on the bp route, legacy preserved ---------------------
++
++test_that("k_select = 'arbitrate' annotates the route; the default is untouched", {
++  cells <- karb_cells_env$cal_cells(karb_cells_env$CAL_ROOT_SEED)
++  nmf_matrix <- t(cells[[2L]]$counts)         # samples x components for the route
++  legacy <- bp_extract_signatures(nmf_matrix, range = 2:3, n_bootstrap = 0L,
++    n_nmf_run = 2L, cores = 1L, cores_solution = 1L, seed = 123456L)
++  arbit <- bp_extract_signatures(nmf_matrix, range = 2:3, n_bootstrap = 0L,
++    n_nmf_run = 2L, cores = 1L, cores_solution = 1L, seed = 123456L,
++    k_select = "arbitrate")
++  # Legacy preservation: every slot the legacy result has (except the
++  # intentionally re-arbitrated `suggested`) is byte-identical.
++  for (slot in setdiff(names(legacy), "suggested")) {
++    expect_identical(serialize(legacy[[slot]], connection = NULL),
++      serialize(arbit[[slot]], connection = NULL), info = slot)
++  }
++  expect_equal(arbit$suggested_legacy, legacy$suggested)
++  expect_type(arbit$suggested, "integer")
++  ev <- arbit$k_evidence
++  expect_true(is.data.frame(ev))
++  expect_equal(ev$k[ev$selected], arbit$suggested)
++  expect_true(any(ev$selected))
++})
+diff --git a/tests/testthat/test-bp-k-arbitration-replay.R b/tests/testthat/test-bp-k-arbitration-replay.R
+new file mode 100644
+index 00000000..8239af1e
+--- /dev/null
++++ b/tests/testthat/test-bp-k-arbitration-replay.R
+@@ -0,0 +1,94 @@
++# Fixture replay for the bp K-arbitration core (parity plan P2).
++#
++# Consumes the committed reference capture
++# fixtures/bp-k-arb/msuiter_core_cases.rds: seven hand-built evidence
++# frames (S1..S7 of the parity design) run through the msuiter reference
++# core (.ms_k_arbitrate, msuiter main@dad30440) on the controller host,
++# recorded with their run parameters. Replaying them here asserts the
++# ported core takes the identical decision on every recorded frame.
++#
++# The unit is msuiter-absent-safe: the .rds payload is plain data (data
++# frames, scalars, NULL), loaded with readRDS only. The provenance
++# generator next to the fixture re-produces both .rds files verbatim on
++# the controller host; it is never sourced by R CMD check.
++
++karb_fixture_path <- function(... ) {
++  file.path(test_path(), "fixtures", "bp-k-arb", ...)
++}
++
++# Boundary validation of the consumed capture (input-validation law): a
++# silently corrupt fixture must fail loudly here, not skew the replay.
++validate_core_capture <- function(capture) {
++  if (!is.list(capture) || !all(c("root_seed", "cases") %in% names(capture))) {
++    stop("core capture must carry `root_seed` and `cases`", domain = NA)
++  }
++  for (nm in names(capture$cases)) {
++    cs <- capture$cases[[nm]]
++    need <- c("ev", "cv", "mode", "expect_error", "warned")
++    if (!all(need %in% names(cs))) {
++      stop(sprintf("core case `%s` is missing recorded field(s): %s", nm,
++        paste0(dQuote(setdiff(need, names(cs))), collapse = ", ")),
++        domain = NA)
++    }
++    if (!is.data.frame(cs$ev) ||
++        !all(.BP_K_EVIDENCE_REQUIRED %in% names(cs$ev))) {
++      stop(sprintf("core case `%s` carries an invalid evidence frame", nm),
++        domain = NA)
++    }
++    if (!identical(cs$mode, "explicit") && !identical(cs$mode, "degrade")) {
++      stop(sprintf("core case `%s` records an unknown mode", nm), domain = NA)
++    }
++    if (!isTRUE(cs$expect_error) && !isFALSE(cs$expect_error)) {
++      stop(sprintf("core case `%s` has no recorded error outcome", nm),
++        domain = NA)
++    }
++  }
++  capture
++}
++
++capture <- validate_core_capture(readRDS(karb_fixture_path(
++  "msuiter_core_cases.rds")))
++
++test_that("the reference capture is the recorded seven-scenario battery", {
++  expect_equal(capture$root_seed, 20261015L)
++  expect_equal(names(capture$cases),
++    c("S1_argmin_passes", "S2_argmin_vetoed_fallback",
++      "S3_cv_off_lowest_passing", "S4_none_passes_explicit_error",
++      "S5_none_passes_degrade_to_argmin", "S6_cv_tie_lowest_rank",
++      "S7_vetoed_argmin_tie_fallback"))
++})
++
++test_that("every recorded core case replays to the identical reference decision", {
++  for (nm in names(capture$cases)) {
++    cs <- capture$cases[[nm]]
++    if (cs$expect_error) {
++      # layer-3 parity: the reference errored; the port must too, in the
++      # explicit mode, with the undecidable diagnosis.
++      expect_error(.bp_k_arbitrate(cs$ev, cv = cs$cv, mode = cs$mode),
++        "undecidable", info = nm)
++      next
++    }
++    if (cs$warned) {
++      expect_warning(out <- .bp_k_arbitrate(cs$ev, cv = cs$cv,
++        mode = cs$mode), "undecidable", info = nm)
++    } else {
++      out <- .bp_k_arbitrate(cs$ev, cv = cs$cv, mode = cs$mode)
++    }
++    expect_equal(out$selected, cs$selected, info = nm)
++    expect_equal(out$is_argmin, cs$is_argmin_out, info = nm)
++    expect_equal(sum(out$selected), 1L, info = nm)
++  }
++})
++
++test_that("the replayed decisions are stable across repeated invocations", {
++  # determinism cross-check: the core is a pure function, so two
++  # invocations per case must agree bit-for-bit through serialization.
++  for (nm in names(capture$cases)) {
++    cs <- capture$cases[[nm]]
++    if (cs$expect_error) next
++    a <- suppressWarnings(.bp_k_arbitrate(cs$ev, cv = cs$cv, mode = cs$mode))
++    b <- suppressWarnings(.bp_k_arbitrate(cs$ev, cv = cs$cv, mode = cs$mode))
++    expect_equal(serialize(a, connection = NULL),
++      serialize(b, connection = NULL), info = nm)
++  }
++})
+diff --git a/tests/testthat/test-roxytest-testexamples-best_practice.R b/tests/testthat/test-roxytest-testexamples-best_practice.R
+index 29cae78e..f3b24e2a 100644
+--- a/tests/testthat/test-roxytest-testexamples-best_practice.R
++++ b/tests/testthat/test-roxytest-testexamples-best_practice.R
+@@ -2,7 +2,7 @@
+ 
+ # File R/best_practice.R: @testexamples
+ 
+-test_that("[unknown alias] @ L219", {
++test_that("[unknown alias] @ L228", {
+   
+   data("simulated_catalogs")
+   

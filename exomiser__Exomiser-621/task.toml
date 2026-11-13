@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/exomiser__Exomiser-621"
+description = "!refactor: separate ACMG_EVIDENCE by '&' in VCF"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "Exomiser",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "exomiser/Exomiser"
+ref = "dc6f3248284b521ae07152c13c065d57c4e60849"
+reference = "https://github.com/exomiser/Exomiser/pull/621"
+source_access = "auto"
+built_at = "2026-11-13T16:04:27.576166+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:94c2e66785bc21fa2cb1ffd4379914bacd420f31cdf149910d133ecbcbb82951"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-23T17:20:05Z"
+diff_format = "unified"
+context_files = [
+    "exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/writers/VcfResultsWriter.java",
+    "exomiser-core/src/test/java/org/monarchinitiative/exomiser/core/writers/VcfResultsWriterTest.java",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 47
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

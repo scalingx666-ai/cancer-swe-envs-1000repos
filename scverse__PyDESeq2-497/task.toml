@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/scverse__PyDESeq2-497"
+description = "Chore(deps): bump the pre-commit group with 5 updates"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "PyDESeq2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "scverse/PyDESeq2"
+ref = "e6c6fac7e53759a311945ae60014d1bc17906426"
+reference = "https://github.com/scverse/PyDESeq2/pull/497"
+source_access = "auto"
+built_at = "2026-11-13T15:50:13.388965+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c5efa285149a210d9c32503fe2859643a59448eba14cb3789546a5ef6712f9ae"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T21:24:44Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/test.yaml",
+    ".pre-commit-config.yaml",
+    "biome.jsonc",
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 30
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

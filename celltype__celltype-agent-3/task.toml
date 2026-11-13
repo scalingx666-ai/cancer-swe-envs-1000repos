@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/celltype__celltype-agent-3"
+description = "Add Azure AI Foundry support for academic institutions"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "celltype-agent",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "celltype/celltype-agent"
+ref = "21b91bc727a61e6781e5a7b2cae6f6c20bd71535"
+reference = "https://github.com/celltype/celltype-agent/pull/3"
+source_access = "auto"
+built_at = "2026-11-13T15:32:28.288427+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:43f4d570999e84c557fdaa107818d497bc0b34373dafab4ed98caefd7b771a78"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-25T00:09:13Z"
+diff_format = "unified"
+context_files = [
+    "pyproject.toml",
+    "src/ct/agent/config.py",
+    "src/ct/agent/doctor.py",
+    "src/ct/agent/runner.py",
+    "src/ct/cli.py",
+    "src/ct/models/llm.py",
+    "tests/test_config.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 80
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

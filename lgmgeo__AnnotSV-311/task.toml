@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/lgmgeo__AnnotSV-311"
+description = "Revisions for pipeline integration and separate annotations"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "AnnotSV",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lgmgeo/AnnotSV"
+ref = "5573d1015c779814c6a97fb3651f692b36ae0319"
+reference = "https://github.com/lgmgeo/AnnotSV/pull/311"
+source_access = "auto"
+built_at = "2026-11-13T16:00:27.839661+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:31ae66ec9ac4047a08c1df7f3816c3a28fa1119e0f4684f1b93060652b2558a7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-03T08:08:55Z"
+diff_format = "unified"
+context_files = [
+    "Makefile",
+    "bin/INSTALL_annotations.sh",
+    "etc/AnnotSV/application.properties",
+    "share/tcl/AnnotSV/AnnotSV-exomiser.tcl",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 97
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

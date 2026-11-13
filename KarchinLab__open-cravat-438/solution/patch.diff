@@ -1,0 +1,44 @@
+diff --git a/cravat/cravat_web.py b/cravat/cravat_web.py
+index a7d8f743..7be6c861 100644
+--- a/cravat/cravat_web.py
++++ b/cravat/cravat_web.py
+@@ -1,26 +1,16 @@
+-from http.server import HTTPServer, CGIHTTPRequestHandler
+-from socketserver import TCPServer
+ import os
+ import webbrowser
+-import multiprocessing
+-import urllib.parse
+ import json
+ import sys
+ import argparse
+-import oyaml as yaml
+-import re
+ from cravat import admin_util as au
+ from cravat.webresult import webresult as wr
+ from cravat.webstore import webstore as ws
+ from cravat.websubmit import websubmit as wu
+ from cravat.gui import cache
+-import websockets
+ from aiohttp import web, web_runner
+-import socket
+-import hashlib
+ import platform
+ import asyncio
+-import datetime as dt
+ import requests
+ import traceback
+ import ssl
+diff --git a/setup.py b/setup.py
+index 443c7248..0554c4de 100644
+--- a/setup.py
++++ b/setup.py
+@@ -61,7 +61,7 @@ def readme ():
+ setup(
+     name='open-cravat',
+     packages=['cravat'],
+-    version='3.2.2',
++    version='3.2.3',
+     description='OpenCRAVAT - variant analysis toolkit',
+     long_description=readme(),
+     author='Kyle Moad, Kyle Anderson, Charlie Vaske, Jasmine Baker, and Rachel Karchin',

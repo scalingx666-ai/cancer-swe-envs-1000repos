@@ -1,0 +1,158 @@
+diff --git a/.github/workflows/binary.yml b/.github/workflows/binary.yml
+index 1a35ff6..0640f25 100644
+--- a/.github/workflows/binary.yml
++++ b/.github/workflows/binary.yml
+@@ -37,13 +37,5 @@ jobs:
+               # distribution
+               BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/master"
+               echo "BASE_URL=${BASE_URL}"
+-              curl --silent -L \
+-                 -O ${BASE_URL}/test_dna.fa \
+-                 -O ${BASE_URL}/test_prot.fa \
+-                 -O ${BASE_URL}/test_prot.gff \
+-                 -O ${BASE_URL}/test_both.expected \
+-                 -O ${BASE_URL}/test_dna.expected \
+-                 -O ${BASE_URL}/test_dna_mut_all.expected \
+-                 -O ${BASE_URL}/test_prot.expected \
+-                 -O ${BASE_URL}/test_amrfinder.sh
++              curl --silent -L -O ${BASE_URL}/test_amrfinder.sh
+               bash -x ./test_amrfinder.sh
+diff --git a/.github/workflows/conda.yml b/.github/workflows/conda.yml
+index 757ba57..cfc6202 100644
+--- a/.github/workflows/conda.yml
++++ b/.github/workflows/conda.yml
+@@ -36,15 +36,7 @@ jobs:
+     - name: download tests
+       run: |
+           BASE_URL=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/master
+-          curl --silent -L \
+-             -O ${BASE_URL}/test_dna.fa \
+-             -O ${BASE_URL}/test_prot.fa \
+-             -O ${BASE_URL}/test_prot.gff \
+-             -O ${BASE_URL}/test_both.expected \
+-             -O ${BASE_URL}/test_dna.expected \
+-             -O ${BASE_URL}/test_dna_mut_all.expected \
+-             -O ${BASE_URL}/test_prot.expected \
+-             -O ${BASE_URL}/test_amrfinder.sh
++          curl --silent -L -O ${BASE_URL}/test_amrfinder.sh
+     - name: run tests
+       run: |
+           source /usr/share/miniconda/bin/activate
+@@ -79,15 +71,7 @@ jobs:
+     - name: download tests
+       run: |
+           BASE_URL=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/master
+-          curl --silent -L \
+-             -O ${BASE_URL}/test_dna.fa \
+-             -O ${BASE_URL}/test_prot.fa \
+-             -O ${BASE_URL}/test_prot.gff \
+-             -O ${BASE_URL}/test_both.expected \
+-             -O ${BASE_URL}/test_dna.expected \
+-             -O ${BASE_URL}/test_dna_mut_all.expected \
+-             -O ${BASE_URL}/test_prot.expected \
+-             -O ${BASE_URL}/test_amrfinder.sh
++          curl --silent -L -O ${BASE_URL}/test_amrfinder.sh
+     - name: run tests
+       shell: bash -el {0}
+       run: bash ./test_amrfinder.sh -p
+diff --git a/.github/workflows/mac_ccpp.yml b/.github/workflows/mac_ccpp.yml
+index f4809b9..864ea5b 100644
+--- a/.github/workflows/mac_ccpp.yml
++++ b/.github/workflows/mac_ccpp.yml
+@@ -41,7 +41,7 @@ jobs:
+           name: release-binary
+           path: amrfinder_binaries_macos_aarch64_v*.tar.gz
+   macos_x86_64:
+-    runs-on: macos-13
++    runs-on: macos-15-intel
+     timeout-minutes: 30
+     steps:
+     - uses: actions/checkout@v4
+diff --git a/.github/workflows/mac_conda.yml b/.github/workflows/mac_conda.yml
+index ff512af..efec66d 100644
+--- a/.github/workflows/mac_conda.yml
++++ b/.github/workflows/mac_conda.yml
+@@ -42,22 +42,14 @@ jobs:
+     - name: Download tests
+       run: |
+           BASE_URL=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/master
+-          curl --silent -L \
+-             -O ${BASE_URL}/test_dna.fa \
+-             -O ${BASE_URL}/test_prot.fa \
+-             -O ${BASE_URL}/test_prot.gff \
+-             -O ${BASE_URL}/test_both.expected \
+-             -O ${BASE_URL}/test_dna.expected \
+-             -O ${BASE_URL}/test_dna_mut_all.expected \
+-             -O ${BASE_URL}/test_prot.expected \
+-             -O ${BASE_URL}/test_amrfinder.sh
++          curl --silent -L -O ${BASE_URL}/test_amrfinder.sh
+     - name: Run tests
+       run: |
+           source /Users/runner/miniconda3/bin/activate
+           echo CONDA_PREFIX = $CONDA_PREFIX
+           bash ./test_amrfinder.sh -p 
+   conda_macos_x86_64:
+-    runs-on: macos-13
++    runs-on: macos-15-intel
+     timeout-minutes: 30
+     steps:
+     - name: Install conda because built-in conda is borked
+@@ -92,15 +84,7 @@ jobs:
+     - name: Download tests
+       run: |
+           BASE_URL=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/master
+-          curl --silent -L \
+-             -O ${BASE_URL}/test_dna.fa \
+-             -O ${BASE_URL}/test_prot.fa \
+-             -O ${BASE_URL}/test_prot.gff \
+-             -O ${BASE_URL}/test_both.expected \
+-             -O ${BASE_URL}/test_dna.expected \
+-             -O ${BASE_URL}/test_dna_mut_all.expected \
+-             -O ${BASE_URL}/test_prot.expected \
+-             -O ${BASE_URL}/test_amrfinder.sh
++          curl --silent -L -O ${BASE_URL}/test_amrfinder.sh
+     - name: Run tests
+       run: |
+           source /Users/runner/miniconda3/bin/activate
+diff --git a/test_amrfinder.sh b/test_amrfinder.sh
+index f8c23a6..e4c5371 100755
+--- a/test_amrfinder.sh
++++ b/test_amrfinder.sh
+@@ -46,22 +46,27 @@ fi
+ 
+ if [ "$no_download" -gt 0 ]
+ then
+-    echo "-n option detected, skipping download of test data"
++    echo "-n option detected, skipping download of test data and using tests in"
++    echo "$PWD.  Note test data may not match the latest database release."
+ else
+     echo Downloading fresh test data...
+-    curl -k -s -f \
+-         -O https://raw.githubusercontent.com/ncbi/amr/master/test_dna.fa \
+-         -O https://raw.githubusercontent.com/ncbi/amr/master/test_prot.fa \
+-         -O https://raw.githubusercontent.com/ncbi/amr/master/test_prot.gff \
+-         -O https://raw.githubusercontent.com/ncbi/amr/master/test_both.expected \
+-         -O https://raw.githubusercontent.com/ncbi/amr/master/test_dna.expected \
+-         -O https://raw.githubusercontent.com/ncbi/amr/master/test_prot.expected
++    BASE_URL=https://raw.githubusercontent.com/ncbi/amr/master
++    curl --silent --location \
++       -O ${BASE_URL}/test_dna.fa \
++       -O ${BASE_URL}/test_prot.fa \
++       -O ${BASE_URL}/test_prot.gff \
++       -O ${BASE_URL}/test_both.expected \
++       -O ${BASE_URL}/test_dna.expected \
++       -O ${BASE_URL}/test_dna_mut_all.expected \
++       -O ${BASE_URL}/test_prot.expected \
++       -O ${BASE_URL}/test_disrupt.fa \
++       -O ${BASE_URL}/test_disrupt.expected
+ 
+     if [ $? != 0 ]
+     then
+-        echo "WARNING: Could not download new test data."
++        echo "${red}WARNING: Could not download new test data.${reset}"
+         echo "Will attempt to use test data in $PWD."
+-        echo "Test data included with installation not match the latest database release."
++        echo "Test data included with installation may not match the latest database release."
+     fi
+ fi
+ 

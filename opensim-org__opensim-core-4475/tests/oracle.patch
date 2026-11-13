@@ -1,0 +1,832 @@
+diff --git a/Applications/opensense/tests/testOpenSense.cpp b/Applications/opensense/tests/testOpenSense.cpp
+index 7c5b60c978..b37296a11c 100644
+--- a/Applications/opensense/tests/testOpenSense.cpp
++++ b/Applications/opensense/tests/testOpenSense.cpp
+@@ -105,11 +105,11 @@ TEST_CASE("testOpenSense") {
+     auto pelvisXInGround = pelvis.expressVectorInGround(
+             rotatedModelState, SimTK::Vec3{1, 0, 0});
+     pelvisXInGround.set(1, 0);
+-    pelvisXInGround.normalize();
++    pelvisXInGround = pelvisXInGround.normalize();
+     auto pelvisIMUZInGround = pelvis_imu->expressVectorInGround(
+             rotatedModelState, SimTK::Vec3{0, 0, 1});
+     pelvisIMUZInGround.set(1, 0);
+-    pelvisIMUZInGround.normalize();
++    pelvisIMUZInGround = pelvisIMUZInGround.normalize();
+     SimTK::Real angularDifference = acos(~pelvisXInGround * pelvisIMUZInGround);
+     // Angle less than 30 would be reasonable goal to maintain
+     assert(angularDifference < SimTK::Pi/6);
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d0e727a6b0..e204954c65 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -55,6 +55,8 @@ The property `moment_arm_threshold` has been removed, and the methods `get/setMo
+   referenced `libgfortran`/`libquadmath` by the absolute path those libraries had on the build
+   machine, so `MocoStudy.solve()` failed with "Plugin 'ipopt' is not found" on any macOS machine
+   without GCC installed at that prefix (#4447).
++- Added the `mirror_axis` property to `EllipsoidJoint`, which mirrors the joint about the plane normal to the given axis ('x', 'y', or 'z') of the parent frame. This is useful for constructing a left-side joint from the description of its right-side counterpart (or vice versa). (#4475)
++- Fixed several discarded calls to `SimTK::Vec3::normalize()`, which returns a normalized copy rather than normalizing in place and so had no effect. `CustomJoint` kinematics may change slightly for models read from the pre-4.0 `TransformAxis` format, and `CMC_Task::setDirection_0()`/`setDirection_1()` now normalize their argument as documented. (#4475)
+ 
+ 
+ v4.6
+diff --git a/OpenSim/Common/CommonUtilities.cpp b/OpenSim/Common/CommonUtilities.cpp
+index b6412796f7..fb849619f5 100644
+--- a/OpenSim/Common/CommonUtilities.cpp
++++ b/OpenSim/Common/CommonUtilities.cpp
+@@ -26,6 +26,7 @@
+ #include "PiecewiseLinearFunction.h"
+ #include "STOFileAdapter.h"
+ #include "TimeSeriesTable.h"
++#include <array>
+ #include <chrono>
+ #include <cstdint>
+ #include <ctime>
+@@ -371,3 +372,18 @@ int OpenSim::choose(int n, int k) {
+             "Binomial coefficient exceeds int range.");
+     return static_cast<int>(result);
+ }
++
++std::optional<SimTK::CoordinateAxis> OpenSim::parseCoordinateAxis(
++        const std::string& axisName) {
++    if (axisName.size() != 1) { return std::nullopt; }
++    switch (axisName.front()) {
++    case 'x': case 'X': return SimTK::CoordinateAxis::XCoordinateAxis();
++    case 'y': case 'Y': return SimTK::CoordinateAxis::YCoordinateAxis();
++    case 'z': case 'Z': return SimTK::CoordinateAxis::ZCoordinateAxis();
++    default: return std::nullopt;
++    }
++}
++
++std::string OpenSim::getCoordinateAxisName(SimTK::CoordinateAxis axis) {
++    return std::string(1, std::array<char, 3>{'x', 'y', 'z'}.at(axis));
++}
+diff --git a/OpenSim/Common/CommonUtilities.h b/OpenSim/Common/CommonUtilities.h
+index d1d6b187e1..7d9864b65f 100644
+--- a/OpenSim/Common/CommonUtilities.h
++++ b/OpenSim/Common/CommonUtilities.h
+@@ -29,6 +29,7 @@
+ #include <OpenSim/Common/Property.h>
+ 
+ #include <SimTKcommon/internal/BigMatrix.h>
++#include <SimTKcommon/internal/CoordinateAxis.h>
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -38,7 +39,9 @@
+ #include <memory>
+ #include <mutex>
+ #include <numeric>
++#include <optional>
+ #include <stack>
++#include <string>
+ #include <utility>
+ #include <vector>
+ 
+@@ -347,6 +350,22 @@ OSIMCOMMON_API double factorizeMatrixNonNegative(const SimTK::Matrix& A,
+  */
+ OSIMCOMMON_API int choose(int n, int k);
+ 
++#ifndef SWIG // std::optional is not supported by the scripting interfaces.
++/// Convert a string naming a coordinate axis into a SimTK::CoordinateAxis.
++/// The string must be a single character: "x" or "X" for the X axis, "y" or
++/// "Y" for the Y axis, and "z" or "Z" for the Z axis.
++/// @returns the matching coordinate axis, or std::nullopt if `axisName` does
++///     not name a coordinate axis.
++/// @ingroup commonutil
++OSIMCOMMON_API std::optional<SimTK::CoordinateAxis> parseCoordinateAxis(
++        const std::string& axisName);
++#endif
++
++/// Convert a SimTK::CoordinateAxis into its lowercase name: "x", "y", or "z".
++/// This is the inverse of parseCoordinateAxis().
++/// @ingroup commonutil
++OSIMCOMMON_API std::string getCoordinateAxisName(SimTK::CoordinateAxis axis);
++
+ namespace detail {
+ /**
+  * Returns true if value is a valid name for a file.
+diff --git a/OpenSim/Common/DataTable.h b/OpenSim/Common/DataTable.h
+index b059508bf2..5daf5ae86f 100644
+--- a/OpenSim/Common/DataTable.h
++++ b/OpenSim/Common/DataTable.h
+@@ -894,7 +894,7 @@ class DataTable_ : public AbstractDataTable {
+                       "The iterator 'begin' does not provide elements that are "
+                       "of same type as elements of this table.");
+ 
+-        Vector col{static_cast<int>(std::distance(begin, end))};
++        Vector col(static_cast<int>(std::distance(begin, end)));
+         int ind{0};
+         for(auto it = begin; it != end; ++it)
+             col[ind++] = *it;
+diff --git a/OpenSim/Common/tests/testCommonUtilities.cpp b/OpenSim/Common/tests/testCommonUtilities.cpp
+index 70a1b1b4b4..6c587d2ff0 100644
+--- a/OpenSim/Common/tests/testCommonUtilities.cpp
++++ b/OpenSim/Common/tests/testCommonUtilities.cpp
+@@ -25,6 +25,7 @@
+ #include <OpenSim/Common/Exception.h>
+ 
+ #include <algorithm> // std::transform
++#include <optional>
+ #include <limits> // std::numeric_limits
+ #include <vector>
+ #include <numeric> // std::iota
+@@ -349,4 +350,38 @@ TEST_CASE("choose") {
+         CHECK_THROWS_WITH(choose(150, 100), ContainsSubstring("overflow"));
+         CHECK_THROWS_WITH(choose(1000, 500), ContainsSubstring("overflow"));
+     }
+-}
+\ No newline at end of file
++}
++
++TEST_CASE("parseCoordinateAxis and getCoordinateAxisName") {
++
++    SECTION("Valid axis names") {
++        CHECK(parseCoordinateAxis("x") == SimTK::XAxis);
++        CHECK(parseCoordinateAxis("X") == SimTK::XAxis);
++        CHECK(parseCoordinateAxis("y") == SimTK::YAxis);
++        CHECK(parseCoordinateAxis("Y") == SimTK::YAxis);
++        CHECK(parseCoordinateAxis("z") == SimTK::ZAxis);
++        CHECK(parseCoordinateAxis("Z") == SimTK::ZAxis);
++    }
++
++    SECTION("Invalid axis names") {
++        const auto axisName = GENERATE(as<std::string>{},
++                "", " ", " x", "x ", "xy", "w", "0", "+x", "-x", "X-axis");
++        INFO("axisName = '" << axisName << "'");
++        CHECK(parseCoordinateAxis(axisName) == std::nullopt);
++    }
++
++    SECTION("Axis names") {
++        CHECK(getCoordinateAxisName(SimTK::XAxis) == "x");
++        CHECK(getCoordinateAxisName(SimTK::YAxis) == "y");
++        CHECK(getCoordinateAxisName(SimTK::ZAxis) == "z");
++    }
++
++    SECTION("Round trip") {
++        for (const SimTK::CoordinateAxis& axis :
++                {SimTK::CoordinateAxis(SimTK::XAxis),
++                 SimTK::CoordinateAxis(SimTK::YAxis),
++                 SimTK::CoordinateAxis(SimTK::ZAxis)}) {
++            CHECK(parseCoordinateAxis(getCoordinateAxisName(axis)) == axis);
++        }
++    }
++}
+diff --git a/OpenSim/Simulation/Model/StationDefinedFrame.cpp b/OpenSim/Simulation/Model/StationDefinedFrame.cpp
+index 1587f9ba0d..77066713b5 100644
+--- a/OpenSim/Simulation/Model/StationDefinedFrame.cpp
++++ b/OpenSim/Simulation/Model/StationDefinedFrame.cpp
+@@ -24,6 +24,7 @@
+ #include "StationDefinedFrame.h"
+ 
+ #include <OpenSim/Common/Assertion.h>
++#include <OpenSim/Common/CommonUtilities.h>
+ #include <OpenSim/Common/Component.h>
+ #include <OpenSim/Common/Logger.h>
+ #include <OpenSim/Common/Property.h>
+@@ -33,6 +34,7 @@
+ #include <Simbody.h>
+ 
+ #include <array>
++#include <optional>
+ #include <sstream>
+ #include <string>
+ #include <utility>
+@@ -63,33 +65,10 @@ namespace {
+     {
+         std::string rv;
+         rv += dir.getDirection() > 0 ? '+' : '-';
+-        rv += std::array<char, 3>{'x', 'y', 'z'}.at(dir.getAxis());
++        rv += OpenSim::getCoordinateAxisName(dir.getAxis());
+         return rv;
+     }
+ 
+-    // helper: tries to parse a given character as a designator for an axis of a 3D coordinate
+-    //
+-    // returns `true` if `out` was updated by the parser, or `false` if the character couldn't be parsed
+-    bool TryParseAsCoordinateAxis(std::string::value_type c, SimTK::CoordinateAxis& out)
+-    {
+-        switch (c) {
+-        case 'x':
+-        case 'X':
+-            out = SimTK::CoordinateAxis::XCoordinateAxis{};
+-            return true;
+-        case 'y':
+-        case 'Y':
+-            out = SimTK::CoordinateAxis::YCoordinateAxis{};
+-            return true;
+-        case 'z':
+-        case 'Z':
+-            out = SimTK::CoordinateAxis::ZCoordinateAxis{};
+-            return true;
+-        default:
+-            return false;
+-        }
+-    }
+-
+     // helper: tries to parse the given string as a potentially-signed representation of a
+     // 3D coordinate dimension (e.g. "-x" --> SimTK::CoordinateDirection::NegXDirection()`)
+     //
+@@ -111,12 +90,13 @@ namespace {
+         }
+ 
+         // handle axis suffix
+-        SimTK::CoordinateAxis axis = SimTK::CoordinateAxis::XCoordinateAxis();
+-        if (!TryParseAsCoordinateAxis(s.front(), axis)) {
++        const std::optional<SimTK::CoordinateAxis> axis =
++            OpenSim::parseCoordinateAxis(s);
++        if (!axis) {
+             return false;
+         }
+ 
+-        out = SimTK::CoordinateDirection{axis, isNegated ? -1 : 1};
++        out = SimTK::CoordinateDirection{*axis, isNegated ? -1 : 1};
+         return true;
+     }
+ 
+diff --git a/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.cpp b/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.cpp
+index 4650980250..143d756c92 100644
+--- a/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.cpp
++++ b/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.cpp
+@@ -23,6 +23,7 @@
+  * -------------------------------------------------------------------------- */
+ 
+ #include "EllipsoidJoint.h"
++#include <OpenSim/Common/CommonUtilities.h>
+ #include <OpenSim/Simulation/Model/Model.h>
+ #include "simbody/internal/MobilizedBody_Ellipsoid.h"
+ 
+@@ -42,6 +43,15 @@ EllipsoidJoint::EllipsoidJoint(const std::string& name,
+     set_radii_x_y_z(radii);
+ }
+ 
++EllipsoidJoint::EllipsoidJoint(const std::string& name,
++        const PhysicalFrame& parent, const PhysicalFrame& child,
++        const SimTK::Vec3& radii, const SimTK::CoordinateAxis& mirrorAxis) :
++        Super(name, parent, child) {
++    constructProperties();
++    set_radii_x_y_z(radii);
++    setMirrorAxis(mirrorAxis);
++}
++
+ EllipsoidJoint::EllipsoidJoint(const std::string& name,
+         const PhysicalFrame& parent, const SimTK::Vec3& locationInParent,
+         const SimTK::Vec3& orientationInParent, const PhysicalFrame& child,
+@@ -53,10 +63,24 @@ EllipsoidJoint::EllipsoidJoint(const std::string& name,
+     set_radii_x_y_z(radii);
+ }
+ 
++EllipsoidJoint::EllipsoidJoint(const std::string& name,
++        const PhysicalFrame& parent, const SimTK::Vec3& locationInParent,
++        const SimTK::Vec3& orientationInParent, const PhysicalFrame& child,
++        const SimTK::Vec3& locationInChild,
++        const SimTK::Vec3& orientationInChild, const SimTK::Vec3& radii,
++        const SimTK::CoordinateAxis& mirrorAxis) :
++        Super(name, parent, locationInParent, orientationInParent,
++              child, locationInChild, orientationInChild) {
++    constructProperties();
++    set_radii_x_y_z(radii);
++    setMirrorAxis(mirrorAxis);
++}
++
+ void EllipsoidJoint::constructProperties() {
+     setAuthors("Ajay Seth");
+     SimTK::Vec3 radii(SimTK::NaN);
+     constructProperty_radii_x_y_z(radii);
++    constructProperty_mirror_axis();
+ 
+     Appearance appearance;
+     appearance.set_visible(true);
+@@ -70,6 +94,38 @@ void EllipsoidJoint::setEllipsoidRadii(const SimTK::Vec3& radii) {
+     set_radii_x_y_z(radii);
+ }
+ 
++void EllipsoidJoint::setMirrorAxis(const SimTK::CoordinateAxis& mirrorAxis) {
++    set_mirror_axis(getCoordinateAxisName(mirrorAxis));
++}
++
++void EllipsoidJoint::clearMirrorAxis() {
++    updProperty_mirror_axis().clear();
++}
++
++bool EllipsoidJoint::isMirrored() const {
++    return !getProperty_mirror_axis().empty();
++}
++
++SimTK::CoordinateAxis EllipsoidJoint::getMirrorAxis() const {
++    const auto mirrorAxis = findMirrorAxis();
++    OPENSIM_THROW_IF_FRMOBJ(!mirrorAxis, Exception,
++        "This joint is not mirrored; use isMirrored() to check if the joint "
++        "is mirrored before calling getMirrorAxis().");
++    return *mirrorAxis;
++}
++
++std::optional<SimTK::CoordinateAxis> EllipsoidJoint::findMirrorAxis() const {
++    if (getProperty_mirror_axis().empty()) return std::nullopt;
++
++    const std::string& axisName = get_mirror_axis();
++    if (const auto axis = parseCoordinateAxis(axisName)) {
++        return axis;
++    }
++    OPENSIM_THROW_FRMOBJ(Exception,
++        "Expected 'mirror_axis' to be 'x', 'y', or 'z', but it was '"
++        + axisName + "'.");
++}
++
+ //==============================================================================
+ // SCALING
+ //==============================================================================
+@@ -90,11 +146,21 @@ extendScale(const SimTK::State& s, const ScaleSet& scaleSet) {
+ //==============================================================================
+ // MODEL COMPONENT INTERFACE
+ //==============================================================================
++void EllipsoidJoint::extendFinalizeFromProperties() {
++    Super::extendFinalizeFromProperties();
++
++    // Reject a malformed 'mirror_axis' property value.
++    findMirrorAxis();
++}
++
+ void EllipsoidJoint::extendAddToSystem(SimTK::MultibodySystem& system) const {
+     Super::extendAddToSystem(system);
+     SimTK::MobilizedBody::Ellipsoid mobod =
+             createMobilizedBody<SimTK::MobilizedBody::Ellipsoid>(system);
+     mobod.setDefaultRadii(get_radii_x_y_z());
++    if (const auto mirrorAxis = findMirrorAxis()) {
++        mobod.setMirrorAxis(*mirrorAxis);
++    }
+ }
+ 
+ void EllipsoidJoint::extendInitStateFromProperties(SimTK::State& s) const {
+@@ -110,6 +176,13 @@ void EllipsoidJoint::extendInitStateFromProperties(SimTK::State& s) const {
+         SimTK::Rotation R(SimTK::BodyRotationSequence, xangle, SimTK::XAxis,
+                 yangle, SimTK::YAxis, zangle, SimTK::ZAxis);
+ 
++        // The coordinates parameterize the rotation of the equivalent
++        // unmirrored joint, but setQToFitRotation() expects the actual
++        // (mirrored) rotation.
++        if (const auto mirrorAxis = findMirrorAxis()) {
++            R = R.mirror(*mirrorAxis);
++        }
++
+         getChildFrame().getMobilizedBody().setQToFitRotation(s, R);
+     }
+ }
+@@ -121,8 +194,14 @@ void EllipsoidJoint::extendSetPropertiesFromState(const SimTK::State& state) {
+     const SimTK::SimbodyMatterSubsystem& matter =
+             getModel().getMatterSubsystem();
+     if (!matter.getUseEulerAngles(state)) {
+-        SimTK::Rotation R =
+-                getChildFrame().getMobilizedBody().getBodyRotation(state);
++        SimTK::Rotation R = getChildFrame().getMobilizedBody()
++                                           .getMobilizerTransform(state).R();
++
++        // Recover the rotation of the equivalent unmirrored joint, which is
++        // what the coordinates parameterize.
++        if (const auto mirrorAxis = findMirrorAxis()) {
++            R = R.mirror(*mirrorAxis);
++        }
+ 
+         SimTK::Vec3 angles = R.convertRotationToBodyFixedXYZ();
+         updCoordinate(Coord::Rotation1X).setDefaultValue(angles[0]);
+diff --git a/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.h b/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.h
+index 4631446619..89abc784e9 100644
+--- a/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.h
++++ b/OpenSim/Simulation/SimbodyEngine/EllipsoidJoint.h
+@@ -26,6 +26,8 @@
+ 
+ #include "Joint.h"
+ 
++#include <optional>
++
+ namespace OpenSim {
+ 
+ /**
+@@ -36,9 +38,54 @@ namespace OpenSim {
+  * translation along the surface of an ellipsoid fixed to the parent body. The
+  * three generalized speeds u for this mobilizer are also the same as a
+  * BallJoint, that is the three measure numbers of the angular velocity vector
+- * w_FM, the relative angular velocity of the joint's child frame (M) in the
+- * joint's parent frame (F), expressed in the F frame. Note that qdot != u for
+- * this joint.
++ * w_FM (unless the mobilizer is mirrored, see \ref ellipsoid_mirroring below),
++ * the relative angular velocity of the joint's child frame (M) in the joint's
++ * parent frame (F), expressed in the F frame. Note that qdot != u for this
++ * joint.
++ *
++ * \section ellipsoid_mirroring Mirroring
++ *
++ * This mobilizer can optionally be mirrored about the plane normal to one of
++ * the axes of the joint's parent frame using the `mirror_axis` property, which
++ * is useful for building a left/right pair of joints (e.g., a pair of
++ * shoulders) that are driven by the same coordinates.
++ *
++ * We define S as the reflection that reverses an axis k, that is, s[k] = -1 and
++ * s[i] = 1 otherwise. For example, if mirroring about the Y-axis then
++ * s = [1 -1 1] and S = diag(s):
++ *
++ * <pre>
++ *         [ 1  0  0 ]
++ *     S = [ 0 -1  0 ]
++ *         [ 0  0  1 ]
++ * </pre>
++ *
++ * Mirroring about F's axis k replaces the cross-mobilizer position p_FM with
++ * S*p_FM and the cross joint rotation R_FM with S*R_FM*S. Therefore, the
++ * mirrored cross-mobilizer transform is defined as:
++ *
++ * <pre>
++ *                     [              |        ]
++ *     X_FM_mirrored = [   S*R_FM*S   | S*p_FM ]
++ *                     [..............|........]
++ *                     [ 0    0    0      1    ]
++ * </pre>
++ *
++ * The generalized coordinates parameterize an unmirrored rotation, and the
++ * generalized speeds are the angular velocity of the unmirrored joint, so that
++ * N(q) and thus qdot=N(q)*u are the same for a mirrored mobilizer as for an
++ * unmirrored one. In exchange, this means that u is no longer equal to w_FM for
++ * a mirrored mobilizer, but rather:
++ *
++ * <pre>
++ *     w_FM = -S u
++ * </pre>
++ *
++ * In general, angular quantities are mirrored via w' = -S*w and linear
++ * quantities via v' = S*v.
++ *
++ * See the documentation of SimTK::MobilizedBody::Ellipsoid for more details
++ * about how mirroring affects the internal mobilizer calculations.
+  */
+ class OSIMSIMULATION_API EllipsoidJoint : public Joint {
+ OpenSim_DECLARE_CONCRETE_OBJECT(EllipsoidJoint, Joint);
+@@ -97,6 +144,10 @@ OpenSim_DECLARE_CONCRETE_OBJECT(EllipsoidJoint, Joint);
+     OpenSim_DECLARE_PROPERTY(radii_x_y_z, SimTK::Vec3,
+         "Radii of the ellipsoid fixed to the parent frame, "
+         "specified as a Vec3(rX, rY, rZ).");
++    OpenSim_DECLARE_OPTIONAL_PROPERTY(mirror_axis, std::string,
++        "The axis of the parent frame about which this joint is mirrored, "
++        "specified as 'x', 'y', or 'z'. Omit this property (the default) if "
++        "the joint should not be mirrored.");
+ 
+ //==============================================================================
+ // METHODS
+@@ -120,6 +171,25 @@ OpenSim_DECLARE_CONCRETE_OBJECT(EllipsoidJoint, Joint);
+     EllipsoidJoint(const std::string& name, const PhysicalFrame& parent,
+             const PhysicalFrame& child, const SimTK::Vec3& radii);
+ 
++    /**
++     * Convenience constructor for a joint that is mirrored about the plane
++     * normal to a specified coordinate axis. Create an EllipsoidJoint by
++     * specifying the parent and child frames, the ellipsoid radii, and the
++     * mirror axis.
++     *
++     * @param[in] name   the name associated with this joint (should be unique
++     *                   from other joints in the same model)
++     * @param[in] parent the parent PhysicalFrame to which this joint connects
++     * @param[in] child  the child PhysicalFrame to which this joint connects
++     * @param[in] radii  the radii of the ellipsoid
++     * @param[in] mirrorAxis the parent frame's coordinate axis (e.g.,
++     *                       SimTK::YAxis) whose normal plane the joint is
++     *                       mirrored about
++     */
++    EllipsoidJoint(const std::string& name, const PhysicalFrame& parent,
++            const PhysicalFrame& child, const SimTK::Vec3& radii,
++            const SimTK::CoordinateAxis& mirrorAxis);
++
+     /**
+      * Convenience constructor. Construct an EllipsoidJoint where the parent and
+      * child frames are specified as well as the location and orientation of the
+@@ -148,6 +218,39 @@ OpenSim_DECLARE_CONCRETE_OBJECT(EllipsoidJoint, Joint);
+             const SimTK::Vec3& locationInChild,
+             const SimTK::Vec3& orientationInChild, const SimTK::Vec3& radii);
+ 
++    /**
++     * Convenience constructor for a joint that is mirrored about the plane
++     * normal to a specified coordinate axis. Construct an EllipsoidJoint where
++     * the parent and child frames are specified as well as the location and
++     * orientation of the parent and child frames in their respective physical
++     * frames. Also, specify the ellipsoid radii and the mirror axis.
++     *
++     * @param[in] name    the name associated with this joint (should be unique
++     *                    from other joints in the same model)
++     * @param[in] parent  the parent PhysicalFrame to which this joint connects
++     * @param[in] locationInParent     Vec3 of the location of the joint in the
++     *                                 parent frame.
++     * @param[in] orientationInParent  Vec3 of the XYZ body-fixed Euler angles
++     *                                 of the joint frame orientation in the
++     *                                 parent frame.
++     * @param[in] child  the child PhysicalFrame to which this joint connects
++     * @param[in] locationInChild      Vec3 of the location of the joint in the
++     *                                 child frame.
++     * @param[in] orientationInChild   Vec3 of the XYZ body-fixed Euler angles
++     *                                 of the joint frame orientation in the
++     *                                 child frame.
++     * @param[in] radii the radii of the ellipsoid
++     * @param[in] mirrorAxis the parent frame's coordinate axis (e.g.,
++     *                       SimTK::YAxis) whose normal plane the joint is
++     *                       mirrored about
++     */
++    EllipsoidJoint(const std::string& name, const PhysicalFrame& parent,
++            const SimTK::Vec3& locationInParent,
++            const SimTK::Vec3& orientationInParent, const PhysicalFrame& child,
++            const SimTK::Vec3& locationInChild,
++            const SimTK::Vec3& orientationInChild, const SimTK::Vec3& radii,
++            const SimTK::CoordinateAxis& mirrorAxis);
++
+     /**
+      * Exposes getCoordinate() method defined in base class (overloaded below).
+      * @see Joint
+@@ -185,6 +288,39 @@ OpenSim_DECLARE_CONCRETE_OBJECT(EllipsoidJoint, Joint);
+      */
+     void setEllipsoidRadii(const SimTK::Vec3& radii);
+ 
++    /**
++     * Mirror this joint about the plane normal to the given axis of the
++     * parent frame (see \ref ellipsoid_mirroring).
++     *
++     * This method internally sets the `mirror_axis` property value. Therefore,
++     * the change will only take effect in the joint after the system is
++     * recreated (e.g., `Model::initSystem()`).
++     */
++    void setMirrorAxis(const SimTK::CoordinateAxis& mirrorAxis);
++
++    /**
++     * Undo joint mirroring, if any.
++     *
++     * This method internally clears the `mirror_axis` property value.
++     * Therefore, the change will only take effect in the joint after the
++     * system is recreated (e.g., `Model::initSystem()`).
++     */
++    void clearMirrorAxis();
++
++    /**
++     * Whether this joint is mirrored, that is, whether the `mirror_axis`
++     * property is set.
++     */
++    bool isMirrored() const;
++
++    /**
++     * Get the axis of the parent frame about which this joint is mirrored.
++     *
++     * @throws Exception if this joint is not mirrored; use isMirrored() to
++     *         check first.
++     */
++    SimTK::CoordinateAxis getMirrorAxis() const;
++
+     /**
+      * Set whether the ellipsoid surface is drawn by generateDecorations().
+      */
+@@ -197,6 +333,7 @@ OpenSim_DECLARE_CONCRETE_OBJECT(EllipsoidJoint, Joint);
+ 
+ protected:
+     // MODEL COMPONENT INTERFACE
++    void extendFinalizeFromProperties() override;
+     void extendAddToSystem(SimTK::MultibodySystem& system) const override;
+     void extendInitStateFromProperties(SimTK::State& s) const override;
+     void extendSetPropertiesFromState(const SimTK::State& state) override;
+@@ -208,6 +345,7 @@ OpenSim_DECLARE_CONCRETE_OBJECT(EllipsoidJoint, Joint);
+ 
+ private:
+     void constructProperties();
++    std::optional<SimTK::CoordinateAxis> findMirrorAxis() const;
+ };
+ 
+ } // namespace OpenSim
+diff --git a/OpenSim/Simulation/SimbodyEngine/SpatialTransform.cpp b/OpenSim/Simulation/SimbodyEngine/SpatialTransform.cpp
+index c7bd69236e..df461fd221 100644
+--- a/OpenSim/Simulation/SimbodyEngine/SpatialTransform.cpp
++++ b/OpenSim/Simulation/SimbodyEngine/SpatialTransform.cpp
+@@ -240,8 +240,7 @@ void SpatialTransform::constructIndependentAxes(int nAxes, int startIndex)
+     SimTK::Vec3 v2 = getTransformAxis(1+startIndex).getAxis();
+     SimTK::Vec3 v3 = getTransformAxis(2+startIndex).getAxis();
+     if (nAxes ==2){ // Easy, make third axis the cross of the first 2.
+-        SimTK::Vec3 cross= (v1 % v2);
+-        cross.normalize();
++        SimTK::Vec3 cross = (v1 % v2).normalize();
+         updTransformAxis(2+startIndex).setAxis(cross);
+     } else {
+         // only v1 was specified, check if v2 is collinear if so, exchange v2,
+@@ -250,8 +249,7 @@ void SpatialTransform::constructIndependentAxes(int nAxes, int startIndex)
+             updTransformAxis(1+startIndex).setAxis(v3);
+         }
+         v2 = getTransformAxis(1+startIndex).getAxis();
+-        SimTK::Vec3 cross= (v2 % v1);
+-        cross.normalize();
++        SimTK::Vec3 cross = (v2 % v1).normalize();
+         updTransformAxis(2+startIndex).setAxis(cross);
+     }
+ }
+diff --git a/OpenSim/Simulation/SimbodyEngine/tests/testJoints.cpp b/OpenSim/Simulation/SimbodyEngine/tests/testJoints.cpp
+index 0c712e99e3..15cc8dee94 100644
+--- a/OpenSim/Simulation/SimbodyEngine/tests/testJoints.cpp
++++ b/OpenSim/Simulation/SimbodyEngine/tests/testJoints.cpp
+@@ -74,6 +74,7 @@
+ #include <catch2/catch_all.hpp>
+ 
+ #include <memory>
++#include <optional>
+ 
+ using namespace OpenSim;
+ using namespace std;
+@@ -1082,6 +1083,153 @@ TEST_CASE("testEllipsoidJoint") {
+ 
+ } // end testEllipsoidJoint
+ 
++/// Compare a mirrored OpenSim EllipsoidJoint against an equivalent mirrored
++/// SimTK::MobilizedBody::Ellipsoid, and exercise the 'mirror_axis' property.
++TEST_CASE("testMirroredEllipsoidJoint") {
++    using namespace SimTK;
++
++    const Vec3 ellipsoidRadii(0.5, 0.33, 0.25);
++    const CoordinateAxis mirrorAxis = CoordinateAxis::YCoordinateAxis();
++
++    // Build a double pendulum with an ellipsoid hip and a pin knee. Pass
++    // std::nullopt for an unmirrored hip.
++    auto buildModel = [&](const std::optional<CoordinateAxis>& axis) {
++        Model model;
++        auto* thigh = new OpenSim::Body("thigh", femurMass.getMass(),
++                femurMass.getMassCenter(), femurMass.getInertia());
++        EllipsoidJoint* hip = !axis
++                ? new EllipsoidJoint("hip", model.getGround(), hipInPelvis,
++                        Vec3(0), *thigh, hipInFemur, Vec3(0), ellipsoidRadii)
++                : new EllipsoidJoint("hip", model.getGround(), hipInPelvis,
++                        Vec3(0), *thigh, hipInFemur, Vec3(0), ellipsoidRadii,
++                        *axis);
++        for (int i = 0; i < hip->numCoordinates(); ++i) {
++            hip->upd_coordinates(i).setName("hip_q" + std::to_string(i));
++        }
++        model.addBody(thigh);
++        model.addJoint(hip);
++
++        auto* shank = new OpenSim::Body("shank", tibiaMass.getMass(),
++                tibiaMass.getMassCenter(), tibiaMass.getInertia());
++        model.addBody(shank);
++        model.addJoint(new PinJoint("knee", *thigh, kneeInFemur, Vec3(0),
++                *shank, kneeInTibia, Vec3(0)));
++
++        model.setGravity(gravity_vec);
++        model.finalizeConnections();
++        return model;
++    };
++
++    SECTION("Matches an equivalent Simbody system") {
++
++        // Define the equivalent Simbody system, mirroring the hip about the
++        // parent frame's Y axis.
++        MultibodySystem system;
++        SimbodyMatterSubsystem matter(system);
++        GeneralForceSubsystem forces(system);
++        SimTK::Force::UniformGravity gravity(forces, matter, gravity_vec);
++
++        MobilizedBody::Ellipsoid thigh(matter.Ground(),
++                SimTK::Transform(hipInPelvis), SimTK::Body::Rigid(femurMass),
++                SimTK::Transform(hipInFemur), ellipsoidRadii, mirrorAxis);
++        MobilizedBody::Pin shank(thigh, SimTK::Transform(kneeInFemur),
++                SimTK::Body::Rigid(tibiaMass), SimTK::Transform(kneeInTibia));
++
++        REQUIRE(thigh.isMirrored());
++        REQUIRE(int(thigh.getMirrorAxis()) == int(mirrorAxis));
++
++        system.realizeTopology();
++        State state = system.getDefaultState();
++        matter.setUseEulerAngles(state, true);
++        system.realizeModel(state);
++
++        Model osimModel = buildModel(mirrorAxis);
++        SimTK::State osim_state = osimModel.initSystem();
++
++        // The OpenSim joint must produce a mirrored underlying mobilizer.
++        const auto& hip =
++                osimModel.getComponent<EllipsoidJoint>("/jointset/hip");
++        const auto& mobod = MobilizedBody::Ellipsoid::downcast(
++                hip.getChildFrame().getMobilizedBody());
++        REQUIRE(mobod.isMirrored());
++        REQUIRE(int(mobod.getMirrorAxis()) == int(mirrorAxis));
++
++        // Compare Simbody system and OpenSim model simulations.
++        compareSimulations(system, state, &osimModel, osim_state,
++                "testMirroredEllipsoidJoint FAILED\n");
++    }
++
++    SECTION("Serialization and deserializations") {
++        buildModel(mirrorAxis).print("testMirroredEllipsoidJoint.osim");
++
++        Model roundTripped("testMirroredEllipsoidJoint.osim");
++        const auto& hip =
++                roundTripped.getComponent<EllipsoidJoint>("/jointset/hip");
++        CHECK_FALSE(hip.getProperty_mirror_axis().empty());
++        CHECK(hip.get_mirror_axis() == "y");
++    }
++
++    SECTION("Property mirror_axis is omitted for an unmirrored joint") {
++        buildModel(std::nullopt).print("testUnmirroredEllipsoidJoint.osim");
++
++        Model roundTripped("testUnmirroredEllipsoidJoint.osim");
++        const auto& hip =
++                roundTripped.getComponent<EllipsoidJoint>("/jointset/hip");
++        CHECK(hip.getProperty_mirror_axis().empty());
++
++        // The reloaded joint must build an unmirrored mobilizer.
++        roundTripped.initSystem();
++        CHECK_FALSE(MobilizedBody::Ellipsoid::downcast(
++                hip.getChildFrame().getMobilizedBody()).isMirrored());
++    }
++
++    SECTION("Mirror axis accessors") {
++        Model model = buildModel(std::nullopt);
++        auto& hip = model.updComponent<EllipsoidJoint>("/jointset/hip");
++        CHECK_FALSE(hip.isMirrored());
++        CHECK_THROWS_AS(hip.getMirrorAxis(), OpenSim::Exception);
++
++        hip.setMirrorAxis(mirrorAxis);
++        CHECK(hip.isMirrored());
++        CHECK(hip.get_mirror_axis() == "y");
++        CHECK(int(hip.getMirrorAxis()) == int(mirrorAxis));
++
++        // The property change takes effect once the system is recreated.
++        model.initSystem();
++        CHECK(MobilizedBody::Ellipsoid::downcast(
++                hip.getChildFrame().getMobilizedBody()).isMirrored());
++
++        hip.clearMirrorAxis();
++        CHECK_FALSE(hip.isMirrored());
++        CHECK(hip.getProperty_mirror_axis().empty());
++        CHECK_THROWS_AS(hip.getMirrorAxis(), OpenSim::Exception);
++
++        model.initSystem();
++        CHECK_FALSE(MobilizedBody::Ellipsoid::downcast(
++                hip.getChildFrame().getMobilizedBody()).isMirrored());
++    }
++
++    SECTION("An invalid mirror_axis is rejected") {
++        // Any value that does not name a coordinate axis is rejected, including
++        // an empty string: the unmirrored state is an *unset* property, not a
++        // set-but-empty one.
++        const auto badValue = GENERATE(as<std::string>{},
++                "X-axis", "xy", "w", "0", " x", " ", "");
++
++        Model osimModel = buildModel(mirrorAxis);
++        auto& hip = osimModel.updComponent<EllipsoidJoint>("/jointset/hip");
++        hip.set_mirror_axis(badValue);
++
++        INFO("mirror_axis = '" << badValue << "'");
++        // The value is validated when the model is finalized, so a bad value in
++        // an .osim file is reported on load rather than deep in system
++        // construction.
++        CHECK_THROWS_AS(osimModel.finalizeFromProperties(), OpenSim::Exception);
++        CHECK_THROWS_AS(osimModel.initSystem(), OpenSim::Exception);
++    }
++
++}
++
+ // Compare behavior of a double pendulum (1) with welded foot and toes
+ TEST_CASE("testWeldJoint unrandomized") {
+     testWeldJoint(false);
+diff --git a/OpenSim/Simulation/tests/testForceProducer.cpp b/OpenSim/Simulation/tests/testForceProducer.cpp
+index 0c07915d99..052f690b2a 100644
+--- a/OpenSim/Simulation/tests/testForceProducer.cpp
++++ b/OpenSim/Simulation/tests/testForceProducer.cpp
+@@ -250,7 +250,7 @@ namespace
+         explicit SimbodyEngineForceVectors(const SimTK::SimbodyMatterSubsystem& matter) :
+             bodyForces{matter.getNumBodies(), SimTK::SpatialVec{SimTK::Vec3{0.0}, SimTK::Vec3{0.0}}},
+             particleForces{matter.getNumParticles(), SimTK::Vec3{0.0}},
+-            mobilityForces{matter.getNumMobilities(), double{}}
++            mobilityForces(matter.getNumMobilities(), double{})
+         {}
+ 
+         friend bool operator==(const SimbodyEngineForceVectors& lhs, const SimbodyEngineForceVectors& rhs)
+diff --git a/OpenSim/Tools/CMC_Task.cpp b/OpenSim/Tools/CMC_Task.cpp
+index 82f875a62a..dbdb52ca86 100644
+--- a/OpenSim/Tools/CMC_Task.cpp
++++ b/OpenSim/Tools/CMC_Task.cpp
+@@ -496,7 +496,7 @@ getKA(int aWhich) const
+ void CMC_Task::
+ setDirection_0(const SimTK::Vec3& aR)
+ {
+-    _r0 = aR; _r0.normalize();
++    _r0 = aR.normalize();
+ }
+ //_____________________________________________________________________________
+ /**
+@@ -522,7 +522,7 @@ getDirection_0(SimTK::Vec3& rR) const
+ void CMC_Task::
+ setDirection_1(const SimTK::Vec3& aR)
+ {
+-    _r1=aR; _r1.normalize();
++    _r1 = aR.normalize();
+ }
+ //_____________________________________________________________________________
+ /**
+diff --git a/dependencies/CMakeLists.txt b/dependencies/CMakeLists.txt
+index 460bcea2d7..b8f2f8ee2d 100644
+--- a/dependencies/CMakeLists.txt
++++ b/dependencies/CMakeLists.txt
+@@ -193,7 +193,7 @@ AddDependency(NAME       ezc3d
+ AddDependency(NAME       simbody
+               DEFAULT    ON
+               GIT_URL    https://github.com/simbody/simbody.git
+-              GIT_TAG    59c6e7b89b3bdf266a2f3d54c611599d964205f7
++              GIT_TAG    bc49cfde5f26a4f9a88bec83341d0db6ba769837
+               CMAKE_ARGS -DBUILD_EXAMPLES:BOOL=OFF
+                          -DBUILD_TESTING:BOOL=OFF
+                          ${SIMBODY_EXTRA_CMAKE_ARGS})

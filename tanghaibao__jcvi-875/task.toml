@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/tanghaibao__jcvi-875"
+description = "chore: drop version from CITATION.cff and its update workflow"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "jcvi",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tanghaibao/jcvi"
+ref = "687c5d3e62f9a60f040cf4a80b08d60dee5be6fd"
+reference = "https://github.com/tanghaibao/jcvi/pull/875"
+source_access = "auto"
+built_at = "2026-11-13T15:48:57.098051+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:137984c789f069d43c367c053a9c5f5313874929c7dac99759a972f6323c0984"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T02:04:27Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/update-citation-cff.yml",
+    "CITATION.cff",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 25
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

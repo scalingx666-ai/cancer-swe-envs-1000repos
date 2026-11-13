@@ -1,0 +1,154 @@
+diff --git a/.gitattributes b/.gitattributes
+deleted file mode 100644
+index 5e2def9..0000000
+--- a/.gitattributes
++++ /dev/null
+@@ -1,2 +0,0 @@
+-db/** filter=lfs diff=lfs merge=lfs -text
+-tests/** filter=lfs diff=lfs merge=lfs -text
+diff --git a/.readthedocs.yaml b/.readthedocs.yaml
+new file mode 100644
+index 0000000..960c1e8
+--- /dev/null
++++ b/.readthedocs.yaml
+@@ -0,0 +1,16 @@
++version: 2
++
++build:
++  os: ubuntu-22.04
++  tools:
++    python: "3.10"
++
++sphinx:
++  configuration: docs/source/conf.py
++
++python:
++  install:
++    - method: pip
++      path: .
++      extra_requirements:
++        - docs
+diff --git a/docs/source/installation.rst b/docs/source/installation.rst
+index d7795de..73436b8 100644
+--- a/docs/source/installation.rst
++++ b/docs/source/installation.rst
+@@ -17,5 +17,5 @@ Installation from our GitHub repository
+ 
+     git clone https://github.com/GoekeLab/xpore.git
+     cd xpore
+-    python setup.py install
++    pip install .
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..414e0a9
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,55 @@
++[build-system]
++requires = ["setuptools>=61.0"]
++build-backend = "setuptools.build_meta"
++
++
++[project]
++name = "xpore"
++authors = [{name = "Ploy N. Pratanwanich", email = "naruemon.p@chula.ac.th"}]
++maintainers = [
++	{name = "Ploy N. Pratanwanich", email = "naruemon.p@chula.ac.th"},
++]
++requires-python = ">=3.8"
++description = "xpore is a python package for Nanopore data analysis of differential RNA modifications."
++dependencies = [
++	"numpy>=1.18.0",
++	"pandas>=0.25.3",
++	"scipy>=1.4.1",
++	"PyYAML",
++	"h5py>=2.10.0",
++	"pyensembl>=1.8.5",
++	"ujson>=4.0.1"
++]
++readme = "README.md"
++license = {text = "MIT"}
++classifiers = [
++	# Trove classifiers
++	# (https://pypi.python.org/pypi?%3Aaction=list_classifiers)
++	"Development Status :: 1 - Planning",
++	"License :: OSI Approved :: MIT License",
++	"Programming Language :: Python",
++	"Programming Language :: Python :: 3.8",
++	"Topic :: Software Development :: Libraries",
++	"Topic :: Scientific/Engineering :: Bio-Informatics",
++	"Intended Audience :: Science/Research",
++]
++dynamic = ["version"]
++
++[project.optional-dependencies]
++test = ["pytest"]
++docs = ["sphinx", "sphinx_rtd_theme"]
++
++[project.urls]
++homepage = "https://github.com/GoekeLab/xpore"
++
++[project.scripts]
++xpore = "xpore.scripts.xpore:main"
++
++[tool.setuptools]
++include-package-data = true # set explicitly in case it changes in the future
++
++[tool.setuptools.packages.find]
++include = ["xpore*"]
++
++[tool.setuptools.dynamic]
++version = {attr = "xpore.__version__"}
+diff --git a/setup.py b/setup.py
+deleted file mode 100644
+index 294f341..0000000
+--- a/setup.py
++++ /dev/null
+@@ -1,46 +0,0 @@
+-"""Setup for the xpore package."""
+-
+-from setuptools import setup,find_packages
+-
+-__pkg_name__ = 'xpore'
+-
+-
+-with open('README.md') as f:
+-    README = f.read()
+-
+-setup(
+-    author="Ploy N. Pratanwanich",
+-    maintainer_email="naruemon.p@chula.ac.th",
+-    name=__pkg_name__,
+-    license="MIT",
+-    description='xpore is a python package for Nanopore data analysis of differential RNA modifications.',
+-    version='v2.2',
+-    long_description=README,
+-    long_description_content_type='text/markdown',
+-    url='https://github.com/GoekeLab/xpore',
+-    packages=find_packages(),
+-    include_package_data=True,
+-    install_requires=[
+-            'numpy>=1.18.0',
+-            'pandas>=0.25.3',
+-            'scipy>=1.4.1',
+-            'PyYAML',
+-            'h5py>=2.10.0',
+-            'pyensembl>=1.8.5',
+-            'ujson>=4.0.1'
+-            ],
+-    python_requires=">=3.8",
+-    extras_require={'test': ['pytest']},
+-    entry_points={'console_scripts': ["xpore={}.scripts.xpore:main".format(__pkg_name__)]},
+-    classifiers=[
+-        # Trove classifiers
+-        # (https://pypi.python.org/pypi?%3Aaction=list_classifiers)
+-        'Development Status :: 1 - Planning',
+-        'License :: OSI Approved :: MIT License',
+-        'Programming Language :: Python',
+-        'Programming Language :: Python :: 3.8',
+-        'Topic :: Software Development :: Libraries',
+-        'Topic :: Scientific/Engineering :: Bio-Informatics',
+-        'Intended Audience :: Science/Research',
+-    ],
+-)

@@ -1,0 +1,99 @@
+diff --git a/functions/surf.py b/functions/surf.py
+index 8f6c07b..7af8634 100644
+--- a/functions/surf.py
++++ b/functions/surf.py
+@@ -112,9 +112,9 @@ def checkZ(z):
+     # Create faces
+     w = z.shape[1]
+     i = np.arange(z.shape[0]-1)
+-    faces = np.row_stack(
++    faces = np.row_stack([
+         np.column_stack((j + w*i, j+1 + w*i, j+1 + w*(i+1), j + w*(i+1)))
+-        for j in range(w-1))
++        for j in range(w-1)])
+     
+     
+     ## Visualize
+diff --git a/text/text_prerendered.py b/text/text_prerendered.py
+index 421cfb3..ba8cea9 100644
+--- a/text/text_prerendered.py
++++ b/text/text_prerendered.py
+@@ -251,12 +251,12 @@ def __init__(self, font, char, size=12, styles=None):
+                 info.size_b, info.origin_b, info.width_b)
+         
+         # Find position in texture, normalized to texture coordinates
+-        x1 = infoOrigin[ac,0]
+-        x2 = x1 + infoSize[ac,0]
++        x1 = int(infoOrigin[ac,0])
++        x2 = x1 + int(infoSize[ac,0])
+         tmp = float(info.data.shape[1])
+         self.s1, self.s2 = (x1) / tmp, (x2-1) / tmp
+-        y1 = infoOrigin[ac,1]
+-        y2 = y1 + infoSize[ac,1]
++        y1 = int(infoOrigin[ac,1])
++        y2 = y1 + int(infoSize[ac,1])
+         tmp = float(info.data.shape[0])
+         self.t1, self.t2 = (y1) / tmp, (y2-1) / tmp
+         
+@@ -267,8 +267,8 @@ def __init__(self, font, char, size=12, styles=None):
+         
+         # calculate width on screen, given the size
+         factor = size / float(info.fontsize)
+-        self.sizex = infoSize[ac,0] * factor
+-        self.sizey = infoSize[ac,1] * factor
++        self.sizex = int(infoSize[ac,0]) * factor
++        self.sizey = int(infoSize[ac,1]) * factor
+         self.width = float(infoWidth[ac]) * factor # is spacing?
+         
+         smaller = 0.6
+diff --git a/utils/iso/__init__.py b/utils/iso/__init__.py
+index a0148f2..0495096 100644
+--- a/utils/iso/__init__.py
++++ b/utils/iso/__init__.py
+@@ -18,7 +18,13 @@
+ 
+ import visvis as vv
+ import numpy as np
+-from skimage.measure import find_contours, marching_cubes_lewiner
++from skimage.measure import find_contours
++try:
++    # Older version of skimage
++    from skimage.measure import marching_cubes_lewiner as marching_cubes
++except ImportError:
++    from skimage.measure import marching_cubes
++     
+ 
+ 
+ def isocontour(im, isovalue=None):
+@@ -108,10 +114,15 @@ def isosurface(im, isovalue=None, step=1, useClassic=False, useValues=False):
+         sampling = (1, 1, 1)
+     
+     # Call into skimage algorithm
+-    xx = marching_cubes_lewiner(im, isovalue,
++    if useClassic:
++        xx = marching_cubes(im, isovalue,
++                                    spacing=sampling,
++                                    step_size=step,
++                                    method="lorensen")
++    else:
++        xx = marching_cubes(im, isovalue,
+                                 spacing=sampling,
+-                                step_size=step,
+-                                use_classic=useClassic)
++                                step_size=step)
+     vertices, faces, normals, values = xx
+     
+     # Transform the data to how Visvis likes it
+diff --git a/wobjects/polygonalModeling.py b/wobjects/polygonalModeling.py
+index 0729ea8..464626c 100644
+--- a/wobjects/polygonalModeling.py
++++ b/wobjects/polygonalModeling.py
+@@ -1002,7 +1002,7 @@ def _Draw(self, shading, refColor, shader):
+             gl.glMaterial(what, gl.GL_AMBIENT, gc(self._ambient, refColor))
+             gl.glMaterial(what, gl.GL_DIFFUSE, gc(self._diffuse, refColor))
+             gl.glMaterial(what, gl.GL_SPECULAR, gc(self._specular, (1,1,1,1)))
+-            gl.glMaterial(what, gl.GL_SHININESS, self._shininess)
++            gl.glMaterialf(what, gl.GL_SHININESS, self._shininess)
+             gl.glMaterial(what, gl.GL_EMISSION, gc(self._emission, refColor))
+         
+         

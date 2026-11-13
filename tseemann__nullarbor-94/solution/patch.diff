@@ -1,0 +1,11 @@
+diff --git a/conf/nullarbor.css b/conf/nullarbor.css
+index d232f18..d86cd02 100644
+--- a/conf/nullarbor.css
++++ b/conf/nullarbor.css
+@@ -1,5 +1,5 @@
+ 
+-SVG {
++#pan SVG {
+   width: 100%;
+   height: auto;
+   font-family: sans-serif;

@@ -1,0 +1,1434 @@
+diff --git a/NEWS.md b/NEWS.md
+index 39e93418..c9ca16bc 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -25,6 +25,19 @@
+ - Added testthat fixture round-trip coverage for the interop bridge and a local-only
+   SigProfilerExtractor version-matrix harness (opt-in via `SIGMINER_SP_MATRIX=1`;
+   deliberately not wired into CI, see `tests/testthat/README-sigprofiler-matrix.md`).
++- `sig_fit()` gained two opt-in likelihood-based refit methods (parity plan P3):
++  `method = "likelihood"`, a clean-room implementation of the MuSiCal bidirectional stepwise
++  selection under the multinomial likelihood (Jin et al., Nature Genetics 56:541-552, 2024;
++  see `?sig_fit` references), with the acceptance thresholds exposed as the caller-overridable
++  `ll_add` / `ll_keep` arguments — the paper describes them as study-optimized parameters, and
++  the in-lane defaults (8 / 8) are a fixture calibration, not paper constants; and
++  `method = "lrt"`, a clean-room implementation of the PASA likelihood-ratio presence tests with
++  the stop and minimality criteria at the significance level `alpha` (Jiang et al., Briefings in
++  Bioinformatics 26(1):bbaf042, 2025; default `alpha = 0.01`, in-lane calibration). Both methods
++  refit the selected set with the same QP simplex engine that drives `method = "QP"`, reject
++  `auto_reduce` (their decision layer already selects the reference set), and are also available
++  on the bootstrap surfaces `sig_fit_bootstrap()` and `sig_fit_bootstrap_batch()`. The legacy
++  methods and the default remain unchanged.
+ 
+ # sigminer 2.3.3
+ 
+diff --git a/R/sig_fit.R b/R/sig_fit.R
+index 90248835..82c8b38f 100644
+--- a/R/sig_fit.R
++++ b/R/sig_fit.R
+@@ -6,7 +6,14 @@
+ #'
+ #' The method 'NNLS' solves the minimization problem with nonnegative least-squares constraints.
+ #' The method 'QP' and 'SA' are modified from SignatureEstimation package.
+-#' See references for details.
++#' The methods 'likelihood' and 'lrt' are clean-room ports of published decision
++#' semantics: 'likelihood' follows the MuSiCal bidirectional stepwise algorithm under the
++#' multinomial likelihood, and 'lrt' follows the PASA likelihood-ratio presence, stop and
++#' minimality tests. Both refit exposures with the same QP simplex engine as 'QP', reject
++#' 'auto_reduce', and expose their decision thresholds as caller-overridable arguments
++#' (the MuSiCal paper describes its thresholds as study-optimized parameters; PASA keeps
++#' alpha as a significance level). No claim of implementation identity with the original
++#' tools is made; see references for details.
+ #' Of note, when fitting exposures for copy number signatures, only components of
+ #' feature CN is used.
+ #'
+@@ -22,6 +29,14 @@
+ #' column representing signatures.
+ #' @param method method to solve the minimazation problem.
+ #' 'NNLS' for non-negative least square; 'QP' for quadratic programming; 'SA' for simulated annealing.
++#' 'likelihood' runs the clean-room MuSiCal-branch refit: a bidirectional stepwise decision layer
++#' over the multinomial likelihood, with the acceptance thresholds passed as `ll_add` / `ll_keep`
++#' (lane-calibrated defaults 8 / 8; the reference paper treats these thresholds as study-optimized
++#' parameters, so they are arguments rather than hard-coded constants).
++#' 'lrt' runs the clean-room PASA-branch refit: per-signature likelihood-ratio presence tests plus
++#' a minimal set that is good enough (stop test) and minimal at the `alpha` significance level
++#' (lane-calibrated default 0.01). Both new methods refit exposures with the same QP simplex
++#' engine as 'QP' and reject `auto_reduce` (their decision layer already selects the reference set).
+ #' @param auto_reduce if `TRUE`, try reducing the input reference signatures to increase
+ #' the cosine similarity of reconstructed profile to observed profile.
+ #' @param return_class string, 'matrix' or 'data.table'.
+@@ -47,6 +62,14 @@
+ #'
+ #' Kim, Jaegil, et al. "Somatic ERCC2 mutations are associated with a distinct genomic signature in urothelial tumors."
+ #'  Nature genetics 48.6 (2016): 600.
++#'
++#' Jin H, Gulhan DC, Geiger B, Ben-Isvy D, Geng D, Ljungström V, Park PJ. Accurate and sensitive mutational signature
++#' analysis with MuSiCal. Nature Genetics 56:541-552 (2024). doi:10.1038/s41588-024-01659-0
++#' (decision semantics for method = "likelihood")
++#'
++#' Jiang N, Wu Y, Rozen SG. Benchmarking 13 tools for mutational signature attribution, including a new and improved
++#' algorithm. Briefings in Bioinformatics 26(1):bbaf042 (2025, epub 2024-11). doi:10.1093/bib/bbaf042
++#' (decision semantics for method = "lrt")
+ #' @examples
+ #' \donttest{
+ #'
+@@ -163,7 +186,7 @@ sig_fit <- function(catalogue_matrix,
+                     ),
+                     db_type = c("", "human-exome", "human-genome"),
+                     show_index = TRUE,
+-                    method = c("QP", "NNLS", "SA"),
++                    method = c("QP", "NNLS", "SA", "likelihood", "lrt"),
+                     auto_reduce = FALSE,
+                     type = c("absolute", "relative"),
+                     return_class = c("matrix", "data.table"),
+@@ -334,6 +357,18 @@ sig_fit <- function(catalogue_matrix,
+         send_stop("Please install 'GenSA' package firstly.")
+       }
+       decompose_SA
++    },
++    likelihood = {
++      if (!requireNamespace("quadprog", quietly = TRUE)) {
++        send_stop("Please install 'quadprog' package firstly.")
++      }
++      decompose_LIKELIHOOD
++    },
++    lrt = {
++      if (!requireNamespace("quadprog", quietly = TRUE)) {
++        send_stop("Please install 'quadprog' package firstly.")
++      }
++      decompose_LRT
+     }
+   )
+   send_success("Corresponding function generated.")
+diff --git a/R/sig_fit_bootstrap.R b/R/sig_fit_bootstrap.R
+index 117f5cc7..586b4b6b 100644
+--- a/R/sig_fit_bootstrap.R
++++ b/R/sig_fit_bootstrap.R
+@@ -71,7 +71,7 @@ sig_fit_bootstrap <- function(catalog,
+                               sig_db = "legacy",
+                               db_type = c("", "human-exome", "human-genome"),
+                               show_index = TRUE,
+-                              method = c("QP", "NNLS", "SA"),
++                              method = c("QP", "NNLS", "SA", "likelihood", "lrt"),
+                               auto_reduce = FALSE,
+                               SA_not_bootstrap = FALSE,
+                               type = c("absolute", "relative"),
+diff --git a/R/sig_fit_bootstrap_batch.R b/R/sig_fit_bootstrap_batch.R
+index edc8aa4b..da6bf066 100644
+--- a/R/sig_fit_bootstrap_batch.R
++++ b/R/sig_fit_bootstrap_batch.R
+@@ -4,7 +4,7 @@
+ #'
+ #' @inheritParams sig_fit
+ #' @inheritParams sig_fit_bootstrap
+-#' @param methods a subset of `c("NNLS", "QP", "SA")`.
++#' @param methods a subset of `c("NNLS", "QP", "SA", "likelihood", "lrt")`.
+ #' @param min_count minimal exposure in a sample, default is 1. Any patient has total exposure less
+ #' than this value will be filtered out.
+ #' @param p_val_thresholds a vector of relative exposure threshold for calculating p values.
+@@ -73,7 +73,7 @@ sig_fit_bootstrap_batch <- function(catalogue_matrix,
+   stopifnot(is.matrix(catalogue_matrix))
+ 
+   set.seed(seed, kind = "L'Ecuyer-CMRG")
+-  methods <- match.arg(methods, choices = c("NNLS", "QP", "SA"), several.ok = TRUE)
++  methods <- match.arg(methods, choices = c("NNLS", "QP", "SA", "likelihood", "lrt"), several.ok = TRUE)
+ 
+   timer <- Sys.time()
+   send_info("Batch Bootstrap Signature Exposure Analysis Started.")
+diff --git a/R/sig_fit_refit.R b/R/sig_fit_refit.R
+new file mode 100644
+index 00000000..81b5f6d7
+--- /dev/null
++++ b/R/sig_fit_refit.R
+@@ -0,0 +1,350 @@
++## ---------------------------------------------------------------------------
++## Internal refit decision layers for sig_fit(method = "likelihood") and
++## sig_fit(method = "lrt").
++##
++## Clean-room law: the decision semantics below are transcribed from the
++## primary-source captures in /tmp/p3refit/logs/00-primary-source-gate.md
++## (MuSiCal Fig.5 bidirectional stepwise over the multinomial likelihood;
++## PASA Step-1 presence tests, Step-2 stop-LRT and minimality at the alpha
++## significance level, chi-squared statistic with |A1| - |A2| degrees of
++## freedom). No external implementation code was consulted or ported.
++##
++## The refit engine (exposures given a selected set) deliberately reuses the
++## package's own QP simplex route -- identical to what method = "QP" drives
++## through quadprog::solve.QP -- so the decision layer is the only delta
++## versus the legacy route. This reuse is an engineering choice and is NOT
++## claimed to be MuSiCal/PASA implementation identity.
++## ---------------------------------------------------------------------------
++
++## Lane-calibrated acceptance constants. The MuSiCal paper states its
++## likelihood thresholds are study-optimized parameters ("two likelihood
++## thresholds were optimized", "optimal threshold was chosen through a grid
++## search") and PASA keeps alpha as its significance-level parameter; the
++## values here are therefore this lane's calibration (fixture evidence:
++## /tmp/p3refit/logs/03b-nullcal-probe.log, 03c-stepwise-calibration.log),
++## not paper-sourced constants, and every one is caller-overridable.
++P3_LL_ADD <- 8.0
++P3_LL_KEEP <- 8.0
++P3_ALPHA <- 0.01
++## Numerical floor for log() arguments in the multinomial likelihood.
++P3_P_MIN <- 1e-12
++## Termination guard for the bidirectional sweeps (see the hysteresis note in
++## run_stepwise): cycles are impossible when ll_add >= ll_keep, the guard only
++## bounds pathological caller-chosen threshold pairs.
++P3_MAX_ROUNDS <- 64L
++## Upper bound on the size of the Step-1 survivor set enumerated exhaustively
++## by the LRT minimal-set search; larger survivor sets fall back to the
++## greedy-argmax construction (documented engineering guard, no identity
++## claim -- see find_minimal_set).
++P3_MAX_V <- 12L
++
++## log-likelihood + exposures of the best QP-simplex reconstruction of count
++## vector d by the columns of Psel. Returns NULL when the QP solve fails.
++## The empty column set reconstructs the uniform reference profile (documented
++## implementation choice: the paper defines the nested-model comparisons, the
++## empty-set reference profile is not paper-sourced).
++.p3_fit_one <- function(d, Psel) {
++  K <- length(d)
++  if (is.null(Psel) || ncol(Psel) == 0) {
++    p <- rep(1 / K, K)
++    return(list(expo = numeric(0), logL = sum(d * log(pmax(p, P3_P_MIN)))))
++  }
++  total <- sum(d)
++  m <- d / total
++  N <- ncol(Psel)
++  G <- t(Psel) %*% Psel
++  Cmat <- cbind(rep(1, N), diag(N))
++  b <- c(1, rep(0, N))
++  dv <- t(m) %*% Psel
++  out <- tryCatch(
++    quadprog::solve.QP(Dmat = G, dvec = dv, Amat = Cmat, bvec = b, meq = 1),
++    error = function(e) NULL
++  )
++  if (is.null(out)) {
++    return(NULL)
++  }
++  e <- out$solution
++  e[e < 0] <- 0
++  if (sum(e) <= 0) {
++    ## Degenerate solve: the model collapses onto the zero profile. Treat it
++    ## as the uniform reference for comparison purposes.
++    p <- rep(1 / K, K)
++    return(list(expo = rep(0, N), logL = sum(d * log(pmax(p, P3_P_MIN)))))
++  }
++  e <- e / sum(e)
++  p <- as.numeric(Psel %*% e)
++  p <- p / sum(p)
++  list(expo = e, logL = sum(d * log(pmax(p, P3_P_MIN))))
++}
++
++## Cached subset fitting over one sample: key is the sorted column-name
++## string. Names of the reference matrix columns are unique by construction.
++.p3_make_fitter <- function(d, P) {
++  cache <- new.env()
++  ## Control character that cannot occur in a column name, so the sentinel key
++  ## of the empty set can never collide with a joined name of a real set.
++  empty.key <- paste0("\r.empty\r")
++  function(cols) {
++    key <- if (length(cols) == 0) {
++      ## The empty column set is a legitimate candidate (the uniform reference
++      ## profile); the "+"-join of character(0) is not a length-1 name, so it
++      ## needs a dedicated sentinel key.
++      empty.key
++    } else {
++      paste0(cols[order(cols)], collapse = "+")
++    }
++    ## Floor-safe cache probe (base get() with inherits = FALSE since the
++    ## dawn of R): cached fits are never NULL, so a failed lookup is the
++    ## only NULL producer here and unambiguously means miss.
++    hit <- tryCatch(get(key, envir = cache, inherits = FALSE),
++      error = function(e) NULL)
++    if (!is.null(hit)) {
++      return(hit)
++    }
++    fit <- if (length(cols) == 0) {
++      .p3_fit_one(d, NULL)
++    } else {
++      .p3_fit_one(d, P[, cols, drop = FALSE])
++    }
++    if (is.null(fit)) {
++      ## Unfit-able subset (singular solver): poison-pill it so comparisons
++      ## never select it.
++      fit <- list(expo = rep(0, length(cols)), logL = -Inf)
++    }
++    assign(key, fit, envir = cache)
++    fit
++  }
++}
++
++## LRT p-value per the paper: lambda = -2(log P(D|A2) - log P(D|A1)) with A2
++## a proper subset of A1, distributed chi-squared with |A1| - |A2| degrees of
++## freedom. df here is a signature-COUNT difference (the paper's own rule).
++.p3_lrt_p <- function(logL_big, logL_small, df_sig) {
++  if (!is.finite(logL_big) || !is.finite(logL_small)) {
++    return(1)
++  }
++  lambda <- 2 * (logL_big - logL_small)
++  if (lambda <= 0 || df_sig <= 0) {
++    return(1)
++  }
++  stats::pchisq(lambda, df = df_sig, lower.tail = FALSE)
++}
++
++## Shared tail: refit the finally selected set and hand off to return_expo.
++## The returned vector stays UNNAMED on purpose: sig_fit assembles the sample
++## results with dplyr::bind_rows(), which binds an unnamed per-sample vector
++## as one column and a named one as one row (decompose_QP returns the same
++## unnamed contract).
++.p3_finish <- function(x, y, z, P, kept, type) {
++  expo <- rep(0, ncol(P))
++  if (length(kept) > 0) {
++    fit <- .p3_fit_one(x, P[, kept, drop = FALSE])
++    if (!is.null(fit)) {
++      expo[match(kept, colnames(P))] <- fit$expo
++    }
++  }
++  return_expo(expo = expo, y, type, total = sum(x))
++}
++
++## ---------------------------------------------------------------------------
++## method = "likelihood": MuSiCal-branch semantics.
++## "Matching and refitting with multinomial likelihood-based sparse NNLS",
++## "bidirectional stepwise algorithm". Acceptance runs on the absolute gain of
++## the multinomial log-likelihood; the two thresholds are parameters (paper:
++## they are optimized per study), exposed as ll_add / ll_keep.
++##
++## Start from the full candidate set; alternate a backward sweep (drop the
++## single member whose removal costs less than ll_keep, one at a time so each
++## cost is re-measured against the current set) and a forward sweep (re-add
++## the single best outsider when its gain reaches ll_add) until stable.
++## The strict-complementary gates make the pair (ll_add = ll_keep) hysteresis
++## stable; unequal caller pairs are bounded by P3_MAX_ROUNDS.
++## ---------------------------------------------------------------------------
++run_stepwise <- function(d, P, ll_add, ll_keep) {
++  all_cols <- colnames(P)
++  if (sum(d) == 0) {
++    return(character(0))
++  }
++  fit <- .p3_make_fitter(d, P)
++  kept <- all_cols
++  rounds <- 0L
++  repeat {
++    rounds <- rounds + 1L
++    if (rounds > P3_MAX_ROUNDS) {
++      break()
++    }
++    changed <- FALSE
++    ## Backward sweep: evaluate removal costs against the current set and
++    ## drop the cheapest sub-threshold member, then re-measure.
++    repeat {
++      costs <- numeric(0)
++      for (k in kept) {
++        costs <- c(costs, fit(kept)$logL - fit(kept[kept != k])$logL)
++      }
++      if (length(costs) == 0) {
++        break()
++      }
++      worst <- which.min(costs)
++      if (length(worst) == 0 || is.na(costs[worst]) || costs[worst] >= ll_keep) {
++        break()
++      }
++      kept <- kept[-worst]
++      changed <- TRUE
++    }
++    ## Forward sweep: re-admit the best outsider when its improvement
++    ## reaches ll_add.
++    outsiders <- setdiff(all_cols, kept)
++    if (length(outsiders) > 0) {
++      base <- fit(kept)$logL
++      gains <- numeric(0)
++      for (k in outsiders) {
++        gains <- c(gains, fit(c(kept, k))$logL - base)
++      }
++      j <- which.max(gains)
++      if (length(j) > 0 && !is.na(gains[j]) && gains[j] >= ll_add) {
++        kept <- c(kept, outsiders[j])
++        changed <- TRUE
++      }
++    }
++    if (!changed) {
++      break()
++    }
++  }
++  kept
++}
++
++## ---------------------------------------------------------------------------
++## method = "lrt": PASA-branch semantics.
++## Step 1: "the signature presence tests" -- every signature k of the full
++## set is tested as (i) full-minus-k versus (ii) full; k survives when the
++## LRT rejects the equality null, i.e. "the signatures in A1 - A2 are
++## plausibly needed". The test is against all other signatures, so the
++## survivor set "does not depend on the order of testing".
++## Step 2: return a set A that is "good enough" against the full set
++## (stop-LRT, p >= alpha) and minimal at alpha (removing any member drops
++## significance, p < alpha). Satisfying the paper's own definition directly
++## over the Step-1 survivor set is order-independent by construction; the
++## search enumerates survivor subsets by increasing size (bounded by
++## P3_MAX_V, greedy argmax fallback beyond -- a documented engineering
++## guard, not a paper element).
++## ---------------------------------------------------------------------------
++find_minimal_set <- function(d, P, alpha) {
++  all_cols <- colnames(P)
++  if (sum(d) == 0) {
++    return(character(0))
++  }
++  fit <- .p3_make_fitter(d, P)
++  full <- fit(all_cols)
++  ## Step 1: presence tests.
++  V <- character(0)
++  for (k in all_cols) {
++    p <- .p3_lrt_p(full$logL, fit(all_cols[all_cols != k])$logL, df_sig = 1L)
++    if (p < alpha) {
++      V <- c(V, k)
++    }
++  }
++  if (length(V) == 0) {
++    return(character(0))
++  }
++  ## Step 2: minimal set inside V that is statistically as good as the full
++  ## model. Enumerate subsets of V by increasing size, take the first one
++  ## that qualifies.
++  good <- NULL
++  if (length(V) <= P3_MAX_V) {
++    subs <- lapply(seq_len(2^length(V)), function(m) {
++      ## Floor-safe (DESCRIPTION floor R >= 3.5) bitmask extraction: plain
++      ## integer arithmetic, no dependence on the bit-operator base family
++      ## that only exists in much later base versions.
++      bits <- ((m - 1L) %/% 2^(seq_len(length(V)) - 1L)) %% 2 == 1L
++      V[bits]
++    })
++  } else {
++    ## Greedy fallback (guard only): grow from the empty set by the single
++    ## best improvement, then prune. Documented engineering path, never taken
++    ## by fixtures of this lane.
++    subs <- list(character(0))
++    cur <- character(0)
++    for (k in V) {
++      cand <- c(cur, k)
++      if (fit(cand)$logL > fit(cur)$logL) {
++        cur <- cand
++      }
++      subs <- c(subs, list(cur))
++    }
++  }
++  subs <- subs[order(vapply(subs, length, 1L))]
++  for (A in subs) {
++    fitA <- fit(A)
++    ## (a) stop condition: the current reconstruction is good enough against
++    ## the full candidate set.
++    if (.p3_lrt_p(full$logL, fitA$logL, df_sig = ncol(P) - length(A)) < alpha) {
++      next
++    }
++    ## (b) minimality: removing any member must break significance.
++    minimal <- TRUE
++    for (k in A) {
++      p <- .p3_lrt_p(fitA$logL, fit(A[A != k])$logL, df_sig = 1L)
++      if (p >= alpha) {
++        minimal <- FALSE
++        break()
++      }
++    }
++    if (!minimal) {
++      next
++    }
++    ## Subsets are scanned by increasing size and (a) is monotone in A, so
++    ## the first qualifying minimal set in that order is the answer. Ties
++    ## inside a size class follow the enumeration order (= reference column
++    ## order), which keeps the choice deterministic.
++    good <- A
++    break
++  }
++  if (is.null(good)) {
++    ## No subset cleared both criteria (can only happen under the greedy
++    ## guard path): the presence-test survivors are the honest answer.
++    good <- V
++  }
++  good
++}
++
++## ---------------------------------------------------------------------------
++## Per-sample entry points, same positional contract as decompose_QP:
++##   x = catalogue column, y = rel_threshold, z = sample label, P = reference
++## ---------------------------------------------------------------------------
++decompose_LIKELIHOOD <- function(x, y, z, P, type = "absolute", auto_reduce = FALSE,
++                                 ll_add = P3_LL_ADD, ll_keep = P3_LL_KEEP, ...) {
++  if (auto_reduce) {
++    send_stop(
++      "Method 'likelihood' does not support 'auto_reduce': ",
++      "the likelihood-based bidirectional stepwise decision layer already ",
++      "selects the reference set."
++    )
++  }
++  if (!is.na(z)) {
++    send_info("Fitting sample: ", z)
++  }
++  if (ll_add < ll_keep) {
++    send_warning(
++      "'ll_add' <", ll_add, " is below 'll_keep' =", ll_keep,
++      "; the stepwise hysteresis band is open, the termination guard applies."
++    )
++  }
++  kept <- run_stepwise(x, P, ll_add = ll_add, ll_keep = ll_keep)
++  .p3_finish(x, y, z, P, kept, type)
++}
++
++decompose_LRT <- function(x, y, z, P, type = "absolute", auto_reduce = FALSE,
++                           alpha = P3_ALPHA, ...) {
++  if (auto_reduce) {
++    send_stop(
++      "Method 'lrt' does not support 'auto_reduce': ",
++      "the likelihood-ratio presence/stop tests already select the ",
++      "reference set."
++    )
++  }
++  if (!is.na(z)) {
++    send_info("Fitting sample: ", z)
++  }
++  kept <- find_minimal_set(x, P, alpha = alpha)
++  .p3_finish(x, y, z, P, kept, type)
++}
+diff --git a/man/sig_fit.Rd b/man/sig_fit.Rd
+index df7c407a..3a96fbe4 100644
+--- a/man/sig_fit.Rd
++++ b/man/sig_fit.Rd
+@@ -19,7 +19,7 @@ sig_fit(
+     "latest_RNA-SBS_GRCh37", "latest_SV_GRCh38"),
+   db_type = c("", "human-exome", "human-genome"),
+   show_index = TRUE,
+-  method = c("QP", "NNLS", "SA"),
++  method = c("QP", "NNLS", "SA", "likelihood", "lrt"),
+   auto_reduce = FALSE,
+   type = c("absolute", "relative"),
+   return_class = c("matrix", "data.table"),
+@@ -69,7 +69,15 @@ Currently only works for 'SBS'.}
+ \item{show_index}{if \code{TRUE}, show valid indices.}
+ 
+ \item{method}{method to solve the minimazation problem.
+-'NNLS' for non-negative least square; 'QP' for quadratic programming; 'SA' for simulated annealing.}
++'NNLS' for non-negative least square; 'QP' for quadratic programming; 'SA' for simulated annealing.
++'likelihood' runs the clean-room MuSiCal-branch refit: a bidirectional stepwise decision layer
++over the multinomial likelihood, with the acceptance thresholds passed as \code{ll_add} / \code{ll_keep}
++(lane-calibrated defaults 8 / 8; the reference paper treats these thresholds as study-optimized
++parameters, so they are arguments rather than hard-coded constants).
++'lrt' runs the clean-room PASA-branch refit: per-signature likelihood-ratio presence tests plus
++a minimal set that is good enough (stop test) and minimal at the \code{alpha} significance level
++(lane-calibrated default 0.01). Both new methods refit exposures with the same QP simplex
++engine as 'QP' and reject \code{auto_reduce} (their decision layer already selects the reference set).}
+ 
+ \item{auto_reduce}{if \code{TRUE}, try reducing the input reference signatures to increase
+ the cosine similarity of reconstructed profile to observed profile.}
+@@ -107,7 +115,14 @@ catalogue \code{V} with known signatures \code{W} by solving the minimization pr
+ \details{
+ The method 'NNLS' solves the minimization problem with nonnegative least-squares constraints.
+ The method 'QP' and 'SA' are modified from SignatureEstimation package.
+-See references for details.
++The methods 'likelihood' and 'lrt' are clean-room ports of published decision
++semantics: 'likelihood' follows the MuSiCal bidirectional stepwise algorithm under the
++multinomial likelihood, and 'lrt' follows the PASA likelihood-ratio presence, stop and
++minimality tests. Both refit exposures with the same QP simplex engine as 'QP', reject
++'auto_reduce', and expose their decision thresholds as caller-overridable arguments
++(the MuSiCal paper describes its thresholds as study-optimized parameters; PASA keeps
++alpha as a significance level). No claim of implementation identity with the original
++tools is made; see references for details.
+ Of note, when fitting exposures for copy number signatures, only components of
+ feature CN is used.
+ }
+@@ -211,6 +226,14 @@ Huang X, Wojtowicz D, Przytycka TM. Detecting presence of mutational signatures
+ 
+ Kim, Jaegil, et al. "Somatic ERCC2 mutations are associated with a distinct genomic signature in urothelial tumors."
+ Nature genetics 48.6 (2016): 600.
++
++Jin H, Gulhan DC, Geiger B, Ben-Isvy D, Geng D, Ljungström V, Park PJ. Accurate and sensitive mutational signature
++analysis with MuSiCal. Nature Genetics 56:541-552 (2024). doi:10.1038/s41588-024-01659-0
++(decision semantics for method = "likelihood")
++
++Jiang N, Wu Y, Rozen SG. Benchmarking 13 tools for mutational signature attribution, including a new and improved
++algorithm. Briefings in Bioinformatics 26(1):bbaf042 (2025, epub 2024-11). doi:10.1093/bib/bbaf042
++(decision semantics for method = "lrt")
+ }
+ \seealso{
+ \link{sig_extract}, \link{sig_auto_extract}, \link{sig_fit_bootstrap}, \link{sig_fit_bootstrap_batch}
+diff --git a/man/sig_fit_bootstrap.Rd b/man/sig_fit_bootstrap.Rd
+index 390ca31a..39c82614 100644
+--- a/man/sig_fit_bootstrap.Rd
++++ b/man/sig_fit_bootstrap.Rd
+@@ -12,7 +12,7 @@ sig_fit_bootstrap(
+   sig_db = "legacy",
+   db_type = c("", "human-exome", "human-genome"),
+   show_index = TRUE,
+-  method = c("QP", "NNLS", "SA"),
++  method = c("QP", "NNLS", "SA", "likelihood", "lrt"),
+   auto_reduce = FALSE,
+   SA_not_bootstrap = FALSE,
+   type = c("absolute", "relative"),
+@@ -64,7 +64,15 @@ Currently only works for 'SBS'.}
+ \item{show_index}{if \code{TRUE}, show valid indices.}
+ 
+ \item{method}{method to solve the minimazation problem.
+-'NNLS' for non-negative least square; 'QP' for quadratic programming; 'SA' for simulated annealing.}
++'NNLS' for non-negative least square; 'QP' for quadratic programming; 'SA' for simulated annealing.
++'likelihood' runs the clean-room MuSiCal-branch refit: a bidirectional stepwise decision layer
++over the multinomial likelihood, with the acceptance thresholds passed as \code{ll_add} / \code{ll_keep}
++(lane-calibrated defaults 8 / 8; the reference paper treats these thresholds as study-optimized
++parameters, so they are arguments rather than hard-coded constants).
++'lrt' runs the clean-room PASA-branch refit: per-signature likelihood-ratio presence tests plus
++a minimal set that is good enough (stop test) and minimal at the \code{alpha} significance level
++(lane-calibrated default 0.01). Both new methods refit exposures with the same QP simplex
++engine as 'QP' and reject \code{auto_reduce} (their decision layer already selects the reference set).}
+ 
+ \item{auto_reduce}{if \code{TRUE}, try reducing the input reference signatures to increase
+ the cosine similarity of reconstructed profile to observed profile.}
+diff --git a/man/sig_fit_bootstrap_batch.Rd b/man/sig_fit_bootstrap_batch.Rd
+index bf7f7905..6d78fe50 100644
+--- a/man/sig_fit_bootstrap_batch.Rd
++++ b/man/sig_fit_bootstrap_batch.Rd
+@@ -22,7 +22,7 @@ sig_fit_bootstrap_batch(
+ columns representing samples, typically you can get \code{nmf_matrix} from \code{sig_tally()} and
+ transpose it by \code{t()}.}
+ 
+-\item{methods}{a subset of \code{c("NNLS", "QP", "SA")}.}
++\item{methods}{a subset of \code{c("NNLS", "QP", "SA", "likelihood", "lrt")}.}
+ 
+ \item{n}{the number of bootstrap replicates.}
+ 
+diff --git a/tests/testthat/helper-refit-synthetic.R b/tests/testthat/helper-refit-synthetic.R
+new file mode 100644
+index 00000000..26292ef6
+--- /dev/null
++++ b/tests/testthat/helper-refit-synthetic.R
+@@ -0,0 +1,100 @@
++## ---------------------------------------------------------------------------
++## Shared synthetic fixtures for the P3 refit-method test family
++## (method = "likelihood" / "lrt", added by the P3 refit lane).
++##
++## D3 law: every numeric here is hand-built. Nothing in this family derives
++## from COSMIC or any other real reference distribution.
++## ---------------------------------------------------------------------------
++
++## Six hand-built reference signatures over a 30-component grid:
++##   A, B, C  spike-like, clearly distinct supports
++##   D        perfectly flat (uniform)
++##   E        near-flat (mild monotone tilt, still close to uniform)
++##   F        decoy spike on its own component
++p3_refit_sig <- function() {
++  W <- matrix(0, nrow = 30, ncol = 6)
++  dimnames(W) <- list(paste0("c", 1:30), c("A", "B", "C", "D", "E", "F"))
++  W["c1", "A"] <- .80; W[c("c2", "c3", "c4", "c5"), "A"] <- .05
++  W["c10", "B"] <- .80; W[c("c6", "c7", "c8", "c9"), "B"] <- .05
++  W["c20", "C"] <- .75; W[c("c15", "c16", "c17", "c18", "c19"), "C"] <- .05
++  W[, "D"] <- 1 / 30
++  ## Near-flat shape column: a mild global tilt (the hand-built analogue of
++  ## the documented flat-signature family, cf. docs/research/
++  ## 00-executive-summary.md:30). Carries real structure so its presence is
++  ## statistically detectable, while a uniform+tilt mix remains only
++  ## pair-sufficient (measured in /tmp/p3refit/logs/03b-nullcal-probe.log).
++  tilt <- 1 + .45 * ((1:30) - 15.5) / 15.5
++  W[, "E"] <- tilt / sum(tilt)
++  W["c28", "F"] <- .55; W[paste0("c", 21:27), "F"] <- .45 / 7
++  W / apply(W, 2, sum)
++}
++
++## Deterministic integer catalog: expected reconstruction W %*% e scaled to a
++## fixed total and rounded, with the rounding residual parked on the largest
++## cell so the column sum is exact. No RNG involved.
++p3_refit_catalog <- function(weights, total = 1000L, sample_name = "smp") {
++  W <- p3_refit_sig()
++  e <- rep(0, ncol(W))
++  names(e) <- colnames(W)
++  e[names(weights)] <- as.numeric(weights)
++  mu <- as.numeric(W %*% e) * total
++  d <- round(mu)
++  j <- which.max(d)
++  d[j] <- d[j] + (total - sum(d))
++  out <- matrix(as.integer(d), ncol = 1L)
++  dimnames(out) <- list(rownames(W), sample_name)
++  out
++}
++
++## Draw one null spectrum from a featureless uniform background. This is the
++## null-derived fixture shape for the presence-calibration family: it carries
++## no signature structure, so any declaration of a reference column by a
++## selection-based method is a genuine false positive (the hard FP cases are
++## the flat-like columns D/E, cf. the documented flat-signature failure mode
++## in docs/research/00-executive-summary.md:30).
++p3_refit_null_draw <- function(total = 1000L, sample_name = "null") {
++  d <- as.integer(rmultinom(1L, total, prob = rep(1 / 30, 30)))
++  out <- matrix(d, ncol = 1L)
++  dimnames(out) <- list(rownames(p3_refit_sig()), sample_name)
++  out
++}
++
++## Count vector for which a signature counts as "declared" in the judgment
++## window of the null-calibration family (a-priori, documented in the test).
++p3_declare_threshold <- 0.01
++
++## Column-wise share matrix (each sample's exposures over its own total; an
++## all-zero sample stays all-zero).
++p3_normalize <- function(e) {
++  cs <- apply(e, 2L, sum)
++  cs[cs == 0] <- 1
++  e / rep(cs, each = nrow(e))
++}
++
++## Shared method-argument contract for both new refit methods: choices must
++## resolve through the house match.arg idiom (case-sensitive exact or
++## unique-prefix), and a refusal must enumerate every valid choice.
++p3_check_method_argument <- function(catalog, W, exact, partial) {
++  expect_silent(suppressMessages(
++    sig_fit(catalog, sig = W, method = exact)
++  ))
++  expect_silent(suppressMessages(
++    sig_fit(catalog, sig = W, method = partial)
++  ))
++  ## Ambiguous prefix ("l" for both new choices) must be refused, naming both.
++  err_amb <- tryCatch({
++    suppressMessages(sig_fit(catalog, sig = W, method = "l")); "no-error"
++  }, error = function(e) conditionMessage(e))
++  expect_match(err_amb, "likelihood")
++  expect_match(err_amb, "lrt")
++  ## Case sensitivity: an unmatched case variant errors, listing all choices.
++  err_case <- tryCatch({
++    suppressMessages(sig_fit(catalog, sig = W, method = "L")); "no-error"
++  }, error = function(e) conditionMessage(e))
++  expect_match(err_case, "QP")
++  expect_match(err_case, "NNLS")
++  expect_match(err_case, "SA")
++  expect_match(err_case, "likelihood")
++  expect_match(err_case, "lrt")
++}
++
+diff --git a/tests/testthat/test-sig-fit-refit-bootstrap-par.R b/tests/testthat/test-sig-fit-refit-bootstrap-par.R
+new file mode 100644
+index 00000000..d16b12b4
+--- /dev/null
++++ b/tests/testthat/test-sig-fit-refit-bootstrap-par.R
+@@ -0,0 +1,197 @@
++## Parallel bootstrap route for the refit judgment (sig_fit_bootstrap /
++## sig_fit_bootstrap_batch territory, parity plan P3). The two new methods
++## must flow through the existing bootstrap surfaces, whose replicate/sample
++## fan-out rides the house future/furrr route (R/utils.R:37
++## set_future_strategy), with the judgment -- which signatures survive --
++## evaluated per replicate.
++
++test_that("sig_fit_bootstrap accepts the two new methods end-to-end", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5), total = 500L)
++  for (method in c("likelihood", "lrt")) {
++    hb <- suppressMessages(suppressWarnings(
++      sig_fit_bootstrap(catalog, sig = W, n = 6L, method = method,
++        type = "absolute"
++      )
++    ))
++    expect_true(is.list(hb), info = method)
++    expect_true(all(c("expo", "errors", "cosine") %in% names(hb)), info = method)
++    expect_equal(dimnames(hb$expo)[[2]], paste0("Rep_", 1:6), info = method)
++    expect_equal(rownames(hb$expo), colnames(W), info = method)
++    expect_equal(length(hb$errors), 6L, info = method)
++    expect_equal(length(hb$cosine), 6L, info = method)
++    ## The judgment must hold across resampling: A and B dominate every
++    ## replicate of this well-populated cell.
++    rel <- p3_normalize(hb$expo)
++    expect_true(all(rel["A", ] > .2 & rel["B", ] > .2), info = method)
++    expect_true(all(rel[c("C", "D", "E", "F"), ] < p3_declare_threshold),
++      info = paste(method, "bootstrap noise leak"))
++  }
++})
++
++test_that("bootstrap method choices follow the same match.arg contract", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5), total = 500L)
++  err <- tryCatch({
++    suppressMessages(sig_fit_bootstrap(catalog, sig = W, n = 1L, method = "l"))
++    "no-error"
++  }, error = function(e) conditionMessage(e))
++  expect_match(err, "likelihood")
++  expect_match(err, "lrt")
++})
++
++test_that("batch route runs both new methods and passes refit arguments through", {
++  W <- p3_refit_sig()
++  samples <- list(
++    p3_refit_catalog(c(A = .5, B = .5), total = 500L, sample_name = "s1"),
++    p3_refit_catalog(c(C = 1), total = 500L, sample_name = "s2"),
++    p3_refit_catalog(c(A = 1), total = 500L, sample_name = "s3")
++  )
++  ## The batch route maps samples over colnames(catalogue_matrix), so the
++  ## sample names come from p3_refit_catalog(sample_name = ...) directly;
++  ## they are already unique and must be preserved.
++  mats <- do.call(cbind, samples)
++  rv <- suppressMessages(suppressWarnings(
++    sig_fit_bootstrap_batch(mats, sig = W, methods = c("likelihood", "lrt"),
++      n = 4L, seed = 90210L, use_parallel = FALSE, alpha = 0.05
++    )
++  ))
++  expect_true(is.list(rv))
++  expect_true(all(c("expo", "error", "cosine", "p_val") %in% names(rv)))
++  expect_true(all(c("likelihood", "lrt") %in% rv$expo$method))
++  expect_true(all(c("s1", "s2", "s3") %in% rv$expo$sample))
++  ## The s2 cell must end up C-owned in both methods at the optimal row
++  ## (the batch tables are long-format: sample/sig/exposure/type/method).
++  ## Per-replicate judgment stability is covered through the single-sample
++  ## bootstrap surface by the first test of this file.
++  for (m in c("likelihood", "lrt")) {
++    opt <- rv$expo[type == "optimal" & sample == "s2" & method == m, ]
++    expect_gte(nrow(opt), 6L, label = paste(m, "s2 long rows"))
++    tot <- sum(opt$exposure)
++    expect_gt(opt[sig == "C", exposure] / tot, .90, label = paste(m, "s2 optimal C"))
++  }
++})
++
++## Worker-snapshot gate: future workers are fresh R processes that resolve
++## sigminer through .libPaths(), never the load_all namespace of the test
++## master. This battery therefore provisions a worker snapshot with
++##   R CMD INSTALL --no-byte-compile --library=/tmp/p3refit/rlib <tree>
++## immediately before the files run (see /tmp/p3refit/run_battery.sh); under
++## R CMD check the check library already plays this role. If neither is
++## present the arms skip loudly rather than silently passing.
++p3_worker_snapshot <- function() {
++  p3_worker_lib <- "/tmp/p3refit/rlib"
++  have_snapshot <- dir.exists(p3_worker_lib) && isTRUE(
++    "sigminer" %in% rownames(utils::installed.packages(lib.loc = p3_worker_lib,
++      no.cache = TRUE))
++  )
++  if (!have_snapshot && dir.exists(Sys.getenv("RCHECK_DIR", ""))) {
++    have_snapshot <- TRUE
++    p3_worker_lib <- .libPaths()[[1L]]
++  }
++  skip_if_not(have_snapshot,
++    paste("no worker snapshot: provision", p3_worker_lib,
++      "with R CMD INSTALL before the battery"))
++  p3_worker_lib
++}
++
++p3_batch_cell <- function() {
++  mats <- p3_refit_catalog(c(A = .5, B = .5), total = 400L)
++  mats <- cbind(mats, p3_refit_catalog(c(C = 1), total = 400L),
++    p3_refit_catalog(c(D = .3, E = .7), total = 400L))
++  colnames(mats) <- c("s1", "s2", "s3")
++  mats
++}
++
++p3_batch <- function(mats, W, par) {
++  suppressMessages(suppressWarnings(
++    sig_fit_bootstrap_batch(mats, sig = W, methods = "lrt",
++      n = 20L, seed = 42424L, use_parallel = par
++    )
++  ))
++}
++
++## Optimal rows of one payload, ordered by the key columns the payload
++## actually carries (expo/p_val are keyed by sample+sig, error/cosine by
++## method+sample+type, so a blind order(sample, sig) would break the latter).
++p3_optimal <- function(payload) {
++  if ("type" %in% colnames(payload)) {
++    payload <- payload[type == "optimal"]
++  }
++  key <- intersect(c("method", "sample", "sig"), colnames(payload))
++  ord <- do.call(order, lapply(key, function(k) payload[[k]]))
++  payload[ord, ]
++}
++
++test_that("the parallel batch route drives the refit judgment on workers", {
++  ## What the cross-arm contract is: the house route reseeds every worker
++  ## from the master L'Ecuyer counter stream (furrr_options(seed = TRUE),
++  ## R/sig_fit_bootstrap_batch.R:166), so bit-for-bit cross-arm identity of
++  ## the RNG-consumed aggregates is NOT part of the contract -- the legacy
++  ## suite pins it neither. The pins here are the real contract: workers
++  ## execute this lane's code (snapshot-provisioned) and the two arms agree
++  ## structurally, in the significance pattern, and statistically.
++  W <- p3_refit_sig()
++  p3_worker_lib <- p3_worker_snapshot()
++  mats <- p3_batch_cell()
++  serial <- p3_batch(mats, W, FALSE)
++  opaths <- .libPaths()
++  ## base::.libPaths(new) REPLACES the search path, so prepend the snapshot
++  ## in front of the retained old paths (the site libraries hold future etc.).
++  .libPaths(c(p3_worker_lib, opaths))
++  on.exit(.libPaths(opaths))
++  parallel <- p3_batch(mats, W, 2L)
++  for (nm in c("expo", "error", "cosine", "p_val")) {
++    expect_equal(colnames(serial[[nm]]), colnames(parallel[[nm]]), info = nm)
++    expect_equal(nrow(serial[[nm]]), nrow(parallel[[nm]]), info = nm)
++    expect_true(all(serial[[nm]]$method %in% "lrt"), info = nm)
++  }
++  so <- p3_optimal(serial$expo)
++  po <- p3_optimal(parallel$expo)
++  expect_equal(so$sample, po$sample)
++  expect_equal(so$sig, po$sig)
++  rel <- abs(so$exposure - po$exposure) / pmax(so$exposure, 1e-9)
++  ## Measured on this fixture at n = 20 (battery log): max relative
++  ## difference 0.0 per sample; the band is the honest no-regression room.
++  expect_lt(max(rel), .25)
++  sp <- p3_optimal(serial$p_val)
++  pp <- p3_optimal(parallel$p_val)
++  expect_equal(sp$sample, pp$sample)
++  expect_equal(sp$sig, pp$sig)
++  ## The decision layer must not fork: same significance calls in both arms
++  ## (measured: identical; the true signatures sit at ~1e-25, the rest at 1).
++  expect_equal(sp$p_value < .05, pp$p_value < .05)
++  sc <- p3_optimal(serial$cosine)
++  pc <- p3_optimal(parallel$cosine)
++  expect_equal(sc$sample, pc$sample)
++  ## Measured on this fixture (battery log): the optimal-row cosines are
++  ## 1 / 1 / NaN in BOTH arms -- the flat cell (s3) yields a deterministic
++  ## NaN optimal cosine, so the cross-arm pin is identity INCLUDING the NaN
++  ## positions (identical() treats NaN as identical to NaN), and the clean
++  ## cells (s1, s2) must reconstruct with fidelity above .99.
++  expect_identical(sc$cosine, pc$cosine)
++  expect_true(all(sc$cosine[sc$sample %in% c("s1", "s2")] > .99))
++  expect_true(all(pc$cosine[pc$sample %in% c("s1", "s2")] > .99))
++  expect_true(all(is.na(sc$cosine[sc$sample == "s3"])))
++  expect_true(all(is.na(pc$cosine[pc$sample == "s3"])))
++  expect_true(all(serial$error$errors >= 0))
++  expect_true(all(parallel$error$errors >= 0))
++})
++
++test_that("the parallel batch route is reproducible under a pinned seed", {
++  ## The rigorous half of the parallel contract: two runs of the parallel
++  ## arm at the same seed and worker count are bit-identical in all four
++  ## payloads (measured: all.equal TRUE x 4 in the battery probe).
++  W <- p3_refit_sig()
++  p3_worker_lib <- p3_worker_snapshot()
++  mats <- p3_batch_cell()
++  opaths <- .libPaths()
++  .libPaths(c(p3_worker_lib, opaths))
++  on.exit(.libPaths(opaths))
++  run1 <- p3_batch(mats, W, 2L)
++  run2 <- p3_batch(mats, W, 2L)
++  for (nm in c("expo", "error", "cosine", "p_val")) {
++    expect_true(isTRUE(all.equal(run1[[nm]], run2[[nm]])),
++      info = paste("parallel repro:", nm))
++  }
++})
+diff --git a/tests/testthat/test-sig-fit-refit-flatcells.R b/tests/testthat/test-sig-fit-refit-flatcells.R
+new file mode 100644
+index 00000000..4f9157c7
+--- /dev/null
++++ b/tests/testthat/test-sig-fit-refit-flatcells.R
+@@ -0,0 +1,76 @@
++## Flat-signature cell family (the documented SBS5/40-style failure mode,
++## msuiter docs/research/00-executive-summary.md:30). The P3 acceptance law:
++## the two new methods must not regress these cells below the legacy route.
++##
++## Fixture: hand-built near-flat family over {D uniform, E tilted, F decoy}
++## with a 0.2 D + 0.8 E mixture (single column cannot carry the mix -- only
++## the pair fits it, cf. /tmp/p3refit/logs/03b-nullcal-probe.log -- so this
++## cell punishes any decision layer that drops too much of the flat mass).
++##
++## A-priori margins fixed before implementation:
++##   - capture_new >= capture_legacy - 0.15 (share points; the new methods
++##     must stay within 15 points of the legacy route's flat-mass capture)
++##   - capture_new >= 0.70 (absolute floor: the planted flat mass must stay
++##     majority-owned by the flat family even at the known failure mode)
++##   - no non-flat column may eat more than 0.10 of the mix
++
++p3_flat_capture <- function(catalogs, Wsub, method, ...) {
++  e <- suppressMessages(suppressWarnings(
++    do.call(sig_fit, c(
++      list(catalogue_matrix = catalogs, sig = Wsub, method = method),
++      list(...)
++    ))
++  ))
++  rel <- p3_normalize(e)
++  ## mean share of the mix owned by the flat family columns D and E
++  mean(rel["D", ] + rel["E", ])
++}
++
++test_that("flat cells: new methods hold flat-mass capture within the margins", {
++  W <- p3_refit_sig()
++  Wsub <- W[, c("D", "E", "F"), drop = FALSE]
++  base::set.seed(40404, kind = "L'Ecuyer-CMRG")
++  catalogs <- do.call(cbind, lapply(seq_len(8L), function(i) {
++    d <- as.integer(rmultinom(1L, 1000L,
++      prob = as.numeric(0.2 * Wsub[, "D"] + 0.8 * Wsub[, "E"])))
++    out <- matrix(d, ncol = 1L)
++    dimnames(out) <- list(rownames(Wsub), paste0("flat", i))
++    out
++  }))
++  cap_legacy <- p3_flat_capture(catalogs, Wsub, "QP")
++  expect_gte(cap_legacy, .85) ## the fixture itself must be well-formed
++  for (method in c("likelihood", "lrt")) {
++    cap <- p3_flat_capture(catalogs, Wsub, method)
++    expect_true(all(is.finite(as.matrix(
++      suppressMessages(suppressWarnings(
++        sig_fit(catalogs, sig = Wsub, method = method)
++      ))
++    ))))
++    expect_gte(cap, cap_legacy - 0.15, label = paste(method, "vs legacy capture"))
++    expect_gte(cap, 0.70, label = paste(method, "absolute flat floor"))
++    ## The decoy must not eat the mix.
++    e <- suppressMessages(suppressWarnings(
++      sig_fit(catalogs, sig = Wsub, method = method)
++    ))
++    rel <- p3_normalize(e)
++    expect_lte(max(rel["F", ]), 0.10, label = paste(method, "decoy share"))
++  }
++})
++
++test_that("flat cells: likelihood route keeps the calibrated pruning verdict", {
++  ## On the deterministic 0.2 D + 0.8 E cell the calibrated defaults must
++  ## keep E (removal cost 40.98) and prune D (cost 2.805 < ll_keep 8.0)
++  ## and F (cost 0), while all flat mass remains captured on {E} alone.
++  W <- p3_refit_sig()
++  Wsub <- W[, c("D", "E", "F"), drop = FALSE]
++  catalog <- p3_refit_catalog(c(D = .2, E = .8))
++  dimnames(catalog)[[1]] <- rownames(Wsub)
++  e <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = Wsub, method = "likelihood")
++  ))
++  abs <- as.numeric(e)
++  names(abs) <- rownames(e)
++  expect_equal(abs[["D"]], 0)
++  expect_equal(abs[["F"]], 0)
++  expect_gt(abs[["E"]], 990)
++})
+diff --git a/tests/testthat/test-sig-fit-refit-likelihood.R b/tests/testthat/test-sig-fit-refit-likelihood.R
+new file mode 100644
+index 00000000..f4ceb8d8
+--- /dev/null
++++ b/tests/testthat/test-sig-fit-refit-likelihood.R
+@@ -0,0 +1,175 @@
++## method = "likelihood" (MuSiCal-branch semantics, P3 refit lane).
++##
++## Primary-source gate: /tmp/p3refit/logs/00-primary-source-gate.md sec. 1 --
++## "Matching and refitting with multinomial likelihood-based sparse NNLS."
++## "bidirectional stepwise algorithm"; acceptance thresholds are
++## study-optimized parameters ("two likelihood thresholds were optimized",
++## "optimal threshold was chosen through a grid search") and are therefore
++## exposed as arguments here rather than hard-coded.
++
++## The shared p3_check_method_argument contract helper lives in
++## helper-refit-synthetic.R so both refit-method families pin it identically.
++
++test_that("method='likelihood' resolves through the house match.arg idiom", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  p3_check_method_argument(catalog, W, exact = "likelihood", partial = "li")
++})
++
++test_that("method='likelihood' keeps the two true signatures of a clean mix", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  expo <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood")
++  ))
++  expect_true(is.matrix(expo))
++  expect_equal(dim(expo), c(6L, 1L))
++  expect_equal(rownames(expo), colnames(W))
++  rel <- as.numeric(expo) / sum(as.numeric(expo))
++  names(rel) <- rownames(expo)
++  ## True signatures carry the bulk of the exposure ...
++  expect_gt(rel[["A"]], .30)
++  expect_gt(rel[["B"]], .30)
++  expect_lt(abs(rel[["A"]] - rel[["B"]]), .10)
++  ## ... and every irrelevant reference is fully dropped.
++  expect_equal(as.numeric(expo[c("C", "D", "E", "F"), ]), rep(0, 4))
++})
++
++test_that("method='likelihood' selects the single true spike", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(C = 1))
++  expo <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood")
++  ))
++  rel <- as.numeric(expo)
++  names(rel) <- rownames(expo)
++  expect_gt(rel[["C"]], .90)
++  ## unname(): the slice inherits the matrix row names; the pin is on values.
++  expect_equal(unname(rel[rel != rel[["C"]]]), rep(0, 5))
++})
++
++test_that("ll_keep/ll_add are real parameters with the calibrated semantics", {
++  W <- p3_refit_sig()
++  ## Deterministic flat-family cell (0.2 D + 0.8 E). Fixture refit costs were
++  ## measured pre-implementation in /tmp/p3refit/logs/03c-stepwise-calibration
++  ## .log: removal-cost of E is 40.98 (>= the calibrated ll_keep 8), removal of
++  ## D costs 2.805 and of F 0.0 (both < 8), and the E-alone gain over the
++  ## empty reference is 38.17 (>= the calibrated ll_add 8), every other single
++  ## column gain is far below it.
++  catalog <- p3_refit_catalog(c(D = .2, E = .8))
++  kept_names <- function(...) {
++    e <- suppressMessages(suppressWarnings(
++      sig_fit(catalog, sig = W, method = "likelihood", ...)
++    ))
++    v <- as.numeric(e)
++    names(v) <- rownames(e)
++    sort(names(v[v > 0]))
++  }
++  ## (a) Calibration pin: at the defaults the sweep prunes D and F and keeps
++  ## the only member whose removal is significant at the gate: exactly {E}.
++  expect_equal(kept_names(), "E")
++  ## (b) Never-drop equivalence: with an unfireable keep-gate (ll_keep = -1,
++  ## no removal cost is negative) the decision layer keeps the full reference
++  ## set, so its refit must be exactly the legacy QP route's answer (the same
++  ## QP simplex engine, no selection delta).
++  e_full <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood", ll_add = 1e9, ll_keep = -1)
++  ))
++  e_qp <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "QP")
++  ))
++  expect_equal(as.numeric(e_full), as.numeric(e_qp), tolerance = 1e-12)
++  ## (c) Total-collapse recovery: a keep-gate no member can pass empties the
++  ## set; the forward gate then re-admits exactly what clears ll_add against
++  ## the empty reference -- per the 03c measurements that is E alone.
++  expect_equal(kept_names(ll_keep = 1e9), "E")
++})
++
++test_that("ll_add is accepted as a paired threshold argument", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  a <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood")
++  ))
++  b <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood",
++      ll_add = 8.0, ll_keep = 8.0
++    )
++  ))
++  expect_equal(as.numeric(a), as.numeric(b))
++})
++
++test_that("method='likelihood' is deterministic and seed-free", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .6, C = .4))
++  e1 <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood")
++  ))
++  e2 <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood")
++  ))
++  expect_equal(e1, e2)
++})
++
++test_that("method='likelihood' handles a zero-count sample like the legacy route", {
++  W <- p3_refit_sig()
++  zero <- matrix(0L, nrow = 30L, ncol = 1L)
++  dimnames(zero) <- list(rownames(W), "zero_smp")
++  ez <- suppressMessages(suppressWarnings(
++    sig_fit(zero, sig = W, method = "likelihood")
++  ))
++  expect_equal(as.numeric(ez), rep(0, 6))
++})
++
++test_that("method='likelihood' honors return_class and return_error like QP", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(B = .5, C = .5))
++  res <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood",
++      return_class = "data.table", return_error = TRUE
++    )
++  ))
++  expect_true(is.list(res))
++  expect_true(all(c("expo", "errors", "cosine") %in% names(res)))
++  expect_true(data.table::is.data.table(res$expo))
++  expect_equal(names(res$expo), c("sample", colnames(W)))
++  expect_equal(length(res$errors), 1L)
++  expect_equal(length(res$cosine), 1L)
++  expect_true(is.finite(res$cosine))
++})
++
++test_that("method='likelihood' rejects auto_reduce with an explicit error", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  x <- as.numeric(catalog)
++  ## House stop idiom: send_stop() raises a bare stop() and routes the human
++  ## text through a cli alert, which surfaces as a message condition. Pin the
++  ## refusal text at the direct entry point where no purrr wrapper can interfere.
++  expect_message(
++    expect_error(decompose_LIKELIHOOD(x, 0, "smp", W, auto_reduce = TRUE)),
++    "likelihood"
++  )
++  expect_message(
++    expect_error(decompose_LIKELIHOOD(x, 0, "smp", W, auto_reduce = TRUE)),
++    "auto_reduce"
++  )
++  ## Wiring pin: the refusal must also surface through the sig_fit route.
++  expect_error(
++    suppressMessages(sig_fit(catalog, sig = W,
++      method = "likelihood", auto_reduce = TRUE
++    ))
++  )
++})
++
++test_that("method='likelihood' absolute exposures track the planted counts", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .6, C = .4), total = 1000L)
++  expo <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "likelihood")
++  ))
++  abs_expo <- as.numeric(expo)
++  names(abs_expo) <- rownames(expo)
++  expect_lt(abs(abs_expo[["A"]] - 600), 60)
++  expect_lt(abs(abs_expo[["C"]] - 400), 60)
++  expect_lt(abs(sum(abs_expo) - 1000), 5)
++})
+diff --git a/tests/testthat/test-sig-fit-refit-lrt.R b/tests/testthat/test-sig-fit-refit-lrt.R
+new file mode 100644
+index 00000000..c62c3eda
+--- /dev/null
++++ b/tests/testthat/test-sig-fit-refit-lrt.R
+@@ -0,0 +1,158 @@
++## method = "lrt" (PASA/mSigAct-branch semantics, P3 refit lane).
++##
++## Primary-source gate: /tmp/p3refit/logs/00-primary-source-gate.md sec. 2 --
++## verbatim algorithm attestation: the LRT statistic
++## "lambda = -2(log P(D|A2) - log P(D|A1))" with A2 a proper subset of A1,
++## "which follows a chi-squared distribution with degrees of freedom =
++## |A1| - |A2|"; Step 1 "signature presence test" per signature (full minus
++## k against full); Step 2 minimal-set semantics "The set is minimal in the
++## sense that removing any signature results in a likelihood ratio test
++## giving a p value < alpha"; stop condition "The algorithm stops when the
++## reconstruction is 'good enough' as assessed by a likelihood ratio test";
++## order-independence "the outer loop always selects the signature that
++## improves the likelihood the most ... does not depend on the order".
++##
++## The alpha significance level is a paper-parameter; its default value is
++## lane-calibrated (documented), never paper-sourced.
++
++test_that("method='lrt' resolves and shares the argument contract with 'likelihood'", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  p3_check_method_argument(catalog, W, exact = "lrt", partial = "lr")
++})
++
++test_that("method='lrt' keeps the two true signatures of a clean mix", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  expo <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt")
++  ))
++  expect_true(is.matrix(expo))
++  expect_equal(dim(expo), c(6L, 1L))
++  expect_equal(rownames(expo), colnames(W))
++  rel <- as.numeric(expo)
++  names(rel) <- rownames(expo)
++  expect_gt(rel[["A"]], .30)
++  expect_gt(rel[["B"]], .30)
++  expect_lt(abs(rel[["A"]] - rel[["B"]]), .10)
++  expect_equal(as.numeric(expo[c("C", "D", "E", "F"), ]), rep(0, 4))
++})
++
++test_that("method='lrt' selects the single true spike", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(C = 1))
++  expo <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt")
++  ))
++  rel <- as.numeric(expo)
++  names(rel) <- rownames(expo)
++  expect_gt(rel[["C"]], .90)
++  ## unname(): the slice inherits the matrix row names; the pin is on values.
++  expect_equal(unname(rel[rel != rel[["C"]]]), rep(0, 5))
++})
++
++test_that("method='lrt' sparses the flat cell down to the sufficient column", {
++  W <- p3_refit_sig()
++  ## 0.2 D + 0.8 E: only the pair {D,E} fits as well as E plus its own
++  ## column, but removing D costs just lambda = 2.805 -> p = 0.094 >= alpha
++  ## (03c calibration log), so a minimal set at alpha = 0.01 keeps E alone.
++  catalog <- p3_refit_catalog(c(D = .2, E = .8))
++  expo <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt")
++  ))
++  abs <- as.numeric(expo)
++  names(abs) <- rownames(expo)
++  ## The flat-mix mass must stay on the flat-family columns (no-regression
++  ## law, docs/research/00-executive-summary.md:30): D + E carry it all.
++  expect_gt(abs[["D"]] + abs[["E"]], 990)
++  expect_equal(abs[["F"]], 0)
++  ## And sparsity holds: the insufficient partner is dropped at alpha = 0.01.
++  expect_equal(abs[["D"]], 0)
++  expect_gt(abs[["E"]], 990)
++})
++
++test_that("alpha = 0 accepts nothing: the presence test clears the board", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  expo <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt", alpha = 0)
++  ))
++  expect_equal(as.numeric(expo), rep(0, 6))
++})
++
++test_that("alpha = 1 keeps everything the full-set refit would keep", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  legacy <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "QP")
++  ))
++  new <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt", alpha = 1)
++  ))
++  ## At alpha = 1 no LRT can ever clear the bar, so the decision layer
++  ## degenerates to "keep the full candidate set" and the refit engine is
++  ## the same one the legacy QP route drives: identical exposures.
++  expect_equal(new, legacy)
++})
++
++test_that("method='lrt' is deterministic and seed-free", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .6, C = .4))
++  e1 <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt")
++  ))
++  e2 <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt")
++  ))
++  expect_equal(e1, e2)
++})
++
++test_that("method='lrt' handles a zero-count sample like the legacy route", {
++  W <- p3_refit_sig()
++  zero <- matrix(0L, nrow = 30L, ncol = 1L)
++  dimnames(zero) <- list(rownames(W), "zero_smp")
++  ez <- suppressMessages(suppressWarnings(
++    sig_fit(zero, sig = W, method = "lrt")
++  ))
++  expect_equal(as.numeric(ez), rep(0, 6))
++})
++
++test_that("method='lrt' honors return_class and return_error like QP", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(B = .5, C = .5))
++  res <- suppressMessages(suppressWarnings(
++    sig_fit(catalog, sig = W, method = "lrt",
++      return_class = "data.table", return_error = TRUE
++    )
++  ))
++  expect_true(is.list(res))
++  expect_true(all(c("expo", "errors", "cosine") %in% names(res)))
++  expect_true(data.table::is.data.table(res$expo))
++  expect_equal(names(res$expo), c("sample", colnames(W)))
++  expect_equal(length(res$errors), 1L)
++  expect_equal(length(res$cosine), 1L)
++  expect_true(is.finite(res$cosine))
++})
++
++test_that("method='lrt' rejects auto_reduce with an explicit error", {
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  x <- as.numeric(catalog)
++  ## House stop idiom: send_stop() raises a bare stop() and routes the human
++  ## text through a cli alert, which surfaces as a message condition. Pin the
++  ## refusal text at the direct entry point where no purrr wrapper can interfere.
++  expect_message(
++    expect_error(decompose_LRT(x, 0, "smp", W, auto_reduce = TRUE)),
++    "lrt"
++  )
++  expect_message(
++    expect_error(decompose_LRT(x, 0, "smp", W, auto_reduce = TRUE)),
++    "auto_reduce"
++  )
++  ## Wiring pin: the refusal must also surface through the sig_fit route.
++  expect_error(
++    suppressMessages(sig_fit(catalog, sig = W,
++      method = "lrt", auto_reduce = TRUE
++    ))
++  )
++})
+diff --git a/tests/testthat/test-sig-fit-refit-nullcal.R b/tests/testthat/test-sig-fit-refit-nullcal.R
+new file mode 100644
+index 00000000..6c6004ba
+--- /dev/null
++++ b/tests/testthat/test-sig-fit-refit-nullcal.R
+@@ -0,0 +1,95 @@
++## Null-calibration family for the two P3 refit methods (presence test inside
++## the judgment window). Reuses the shape of the 198-cell M3b calibration
++## protocol (msuiter docs/ROADMAP.md:177; src/rust/src/calibrate.rs:47
++## "11 x 3 x 6 grid"): null-derived synthetic fixtures, a-priori documented
++## ceilings, measured-not-hand-picked acceptance. This lane runs the cell
++## slice that pins its own two methods on hand-built D3 fixtures.
++##
++## Ceiling law: every bound below was fixed from the fixture-geometry
++## calibration in /tmp/p3refit/logs/03b-nullcal-probe.log and
++## /tmp/p3refit/logs/03c-stepwise-calibration.log BEFORE any implementation
++## ran, from the null false-positive scale of the gates (ll thresholds at 8.0
++## and alpha at 0.01 sit at chi-squared tails p ~ 1e-3 and below), never
++## from implementation output.
++##
++## Judgment window: a reference signature counts as "declared" when its
++## final relative exposure reaches p3_declare_threshold (1%).
++
++## Run every spectrum of a stack through one method, returning declared flags.
++p3_declared_matrix <- function(catalogs, W, method, ...) {
++  e <- suppressMessages(suppressWarnings(
++    do.call(sig_fit, c(
++      list(catalogue_matrix = catalogs, sig = W, method = method),
++      list(...)
++    ))
++  ))
++  rel <- p3_normalize(e)
++  t(rel >= p3_declare_threshold)
++}
++
++
++test_that("null arm: featureless backgrounds stay below the a-priori FP ceilings", {
++  W <- p3_refit_sig()
++  base::set.seed(31337, kind = "L'Ecuyer-CMRG")
++  nulls <- do.call(cbind, lapply(seq_len(20L), function(i)
++    p3_refit_null_draw(total = 1000L, sample_name = paste0("n", i))
++  ))
++  ## A-priori ceilings (documented above): spike columns A,B,C,F each below
++  ## 0.10; the flat-like D,E (the known failure-mode family, exec-summary:30)
++  ## each below 0.20; any-declaration per spectrum below 0.30.
++  ceilings_spike <- c(A = .10, B = .10, C = .10, F = .10)
++  ceilings_flat <- c(D = .20, E = .20)
++  for (method in c("likelihood", "lrt")) {
++    dec <- p3_declared_matrix(nulls, W, method)
++    fp <- colMeans(dec)
++    for (k in names(ceilings_spike)) {
++      expect_lte(fp[[k]], ceilings_spike[[k]],
++        label = paste(method, "spike-column FP", k))
++    }
++    for (k in names(ceilings_flat)) {
++      expect_lte(fp[[k]], ceilings_flat[[k]],
++        label = paste(method, "flat-column FP", k))
++    }
++    expect_lte(mean(rowSums(dec) > 0), .30, label = paste(method, "any-decl on null"))
++  }
++})
++
++test_that("recall arm: planted signatures are declared above the a-priori floors", {
++  W <- p3_refit_sig()
++  ## Two-spike mixtures: both A and B must be declared in at least 90% of
++  ## spectra; single-spike spectra: A in at least 95% (a-priori floors).
++  base::set.seed(71113, kind = "L'Ecuyer-CMRG")
++  mix <- do.call(cbind, lapply(seq_len(20L), function(i) {
++    d <- as.integer(rmultinom(1L, 1000L,
++      prob = as.numeric(0.5 * W[, "A"] + 0.5 * W[, "B"])))
++    out <- matrix(d, ncol = 1L)
++    dimnames(out) <- list(rownames(W), paste0("mix", i))
++    out
++  }))
++  base::set.seed(71114, kind = "L'Ecuyer-CMRG")
++  one <- do.call(cbind, lapply(seq_len(20L), function(i) {
++    d <- as.integer(rmultinom(1L, 1000L, prob = as.numeric(W[, "A"])))
++    out <- matrix(d, ncol = 1L)
++    dimnames(out) <- list(rownames(W), paste0("one", i))
++    out
++  }))
++  for (method in c("likelihood", "lrt")) {
++    dec <- p3_declared_matrix(mix, W, method)
++    expect_gte(mean(dec[, "A"] & dec[, "B"]), .90,
++      label = paste(method, "both-spike recall"))
++    expect_gte(mean(p3_declared_matrix(one, W, method)[, "A"]), .95,
++      label = paste(method, "single-spike recall"))
++  }
++})
++
++test_that("all routes speak through the same judgment window on planted spikes", {
++  ## A planted spike pair must be declared by every route, legacy included --
++  ## the judgment window is method-independent, which is what makes the FP
++  ## ceilings above a like-for-like measurement.
++  W <- p3_refit_sig()
++  catalog <- p3_refit_catalog(c(A = .5, B = .5))
++  for (method in c("QP", "likelihood", "lrt")) {
++    dec <- p3_declared_matrix(catalog, W, method)
++    expect_true(all(dec[1, c("A", "B")]), info = paste(method, "spike declaration"))
++  }
++})

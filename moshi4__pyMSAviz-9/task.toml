@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/moshi4__pyMSAviz-9"
+description = "Bump to v0.4.1"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pyMSAviz",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "moshi4/pyMSAviz"
+ref = "546869c4fe015c569e21a809964b0b209f3585d2"
+reference = "https://github.com/moshi4/pyMSAviz/pull/9"
+source_access = "auto"
+built_at = "2026-11-13T16:10:15.902722+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:cd46f0c27da642990e40af6d0eb7c14824df3779e2f5893d289b1ab4d6d8a196"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-09-07T12:55:32Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/ci.yml",
+    "README.md",
+    "docs/cli-docs/pymsaviz.md",
+    "poetry.lock",
+    "pyproject.toml",
+    "src/pymsaviz/__init__.py",
+    "src/pymsaviz/msaviz.py",
+    "src/pymsaviz/scripts/cli.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2539
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

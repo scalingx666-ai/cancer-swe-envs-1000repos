@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/publish.yml b/.github/workflows/publish.yml
+index 1170dae..0bbb9d7 100644
+--- a/.github/workflows/publish.yml
++++ b/.github/workflows/publish.yml
+@@ -16,7 +16,7 @@ jobs:
+       - uses: actions/checkout@v4
+ 
+       - name: Build wheels
+-        uses: pypa/cibuildwheel@v2.21.3
++        uses: pypa/cibuildwheel@v3.3.1
+         # Config is read from pyproject.toml [tool.cibuildwheel]
+ 
+       - uses: actions/upload-artifact@v4

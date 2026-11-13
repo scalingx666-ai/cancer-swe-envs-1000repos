@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/quadbio__Pando-82"
+description = "Fixed motifmatchr bug, signac - strand handling, default arg handling…"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Pando",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "quadbio/Pando"
+ref = "3ffbc21bd827646476357acdc3a3a6ec9048052f"
+reference = "https://github.com/quadbio/Pando/pull/82"
+source_access = "auto"
+built_at = "2026-11-13T16:18:22.292962+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:2ab450d58b133a6a6f6f2a595b4aee58ec1879437bf849eaaa97cf272b76f793"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-13T11:41:53Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "R/grn.R",
+    "R/models.R",
+    "R/regions.R",
+    "man/find_motifs.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 85
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

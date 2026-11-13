@@ -1,0 +1,768 @@
+diff --git a/.gitignore b/.gitignore
+index c2e72b0..4f4d5e3 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -25,7 +25,9 @@
+ *.sse42
+ *PARAMETERS
+ *-tmp
++build/
+ bwa-meme
++bwa-meme_mode*
+ bwa-mem2
+ a.out
+ *.txt
+@@ -54,4 +56,5 @@ test/query_error.fastq
+ test/ert_seeding_big_read
+ test/fmi_seeding_big_read
+ test/learned_seeding_big_read
+-test/star_align
+\ No newline at end of file
++test/star_align
++*cmake
+\ No newline at end of file
+diff --git a/README.md b/README.md
+index c6ab914..2e59b13 100644
+--- a/README.md
++++ b/README.md
+@@ -26,10 +26,10 @@
+ 
+ ## Performance of BWA-MEME
+ #### The seeding module of BWA-MEME uses Learned-index. This, in turn, results in 3.32x higher seeding throughput compared to FM-index of BWA-MEM2.
+-<img src="https://github.com/kaist-ina/BWA-MEME/blob/dev/images/BWA-MEME-SeedingResults.jpg" width="50%"/>
++<img src="https://github.com/kaist-ina/BWA-MEME/blob/master/images/BWA-MEME-SeedingResults.jpg" width="50%"/>
+ 
+ #### End-to-end alignment throughput is up to 1.4x higher than BWA-MEM2.
+-<img src="https://github.com/kaist-ina/BWA-MEME/blob/dev/images/BWA-MEME-AlignmentResults.png" width="50%" />
++<img src="https://github.com/kaist-ina/BWA-MEME/blob/master/images/BWA-MEME-alignment_throughput.png" width="50%" />
+ 
+ ---
+ ## Getting Started
+diff --git a/RMI/rmi_lib/src/codegen.rs b/RMI/rmi_lib/src/codegen.rs
+index 7231993..7be690e 100644
+--- a/RMI/rmi_lib/src/codegen.rs
++++ b/RMI/rmi_lib/src/codegen.rs
+@@ -404,6 +404,26 @@ fn params_for_layer(layer_idx: usize,
+                             params);
+ }
+ 
++
++fn zip_errors( layer_idx: usize, lle: &[u64] , 
++               models: &[Box<dyn Model>]
++                ) -> LayerParams {
++        
++    let params_per_model = models[0].params().len();
++
++    let combined_lle_params: Vec<ModelParam> =
++        models.iter().zip(lle).flat_map(|(mod_params, err)| {
++            let mut to_r: Vec<ModelParam> = Vec::new();
++            to_r.extend_from_slice( &(mod_params.params()) );
++            to_r.push(ModelParam::Int(*err));
++            to_r
++        }).collect();
++    
++    return LayerParams::new( layer_idx , models.len() > 1, params_per_model + 1,
++                            combined_lle_params);
++                            
++}
++
+ macro_rules! model_index_from_output {
+     ($from: expr, $bound: expr, $needs_check: expr) => {
+         match $from {
+@@ -1064,91 +1084,36 @@ inline size_t FCLAMP(double inp, double bound) {{
+ 
+ fn generate_model(
+     namespace: &str,
+-    rmi: TrainedRMI,
++    mut rmi: TrainedRMI,
+     data_dir: &str,
+     key_type: KeyType
+ ) -> Result<(), std::io::Error> {
++
++    // println!("Construct layer");
+     // construct the code for the model parameters.
+-    let mut layer_params: Vec<LayerParams> = rmi.rmi
+-        .iter()
+-        .enumerate()
+-        .map(|(layer_idx, models)| params_for_layer(layer_idx, models))
+-        .collect();
++    let mut layer_params: Vec<LayerParams> = Vec::new();
+     
+-    let report_last_layer_errors = !rmi.last_layer_max_l1s.is_empty();
+-    let report_partial_layer_errors = !rmi.third_layer_max_l1s.is_empty();
+-
+-    let mut report_lle: Vec<u8> = Vec::new();
+-    if report_last_layer_errors && !report_partial_layer_errors {
+-        let lle = &rmi.last_layer_max_l1s;
+-        if lle.len() > 1 {
+-            let old_last = layer_params.pop().unwrap();
+-            let new_last = old_last.with_zipped_errors(lle);
+-            
+-            write!(report_lle, "  *err = ")?;
+-
+-            let last_layer_output = rmi.rmi[ rmi.rmi.len()-1 ][0].output_type();
+-
+-            let var_name = match last_layer_output {
+-                    ModelDataType::Int => "ipred",
+-                    ModelDataType::Float => "fpred",
+-                    ModelDataType::Float512 => "f512pred",
+-                    ModelDataType::Int128 => "i128pred",
+-                    ModelDataType::Int512 => "i512pred"
+-            };
+-
+-            if var_name == "f512pred"{
+-                writeln!(report_lle, "param_err[modelIndex];")?;
+-            }
+-            else{
+-                new_last.access_by_ref(&mut report_lle, "modelIndex",
+-                                   new_last.params_per_model() - 1)?;
+-                writeln!(report_lle, ";")?;
+-            }
+-            layer_params.push(new_last);
++    for (layer_idx, lyr) in rmi.rmi.iter().enumerate() {
++        // println!("{} {} {}", layer_idx, lyr.len(), rmi.third_layer_max_l1s.is_empty() );
++        if lyr.len() == 1{
++            let params_per_model = lyr[0].params().len();
++            layer_params.push(LayerParams::new(layer_idx,
++                false, // array access on non-singleton layers
++                params_per_model,
++                lyr[0].params()) );
+             
+-        } else {
+-            write!(report_lle, "  *err = {};", lle[0])?;
++        }else if layer_idx == 1 && !rmi.third_layer_max_l1s.is_empty() {
++            layer_params.push( zip_errors(layer_idx, &rmi.third_layer_max_l1s , lyr) );
++            //lyr.clear();
++        }else if layer_idx == 1 && rmi.third_layer_max_l1s.is_empty() {
++            // empty when 2-layer. (3-layer with empty third_layer -> does not pass here)
++            layer_params.push( zip_errors(layer_idx, &rmi.last_layer_max_l1s , lyr) );
++            //lyr.clear();
++        }else if layer_idx == 2  {
++            layer_params.push( zip_errors(layer_idx, &rmi.last_layer_max_l1s , lyr) );
+         }
+     }
+ 
+-    if report_last_layer_errors && report_partial_layer_errors {
+-        let lle = &rmi.last_layer_max_l1s;
+-        let ple = &rmi.third_layer_max_l1s;
+-        if lle.len() > 1 {
+-            let old_last = layer_params.pop().unwrap();
+-            let old_partial = layer_params.pop().unwrap();
+-            let new_last = old_last.with_zipped_errors(lle);
+-            let new_partial = old_partial.with_zipped_errors(ple);
+-            
+-            write!(report_lle, "  *err = ")?;
+-
+-            let last_layer_output = rmi.rmi[ rmi.rmi.len()-1 ][0].output_type();
+-
+-            let var_name = match last_layer_output {
+-                    ModelDataType::Int => "ipred",
+-                    ModelDataType::Float => "fpred",
+-                    ModelDataType::Float512 => "f512pred",
+-                    ModelDataType::Int128 => "i128pred",
+-                    ModelDataType::Int512 => "i512pred"
+-            };
+-
+-            if var_name == "f512pred"{
+-                writeln!(report_lle, "param_err[modelIndex];")?;
+-            }
+-            else{
+-                new_last.access_by_ref(&mut report_lle, "modelIndex",
+-                                   new_last.params_per_model() - 1)?;
+-                writeln!(report_lle, ";")?;
+-            }
+-
+-            layer_params.push(new_partial);
+-            layer_params.push(new_last);
+-            
+-        } else {
+-            write!(report_lle, "  *err = {};", lle[0])?;
+-        }
+-    }
+ 
+     if rmi.cache_fix.is_some() {
+         let cfv: Vec<ModelParam> = rmi.cache_fix.as_ref().unwrap().1.iter()
+@@ -1167,7 +1132,6 @@ fn generate_model(
+     }
+ 
+     
+-            
+     for (lp_idx, lp) in layer_params.iter().enumerate() {
+         match lp {
+             LayerParams::Constant(idx, _) => {
+@@ -1181,7 +1145,6 @@ fn generate_model(
+             LayerParams::Array(idx, _, _) |
+             LayerParams::MixedArray(idx, _, _) => {
+                 let it_is_last_layer = (lp_idx == layer_params.len()-1) ;
+-                let current_model_output = rmi.rmi[*idx as usize][0].output_type();
+ 
+                 let data_path = Path::new(&data_dir)
+                     .join(format!("{}_{}", namespace, array_name!(idx)));
+diff --git a/RMI/rmi_lib/src/train/mod.rs b/RMI/rmi_lib/src/train/mod.rs
+index e775814..1c69b2f 100644
+--- a/RMI/rmi_lib/src/train/mod.rs
++++ b/RMI/rmi_lib/src/train/mod.rs
+@@ -59,8 +59,11 @@ fn train_model<T: TrainingKey>(model_type: &str,
+         "linear_big" => Box::new(LinearModelBig::new(data)),
+         "linear" => Box::new(LinearModel::new(data)),
+         "pwl" => Box::new(PiecewiselinearModel::new(data,28)),
++        "pwl30" => Box::new(PiecewiselinearModel::new(data,30)),
+         "pwl28" => Box::new(PiecewiselinearModel::new(data,28)),
+         "pwl24" => Box::new(PiecewiselinearModel::new(data,24)),
++        "pwl22" => Box::new(PiecewiselinearModel::new(data,22)),
++        "pwl20" => Box::new(PiecewiselinearModel::new(data,20)),
+         "pwl26" => Box::new(PiecewiselinearModel::new(data,26)),
+         // "pwl" => Box::new(PiecewiselinearModel::new(data,24)),
+         "pwl42" => Box::new(PiecewiselinearModel_partial::new(data,26,42)),
+diff --git a/RMI/rmi_lib/src/train/two_layer.rs b/RMI/rmi_lib/src/train/two_layer.rs
+index 3ca6750..a41681f 100644
+--- a/RMI/rmi_lib/src/train/two_layer.rs
++++ b/RMI/rmi_lib/src/train/two_layer.rs
+@@ -469,7 +469,7 @@ fn build_partial_3layer_models_from<T: TrainingKey>(data: &RMITrainingData<T>,
+     assert!(! second_layer_data.is_empty());
+     let mut container = RMITrainingData::new(Box::new(second_layer_data));
+     if container.len() > make_partial_threshold {
+-        let curr_third_layer_num = (container.len() as f64 / 100 as f64).round() as usize;
++        let curr_third_layer_num = (container.len() as f64 / average_partial_model_num as f64).round() as usize;
+         // container.set_offset(container.get(0).1 - (third_layer_num * 100) );
+         let start_y = container.get(0).1;
+         let end_y = container.get(container.len()-1 ).1;
+@@ -534,7 +534,7 @@ fn build_partial_3layer_models_from<T: TrainingKey>(data: &RMITrainingData<T>,
+         partial_3rd_idx.append(&mut vec![(0,0)]);
+     }
+     assert_eq!(num_models as usize, leaf_models.len());
+-    return (leaf_models , partial_3rd_idx,partial_3rd_lb_corrs, partial_3rd_models, third_layer_num);
++    return (leaf_models , partial_3rd_idx, partial_3rd_lb_corrs, partial_3rd_models, third_layer_num);
+ }
+ pub fn train_two_layer<T: TrainingKey>(md_container: &mut RMITrainingData<T>,
+                                       layer1_model: &str, layer2_model: &str,
+@@ -781,7 +781,7 @@ pub fn train_two_layer<T: TrainingKey>(md_container: &mut RMITrainingData<T>,
+         model_max_error_idx,
+         model_max_log2_error,
+         last_layer_max_l1s: final_errors,
+-        third_layer_max_l1s: vec![0],
++        third_layer_max_l1s: vec![],
+         rmi: vec![vec![top_model], leaf_models],
+         models: format!("{},{}", layer1_model, layer2_model),
+         branching_factor: num_leaf_models,
+@@ -882,12 +882,12 @@ pub fn train_three_layer<T: TrainingKey>(md_container: &mut RMITrainingData<T>,
+     
+     
+ 
+-    println!("[2nd layer]Computing lower bound stats...");
++    // println!("[2nd layer]Computing lower bound stats...");
+     let lb_corrections_top = LowerBoundCorrection::new(
+      |x| top_model.predict_to_int(&x.to_model_input()), second_model_num, md_container
+     );
+ 
+-    println!("[2nd layer]Fixing empty models...");
++    // println!("[2nd layer]Fixing empty models...");
+     // replace any empty model with a model that returns the correct constant
+     // (for LB predictions), if the underlying model supports it.
+     let mut could_not_replace = false;
+@@ -1086,7 +1086,7 @@ pub fn train_three_layer<T: TrainingKey>(md_container: &mut RMITrainingData<T>,
+         model_max_error_idx,
+         model_max_log2_error,
+         last_layer_max_l1s: final_errors,
+-        third_layer_max_l1s: vec![0],
++        third_layer_max_l1s: vec![],
+         rmi: vec![vec![top_model], sec_models, leaf_models],
+         models: format!("{},{},{}", layer1_model, layer2_model, layer3_model),
+         branching_factor: num_leaf_models,
+@@ -1470,7 +1470,7 @@ pub fn train_partial_three_layer<T: TrainingKey>(md_container: &mut RMITrainingD
+     println!("Computing last level errors...");
+     // evaluate model, compute last level errors
+ 
+-    let mut max_min_gap = vec![[0, u64::MAX] ; num_leaf_models as usize];
++    // let mut max_min_gap: Vec<(u64, u64)> = vec![[0, u64::MAX] ; num_leaf_models as usize];
+ 
+     let mut last_layer_max_l1s = vec![(0, 0) ; num_leaf_models as usize];
+     let mut third_layer_max_l1s = vec![(0,0) ; third_layer_num as usize];
+@@ -1566,23 +1566,23 @@ pub fn train_partial_three_layer<T: TrainingKey>(md_container: &mut RMITrainingD
+             third_layer_max_l1s[target_third as usize ] = (cur_val.0 + 1, min_flag<<62| min_err<<32 | max_flag<<31 | max_err );
+         }
+ 
+-        if ( (y as u64) > max_min_gap[target as usize][0]){
+-            max_min_gap[target as usize][0] = y as u64;
+-        }
+-        if ( (y as u64) < max_min_gap[target as usize][1]){
+-            max_min_gap[target as usize][1] = y as u64;
+-        }
++        // if ( (y as u64) > max_min_gap[target as usize][0]){
++        //     max_min_gap[target as usize][0] = y as u64;
++        // }
++        // if ( (y as u64) < max_min_gap[target as usize][1]){
++        //     max_min_gap[target as usize][1] = y as u64;
++        // }
+         
+     }    
+ 
+     let mut sum:f64 = 0.0; 
+     let mut avg:f64 = 0.0; 
+-    for i__ in 0..num_leaf_models as usize {
+-        sum +=  (max_min_gap[i__][0] - max_min_gap[i__][1]) as f64 ;
+-    }
+-    avg = sum / (num_leaf_models+third_layer_num as u64 -partial_3rd_lb_corrs.len() as u64) as f64;
+-    println!("Average gap: {}",avg);
+-    println!("Total Partial model num: {}, Leaf of partial model num: {}",third_layer_num, partial_3rd_lb_corrs.len());
++    // for i__ in 0..num_leaf_models as usize {
++    //     sum +=  (max_min_gap[i__][0] - max_min_gap[i__][1]) as f64 ;
++    // }
++    // avg = sum / (num_leaf_models+third_layer_num as u64 -partial_3rd_lb_corrs.len() as u64) as f64;
++    // println!("Average gap: {}",avg);
++    
+     // for lower bound searches, we need to make sure that:
+     //   (1) a query for the first key in the next leaf minus one 
+     //       includes the key in the next leaf. (upper error)
+@@ -1881,56 +1881,81 @@ pub fn train_partial_three_layer<T: TrainingKey>(md_container: &mut RMITrainingD
+             num_leaf_models, large_corrections);
+     }
+ 
+-    trace!("Evaluating two-layer RMI...");
+-    println!("Total last layer model num: {}",(num_leaf_models as usize +third_layer_num as usize - partial_3rd_lb_corrs.len() as usize ));
+-    let mut new_last_layer_max_l1s = vec![(0, 0) ; (num_leaf_models as usize +third_layer_num as usize -partial_3rd_lb_corrs.len() as usize ) as usize];
++    trace!("Evaluating Second layer of RMI...");
+ 
+-    let mut idx_ = 0;
+-    for (num_key, err) in &last_layer_max_l1s {
+-        if err & 0x8000000000000000u64 != 0 {
+-            continue;
+-        }
+-        else{
+-            if *num_key != 0{
+-                // println!("[2nd layer]num: {} err:{}", *num_key, *err);
+-            }
+-            new_last_layer_max_l1s[idx_].0 = *num_key;
+-            // new_last_layer_max_l1s[idx_].1 = *err & 0xffffffff;
+-            new_last_layer_max_l1s[idx_].1 = (*err & 0x7fffffff) + ((*err >> 32) & 0x3fffffff);
+-            idx_ += 1;
+-            continue
+-        }
+-    }
++    // print total leaf-models, partial models, 
++    // println!("Total Partial model num: {}, Leaf of partial model num: {}",third_layer_num, partial_3rd_lb_corrs.len());
++    println!("[INFO] Number of leaf and partial models: {}, leaf: {}, partial: {}, leaf models that have partial models:{}",(num_leaf_models as usize +third_layer_num as usize  ), num_leaf_models, third_layer_num, partial_3rd_lb_corrs.len() );
+     
+-    println!("Partial start at idx:{}",idx_);
+-    for (num_key_3, err_3) in &third_layer_max_l1s{
+-        new_last_layer_max_l1s[idx_].0 = *num_key_3;
+-        // new_last_layer_max_l1s[idx_].1 = *err_3 & 0xffffffff;
+-        new_last_layer_max_l1s[idx_].1 = (*err_3 & 0x7fffffff) + ((*err_3 >> 32) & 0x3fffffff);
+-        if *num_key_3 != 0{
+-            // println!("[3rd layer]num: {} err:{}", *num_key_3, *err_3);
+-        }
+-        idx_+= 1;
+-    }
++    // let mut new_last_layer_max_l1s = vec![(0, 0) ; (num_leaf_models as usize +third_layer_num as usize -partial_3rd_lb_corrs.len() as usize ) as usize];
++
++    // let mut idx_ = 0;
++    // for (num_key, err) in &last_layer_max_l1s {
++    //     if err & 0x8000000000000000u64 != 0 {
++    //         continue;
++    //     }
++    //     else{
++    //         if *num_key != 0{
++    //             // println!("[2nd layer]num: {} err:{}", *num_key, *err);
++    //         }
++    //         new_last_layer_max_l1s[idx_].0 = *num_key;
++    //         // new_last_layer_max_l1s[idx_].1 = *err & 0xffffffff;
++    //         new_last_layer_max_l1s[idx_].1 = (*err & 0x7fffffff) + ((*err >> 32) & 0x3fffffff);
++    //         idx_ += 1;
++    //         continue
++    //     }
++    // }
++    
++    // println!("Partial start at idx:{}",idx_);
++    // for (num_key_3, err_3) in &third_layer_max_l1s{
++    //     new_last_layer_max_l1s[idx_].0 = *num_key_3;
++    //     // new_last_layer_max_l1s[idx_].1 = *err_3 & 0xffffffff;
++    //     new_last_layer_max_l1s[idx_].1 = (*err_3 & 0x7fffffff) + ((*err_3 >> 32) & 0x3fffffff);
++    //     if *num_key_3 != 0{
++    //         // println!("[3rd layer]num: {} err:{}", *num_key_3, *err_3);
++    //     }
++    //     idx_+= 1;
++    // }
++
++    // let (m_idx, m_err) = new_last_layer_max_l1s
++    //     .iter().enumerate()
++    //     .max_by_key(|(_idx, &x)| x.1).unwrap();
++
++    // let model_max_error = m_err.1;
++    // let model_max_error_idx = m_idx;
++
++    // let model_avg_error: f64 = new_last_layer_max_l1s
++    //   .iter().map(|(n, err)| n * err).sum::<u64>() as f64 / num_rows as f64;
++
++    // let model_avg_l2_error: f64 = new_last_layer_max_l1s
++    //     .iter()
++    //     .map(|(n, err)| ((n*err) as f64).powf(2.0) / num_rows as f64).sum::<f64>();
++
++    // // let model_avg_log2_error: f64 = new_last_layer_max_l1s
++    // //     .iter().map(|(n, err)| (*n as f64)*((2*err + 2) as f64).log2()).sum::<f64>() / num_rows as f64;
++    // let model_avg_log2_error: f64 = new_last_layer_max_l1s
++    //     .iter().map(|(n, err)| (*n as f64)*((err + 2) as f64).log2()).sum::<f64>() / num_rows as f64;
+ 
+-    let (m_idx, m_err) = new_last_layer_max_l1s
++    // let model_max_log2_error: f64 = (model_max_error as f64).log2();
++
++    let (m_idx, m_err) = last_layer_max_l1s
+         .iter().enumerate()
+-        .max_by_key(|(_idx, &x)| x.1).unwrap();
++        .max_by_key(|(_idx, &x)| (x.1 & 0x7fffffff + ((x.1 >> 32) & 0x3fffffff) )).unwrap();
+ 
+-    let model_max_error = m_err.1;
++    let model_max_error = (m_err.1 & 0x7fffffff) + ((m_err.1 >> 32) & 0x3fffffff);
+     let model_max_error_idx = m_idx;
+ 
+-    let model_avg_error: f64 = new_last_layer_max_l1s
+-      .iter().map(|(n, err)| n * err).sum::<u64>() as f64 / num_rows as f64;
++    let model_avg_error: f64 = last_layer_max_l1s
++      .iter().map(|(n, err)| n * ( (err& 0x7fffffff) + ((*err >> 32) & 0x3fffffff)) ).sum::<u64>() as f64 / num_rows as f64;
+ 
+-    let model_avg_l2_error: f64 = new_last_layer_max_l1s
++    let model_avg_l2_error: f64 = last_layer_max_l1s
+         .iter()
+-        .map(|(n, err)| ((n*err) as f64).powf(2.0) / num_rows as f64).sum::<f64>();
++        .map(|(n, err)| ( ((err& 0x7fffffff) + ((*err >> 32) & 0x3fffffff)) as f64).powf(2.0) / num_rows as f64).sum::<f64>();
+ 
+     // let model_avg_log2_error: f64 = new_last_layer_max_l1s
+     //     .iter().map(|(n, err)| (*n as f64)*((2*err + 2) as f64).log2()).sum::<f64>() / num_rows as f64;
+-    let model_avg_log2_error: f64 = new_last_layer_max_l1s
+-        .iter().map(|(n, err)| (*n as f64)*((err + 2) as f64).log2()).sum::<f64>() / num_rows as f64;
++    let model_avg_log2_error: f64 = last_layer_max_l1s
++        .iter().map(|(n, err)| (*n as f64)*((( (err& 0x7fffffff) + ((*err >> 32) & 0x3fffffff)) + 2) as f64).log2()).sum::<f64>() / num_rows as f64;
+ 
+     let model_max_log2_error: f64 = (model_max_error as f64).log2();
+ 
+diff --git a/RMI/src/main.rs b/RMI/src/main.rs
+index a091266..a3e0900 100644
+--- a/RMI/src/main.rs
++++ b/RMI/src/main.rs
+@@ -329,6 +329,7 @@ fn main() {
+         );
+ 
+         if true {
++            
+             println!("Model build time: {} ms", trained_model.build_time / 1_000_000);
+ 
+             println!(
+@@ -336,22 +337,22 @@ fn main() {
+                 trained_model.model_avg_error as f64,
+                 trained_model.model_avg_error / num_rows as f64 * 100.0
+             );
+-            println!(
+-                "Average model L2 error: {}",
+-                trained_model.model_avg_l2_error
+-            );
++            // println!(
++            //     "Average model L2 error: {}",
++            //     trained_model.model_avg_l2_error
++            // );
+             println!(
+                 "Average model log2 error: {}",
+                 trained_model.model_avg_log2_error
+             );
++            // println!(
++            //     "Max model log2 error: {}",
++            //     trained_model.model_max_log2_error
++            // );
+             println!(
+-                "Max model log2 error: {}",
+-                trained_model.model_max_log2_error
+-            );
+-            println!(
+-                "Max model error on model {}: {} ({}%)",
++                "Max model log2 error on model {}: {} ({}%)",
+                 trained_model.model_max_error_idx,
+-                trained_model.model_max_error,
++                trained_model.model_max_log2_error,
+                 trained_model.model_max_error as f64 / num_rows as f64 * 100.0
+             );
+         }
+diff --git a/build_rmis_dna.sh b/build_rmis_dna.sh
+index 9d3cc26..6c7bd42 100755
+--- a/build_rmis_dna.sh
++++ b/build_rmis_dna.sh
+@@ -1,5 +1,9 @@
+ #! /usr/bin/env bash
+ 
++
++BIT=28
++
++
+ if  ! command -v bwa-meme-train-prmi &> /dev/null 
+ then
+     # bwa-meme-train-prmi command not found, should build it
+@@ -23,11 +27,15 @@ fi
+ 
+ if [ -z "$1" ]; then
+     echo "Usage: build_rmis_dna.sh <reference file>
+-    ex) ./build_rmis_dna.sh ./human.fasta"
+-    echo "About: RMI training script for BWA-MEME. Training requires about 15 minute with single thread"
++    ex 1) ./build_rmis_dna.sh ./human.fasta
++    ex 2) ./build_rmis_dna.sh ./human.fasta 26"
++    echo "About: Learned-index training script for BWA-MEME. For human reference, training requires around 15 minutes and 64GB memory. You can set number of models to use for Learned-index (ex 2)."
+     exit 0
+ fi
+ 
++
++
++
+ if [ ! -f $1.suffixarray_uint64 ] 
+ then
+     # echo "ERROR:"
+@@ -36,6 +44,53 @@ Correct the path or build the suffixarray index first with command: bwa-meme ind
+     exit 1
+ fi
+ 
++if ! command -v stat -L &> /dev/null
++then
++    echo "[Info] stat command could not be found, using default setting to build Learned-index"
++else
++    FILESIZE=$(stat -c%s -L "$1.suffixarray_uint64")
++    if [ "$FILESIZE" -gt "8000000000" ]
++    then
++        BIT=28
++    elif [ "$FILESIZE" -gt "1000000000" ]
++    then
++        BIT=26
++    else 
++        BIT=24
++    fi
++
++fi
++
++if  [ $# -eq 2 ]
++  then
++  if  [[ $2 == ?(-)+([[:digit:]]) ]]
++  then
++    array=(20 22 24 26 28 30)
++    FOUND=0
++    for i in "${array[@]}"
++        do
++            if [ "$i" -eq "$2" ] ; then
++                FOUND=1
++            fi
++        done
++    if [ $FOUND -eq 1 ]
++    then
++      echo "Set number of model to $2"
++    else
++      echo "[ERROR] You should select Bit among (20, 22, 24, 26, 28, 30)"
++      exit 1
++    fi
++    
++    BIT=$2
++  else
++    echo "If you intended to set number of models, please give Integer for Bit, current input: $2"
++    exit 1
++  fi
++    
++fi
++
++echo "Generate 2^$BIT leaf-models: $(( 1 << $BIT )) models"
++
+ function build_rmi_set() {
+     DATA_PATH=$1
+     DATA_NAME=`basename $1`
+@@ -45,7 +100,7 @@ function build_rmi_set() {
+     if  command -v RMI/target/release/bwa-meme-train-prmi &> /dev/null 
+     then
+         # RMI/target/release/bwa-meme-train-prmi --data-path $DIR_NAME $DATA_PATH $DATA_NAME pwl,linear,linear_spline 1024
+-	RMI/target/release/bwa-meme-train-prmi --data-path $DIR_NAME $DATA_PATH $DATA_NAME pwl,linear,linear_spline 268435456
++	    RMI/target/release/bwa-meme-train-prmi --data-path $DIR_NAME $DATA_PATH $DATA_NAME pwl$BIT,linear,linear_spline $(( 1 << $BIT ))
+     elif command -v bwa-meme-train-prmi &> /dev/null 
+     then
+ 	bwa-meme-train-prmi --data-path $DIR_NAME $DATA_PATH $DATA_NAME pwl,linear,linear_spline 268435456
+diff --git a/images/BWA-MEM2-ERT-Performance.png b/images/BWA-MEM2-ERT-Performance.png
+deleted file mode 100644
+index 14361ed..0000000
+Binary files a/images/BWA-MEM2-ERT-Performance.png and /dev/null differ
+diff --git a/images/BWA-MEME - Alignment Results.PNG b/images/BWA-MEME - Alignment Results.PNG
+deleted file mode 100644
+index 5a76f03..0000000
+Binary files a/images/BWA-MEME - Alignment Results.PNG and /dev/null differ
+diff --git a/images/BWA-MEME-SeedingResults.jpg b/images/BWA-MEME-SeedingResults.jpg
+new file mode 100644
+index 0000000..993ff68
+Binary files /dev/null and b/images/BWA-MEME-SeedingResults.jpg differ
+diff --git a/images/BWA-MEME-alignment_throughput.png b/images/BWA-MEME-alignment_throughput.png
+new file mode 100644
+index 0000000..b7aea59
+Binary files /dev/null and b/images/BWA-MEME-alignment_throughput.png differ
+diff --git a/images/alingment_all.png b/images/alingment_all.png
+deleted file mode 100644
+index ee1e5df..0000000
+Binary files a/images/alingment_all.png and /dev/null differ
+diff --git a/src/LearnedIndex_seeding.cpp b/src/LearnedIndex_seeding.cpp
+index 6f1bee8..6c847ae 100644
+--- a/src/LearnedIndex_seeding.cpp
++++ b/src/LearnedIndex_seeding.cpp
+@@ -51,6 +51,7 @@ extern "C" {
+ #endif
+ 
+ double SA_NUM;
++uint64_t bit_shift;
+ char* L1_PARAMETERS;
+ char* L2_PARAMETERS;
+ 
+@@ -74,7 +75,7 @@ bool learned_index_load(char const* dataPath, char const* dataPath2, char const*
+ 	{
+ 		SA_NUM=suffix_array_num;
+ 		uint64_t model_size = 0;
+-		uint64_t num_model,bit_shift;
++		uint64_t num_model;
+ 		
+ 		{
+ 			std::ifstream infile(dataPath2, std::ios::in | std::ios::binary);
+@@ -92,7 +93,6 @@ bool learned_index_load(char const* dataPath, char const* dataPath2, char const*
+ 				return false;
+ 			}
+ 			infile.read((char*)L1_PARAMETERS, model_size);
+-			num_model = model_size/24; // number of model
+ 		}
+ 
+ 		{
+@@ -110,12 +110,13 @@ bool learned_index_load(char const* dataPath, char const* dataPath2, char const*
+ 				fprintf(stderr, "Can't alloc memory for learned-index model\n.");
+ 				return false;
+ 			}
+-			num_model = std::max(model_size/24, num_model); // number of model
++			num_model = model_size/24; // number of model
+ 			infile.read((char*)L2_PARAMETERS, model_size);
+ 
+ 		}
+ 		bit_shift = ffs(num_model)-1;
+ 		fprintf(stderr,"[Learned-Config] MODE:%d SEARCH_METHOD: %d MEM_TRADEOFF:%d EXPONENTIAL_SMEMSEARCH: %d DEBUG_MODE:%d Num 2nd Models:%ld PWL Bits Used:%ld\n", MODE, CURR_SEARCH_METHOD, MEM_TRADEOFF, EXPONENTIAL_SMEMSEARCH,DEBUG_MODE, num_model, bit_shift);
++		bit_shift = 64 - bit_shift;
+ 	}
+ 	return true;
+ }
+@@ -190,7 +191,7 @@ inline uint64_t learned_index_lookup(uint64_t key, size_t* err) { //p-rmi
+ 	size_t partial_start;
+ 	double partial_num;
+ 	// modelIndex = pwl(key);
+-	modelIndex = key >>36;
++	modelIndex = key >>bit_shift;
+ 
+ 
+ 	fpred = linear(*((double*) (L2_PARAMETERS + (modelIndex * 24) + 0)), *((double*) (L2_PARAMETERS + (modelIndex * 24) + 8)), (double)key);
+diff --git a/src/main.cpp b/src/main.cpp
+index e1c5a5e..fd9c01a 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -35,7 +35,7 @@ Contacts: Vasimuddin Md <vasimuddin.md@intel.com>; Sanchit Misra <sanchit.misra@
+ #define PACKAGE_VERSION "Identical to BWA-MEM2 2.2"
+ #endif
+ #ifndef MEME_PACKAGE_VERSION
+-#define MEME_PACKAGE_VERSION "BWA-MEME v1.0.4"
++#define MEME_PACKAGE_VERSION "BWA-MEME v1.0.5"
+ #endif
+ 
+ // ----------------------------------
+diff --git a/test/Learned_seeding_big_read.cpp b/test/Learned_seeding_big_read.cpp
+index 92d94bd..5216710 100644
+--- a/test/Learned_seeding_big_read.cpp
++++ b/test/Learned_seeding_big_read.cpp
+@@ -345,50 +345,52 @@ int main(int argc, char **argv) {
+     FMI_search *fmiSearch = new FMI_search(argv[1]);
+     fmiSearch->load_index_other_elements(BWA_IDX_BNS | BWA_IDX_PAC);
+     
++
++    uint8_t* new_pac;
++
+     /* add reverse-complement binary reference in pac */
+     // fmiSearch->idx->pac = (uint8_t*) realloc(fmiSearch->idx->pac, fmiSearch->idx->bns->l_pac/2+1);
+     int64_t ll_pac = (fmiSearch->idx->bns->l_pac * 2 + 3) / 4 * 4;
+-    if (ll_pac > 0x10000) fmiSearch->idx->pac = realloc(fmiSearch->idx->pac, ll_pac/4);
+-    memset_s(fmiSearch->idx->pac + (fmiSearch->idx->bns->l_pac+3)/4, (ll_pac - (fmiSearch->idx->bns->l_pac+3)/4*4) / 4, 0);
+-    // for (int64_t l = fmiSearch->idx->bns->l_pac - 1; l >= 0; --l, ++fmiSearch->idx->bns->l_pac){
++    new_pac = (uint8_t*) malloc(ll_pac/4);
++    memset_s(new_pac , ll_pac / 4, 0);
++    for (int64_t l=0; l<fmiSearch->idx->bns->l_pac;l++){
++        _set_pac(new_pac, l , _get_pac(fmiSearch->idx->pac, l));
++    }
+     for (int64_t l = fmiSearch->idx->bns->l_pac - 1; l >= 0; --l){
+-			_set_pac(fmiSearch->idx->pac, (fmiSearch->idx->bns->l_pac <<1) - l-1, 3-_get_pac(fmiSearch->idx->pac, l));
+-    }//add reverse complement
+-
+-    
++        _set_pac(new_pac, (fmiSearch->idx->bns->l_pac<<1)-l-1 , 3-_get_pac(fmiSearch->idx->pac, l));
++    }//add reverse complement   
+     for (int64_t l=0; l<ll_pac/4; l++){
+         // swap 8 bit to match endianess
+-        fmiSearch->idx->pac[l] = BitReverseTable256[fmiSearch->idx->pac[l]];
++        new_pac[l] = BitReverseTable256[new_pac[l]];
+     }
++    fmiSearch->idx->pac = new_pac;
++    // fmiSearch->idx->pac = (uint8_t*) realloc(fmiSearch->idx->pac, ll_pac/4);
++    // memset_s(fmiSearch->idx->pac + (fmiSearch->idx->bns->l_pac+3)/4, (ll_pac - (fmiSearch->idx->bns->l_pac+3)/4*4) / 4, 0);
++    // for (int64_t l = fmiSearch->idx->bns->l_pac - 1; l >= 0; --l, ++fmiSearch->idx->bns->l_pac){
++    // for (int64_t l = fmiSearch->idx->bns->l_pac - 1; l >= 0; --l){
++	// 		_set_pac(fmiSearch->idx->pac, (fmiSearch->idx->bns->l_pac <<1) - l-1, 3-_get_pac(fmiSearch->idx->pac, l));
++    // }//add reverse complement
++
++    
++    // for (int64_t l=0; l<ll_pac/4; l++){
++    //     // swap 8 bit to match endianess
++    //     fmiSearch->idx->pac[l] = BitReverseTable256[fmiSearch->idx->pac[l]];
++    // }
+     uint64_t suffixarray_num;
+ 
+-    #if 0
+-    char sa_file_name[PATH_MAX];
+-    strcpy_s(sa_file_name, PATH_MAX, argv[1]); 
+-    strcat_s(sa_file_name, PATH_MAX, ".suffixarray_uint64");
+-    std::ifstream in(sa_file_name, std::ios::binary);
+-    if (!in.is_open()) {
+-        fprintf(stderr, "[M::%s::LEARNED] Can't open suffix array file\n.", __func__);
+-        exit(EXIT_FAILURE);
+-    }
+-    in.read(reinterpret_cast<char*>(&suffixarray_num), sizeof(uint64_t));
+-    in.close();
+-    fprintf(stderr, "number of suffix array:%ld\n.", suffixarray_num);
+-    #endif
+     uint64_t allocMem = 402653184;// size of learned index
+ 
+     char sa_pos_file_name[PATH_MAX];
+     strcpy_s(sa_pos_file_name, PATH_MAX, argv[1]);
+-    #if LOADSUFFIX
+-    strcat_s(sa_pos_file_name, PATH_MAX, ".possa_packed");
+-    #else
+     strcat_s(sa_pos_file_name, PATH_MAX, ".pos_packed");
+-    #endif
+-
+     FILE *sa_pos_fd;
+     sa_pos_fd = fopen(sa_pos_file_name, "rb");
++    if (sa_pos_fd == NULL) {
++        fprintf(stderr, "[M::%s::MEME] Can't open suffix array position index (ref.fa.pos_packed or ref.fa.possa_packed)\n.", __func__);
++        exit(1);
++    }
+     fseek(sa_pos_fd, 0, SEEK_END); 
+-    suffixarray_num = ftell(sa_pos_fd) / SASIZE;
++    suffixarray_num = ftell(sa_pos_fd) / 5;
+     rewind(sa_pos_fd);
+ 
+     fprintf(stderr, "number of suffix array:%ld\n.", suffixarray_num);
+@@ -483,15 +485,7 @@ int main(int argc, char **argv) {
+     if (bwa_verbose >= 3) {
+         fprintf(stderr, "[M::%s::LEARNED] Reading pos_packed File to memory\n", __func__);
+     }
+-    strcpy_s(sa_pos_file_name, PATH_MAX, argv[1]); 
+-    strcat_s(sa_pos_file_name, PATH_MAX, ".pos_packed");
+-    // FILE *sa_pos_fd;
+-    fclose(sa_pos_fd);
+-    sa_pos_fd = fopen(sa_pos_file_name, "rb");
+-    if (sa_pos_fd == NULL) {
+-        fprintf(stderr, "Can't open suffix array position index File\n.", __func__);
+-        exit(1);
+-    }
++    
+     allocMem += 5*suffixarray_num * 8L; 
+     assert(sa_position != NULL);
+     double rtime = realtime();
+@@ -697,4 +691,3 @@ int main(int argc, char **argv) {
+     delete fmiSearch;
+     return 0;
+ }
+-

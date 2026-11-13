@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/GoekeLab__xpore-231"
+description = "Repackage xpore & add Yuk Kei's CI"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "xpore",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "GoekeLab/xpore"
+ref = "4880e65716aaa35f936c592e13ca510d8db43164"
+reference = "https://github.com/GoekeLab/xpore/pull/231"
+source_access = "auto"
+built_at = "2026-11-13T16:14:05.689741+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:95a155e477e538c8d2d166640691c341558cf2e5973a682ab38a559c6480d1fb"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-11-07T01:33:32Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/test.yaml",
+    "README.md",
+    "docs/xpore_textlogo.png",
+    "pyproject.toml",
+    "setup.py",
+    "xpore/diffmod/configurator.py",
+    "xpore/diffmod/gmm.py",
+    "xpore/diffmod/statstest.py",
+    "xpore/scripts/dataprep.py",
+    "xpore/scripts/diffmod.py",
+    "xpore/scripts/postprocessing.py",
+    "xpore/scripts/xpore.py",
+    "xpore/utils/stats.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 571
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

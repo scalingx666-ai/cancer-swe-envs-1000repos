@@ -1,0 +1,54 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index f2f00d1..56e1e9d 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -38,7 +38,8 @@ Suggests:
+   hgu133a.db,
+   ggplotify,
+   RMTstat,
+-  ggalt,
++  ggforce,
++  concaveman,
+   DESeq2,
+   airway,
+   org.Hs.eg.db,
+diff --git a/R/biplot.R b/R/biplot.R
+index 77bdf1f..ca62fe4 100644
+--- a/R/biplot.R
++++ b/R/biplot.R
+@@ -627,7 +627,7 @@ biplot <- function(
+     if (encircleFill) {
+       if (is.null(encircleLineCol)) {
+         plot <- plot +
+-          ggalt::geom_encircle(
++          ggforce::geom_mark_ellipse(
+             aes(group = col,
+               fill = col,
+               colour = col),
+@@ -637,7 +637,7 @@ biplot <- function(
+             na.rm = TRUE)
+       } else {
+         plot <- plot +
+-          ggalt::geom_encircle(
++          ggforce::geom_mark_ellipse(
+             aes(group = col,
+               fill = col),
+             colour = encircleLineCol,
+@@ -649,7 +649,7 @@ biplot <- function(
+     } else {
+       if (is.null(encircleLineCol)) {
+         plot <- plot +
+-          ggalt::geom_encircle(
++          ggforce::geom_mark_ellipse(
+             aes(group = col,
+               colour = col),
+             fill = NA,
+@@ -659,7 +659,7 @@ biplot <- function(
+             na.rm = TRUE)
+       } else {
+         plot <- plot +
+-          ggalt::geom_encircle(
++          ggforce::geom_mark_ellipse(
+             aes(group = col),
+             colour = encircleLineCol,
+             fill = NA,

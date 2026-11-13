@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/hall-lab__svtyper-97"
+description = "v0.7.0"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "svtyper",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "hall-lab/svtyper"
+ref = "a59ad33f7dec488c1a78efd24224c590bb92a57e"
+reference = "https://github.com/hall-lab/svtyper/pull/97"
+source_access = "auto"
+built_at = "2026-11-13T16:20:24.406819+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9c6bba3ca7b2a342a6475b2377939f532c19989e062c796a9efa2b0abd55d77a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-09-13T15:21:10Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "setup.py",
+    "svtyper/classic.py",
+    "svtyper/singlesample.py",
+    "svtyper/version.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 10
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

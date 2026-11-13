@@ -1,0 +1,284 @@
+diff --git a/.gitignore b/.gitignore
+index 9c9e155..6302bc0 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,3 +6,5 @@
+ setup.log
+ /tests/*.dSYM
+ /install
++debug-scratch/
++install_tmp/
+diff --git a/Makefile b/Makefile
+index e2569f2..5f7dc2c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,9 +1,8 @@
+-CAVEMAN_VERSION=1.15.4
++CAVEMAN_VERSION=1.15.5
+ 
+ TEST_REF?=""
+ #Compiler
+-CC?=gcc
+-CC+= -O3 -g -DCAVEMAN_VERSION='"$(CAVEMAN_VERSION)"' -DTEST_REF='"$(TEST_REF)"'
++CC = gcc -DCAVEMAN_VERSION='"$(CAVEMAN_VERSION)"' -DTEST_REF='"$(TEST_REF)"'
+ 
+ #debug compiler
+ #CC = gcc -O3 -DCAVEMAN_VERSION='"$(CAVEMAN_VERSION)"' -g
+@@ -13,6 +12,12 @@ CC+= -O3 -g -DCAVEMAN_VERSION='"$(CAVEMAN_VERSION)"' -DTEST_REF='"$(TEST_REF)"'
+ # -Wall turns on most warnings from compiler
+ CFLAGS = -Wall
+ 
++ifneq ($(DEBUG),)
++    CFLAGS += -O3  # Optimise
++else
++    CFLAGS += -g -O0  # Debug
++endif
++
+ HTSLOC?=$(HTSLIB)
+ 
+ HTSTMP?=./caveman_tmp
+@@ -73,8 +78,14 @@ all: clean make_bin make_htslib_tmp $(CAVEMAN_TARGET) $(UMNORM_TARGET) copyscrip
+ $(UMNORM_TARGET): $(OBJS)
+ 	$(CC) $(JOIN_INCLUDES) $(INCLUDES) $(CFLAGS) -o $(UMNORM_TARGET) $(OBJS) $(LFLAGS) $(CAT_LFLAGS) $(LIBS) ./src/generateCavemanVCFUnmatchedNormalPanel.c
+ 
++ifneq ($(DEBUG),)
++$(CAVEMAN_TARGET): $(OBJS)
++	$(CC) $(JOIN_INCLUDES) $(INCLUDES) $(CFLAGS) -o $(CAVEMAN_TARGET) $(OBJS) $(LFLAGS) $(CAT_LFLAGS) $(LIBS) ./src/caveman.c
++else
+ $(CAVEMAN_TARGET): $(OBJS)
+ 	$(CC) $(JOIN_INCLUDES) $(INCLUDES) $(CFLAGS) -o $(CAVEMAN_TARGET) $(OBJS) $(LFLAGS) $(CAT_LFLAGS) $(LIBS) ./src/caveman.c
++	strip $(CAVEMAN_TARGET)
++endif
+ 
+ #Unit Tests
+ test: $(CAVEMAN_TARGET)
+diff --git a/setup.sh b/setup.sh
+index 2c49f1a..866504c 100755
+--- a/setup.sh
++++ b/setup.sh
+@@ -32,12 +32,19 @@ function version_eq_gt() {
+ 
+ set -euo pipefail 
+ 
+-if [ "$#" -ne "1" ] ; then
++if [ "$#" -lt "1" ] ; then
+   echo "Please provide an installation path  such as /opt/pancan"
+   exit 0
+ fi
+ 
+ INST_PATH=$1
++DEBUG_ARG="${2:-}"
++if [ "$DEBUG_ARG" = "DEBUG" ]; then
++  DEBUG_FLAG=1
++  echo "DEBUG set"
++else
++  DEBUG_FLAG=0
++fi
+ 
+ CPU=`grep -c ^processor /proc/cpuinfo`
+ if [ $? -eq 0 ]; then
+@@ -52,9 +59,9 @@ echo "Max compilation CPUs set to $CPU"
+ # get current directory
+ INIT_DIR=`pwd`
+ 
+-set +o pipefail
+-LIBZ_VER=$(echo '#include <zlib.h>' | cpp -H -o /dev/null |& head -1 | cut -d' ' -f 2 | xargs grep -e '#define ZLIB_VERSION' | cut -d ' ' -f 3 | perl -pe 's/["\n]//g')
+-set -o pipefail
++echo '#include <zlib.h>' | cpp -H 1>/dev/null 2> tmp.log.cpp
++LIBZ_VER=$(cat tmp.log.cpp | head -1 | cut -d' ' -f 2 | xargs grep -e '#define ZLIB_VERSION' | cut -d ' ' -f 3 | sed 's/"//g')
++rm tmp.log.cpp
+ 
+ if version_eq_gt $LIBZ_VER $REQUIRED_MIN_LIBZ ; then
+ 	echo "Found acceptable libz version $LIBZ_VER."
+@@ -111,23 +118,35 @@ export HTSLIB="$SETUP_DIR/htslib"
+ export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${HTSLIB}:${LINASM_LIB}"
+ 
+ echo -n "Building CaVEMan ..."
+-if [ -e "$SETUP_DIR/caveman.success" ]; then
+-  echo -n " previously installed ...";
++cd $INIT_DIR
++make clean &&
++{
++if [ $DEBUG_FLAG -eq 1 ]; then
++  make -j$CPU DEBUG=1
+ else
+-  cd $INIT_DIR
+-  make clean &&
+-  make -j$CPU &&
+-  mv $INIT_DIR/bin/* $INST_PATH/bin/ &&
+-  mkdir -p $INST_PATH/lib/ &&
+-  cp $LINASM_LIB/liblinasm.so $INST_PATH/lib/. &&
+-  touch $SETUP_DIR/caveman.success
++  make -j$CPU
+ fi
++} &&
++mv $INIT_DIR/bin/* $INST_PATH/bin/ &&
++mkdir -p $INST_PATH/lib/ &&
++cp $LINASM_LIB/liblinasm.so $INST_PATH/lib/. &&
++touch $SETUP_DIR/caveman.success
+ 
+-# cleanup all junk
+-rm -rf $SETUP_DIR 
+-make clean
++# cleanup all intermediates
++if [ -e "$SETUP_DIR/caveman.success" ]; then
++  echo
++  echo "Installation succesful"
++  echo "Binaries available at $INST_PATH/bin/"
++  echo "linasm.so available at $INST_PATH/lib/ - directory must be on LD_LIBRARY_PATH"
++  if [ $DEBUG_FLAG -eq 1 ]; then
++    echo "DEBUG set, retaining intermediate files"
++  else
++    rm -rf $SETUP_DIR
++    make clean
++  fi
++else
++  echo
++  echo "Installation failed"
++  echo "Retaining intermediate files"
++fi
+ 
+-echo
+-echo "Installation succesful"
+-echo "Binaries available at $INST_PATH/bin/"
+-echo "linasm.so available at $INST_PATH/lib/ - directory must be on LD_LIBRARY_PATH"
+diff --git a/src/alg_bean.h b/src/alg_bean.h
+index cd10aa5..8d3f13a 100644
+--- a/src/alg_bean.h
++++ b/src/alg_bean.h
+@@ -34,7 +34,7 @@
+ #define _alg_bean_h
+ 
+ #include <stdio.h>
+-#include <List.h>
++#include "List.h"
+ #include "khash.h"
+ 
+ //New hash to store unique readlengths
+diff --git a/src/caveman.c b/src/caveman.c
+index b5452b2..46b04b3 100644
+--- a/src/caveman.c
++++ b/src/caveman.c
+@@ -30,12 +30,12 @@
+ *
+ */
+ 
+-#include <setup.h>
+-#include <split.h>
+-#include <mstep.h>
+-#include <merge.h>
+-#include <estep.h>
+-#include <dbg.h>
++#include "setup.h"
++#include "split.h"
++#include "mstep.h"
++#include "merge.h"
++#include "estep.h"
++#include "dbg.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <getopt.h>
+diff --git a/src/fai_access.c b/src/fai_access.c
+index fe4348f..6ecd041 100644
+--- a/src/fai_access.c
++++ b/src/fai_access.c
+@@ -35,7 +35,7 @@
+ #include <string.h>
+ #include <stdlib.h>
+ #include "dbg.h"
+-#include <fai_access.h>
++#include "fai_access.h"
+ 
+ int fai_access_get_name_from_index(int idx, char *index_file_name, char *chr_name, int *length){
+ 	assert(index_file_name != NULL);
+diff --git a/src/ignore_reg_access.c b/src/ignore_reg_access.c
+index 0748e61..bb5bb09 100644
+--- a/src/ignore_reg_access.c
++++ b/src/ignore_reg_access.c
+@@ -36,8 +36,8 @@
+ #include "dbg.h"
+ #include <string.h>
+ #include <limits.h>
+-#include <alg_bean.h>
+-#include <ignore_reg_access.h>
++#include "alg_bean.h"
++#include "ignore_reg_access.h"
+ 
+ int ignore_reg_access_get_ign_reg_count_for_chr(char *ign_file, char *chr){
+      assert(ign_file != NULL);
+@@ -111,7 +111,7 @@ int ignore_reg_access_get_ign_reg_for_chr(char *ign_file,char *chr, int entry_co
+         int chk = sscanf(rd,"%s\t%d\t%d",chr_nom,&beg,&end);
+         if(chk==3){
+             if(strcmp(chr_nom,chr) == 0){
+-                regions[found_count] = malloc(sizeof(struct seq_region_t));
++                regions[found_count] = malloc(sizeof(struct seq_region_t));  // not free'd :/
+                 check_mem(regions[found_count]);
+                 regions[found_count]->beg = beg + is_bed;
+                 regions[found_count]->end = end;
+diff --git a/src/ignore_reg_access.h b/src/ignore_reg_access.h
+index b425d68..6c299ac 100644
+--- a/src/ignore_reg_access.h
++++ b/src/ignore_reg_access.h
+@@ -34,7 +34,7 @@
+ #define _ignore_reg_access_h
+ 
+ #include <stdio.h>
+-#include <List.h>
++#include "List.h"
+ 
+ typedef struct seq_region_t{
+    int beg;
+diff --git a/src/split.c b/src/split.c
+index 536b270..eaecfb3 100644
+--- a/src/split.c
++++ b/src/split.c
+@@ -35,11 +35,11 @@
+ #include <getopt.h>
+ #include <string.h>
+ #include <assert.h>
+-#include <dbg.h>
+-#include <split.h>
+-#include <file_tests.h>
+-#include <alg_bean.h>
+-#include <fai_access.h>
++#include "dbg.h"
++#include "split.h"
++#include "file_tests.h"
++#include "alg_bean.h"
++#include "fai_access.h"
+ #include <split_access.h>
+ #include <bam_access.h>
+ #include <config_file_access.h>
+@@ -179,7 +179,7 @@ int split_main(int argc, char *argv[]){
+     int is_err = split_setup_options(argc,argv);
+     check(is_err==0,"Error parsing options");
+ 
+-    char *chr_name = malloc(sizeof(char *));
++    char *chr_name = malloc(sizeof(char) * 100);
+     //Open the config file and do relevant things
+     FILE *config = fopen(config_file,"r");
+     check(config != NULL,"Failed to open config file for reading. Have you run caveman-setup?");
+@@ -428,6 +428,8 @@ int split_main(int argc, char *argv[]){
+         hts_itr_destroy(iter_tum);
+     }//End of checking if this is a valid contig to split.
+ 
++    free(ignore_regs);
++    free(chr_name);
+ 
+     return 0;
+ error:
+diff --git a/src/split.h b/src/split.h
+index c28bcae..d98cf95 100644
+--- a/src/split.h
++++ b/src/split.h
+@@ -33,8 +33,8 @@
+ #ifndef _split_h
+ #define _split_h
+ 
+-#include <List.h>
+-#include <ignore_reg_access.h>
++#include "List.h"
++#include "ignore_reg_access.h"
+ 
+ int get_read_counts_with_ignore(List *ignore,int start, int stop, char *chr);
+ int shrink_section_to_size(char *chr_name,int sect_start, int sect_stop,

@@ -1,0 +1,49 @@
+diff --git a/requirements.txt b/requirements.txt
+index fcc186e..fa71e00 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,5 +1,5 @@
+ numpy>=1.7
+-pandas>=0.21
++pandas>=1.3.0
+ pytz>=2013
+ sphinxcontrib-napoleon>=0.6.1
+ requests>=2.21.0
+diff --git a/src/GEOparse/sra_downloader.py b/src/GEOparse/sra_downloader.py
+index f4e893f..04a9a55 100644
+--- a/src/GEOparse/sra_downloader.py
++++ b/src/GEOparse/sra_downloader.py
+@@ -1,13 +1,14 @@
+ """A module that helps to deal with SRA files."""
+ 
+ import glob
++from io import StringIO
+ import json
+ import os
+ import platform
+ import re
+ import subprocess as sp
+ 
+-from pandas import DataFrame, concat
++from pandas import DataFrame, concat, read_xml
+ from six import iteritems
+ 
+ from . import utils
+@@ -159,15 +160,10 @@ def paths_for_download(self):
+                     raise ValueError("There should be one and only one ID per SRX")
+ 
+                 results = utils.efetch(
+-                    db="sra", id=ids[0], rettype="runinfo", email=self.email
++                    db="sra", id=ids[0], rettype="runinfo", retmode="xml", email=self.email
+                 )
+                 try:
+-                    df_tmp = DataFrame(
+-                        [i.split(",") for i in results.split("\n") if i != ""][1:],
+-                        columns=[i.split(",") for i in results.split("\n") if i != ""][
+-                            0
+-                        ],
+-                    )
++                    df_tmp = read_xml(StringIO(results))
+                 except IndexError:
+                     logger.error(
+                         (

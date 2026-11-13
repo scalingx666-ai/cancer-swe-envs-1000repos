@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/ayselafsar__dicomviewer-184"
+description = "#175 Support for Nextcloud 35"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "dicomviewer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ayselafsar/dicomviewer"
+ref = "542fec32e57d21b90095289dbe644b35587d647e"
+reference = "https://github.com/ayselafsar/dicomviewer/pull/184"
+source_access = "auto"
+built_at = "2026-11-13T16:04:48.295813+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e9774679a677b9c265ea650a4ef31808cb0a1ff2fb2ec0b4d734dc9d43b683c9"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-24T21:37:33Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/build.yml",
+    ".github/workflows/release.yml",
+    "appinfo/info.xml",
+    "composer.json",
+    "img/application-dicom.svg",
+    "lib/Migration/RegisterMimeType.php",
+    "package-lock.json",
+    "package.json",
+    "src/main.js",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 63
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

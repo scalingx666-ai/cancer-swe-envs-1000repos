@@ -1,0 +1,21 @@
+diff --git a/NAMESPACE b/NAMESPACE
+index bb5f80d..e931837 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -86,4 +86,3 @@ importFrom(dplyr,"%>%")
+ importFrom(lazyeval,interp)
+ importFrom(lazyeval,lazy)
+ importFrom(rhdf5,h5write)
+-importFrom(rhdf5,h5write.default)
+diff --git a/R/read_write.R b/R/read_write.R
+index 26c23c3..1564586 100644
+--- a/R/read_write.R
++++ b/R/read_write.R
+@@ -358,7 +358,6 @@ trans_to_genes_from_gtf <- function(fname) {
+ #'    to use, with 0 being no compression and 7 being the highest supported by this method.
+ #'    The default of 6 is a good choice for most applications.
+ #' @return the kallisto object \code{kal} invisibly.
+-#' @importFrom rhdf5 h5write.default
+ #' @importFrom rhdf5 h5write
+ #' @export
+ write_kallisto_hdf5 <- function(kal, fname, overwrite = TRUE,

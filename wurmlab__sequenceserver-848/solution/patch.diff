@@ -1,0 +1,32 @@
+diff --git a/lib/sequenceserver/makeblastdb.rb b/lib/sequenceserver/makeblastdb.rb
+index 52fcf46bf..82f02293a 100644
+--- a/lib/sequenceserver/makeblastdb.rb
++++ b/lib/sequenceserver/makeblastdb.rb
+@@ -1,4 +1,5 @@
+ require 'find'
++require 'shellwords'
+ require 'forwardable'
+ 
+ module SequenceServer
+@@ -144,7 +145,7 @@ def probably_fastas
+     # directory. Returns the output of `blastdbcmd`. This method is called
+     # by `determine_formatted_fastas`.
+     def blastdbcmd
+-      cmd = "blastdbcmd -recursive -list #{config[:database_dir]}" \
++      cmd = "blastdbcmd -recursive -list #{Shellwords.escape(config[:database_dir])}" \
+             ' -list_outfmt "%f	%t	%p	%n	%l	%d	%v"'
+       out, err = sys(cmd, path: config[:bin])
+       errpat = /BLAST Database error/
+diff --git a/spec/blast/report_spec.rb b/spec/blast/report_spec.rb
+index 8a8091ea9..e17f5fe2e 100644
+--- a/spec/blast/report_spec.rb
++++ b/spec/blast/report_spec.rb
+@@ -22,7 +22,7 @@ module SequenceServer
+     let(:job_id) { '38334a72-e8e7-4732-872b-24d3f8723563' }
+     let(:job) { SequenceServer::Job.fetch(job_id) }
+     let(:report) { BLAST::Report.new(job) }
+-    let(:keys_to_ignore) { %i[querydb submitted_at imported_xml seqserv_version cloud_sharing_enabled] }
++    let(:keys_to_ignore) { %w[querydb submitted_at imported_xml seqserv_version cloud_sharing_enabled] }
+ 
+     describe "#to_json" do
+       it "returns a JSON representation of the job" do

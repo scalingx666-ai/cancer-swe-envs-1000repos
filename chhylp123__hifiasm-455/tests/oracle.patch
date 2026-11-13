@@ -1,0 +1,254 @@
+diff --git a/Assembly.cpp b/Assembly.cpp
+index 1b09dd9f..97410790 100644
+--- a/Assembly.cpp
++++ b/Assembly.cpp
+@@ -700,6 +700,7 @@ static void worker_ovec_related_reads(void *data, long i, int tid)
+ 
+     if(k < R_INF_FLAG.query_num)
+     {
++        R_INF_FLAG.read_id[k] = i;
+         int fully_cov, abnormal, q_idx = k;
+ 
+         ha_get_candidates_interface(b->ab, i, &b->self_read, &b->olist, &b->olist_hp, &b->clist, 
+@@ -766,6 +767,7 @@ static void worker_ovec_related_reads(void *data, long i, int tid)
+             Get_READ_LENGTH(R_INF, b->olist.list[k].y_id));
+ 		}
+ 
++        /**
+         fprintf(R_INF_FLAG.fp, "***************************unmatched ovlp***************************\n");
+         for (k = 0; k < b->olist.length; k++) 
+         {
+@@ -777,6 +779,7 @@ static void worker_ovec_related_reads(void *data, long i, int tid)
+             b->olist.list[k].y_pos_strand, b->olist.list[k].strong, b->olist.list[k].without_large_indel,
+             Get_READ_LENGTH(R_INF, b->olist.list[k].y_id));
+ 		}
++        **/
+ 
+         R_INF.trio_flag[i] = AMBIGU;
+ 
+@@ -950,6 +953,19 @@ void print_het_cnt_log(uint32_t *het_cnt)
+     fclose(output_file);
+ }
+ 
++void prt_dbg_rs(FILE *fp, Debug_reads* x, uint64_t round)
++{
++    uint64_t k, id; UC_Read g_read; init_UC_Read(&g_read);
++    for (k = 0; k < R_INF_FLAG.query_num; k++) {
++        id = x->read_id[k];
++        if(id == ((uint64_t)-1)) continue;
++        recover_UC_Read(&g_read, &R_INF, id);
++        fprintf(fp, ">%.*s_r%lu\n", (int)Get_NAME_LENGTH((R_INF), id), Get_NAME((R_INF), id), round);
++        fprintf(fp, "%.*s\n", (int)g_read.length, g_read.seq);
++    }
++    destory_UC_Read(&g_read);
++}
++
+ 
+ void ha_overlap_and_correct(int round)
+ {
+@@ -999,8 +1015,7 @@ void ha_overlap_and_correct(int round)
+ 		ha_ovec_destroy(b[i]);
+ 	}
+ 	free(b);
+-
+-	if (asm_opt.required_read_name) destory_Debug_reads(&R_INF_FLAG), exit(0); // for debugging only
++    if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r0, &R_INF_FLAG, 0); // for debugging only
+     
+ 	// save corrected reads to R_INF
+ 	CALLOC(e, asm_opt.thread_num);
+@@ -1017,6 +1032,9 @@ void ha_overlap_and_correct(int round)
+ 		free(e[i].second_round_read);
+ 	}
+ 	free(e);
++
++    if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r1, &R_INF_FLAG, 1); // for debugging only
++    if (asm_opt.required_read_name) destory_Debug_reads(&R_INF_FLAG), exit(0); // for debugging only
+     ///debug_print_pob_regions();
+ }
+ 
+diff --git a/CommandLines.h b/CommandLines.h
+index b1982636..9db2f404 100644
+--- a/CommandLines.h
++++ b/CommandLines.h
+@@ -5,7 +5,7 @@
+ #include <pthread.h>
+ #include <stdint.h>
+ 
+-#define HA_VERSION "0.19.5-r587"
++#define HA_VERSION "0.19.5-r589"
+ 
+ #define VERBOSE 0
+ 
+diff --git a/Overlaps.cpp b/Overlaps.cpp
+index 672b4f22..a8cdb92b 100644
+--- a/Overlaps.cpp
++++ b/Overlaps.cpp
+@@ -64,6 +64,8 @@ KRADIX_SORT_INIT(ha_mzl_t_srt1, ha_mzl_t, ha_mzl_t_key, member_size(ha_mzl_t, x)
+ #define PHASE_SEP_RATE 0.04
+ #define PHASE_MISS_LEN 1000000
+ #define PHASE_MISS_N 8
++// #define PHASE_MISS_SLEN 500000
++// #define PHASE_MISS_SN 24
+ 
+ KSORT_INIT_GENERIC(uint32_t)
+ 
+@@ -13578,40 +13580,40 @@ void destory_hc_links(hc_links* link)
+     kv_destroy(link->enzymes);
+ }
+ 
+-void print_utg(ma_ug_t *ug, asg_t *sg, ma_sub_t* coverage_cut, char* output_file_name, 
++void print_utg(ma_ug_t **ug, asg_t *sg, ma_sub_t* coverage_cut, char* output_file_name, 
+ ma_hit_t_alloc* sources, R_to_U* ruIndex, int max_hang, int min_ovlp, kvec_asg_arc_t_warp* new_rtg_edges)
+ {
+     if(asm_opt.b_low_cov > 0)
+     {
+-        break_ug_contig(&ug, sg, &R_INF, coverage_cut, sources, ruIndex, new_rtg_edges, max_hang, min_ovlp, 
++        break_ug_contig(ug, sg, &R_INF, coverage_cut, sources, ruIndex, new_rtg_edges, max_hang, min_ovlp, 
+         &asm_opt.b_low_cov, NULL, asm_opt.m_rate);
+     }
+ 
+     if(asm_opt.b_high_cov > 0)
+     {
+-        break_ug_contig(&ug, sg, &R_INF, coverage_cut, sources, ruIndex, new_rtg_edges, max_hang, min_ovlp, 
++        break_ug_contig(ug, sg, &R_INF, coverage_cut, sources, ruIndex, new_rtg_edges, max_hang, min_ovlp, 
+         NULL, &asm_opt.b_high_cov, asm_opt.m_rate);
+     }
+ 
+-    ma_ug_seq(ug, sg, coverage_cut, sources, new_rtg_edges, max_hang, min_ovlp, 0, 1);
++    ma_ug_seq(*ug, sg, coverage_cut, sources, new_rtg_edges, max_hang, min_ovlp, 0, 1);
+ 
+     
+     char* gfa_name = (char*)malloc(strlen(output_file_name)+35);
+     sprintf(gfa_name, "%s.p_ctg.gfa", output_file_name);
+     fprintf(stderr, "Writing %s to disk... \n", gfa_name);
+     FILE* output_file = fopen(gfa_name, "w");
+-    ma_ug_print(ug, sg, coverage_cut, sources, ruIndex, "ptg", output_file);
++    ma_ug_print(*ug, sg, coverage_cut, sources, ruIndex, "ptg", output_file);
+     fclose(output_file);
+ 
+     sprintf(gfa_name, "%s.p_ctg.noseq.gfa", output_file_name);
+     output_file = fopen(gfa_name, "w");
+-    ma_ug_print_simple(ug, sg, coverage_cut, sources, ruIndex, "ptg", output_file);
++    ma_ug_print_simple(*ug, sg, coverage_cut, sources, ruIndex, "ptg", output_file);
+     fclose(output_file);
+     if(asm_opt.bed_inconsist_rate != 0)
+     {
+         sprintf(gfa_name, "%s.p_ctg.lowQ.bed", output_file_name);
+         output_file = fopen(gfa_name, "w");
+-        ma_ug_print_bed(ug, sg, &R_INF, coverage_cut, sources, new_rtg_edges, 
++        ma_ug_print_bed(*ug, sg, &R_INF, coverage_cut, sources, new_rtg_edges, 
+         max_hang, min_ovlp, asm_opt.bed_inconsist_rate, "ptg", output_file, NULL);
+         fclose(output_file);
+     }
+@@ -15668,7 +15670,7 @@ long long gap_fuzz, bub_label_t* b_mask_t, ug_opt_t *opt)
+         adjust_utg_by_primary(&copy_ug, copy_sg, TRIO_THRES, sources, reverse_sources, coverage_cut, 
+         tipsLen, tip_drop_ratio, stops_threshold, ruIndex, chimeric_rate, drop_ratio, 
+         max_hang, min_ovlp, &new_rtg_edges, &cov, b_mask_t, 1, 0);
+-        print_utg(copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
++        print_utg(&copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
+         min_ovlp, &new_rtg_edges);
+ 
+         if(asm_opt.is_alt)
+@@ -15924,7 +15926,7 @@ float chimeric_rate, float drop_ratio, int max_hang, int min_ovlp, long long gap
+         adjust_utg_by_primary(&copy_ug, copy_sg, TRIO_THRES, sources, reverse_sources, coverage_cut, 
+         tipsLen, tip_drop_ratio, stops_threshold, ruIndex, chimeric_rate, drop_ratio, 
+         max_hang, min_ovlp, &new_rtg_edges, &cov, b_mask_t, 1, 0);
+-        print_utg(copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
++        print_utg(&copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
+         min_ovlp, &new_rtg_edges);
+ 
+         if(asm_opt.is_alt) {
+@@ -16920,7 +16922,7 @@ int gap_fuzz, bub_label_t* b_mask_t, ug_opt_t *opt)
+     // ruIndex, max_hang, min_ovlp, &new_rtg_edges, b_mask_t, NULL);
+     // exit(1);
+     /*******************************for debug************************************/
+-    print_utg(copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
++    print_utg(&copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
+     min_ovlp, &new_rtg_edges);
+     ma_ug_destroy(copy_ug);
+     asg_destroy(copy_sg);
+@@ -17003,7 +17005,7 @@ long long gap_fuzz, ug_opt_t *opt)
+     // ruIndex, max_hang, min_ovlp, &new_rtg_edges, b_mask_t, NULL);
+     // exit(1);
+     /*******************************for debug************************************/
+-    print_utg(copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
++    print_utg(&copy_ug, copy_sg, coverage_cut, output_file_name, sources, ruIndex, max_hang, 
+     min_ovlp, &new_rtg_edges);
+     ma_ug_destroy(copy_ug);
+     asg_destroy(copy_sg);
+@@ -20546,7 +20548,7 @@ int min_ovlp, int is_bench, long long gap_fuzz, ug_opt_t *opt, bub_label_t* b_ma
+                 reverse_sources, tipsLen, tip_drop_ratio, stops_threshold, ruIndex, chimeric_rate, 
+                 drop_ratio, max_hang, min_ovlp, gap_fuzz, 1, b_mask_t, NULL, NULL, &r_edges);
+         filter_set_kug(R_INF.trio_flag, sg, rf, &r_edges, asm_opt.kpt_rate, &kug);
+-        print_utg(kug, sg, coverage_cut, kug_n, sources, ruIndex, max_hang, min_ovlp, &r_edges);
++        print_utg(&kug, sg, coverage_cut, kug_n, sources, ruIndex, max_hang, min_ovlp, &r_edges);
+         
+         free(kug_n), kv_destroy(r_edges.a); ma_ug_destroy(kug); 
+         free(rf);
+@@ -20804,7 +20806,9 @@ int min_ovlp, long long gap_fuzz, bub_label_t* b_mask_t, ma_ug_t **rhu0, ma_ug_t
+     s = dedup_exact_ug(hidx0, hidx1, coverage_cut, sources, ruIndex, ff, MOTHER); dedup_base += s;
+     destroy_dedup_idx_t(hidx0); destroy_dedup_idx_t(hidx1); 
+ 
+-    miss_base = append_miss_nid(sg, hu0, hu1, ff, PHASE_MISS_LEN, PHASE_MISS_N); free(ff);
++    s = append_miss_nid(sg, hu0, hu1, ff, PHASE_MISS_LEN, PHASE_MISS_N); miss_base += s;
++    // s = append_miss_nid(sg, hu0, hu1, ff, PHASE_MISS_SLEN, PHASE_MISS_SN); miss_base += s;
++    free(ff);
+ 
+     renew_utg((&hu0), sg, &arcs0); renew_utg((&hu1), sg, &arcs1);
+     fprintf(stderr, "[M::%s] dedup_base::%lu, miss_base::%lu\n", __func__, dedup_base, miss_base);
+diff --git a/Process_Read.cpp b/Process_Read.cpp
+index b973a750..ef99c2e1 100644
+--- a/Process_Read.cpp
++++ b/Process_Read.cpp
+@@ -714,6 +714,8 @@ void init_Debug_reads(Debug_reads* x, const char* file)
+ 	}
+ 	x->read_name = (char**)malloc(sizeof(char*)*x->query_num);
+ 	x->candidate_count = (kvec_t_u64_warp*)malloc(sizeof(kvec_t_u64_warp)*x->query_num);
++	x->read_id = NULL; MALLOC(x->read_id, x->query_num); 
++	memset(x->read_id, -1, sizeof((*(x->read_id)))*x->query_num);
+ 	fseek(x->fp, 0, SEEK_SET);
+ 
+ 	i = 0;
+@@ -732,6 +734,15 @@ void init_Debug_reads(Debug_reads* x, const char* file)
+ 	sprintf(Name_Buffer, "%s.debug.stdout", file);
+ 	x->fp = fopen(Name_Buffer,"w");
+ 	fprintf(stderr, "Print debugging information to: %s\n", Name_Buffer);
++
++	sprintf(Name_Buffer, "%s.debug.r0.fa", file);
++	x->fp_r0 = fopen(Name_Buffer,"w");
++	fprintf(stderr, "Print raw reads to: %s\n", Name_Buffer);
++
++	sprintf(Name_Buffer, "%s.debug.r1.fa", file);
++	x->fp_r1 = fopen(Name_Buffer,"w");
++	fprintf(stderr, "Print corrected reads to: %s\n", Name_Buffer);
++
+ 	free(Name_Buffer);
+ }
+ 
+@@ -744,8 +755,8 @@ void destory_Debug_reads(Debug_reads* x)
+ 		kv_destroy(x->candidate_count[i].a);
+ 	}
+ 	
+-	free(x->read_name);
+-	fclose(x->fp);
++	free(x->read_name); free(x->read_id);
++	fclose(x->fp); fclose(x->fp_r0); fclose(x->fp_r1);
+ }
+ 
+ 
+diff --git a/Process_Read.h b/Process_Read.h
+index 3d0fa09e..71c88a18 100644
+--- a/Process_Read.h
++++ b/Process_Read.h
+@@ -151,9 +151,10 @@ typedef struct
+ typedef struct
+ {
+     char** read_name;
++    uint64_t *read_id;
+     uint64_t query_num;
+     kvec_t_u64_warp* candidate_count;
+-    FILE* fp;
++    FILE *fp, *fp_r0, *fp_r1;
+     pthread_mutex_t OutputMutex;
+ } Debug_reads;
+ 

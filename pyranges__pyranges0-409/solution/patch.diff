@@ -1,0 +1,117 @@
+diff --git a/.github/workflows/build_and_upload_wheels.yml b/.github/workflows/build_and_upload_wheels.yml
+index fa5751a..24abdec 100644
+--- a/.github/workflows/build_and_upload_wheels.yml
++++ b/.github/workflows/build_and_upload_wheels.yml
+@@ -1,36 +1,56 @@
+ name: Build and upload to PyPI
+ 
+-# Source: https://raw.githubusercontent.com/pypa/cibuildwheel/main/examples/github-deploy.yml
+-
+-env:
+-  CIBW_SKIP: "cp36-*"
+-
+ on:
++  pull_request:
+   workflow_dispatch:
+ 
++permissions:
++  contents: read
++
+ jobs:
+-  build_and_upload_wheels:
++  build:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
+ 
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.14"
++
++      - name: Install build tools
++        run: python -m pip install --upgrade build twine
++
+       - name: Build SDist and wheel
+-        run: pipx run build
++        run: python -m build
++
++      - name: Check metadata
++        run: python -m twine check --strict dist/*
+ 
+       - uses: actions/upload-artifact@v4
+         with:
+           name: python-package-dist
+           path: dist/*
++          if-no-files-found: error
+ 
+-      - name: Check metadata
+-        run: pipx run twine check dist/*
++  publish:
++    needs: build
++    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
++    runs-on: ubuntu-latest
++    environment:
++      name: pypi
++      url: https://pypi.org/p/pyranges
++    permissions:
++      id-token: write
++    steps:
++      - uses: actions/download-artifact@v4
++        with:
++          name: python-package-dist
++          path: dist
+ 
+-      - uses: pypa/gh-action-pypi-publish@v1.8.14
++      # Configure the PyPI Trusted Publisher as documented in RELEASING.md.
++      - name: Publish to PyPI
++        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+         with:
+-          user: ${{ secrets.PYPI_USER }}
+-          password: ${{ secrets.PYPI_PROD_PASSWORD }}
+           verbose: true
+-          # For testing purposes:
+-          # repository_url: https://test.pypi.org/legacy/
+diff --git a/RELEASING.md b/RELEASING.md
+new file mode 100644
+index 0000000..7aa570c
+--- /dev/null
++++ b/RELEASING.md
+@@ -0,0 +1,36 @@
++# Publishing pyranges0
++
++The GitHub repository is `pyranges/pyranges0`; its PyPI package is `pyranges`.
++
++## One-time PyPI setup
++
++On the [pyranges publishing settings page](https://pypi.org/manage/project/pyranges/settings/publishing/),
++add a GitHub Trusted Publisher with these values:
++
++| Field | Value |
++|---|---|
++| Owner | `pyranges` |
++| Repository name | `pyranges0` |
++| Workflow name | `build_and_upload_wheels.yml` |
++| Environment name | `pypi` |
++
++Use only the workflow filename, without `.github/workflows/`.
++No PyPI username, account password, or API-token secret is needed by this workflow.
++See the [PyPI setup instructions](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
++
++## Publish a release
++
++1. Update the version in `pyproject.toml` and the changelog, then merge the changes into `master`.
++2. Wait for CI and the distribution build to pass.
++3. Open GitHub Actions, select **Build and upload to PyPI**, and choose **Run workflow** on `master`.
++4. Verify that both the wheel and source distribution are listed on PyPI.
++
++Pull requests build and validate the distributions without publishing them.
++Only a manual run on `master` can execute the publishing job.
++The build job has read-only repository access; only the separate publishing job
++can obtain the short-lived PyPI publishing credential through GitHub OIDC.
++
++If a release fails before any files are uploaded, fix the workflow and start a new
++run from the updated `master`. Rerunning an old failed run uses its old workflow.
++If files have already been uploaded, inspect PyPI before retrying: published files
++cannot be replaced by rebuilding the same version.

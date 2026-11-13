@@ -1,0 +1,80 @@
+diff --git a/src/ContigLink.hh b/src/ContigLink.hh
+index a360539d..90500852 100644
+--- a/src/ContigLink.hh
++++ b/src/ContigLink.hh
+@@ -25,6 +25,7 @@
+ 
+ #include <string>
+ #include <map>
++#include <vector>
+ #include <cmath>
+ 
+ #include "ReadInfo.hh"
+diff --git a/src/Edge.hh b/src/Edge.hh
+index 721101bc..329213ae 100644
+--- a/src/Edge.hh
++++ b/src/Edge.hh
+@@ -27,6 +27,7 @@
+ #include <fstream>
+ #include <string>
+ #include <set>
++#include <vector>
+ 
+ #include "Mer.hh"
+ #include "ReadInfo.hh"
+diff --git a/src/Graph.cc b/src/Graph.cc
+index 6dcd358b..ba1604cb 100644
+--- a/src/Graph.cc
++++ b/src/Graph.cc
+@@ -1,3 +1,5 @@
++#include <vector>
++
+ #include "Graph.hh"
+ 
+ /****************************************************************************
+diff --git a/src/Node.hh b/src/Node.hh
+index dceb69c3..78e0b25a 100644
+--- a/src/Node.hh
++++ b/src/Node.hh
+@@ -28,6 +28,7 @@
+ #include <string>
+ #include <assert.h>
+ #include <unordered_set>
++#include <vector>
+ 
+ #include "Mer.hh"
+ #include "Ref.hh"
+diff --git a/src/Path.hh b/src/Path.hh
+index bc96cd09..18b0c646 100644
+--- a/src/Path.hh
++++ b/src/Path.hh
+@@ -26,6 +26,7 @@
+ 
+ #include <string>
+ #include <sstream>
++#include <vector>
+ 
+ #include "Edge.hh"
+ #include "Node.hh"
+diff --git a/src/Transcript.hh b/src/Transcript.hh
+index d525976e..f2a7a2ed 100644
+--- a/src/Transcript.hh
++++ b/src/Transcript.hh
+@@ -24,6 +24,7 @@
+ *************************** /COPYRIGHT **************************************/
+ 
+ #include <string>
++#include <vector>
+ #include <algorithm>
+ 
+ using namespace std;
+diff --git a/src/VariantDB.cc b/src/VariantDB.cc
+index 3b9082b0..2b04bad6 100644
+--- a/src/VariantDB.cc
++++ b/src/VariantDB.cc
+@@ -1,3 +1,5 @@
++#include <vector>
++
+ #include "VariantDB.hh"
+ 
+ /****************************************************************************

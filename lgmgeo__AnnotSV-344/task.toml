@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/lgmgeo__AnnotSV-344"
+description = "Adding shellcheck pipeline"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "AnnotSV",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lgmgeo/AnnotSV"
+ref = "2e80f00620d64ed7f58b68ff4c6c92d833246b7e"
+reference = "https://github.com/lgmgeo/AnnotSV/pull/344"
+source_access = "auto"
+built_at = "2026-11-13T16:00:25.318937+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:33ce10cfa7e05a25373ffa59e215baa22d4c0726cb00929bbdd4ef6b5cae4df1"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-19T06:43:53Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/shellcheck.yml",
+    ".gitmodules",
+    "bin/INSTALL_annotations.sh",
+    "changeLog.txt",
+    "share/tcl/AnnotSV/AnnotSV-ranking.tcl",
+    "tests/AnnotSV/test_01_configfile/command_Tcl.sh",
+    "tests/AnnotSV/test_14_candidateGenesFile/command_Tcl.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 60
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,26 @@
+diff --git a/cravat/gui/submit/handlers.py b/cravat/gui/submit/handlers.py
+index a6d2e0c2..9c66c9d3 100644
+--- a/cravat/gui/submit/handlers.py
++++ b/cravat/gui/submit/handlers.py
+@@ -353,7 +353,7 @@ def delete_job(job_id):
+     # canceling the task is not immediate. poll the status for a short time before removing files
+     finished_statuses = (None, 'Aborted', 'Error', 'Finished')
+     retries = 5
+-    while job.task.cravat_status not in finished_statuses and retries > 0:
++    while job.task is not None and job.task.cravat_status not in finished_statuses and retries > 0:
+         time.sleep(.2)
+         retries -= 1
+ 
+diff --git a/setup.py b/setup.py
+index 157dc8ea..443c7248 100644
+--- a/setup.py
++++ b/setup.py
+@@ -61,7 +61,7 @@ def readme ():
+ setup(
+     name='open-cravat',
+     packages=['cravat'],
+-    version='3.2.1',
++    version='3.2.2',
+     description='OpenCRAVAT - variant analysis toolkit',
+     long_description=readme(),
+     author='Kyle Moad, Kyle Anderson, Charlie Vaske, Jasmine Baker, and Rachel Karchin',

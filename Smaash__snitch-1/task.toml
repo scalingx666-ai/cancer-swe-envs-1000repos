@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/Smaash__snitch-1"
+description = "Fixed 'dork type' iteration with the 'all' value"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "snitch",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Smaash/snitch"
+ref = "38d9bb359097835a1883e68d53ae0e37e0385e99"
+reference = "https://github.com/Smaash/snitch/pull/1"
+source_access = "auto"
+built_at = "2026-11-13T15:41:23.543325+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b295d5e8fb57f5b49e103f53c5f9d1948b3bc19aab020ec7176bcffabc4a22c9"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2015-07-17T13:10:42Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "snitch.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 44
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

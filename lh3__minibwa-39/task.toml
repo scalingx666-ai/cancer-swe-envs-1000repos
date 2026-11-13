@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/lh3__minibwa-39"
+description = "Fix seed dedup: rev only the current x[0] group"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "minibwa",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lh3/minibwa"
+ref = "f0fd108456d459e5da3755f29c8700dc7f6fe0df"
+reference = "https://github.com/lh3/minibwa/pull/39"
+source_access = "auto"
+built_at = "2026-11-13T15:58:25.605409+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:831404a68379cb61b2263f6e2b2ca552aa558e4fc697d722c7bef344f847e143"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-23T12:57:44Z"
+diff_format = "unified"
+context_files = [
+    "seed.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

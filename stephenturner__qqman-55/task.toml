@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/stephenturner__qqman-55"
+description = "Add a CITATION file and update DESCRIPTION"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "qqman",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "stephenturner/qqman"
+ref = "5757dfaae6bd4615526c49758be86cfe7555255a"
+reference = "https://github.com/stephenturner/qqman/pull/55"
+source_access = "auto"
+built_at = "2026-11-13T16:13:44.894054+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:cf89653f95e8f34ad53015e9275e00b71a0b75ec9ab22c8b1882b00ff5ba1d9e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-06-05T20:37:31Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "inst/CITATION",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 17
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

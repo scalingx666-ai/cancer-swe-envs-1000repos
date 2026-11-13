@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/stephenturner__qqman-64"
+description = "make annotatePval and annotateTop work with logp=FALSE"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "qqman",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "stephenturner/qqman"
+ref = "3cdfa9a6a786419c60398a4ac6771c0e48171650"
+reference = "https://github.com/stephenturner/qqman/pull/64"
+source_access = "auto"
+built_at = "2026-11-13T16:13:43.209985+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3321c6e1e454b7a511646791c7886b368fbb1a8e3759ac4a91d6a1e6148e8511"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-06-27T17:13:42Z"
+diff_format = "unified"
+context_files = [
+    "R/manhattan.R",
+    "man/manhattan.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 26
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

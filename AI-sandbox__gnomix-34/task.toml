@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/AI-sandbox__gnomix-34"
+description = "Base model updates"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "gnomix",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AI-sandbox/gnomix"
+ref = "375d216b399fb994f9ca55d140632b3c2e2d8513"
+reference = "https://github.com/AI-sandbox/gnomix/pull/34"
+source_access = "auto"
+built_at = "2026-11-13T16:22:30.831677+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fc0d44023998bb94996acce04c59142b2d9ce7fcd6ec162294fc1be04a1869d0"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-07-09T06:38:27Z"
+diff_format = "unified"
+context_files = [
+    "requirements.txt",
+    "run_gnomix.py",
+    "src/gnomix/model/__init__.py",
+    "src/gnomix/model/base/__init__.py",
+    "src/gnomix/model/base/base.py",
+    "src/gnomix/model/base/models.py",
+    "src/gnomix/model/base/string_kernel.py",
+    "src/gnomix/model/gnofix/__init__ copy.py",
+    "src/gnomix/model/model.py",
+    "src/gnomix/model/smooth/__init__.py",
+    "src/gnomix/model/smooth/smooth.py",
+    "src/gnomix/postprocess.py",
+    "src/gnomix/preprocess.py",
+    "tests/unit/model/__init__.py",
+    "tests/unit/model/base/test_base.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 644
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

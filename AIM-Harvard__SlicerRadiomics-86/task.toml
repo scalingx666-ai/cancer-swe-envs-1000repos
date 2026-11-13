@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/AIM-Harvard__SlicerRadiomics-86"
+description = "Make Radiomics module translatable"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "SlicerRadiomics",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AIM-Harvard/SlicerRadiomics"
+ref = "25faa081db25f1828cee5967c25a9c33b7e57a44"
+reference = "https://github.com/AIM-Harvard/SlicerRadiomics/pull/86"
+source_access = "auto"
+built_at = "2026-11-13T15:36:14.956626+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d186afbdfce20d4a19ccf70cb4f74e74d3ab29119e23b865a74d73f2f30530d5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-21T01:38:07Z"
+diff_format = "unified"
+context_files = [
+    "SlicerRadiomics/SlicerRadiomics.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 104
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

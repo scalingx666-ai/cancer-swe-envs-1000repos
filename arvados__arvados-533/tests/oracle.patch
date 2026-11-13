@@ -1,0 +1,105 @@
+diff --git a/services/workbench2/cypress/e2e/auth-action.cy.js b/services/workbench2/cypress/e2e/auth-action.cy.js
+index 1cf0703771..debf74a657 100644
+--- a/services/workbench2/cypress/e2e/auth-action.cy.js
++++ b/services/workbench2/cypress/e2e/auth-action.cy.js
+@@ -74,7 +74,7 @@ describe('auth-actions', () => {
+         //ask for an extra token
+         cy.get('[aria-label="Account Management"]').click();
+         cy.contains('Get API token').click();
+-        cy.contains('GET NEW TOKEN').click();
++        cy.contains('Get new token').click();
+         cy.waitForLocalStorage('arvadosStore').then((storedStore) => {
+             const store = JSON.parse(storedStore);
+ 
+@@ -87,7 +87,7 @@ describe('auth-actions', () => {
+             firstExtraToken = store.auth.extraApiToken;
+         });
+         //check that another request generates a new token
+-        cy.contains('GET NEW TOKEN').click();
++        cy.contains('Get new token').click();
+         cy.waitForLocalStorageUpdate('arvadosStore');
+         cy.waitForLocalStorage('arvadosStore').then((storedStore) => {
+             const store = JSON.parse(storedStore);
+diff --git a/services/workbench2/src/components/details-attribute/details-attribute.tsx b/services/workbench2/src/components/details-attribute/details-attribute.tsx
+index c5a941a5a8..837807c11e 100644
+--- a/services/workbench2/src/components/details-attribute/details-attribute.tsx
++++ b/services/workbench2/src/components/details-attribute/details-attribute.tsx
+@@ -129,7 +129,7 @@ export const DetailsAttributeComponent = withStyles(styles)(
+                 className={classnames([props.classes.value, props.classValue, { [props.classes.lowercaseValue]: props.lowercaseValue }])}>
+                 {props.value}
+                 {props.children}
+-                {(props.linkToUuid || props.copyValue) && props.onCopy && <Tooltip title="Copy link to clipboard">
++                {(props.linkToUuid || props.copyValue) && props.onCopy && <Tooltip title="Copy value to clipboard">
+                     <span className={props.classes.copyIcon}>
+                         <CopyToClipboard text={props.linkToUuid || props.copyValue || ""} onCopy={() => props.onCopy!("Copied")}>
+                             <CopyIcon />
+diff --git a/services/workbench2/src/views-components/token-dialog/token-dialog.cy.js b/services/workbench2/src/views-components/token-dialog/token-dialog.cy.js
+index df9b455ffe..91bd947a1e 100644
+--- a/services/workbench2/src/views-components/token-dialog/token-dialog.cy.js
++++ b/services/workbench2/src/views-components/token-dialog/token-dialog.cy.js
+@@ -65,7 +65,7 @@ describe('<CurrentTokenDialog />', () => {
+ 
+     it('should show a create new token button when allowed', () => {
+       expect(!!props.canCreateNewTokens).to.equal(false);
+-      cy.contains('GET NEW TOKEN').should('not.exist');
++      cy.contains('Get new token').should('not.exist');
+ 
+       props.canCreateNewTokens = true;
+       cy.mount(
+@@ -74,7 +74,7 @@ describe('<CurrentTokenDialog />', () => {
+             <TokenDialogComponent {...props} />
+           </ThemeProvider>
+         </Provider>);
+-      cy.contains('GET NEW TOKEN').should('exist');
++      cy.contains('Get new token').should('exist');
+     });
+   });
+ 
+diff --git a/services/workbench2/src/views-components/token-dialog/token-dialog.tsx b/services/workbench2/src/views-components/token-dialog/token-dialog.tsx
+index 26b1ad905c..5de27608b7 100644
+--- a/services/workbench2/src/views-components/token-dialog/token-dialog.tsx
++++ b/services/workbench2/src/views-components/token-dialog/token-dialog.tsx
+@@ -119,7 +119,7 @@ unset ARVADOS_API_HOST_INSECURE`
+                     variant="contained"
+                     className={classes.actionButton}
+                 >
+-                    GET NEW TOKEN
++                    Get new token
+                 </Button>}
+ 
+                 <Typography paragraph={true}>
+@@ -133,7 +133,7 @@ unset ARVADOS_API_HOST_INSECURE`
+                         variant="contained"
+                         className={classes.actionButton}
+                     >
+-                        Copy link to clipBOARD
++                        Copy code to clipboard
+                     </Button>
+                 </CopyToClipboard>
+                 <Typography>
+diff --git a/services/workbench2/src/views/process-panel/process-cmd-card.tsx b/services/workbench2/src/views/process-panel/process-cmd-card.tsx
+index 46eb35d125..2b000a16c9 100644
+--- a/services/workbench2/src/views/process-panel/process-cmd-card.tsx
++++ b/services/workbench2/src/views/process-panel/process-cmd-card.tsx
+@@ -97,7 +97,7 @@ export const ProcessCmdCard = withStyles(styles)(
+           action={
+             <Grid container direction="row" alignItems="center">
+               <Grid item>
+-                <Tooltip title="Copy link to clipboard" disableFocusListener>
++                <Tooltip title="Copy command to clipboard" disableFocusListener>
+                   <IconButton size="large">
+                     <CopyResultToClipboard
+                       getText={formatClipboardText(process.containerRequest.command)}
+diff --git a/services/workbench2/src/views/process-panel/process-log-card.tsx b/services/workbench2/src/views/process-panel/process-log-card.tsx
+index 9d0c0f4881..25ee4a32c6 100644
+--- a/services/workbench2/src/views/process-panel/process-log-card.tsx
++++ b/services/workbench2/src/views/process-panel/process-log-card.tsx
+@@ -146,7 +146,7 @@ export const ProcessLogsCard = withStyles(styles)(
+                                     </Tooltip>
+                                 </Grid>
+                                 <Grid item>
+-                                    <Tooltip title="Copy link to clipboard" disableFocusListener>
++                                    <Tooltip title="Copy log to clipboard" disableFocusListener>
+                                         <IconButton size="large">
+                                             <CopyToClipboard text={lines.join()} onCopy={() => onCopy("Log copied to clipboard")}>
+                                                 <CopyIcon />

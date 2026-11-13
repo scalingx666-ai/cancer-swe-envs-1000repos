@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/scverse__PyDESeq2-487"
+description = "docs: move to scverse-doc and adopt the shared scverse docs TOC"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "PyDESeq2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "scverse/PyDESeq2"
+ref = "2ca3b74c9b2b994b44c071f17ec76ad1cf1595e9"
+reference = "https://github.com/scverse/PyDESeq2/pull/487"
+source_access = "auto"
+built_at = "2026-11-13T15:50:19.624235+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a3eedbca32325f120110c7ee76c4f5c00d2541883bae5835e686711dcee92f75"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T14:25:38Z"
+diff_format = "unified"
+context_files = [
+    ".readthedocs.yaml",
+    "docs/_static/css/custom.css",
+    "docs/_templates/autosummary/class.rst",
+    "docs/about/cite.md",
+    "docs/conf.py",
+    "docs/index.md",
+    "docs/references.md",
+    "examples/README.rst",
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 256
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

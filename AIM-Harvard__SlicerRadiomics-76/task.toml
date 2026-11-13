@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/AIM-Harvard__SlicerRadiomics-76"
+description = "Update SlicerRadiomics.py"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "SlicerRadiomics",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AIM-Harvard/SlicerRadiomics"
+ref = "aa418a5bd34ce7c846cfde7d9eaba8048ff49a4f"
+reference = "https://github.com/AIM-Harvard/SlicerRadiomics/pull/76"
+source_access = "auto"
+built_at = "2026-11-13T15:36:19.386116+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f8f880f69637272ab8a054adf1bee69f0d57c215f0b8670edb4f196acc744d3b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-06-02T13:09:43Z"
+diff_format = "unified"
+context_files = [
+    "SlicerRadiomics/SlicerRadiomics.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

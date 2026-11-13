@@ -1,0 +1,666 @@
+diff --git a/scripts/run-specs.sh b/scripts/run-specs.sh
+index 2a181753b..2df43ec2a 100755
+--- a/scripts/run-specs.sh
++++ b/scripts/run-specs.sh
+@@ -392,6 +392,54 @@ prepare_ctgov_page_request_log() {
+   export BIOMCP_CTGOV_BASE="${fixture_base%/api/v2}/__biomcp_ctgov_worker/$namespace/api/v2"
+ }
+ 
++provider_page_consumes_request_log() {
++  local path="$1"
++  grep -Fq 'BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG' "$path"
++}
++
++prepare_provider_page_request_log() {
++  # The provider fixture is optional: run_provider_contract_fixture tolerates
++  # an absent setup script (`[[ -x ... ]] || return 0`), and the make-test
++  # lane's parallel-isolation harness stubs the setup with no env file. When
++  # the fixture never configured a root there is no request log to make
++  # private, so the preparation is a clean no-op and the page runs exactly as
++  # it does in the sequential path. A configured root without a base is a
++  # broken fixture and still fails loudly below.
++  [[ -n "${BIOMCP_PROVIDER_CONTRACT_ROOT:-}" ]] || return 0
++  local fixture_root="$BIOMCP_PROVIDER_CONTRACT_ROOT"
++  local fixture_base="${BIOMCP_PROVIDER_CONTRACT_BASE:?provider fixture base is not configured}"
++  local request_log namespace
++  request_log="$(mktemp "$fixture_root/request-log.XXXXXX")"
++  namespace="${request_log##*/}"
++  export BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG="$request_log"
++  local worker_base="${fixture_base}/__biomcp_provider_worker/$namespace"
++  # Scope only the provider endpoint variables. BIOMCP_PROVIDER_CONTRACT_BASE
++  # stays the unprefixed fixture origin because the spec pages derive
++  # BIOMCP_TEST_UNPACED_ORIGIN from it inline, and both consumers of that
++  # signal require a bare origin (scheme+host+port, path "/"): the rate
++  # limiter's unpaced bypass (UnpacedOrigin::parse_signal) and the GenCC
++  # fixture-override gate (fixture_override_allowed, required because the
++  # spec profile inherits release and debug_assertions is off). A
++  # worker-prefixed signal silently disables both, which re-enables pacing
++  # and denies the GenCC override. Pages that compose sub-bases from the
++  # plain base log to the shared request log, which no page reads any more,
++  # so every asserted entry still lands in the consuming page's private log.
++  local var value
++  for var in $(compgen -e | LC_ALL=C sort); do
++    case "$var" in
++      BIOMCP_PROVIDER_CONTRACT_BASE | BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG | \
++        BIOMCP_PROVIDER_CONTRACT_ROOT | BIOMCP_PROVIDER_CONTRACT_READY_FILE | \
++        BIOMCP_TEST_UNPACED_ORIGIN)
++        continue
++        ;;
++    esac
++    value="${!var}"
++    if [[ "$value" == "$fixture_base" || "$value" == "$fixture_base"/* ]]; then
++      export "$var=${worker_base}${value:${#fixture_base}}"
++    fi
++  done
++}
++
+ run_markdown_specs() {
+   ((${#MD_PATHS[@]})) || return 0
+ 
+@@ -417,6 +465,9 @@ run_markdown_specs() {
+       if ctgov_page_consumes_request_log "$path"; then
+         prepare_ctgov_page_request_log
+       fi
++      if provider_page_consumes_request_log "$path"; then
++        prepare_provider_page_request_log
++      fi
+       8>&- exec mustmatch test "$path" --lang bash "${timeout_args[@]}"
+     ) >"$log_path" 2>&1 &
+     pid=$!
+diff --git a/sdlc/tickets/1195-saturation-tier-final.md b/sdlc/tickets/1195-saturation-tier-final.md
+new file mode 100644
+index 000000000..7ad66fd95
+--- /dev/null
++++ b/sdlc/tickets/1195-saturation-tier-final.md
+@@ -0,0 +1,175 @@
++---
++flow: build
++priority: 1
++deps: []
++---
++
++# 1195: The provider request log is scoped per consuming spec page
++
++## Goal
++
++Every spec page that observes `BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG` gets its
++own request log, so page assertions are deterministic regardless of what other
++pages run concurrently, and the saturated full-spec lane stops failing on
++count windows that other pages perturb.
++
++## Current Facts
++
++The overnight saturated run at main 6a4b1a1a failed `spec/entity/drug.md`
++("Card command discovery", block at line 35) and `spec/entity/gene.md`
++("GenCC adapter projection parity", block at line 714) while the Rust suite
++passed 3566/3566. Instrumented reproduction (full spec mode, 12 CPU spinners,
++main 6a4b1a1a) captured the mechanism:
++
++- One provider-contract fixture serves every page; four pages read its single
++  mutable request log: disease, drug, gene, trial.
++- drug.md's block truncates that shared log (`reset_log`) between phases and
++  then compares absolute counts (`wait_for_count`). With other pages writing
++  mid-window, the captured counts were 8 (expected 5), 7 (expected 4), and
++  20 vs 17 between the JSON and Markdown phases — the batch comparison failed:
++  `DIAG batch_md_count 17 batch_json_count 20`.
++- gene.md's blocks delta-count the same shared log ("so concurrent specs
++  cannot perturb", per its own comment) and still failed: drug.md's truncation
++  inside a delta window makes the delta wrong, and the line-714 health block's
++  absolute count of the GenCC download GETs is truncated the same way. In the
++  same reproduction gene.md failed at its line-23 block with empty output —
++  its final delta test (`-eq 0`) after a mid-window truncation.
++
++The ctgov fixture already solves exactly this for its pages with a per-page
++worker namespace (`prepare_ctgov_page_request_log`,
++`__biomcp_ctgov_worker/<request-log.XXXXXX>`); the provider fixture had no
++equivalent.
++
++One premise correction: the failing "GenCC adapter projection parity" report
++at gene.md line 714 is a plain health/count block, not the parity block; the
++parity block lives at gene.md:628 and already carries `timeout=600` from
++ticket 1194 (it is genuinely long-running, and the edit is appropriate where
++it stands — `spec/entity/gencc.md` does not exist). The line-714 failure was
++interference, not a budget miss, and needs no timeout change.
++
++## Change
++
++- `spec/fixtures/setup-provider-contract-spec-fixture.sh`: the server accepts
++  `/__biomcp_provider_worker/<request-log.XXXXXX>/...`, strips the prefix for
++  routing, logs to that file in the fixture root (404 for an unknown
++  namespace), and exports `BIOMCP_PROVIDER_CONTRACT_ROOT`. Unprefixed requests
++  keep logging to the shared log exactly as before.
++- `scripts/run-specs.sh`: `provider_page_consumes_request_log` and
++  `prepare_provider_page_request_log` mirror the ctgov pair: per-page
++  `mktemp` log, and every exported `BIOMCP_*` endpoint variable whose value
++  starts at the fixture base rewritten to the worker base. Two variables are
++  deliberately not scoped: `BIOMCP_PROVIDER_CONTRACT_BASE` (and
++  `BIOMCP_TEST_UNPACED_ORIGIN`) stay at the unprefixed fixture origin because
++  the spec pages derive the unpaced signal from the base inline, and both
++  consumers of that signal require a bare origin (scheme+host+port, path
++  "/"): the rate limiter's unpaced bypass
++  (`UnpacedOrigin::parse_signal`) and the GenCC fixture-override gate
++  (`fixture_override_allowed`, required because the spec profile inherits
++  release and `debug_assertions` is off). A worker-prefixed signal silently
++  disables both, which re-enables 100 ms pacing and denies the GenCC
++  override; that was the exact gene-page regression. Pages that compose
++  sub-bases from the plain base log to the shared request log, which no page
++  reads any more, so every asserted entry still lands in the consuming
++  page's private log. Called in the per-page subshell of the parallel lane
++  beside the ctgov call.
++- `tests/test_provider_contract_fixture.py`: focused test proving the
++  namespace route logs to its private file, leaves the shared log untouched,
++  keeps unprefixed logging on the shared log, and 404s an unknown namespace.
++- `tests/test_routine_fixture_recovery.py:740`: the reaping test's runner
++  wait widens from 3 s to 60 s (an observation budget like its siblings, not
++  a latency assertion); under 12 spinners the 3 s budget expires.
++
++No production code, no page content, no production constants change.
++
++## Verification
++
++1. Focused on the dev host: `uv run --no-sync pytest
++   tests/test_provider_contract_fixture.py
++   tests/test_routine_fixture_recovery.py -q` — 64 passed in 12.21 s
++   (3 provider-fixture tests including the new namespace test, plus the 61
++   runner-lifecycle tests).
++2. Saturated gate-host results (12 spinners):
++   - `tests/test_routine_fixture_recovery.py` — 61 passed in 40.26 s, rc 0
++     (the 9c689fad reaping-wait fix holds).
++   - drug.md single-page — 15 passed, rc 0, re-confirmed.
++3. Resolution of the gene-page regression (this is the refined mechanism):
++   the original rewrite replaced `BIOMCP_PROVIDER_CONTRACT_BASE` itself with
++   the worker-prefixed URL, and the spec pages derive
++   `BIOMCP_TEST_UNPACED_ORIGIN` from that base inline. Both consumers of the
++   signal require a bare origin (path "/"): the rate limiter's unpaced
++   bypass silently stopped matching, re-enabling 100 ms pacing (the ClinGen
++   blocks' 40–200 ms optional budgets starved before their fixture requests
++   left), and the GenCC fixture-override gate silently denied the
++   `BIOMCP_GENCC_BASE` override (the release-derived spec profile turns the
++   `debug_assertions` short-circuit off), so GenCC falls back to the real
++   endpoint and returns empty offline. The fix keeps the base and the signal
++   unprefixed and scopes only the endpoint variables.
++4. Proof results at the refined tip (dev host, single-page runner):
++   - gene.md — 22 passed, rc 0, no spinners; 22 passed, rc 0, under 12
++     spinners.
++   - drug.md — 15 passed, rc 0, under 12 spinners.
++   - `tests/test_routine_fixture_recovery.py` — 61 passed, rc 0; together
++     with the three provider-fixture tests, 64 passed, rc 0, under 12
++     spinners.
++5. Full parallel routine lane after the refinement on the dev host (all
++   pages, four workers, no spinners): every page green, including gene.md
++   22/22 and drug.md 15/15; zero FAIL lines, python contracts 39 passed. The
++   parent's merged saturated gate remains the acceptance run.
++6. Post-remediation verification (dev host, b0b102a4):
++   - `uv run --no-sync pytest "tests/surface/test_parallel_isolation_contract.py" -q`
++     — 41 passed, including the previously-failing
++     `test_ctgov_parallel_pages_receive_private_mutable_logs` (the P0
++     confirmation), the new provider isolation test, and the new rewrite-set
++     test.
++   - `uv run --no-sync pytest tests/test_provider_contract_fixture.py -q` —
++     3 passed; `tests/test_routine_fixture_recovery.py -q` — 61 passed.
++   - gene.md single page — 22 passed, rc 0; drug.md single page — 15 passed,
++     rc 0.
++   - `tools/check-quality-ratchet.sh` — exit 0; `tools/check-shell-workflows`
++     — 89 Bash files syntax-checked, 80 with ShellCheck at warning severity,
++     4 workflows; `ruff check` clean on the changed test file.
++
++## Complexity
++
++- Contract score: 1 (several explicit cases: namespace routing, per-page
++  scoping, shared-log fallback, unknown-namespace 404, env rewrite set)
++- State and timing score: 1 (test-harness observation partitioning; the
++  server stays stateless per request; no concurrent protocol changes)
++- Reach score: 1 (runner, fixture, and their focused tests)
++- Proof score: 1 (focused tests plus saturated single-page and full-lane
++  runs on the gate host)
++- Cost of error score: 1 (test infrastructure only; a wrong rewrite set
++  would break spec pages visibly and locally)
++- Total: 5
++- Minimum level floor: none (the change removes a test-harness interference
++  rather than introducing concurrent state management)
++- Final level: 2
++- Reasons: deterministic test-harness partitioning with saturated proofs
++- Selected model: implemented in the dispatched level-2 workstream
++
++## Review
++
++- Independent code review, first pass at e31d4b16: REJECT.
++  - P0: `prepare_provider_page_request_log` aborted on an unset
++    `BIOMCP_PROVIDER_CONTRACT_ROOT` (the `:?` expansion), breaking
++    `tests/surface/test_parallel_isolation_contract.py::
++    test_ctgov_parallel_pages_receive_private_mutable_logs` in the make-test
++    lane: that harness stubs the provider setup with no env file while
++    trial.md consumes both request logs. The spec lane masked it because its
++    fixture always configures the environment first.
++  - P2-1: no focused test pinned the rewrite set (which variables are
++    worker-scoped and which are deliberately kept).
++  - P2-2: a missing export indent at
++    spec/fixtures/setup-provider-contract-spec-fixture.sh:633.
++- Remediation at b0b102a4: the preparation is a clean no-op when the fixture
++  root is unset (a configured root without a base still fails loudly,
++  mirroring `run_provider_contract_fixture`'s tolerance); the harness gains
++  the provider analogue of the CTGov isolation contract — a stub provider
++  setup writing `spec-provider-contract-env` plus the private-log assertion
++  over the four provider pages — and a focused rewrite-set test pinning that
++  endpoint variables are worker-scoped while
++  `BIOMCP_PROVIDER_CONTRACT_BASE`, `BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG`,
++  `BIOMCP_PROVIDER_CONTRACT_READY_FILE`, and `BIOMCP_TEST_UNPACED_ORIGIN`
++  are not rewritten; the indent is fixed. Verification item 6 records the
++  run.
++- Re-review: pending (parent orchestrator).
+diff --git a/spec/fixtures/setup-provider-contract-spec-fixture.sh b/spec/fixtures/setup-provider-contract-spec-fixture.sh
+index 934246f3f..8e5bac0b7 100755
+--- a/spec/fixtures/setup-provider-contract-spec-fixture.sh
++++ b/spec/fixtures/setup-provider-contract-spec-fixture.sh
+@@ -71,12 +71,28 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+ from pathlib import Path
+ from urllib.parse import parse_qs, parse_qsl, urlparse
+ import json
++import re
+ import sys
+ 
+ ROOT = Path(sys.argv[1])
+ READY = Path(sys.argv[2])
+ REQUEST_LOG = Path(sys.argv[3])
+ SOURCES = ROOT / "testdata/sources"
++WORKER_NAMESPACE = re.compile(
++    r"^/__biomcp_provider_worker/(request-log\.[A-Za-z0-9]{6,})(/.*)$"
++)
++
++
++def resolve_request(request_target):
++    parsed = urlparse(request_target)
++    match = WORKER_NAMESPACE.fullmatch(parsed.path)
++    if not match:
++        return parsed, request_target, REQUEST_LOG
++    request_log = REQUEST_LOG.parent / match.group(1)
++    if not request_log.is_file():
++        return None
++    canonical = parsed._replace(path=match.group(2))
++    return canonical, canonical.geturl(), request_log
+ 
+ 
+ def fixture(path):
+@@ -280,9 +296,13 @@ def send(handler, status, body, content_type="application/json"):
+ 
+ class Handler(BaseHTTPRequestHandler):
+     def do_HEAD(self):
+-        parsed = urlparse(self.path)
+-        with REQUEST_LOG.open("a", encoding="utf-8") as log:
+-            log.write(f"HEAD {self.path}\n")
++        routed = resolve_request(self.path)
++        if routed is None:
++            send(self, 404, b'{"error":"unknown provider worker namespace"}')
++            return
++        parsed, request_target, request_log = routed
++        with request_log.open("a", encoding="utf-8") as log:
++            log.write(f"HEAD {request_target}\n")
+         if (
+             parsed.path == "/gencc/download/action/submissions-export-csv"
+             and parse_qs(parsed.query) == {"format": ["new"]}
+@@ -297,15 +317,19 @@ class Handler(BaseHTTPRequestHandler):
+         send(self, 404, b'{"error":"fixture route not found"}')
+ 
+     def do_GET(self):
+-        parsed = urlparse(self.path)
+-        with REQUEST_LOG.open("a", encoding="utf-8") as log:
++        routed = resolve_request(self.path)
++        if routed is None:
++            send(self, 404, b'{"error":"unknown provider worker namespace"}')
++            return
++        parsed, request_target, request_log = routed
++        with request_log.open("a", encoding="utf-8") as log:
+             conditional = ""
+             if parsed.path == "/gencc/download/action/submissions-export-csv":
+                 conditional = (
+                     f" If-None-Match={self.headers.get('If-None-Match', '')}"
+                     f" If-Modified-Since={self.headers.get('If-Modified-Since', '')}"
+                 )
+-            log.write(f"GET {self.path}{conditional}\n")
++            log.write(f"GET {request_target}{conditional}\n")
+ 
+         if parsed.path == "/healthz":
+             send(self, 200, b'{"status":"ok"}')
+@@ -483,11 +507,15 @@ class Handler(BaseHTTPRequestHandler):
+         send(self, 404, b'{"error":"fixture route not found"}')
+ 
+     def do_POST(self):
+-        parsed = urlparse(self.path)
++        routed = resolve_request(self.path)
++        if routed is None:
++            send(self, 404, b'{"error":"unknown provider worker namespace"}')
++            return
++        parsed, request_target, request_log = routed
+         length = int(self.headers.get("Content-Length", "0"))
+         body = self.rfile.read(length)
+-        with REQUEST_LOG.open("a", encoding="utf-8") as log:
+-            log.write(f"POST {self.path} {body.decode('utf-8')}\n")
++        with request_log.open("a", encoding="utf-8") as log:
++            log.write(f"POST {request_target} {body.decode('utf-8')}\n")
+         if parsed.path == "/fda-orphan/OOPD_Results.cfm":
+             form = parse_qsl(body.decode("utf-8"), keep_blank_values=True)
+             expected = [
+@@ -602,6 +630,7 @@ curl --fail --silent "$base_url/healthz" >/dev/null
+   printf 'export BIOMCP_WHO_IVD_DIR=%q\n' "$who_ivd_dir"
+   printf 'export BIOMCP_GTR_DIR=%q\n' "$gtr_dir"
+   printf 'export BIOMCP_PROVIDER_CONTRACT_BASE=%q\n' "$base_url"
++  printf 'export BIOMCP_PROVIDER_CONTRACT_ROOT=%q\n' "$fixture_root"
+   printf 'export BIOMCP_CACHE_MODE=off\n'
+   printf 'export BIOMCP_PROVIDER_CONTRACT_READY_FILE=%q\n' "$ready_file"
+   printf 'export BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG=%q\n' "$request_log"
+diff --git a/tests/surface/test_parallel_isolation_contract.py b/tests/surface/test_parallel_isolation_contract.py
+index 3405026da..5f4f9db4d 100644
+--- a/tests/surface/test_parallel_isolation_contract.py
++++ b/tests/surface/test_parallel_isolation_contract.py
+@@ -237,6 +237,250 @@ def test_ctgov_parallel_pages_receive_private_mutable_logs(tmp_path: Path) -> No
+     )
+ 
+ 
++def test_provider_parallel_pages_receive_private_mutable_logs(tmp_path: Path) -> None:
++    runner_source = _read_repo("scripts/run-specs.sh")
++    routine_paths = _runner_array_paths("SPEC_ROUTINE_PATHS")
++    provider_log_consumers = [
++        path
++        for path in routine_paths
++        if path.endswith(".md")
++        and "BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG" in _read_repo(path)
++    ]
++    assert len(provider_log_consumers) > 1, (
++        "this contract needs the parallel provider pages that observe mutable request logs"
++    )
++
++    workspace = tmp_path / "workspace"
++    (workspace / "scripts").mkdir(parents=True)
++    fixtures = workspace / "spec" / "fixtures"
++    fixtures.mkdir(parents=True)
++    (workspace / "ctgov-root").mkdir()
++    for path in provider_log_consumers:
++        copied_page = workspace / path
++        copied_page.parent.mkdir(parents=True, exist_ok=True)
++        copied_page.write_text(_read_repo(path), encoding="utf-8")
++    routine_body = "\n".join(f"  {path}" for path in provider_log_consumers)
++    runner_source = re.sub(
++        r"(?ms)^SPEC_ROUTINE_PATHS=\(\n.*?^\)",
++        f"SPEC_ROUTINE_PATHS=(\n{routine_body}\n)",
++        runner_source,
++        count=1,
++    )
++    _write_executable(workspace / "scripts" / "run-specs.sh", runner_source)
++
++    noop_setups = (
++        "setup-article-fulltext-source-fixture.sh",
++        "setup-study-spec-fixture.sh",
++        "setup-ddinter-spec-fixture.sh",
++        "setup-disease-survival-spec-fixture.sh",
++        "setup-vaers-spec-fixture.sh",
++        "setup-variant-identity-spec-fixture.sh",
++        "setup-clingen-cspec-spec-fixture.sh",
++        "setup-cpic-spec-fixture.sh",
++    )
++    noop_cleanups = (
++        "cleanup-article-fulltext-source-fixture.sh",
++        "cleanup-ctgov-intervention-alias-spec-fixture.sh",
++        "cleanup-disease-survival-spec-fixture.sh",
++        "cleanup-provider-contract-spec-fixture.sh",
++        "cleanup-vaers-spec-fixture.sh",
++        "cleanup-variant-identity-spec-fixture.sh",
++        "cleanup-clingen-cspec-spec-fixture.sh",
++        "cleanup-cpic-spec-fixture.sh",
++    )
++    for name in (*noop_setups, *noop_cleanups):
++        _write_executable(fixtures / name, "#!/usr/bin/env bash\nexit 0\n")
++    _write_executable(
++        fixtures / "setup-provider-contract-spec-fixture.sh",
++        """#!/usr/bin/env bash
++set -euo pipefail
++root="$1"
++mkdir -p "$root/.cache"
++fixture_root="$(mktemp -d "$root/.cache/provider-page.XXXXXX")"
++cat >"$root/.cache/spec-provider-contract-env" <<EOF
++export BIOMCP_PROVIDER_CONTRACT_BASE="http://127.0.0.1/provider"
++export BIOMCP_PROVIDER_CONTRACT_ROOT="$fixture_root"
++EOF
++""",
++    )
++
++    bin_dir = workspace / "bin"
++    bin_dir.mkdir()
++    observations = workspace / "worker-environments"
++    _write_executable(
++        bin_dir / "mustmatch",
++        """#!/usr/bin/env bash
++set -euo pipefail
++if [[ "${1:-}" == --version ]]; then
++  echo 'mustmatch 1.0.0'
++  exit 0
++fi
++printf '%s|%s\\n' "$2" "${BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG:-missing}" >>"$OBSERVATIONS"
++sleep 0.1
++""",
++    )
++
++    result = subprocess.run(
++        ["bash", "scripts/run-specs.sh", "spec"],
++        cwd=workspace,
++        env=os.environ
++        | {
++            "MUSTMATCH_BIN": str(bin_dir / "mustmatch"),
++            "BIOMCP_BIN": "/bin/true",
++            "BIOMCP_SPEC_WORKERS": str(len(provider_log_consumers)),
++            "OBSERVATIONS": str(observations),
++            # trial.md consumes both request logs; this page set does not
++            # include the CTGov fixture's gating paths, so configure the two
++            # variables its per-page preparation needs directly.
++            "BIOMCP_CTGOV_INTERVENTION_ALIAS_ROOT": str(workspace / "ctgov-root"),
++            "BIOMCP_CTGOV_BASE": "http://127.0.0.1/ctgov",
++        },
++        check=False,
++        capture_output=True,
++        text=True,
++    )
++    assert result.returncode == 0, result.stdout + result.stderr
++
++    page_logs = dict(
++        line.split("|", 1)
++        for line in observations.read_text(encoding="utf-8").splitlines()
++    )
++    assert set(page_logs) == set(provider_log_consumers)
++    assert "missing" not in page_logs.values()
++    assert len(set(page_logs.values())) == len(page_logs), (
++        "parallel provider pages share mutable request logs: " + repr(page_logs)
++    )
++
++
++def test_provider_page_preparation_scopes_endpoints_and_keeps_the_contract_env(
++    tmp_path: Path,
++) -> None:
++    """The per-page preparation rewrites only the endpoint variables."""
++    ctgov_free_provider_pages = [
++        path
++        for path in _runner_array_paths("SPEC_ROUTINE_PATHS")
++        if path.endswith(".md")
++        and "BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG" in _read_repo(path)
++        and "BIOMCP_CTGOV" not in _read_repo(path)
++    ]
++    assert ctgov_free_provider_pages, "expected a CTGov-free provider page"
++    page = ctgov_free_provider_pages[0]
++
++    workspace = tmp_path / "workspace"
++    (workspace / "scripts").mkdir(parents=True)
++    fixtures = workspace / "spec" / "fixtures"
++    fixtures.mkdir(parents=True)
++    copied_page = workspace / page
++    copied_page.parent.mkdir(parents=True, exist_ok=True)
++    copied_page.write_text(_read_repo(page), encoding="utf-8")
++    runner_source = re.sub(
++        r"(?ms)^SPEC_ROUTINE_PATHS=\(\n.*?^\)",
++        f"SPEC_ROUTINE_PATHS=(\n  {page}\n)",
++        _read_repo("scripts/run-specs.sh"),
++        count=1,
++    )
++    _write_executable(workspace / "scripts" / "run-specs.sh", runner_source)
++
++    noop_setups = (
++        "setup-article-fulltext-source-fixture.sh",
++        "setup-study-spec-fixture.sh",
++        "setup-ddinter-spec-fixture.sh",
++        "setup-disease-survival-spec-fixture.sh",
++        "setup-vaers-spec-fixture.sh",
++        "setup-variant-identity-spec-fixture.sh",
++        "setup-clingen-cspec-spec-fixture.sh",
++        "setup-cpic-spec-fixture.sh",
++    )
++    noop_cleanups = (
++        "cleanup-article-fulltext-source-fixture.sh",
++        "cleanup-ctgov-intervention-alias-spec-fixture.sh",
++        "cleanup-disease-survival-spec-fixture.sh",
++        "cleanup-provider-contract-spec-fixture.sh",
++        "cleanup-vaers-spec-fixture.sh",
++        "cleanup-variant-identity-spec-fixture.sh",
++        "cleanup-clingen-cspec-spec-fixture.sh",
++        "cleanup-cpic-spec-fixture.sh",
++    )
++    for name in (*noop_setups, *noop_cleanups):
++        _write_executable(fixtures / name, "#!/usr/bin/env bash\nexit 0\n")
++    _write_executable(
++        fixtures / "setup-provider-contract-spec-fixture.sh",
++        """#!/usr/bin/env bash
++set -euo pipefail
++root="$1"
++mkdir -p "$root/.cache"
++fixture_root="$(mktemp -d "$root/.cache/provider-page.XXXXXX")"
++cat >"$root/.cache/spec-provider-contract-env" <<EOF
++export BIOMCP_PROVIDER_CONTRACT_BASE="http://127.0.0.1:9"
++export BIOMCP_PROVIDER_CONTRACT_ROOT="$fixture_root"
++export BIOMCP_PROVIDER_CONTRACT_READY_FILE="$fixture_root/ready"
++export BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG="$fixture_root/request.log"
++export BIOMCP_TEST_UNPACED_ORIGIN="http://127.0.0.1:9"
++export BIOMCP_OPENFDA_BASE="http://127.0.0.1:9/openfda"
++export BIOMCP_MYCHEM_BASE="http://127.0.0.1:9/mychem/v1"
++export BIOMCP_UNRELATED_BASE="http://example.invalid/v1"
++EOF
++""",
++    )
++
++    bin_dir = workspace / "bin"
++    bin_dir.mkdir()
++    observations = workspace / "worker-environments"
++    _write_executable(
++        bin_dir / "mustmatch",
++        """#!/usr/bin/env bash
++set -euo pipefail
++if [[ "${1:-}" == --version ]]; then
++  echo 'mustmatch 1.0.0'
++  exit 0
++fi
++{
++  printf 'root=%s\\n' "${BIOMCP_PROVIDER_CONTRACT_ROOT:-missing}"
++  printf 'base=%s\\n' "${BIOMCP_PROVIDER_CONTRACT_BASE:-missing}"
++  printf 'ready_file=%s\\n' "${BIOMCP_PROVIDER_CONTRACT_READY_FILE:-missing}"
++  printf 'request_log=%s\\n' "${BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG:-missing}"
++  printf 'unpaced=%s\\n' "${BIOMCP_TEST_UNPACED_ORIGIN:-missing}"
++  printf 'openfda=%s\\n' "${BIOMCP_OPENFDA_BASE:-missing}"
++  printf 'mychem=%s\\n' "${BIOMCP_MYCHEM_BASE:-missing}"
++  printf 'unrelated=%s\\n' "${BIOMCP_UNRELATED_BASE:-missing}"
++} >>"$OBSERVATIONS"
++""",
++    )
++
++    result = subprocess.run(
++        ["bash", "scripts/run-specs.sh", "spec"],
++        cwd=workspace,
++        env=os.environ
++        | {
++            "MUSTMATCH_BIN": str(bin_dir / "mustmatch"),
++            "BIOMCP_BIN": "/bin/true",
++            "BIOMCP_SPEC_WORKERS": "1",
++            "OBSERVATIONS": str(observations),
++        },
++        check=False,
++        capture_output=True,
++        text=True,
++    )
++    assert result.returncode == 0, result.stdout + result.stderr
++
++    observed = dict(
++        line.split("=", 1)
++        for line in observations.read_text(encoding="utf-8").splitlines()
++    )
++    base = "http://127.0.0.1:9"
++    fixture_root = observed["root"]
++    assert observed["base"] == base
++    assert observed["ready_file"] == f"{fixture_root}/ready"
++    assert observed["unpaced"] == base
++    assert observed["unrelated"] == "http://example.invalid/v1"
++    assert observed["request_log"].startswith(f"{fixture_root}/request-log.")
++    assert observed["request_log"] != f"{fixture_root}/request.log"
++    namespace = observed["request_log"].rsplit("/", 1)[-1]
++    worker_base = f"{base}/__biomcp_provider_worker/{namespace}"
++    assert observed["openfda"] == f"{worker_base}/openfda"
++    assert observed["mychem"] == f"{worker_base}/mychem/v1"
++
++
+ def test_ctgov_parallel_isolation_keeps_request_shape_and_no_request_proofs() -> None:
+     numeric = _markdown_heading_body(
+         "spec/entity/trial-numeric-filters.md",
+diff --git a/tests/test_provider_contract_fixture.py b/tests/test_provider_contract_fixture.py
+index d97afde3b..9164e5f40 100644
+--- a/tests/test_provider_contract_fixture.py
++++ b/tests/test_provider_contract_fixture.py
+@@ -112,3 +112,43 @@ def test_provider_fixture_early_failure_removes_external_gencc_root(
+     result = subprocess.run(["bash", str(SETUP), str(workspace)], env=environment)
+     assert result.returncode == 86
+     assert list(external.glob("biomcp-gencc-provider-contract.*")) == []
++
++
++@pytest.mark.skipif(
++    not Path("/proc").is_dir(), reason="fixture supervision needs procfs"
++)
++def test_provider_fixture_worker_namespace_scopes_the_request_log(
++    tmp_path: Path,
++) -> None:
++    workspace = _workspace(tmp_path)
++    try:
++        subprocess.run(["bash", str(SETUP), str(workspace)], check=True)
++        values = _exports(workspace / ".cache/spec-provider-contract-env")
++        fixture_root = Path(values["BIOMCP_PROVIDER_CONTRACT_ROOT"])
++        shared_log = Path(values["BIOMCP_PROVIDER_CONTRACT_REQUEST_LOG"])
++        shared_log.write_text("")
++        private_log = fixture_root / "request-log.abc123"
++        private_log.write_text("")
++
++        base_url = values["BIOMCP_PROVIDER_CONTRACT_BASE"]
++        worker = f"{base_url}/__biomcp_provider_worker/{private_log.name}"
++        with urlopen(f"{worker}/mychem/v1/query?q=Keytruda", timeout=2) as response:
++            body = json.load(response)
++        assert body["hits"][0]["_id"] == "C3855203"
++
++        assert "GET /mychem/v1/query?q=Keytruda" in private_log.read_text()
++        assert "Keytruda" not in shared_log.read_text()
++
++        with urlopen(f"{base_url}/mychem/v1/query?q=Keytruda", timeout=2) as response:
++            json.load(response)
++        assert "GET /mychem/v1/query?q=Keytruda" in shared_log.read_text()
++
++        with pytest.raises(HTTPError) as error:
++            urlopen(
++                f"{base_url}/__biomcp_provider_worker/request-log.zzzzzz/mychem/v1/query?q=Keytruda",
++                timeout=2,
++            )
++        assert error.value.code == 404
++        assert "zzzzzz" not in shared_log.read_text()
++    finally:
++        subprocess.run(["bash", str(CLEANUP), str(workspace)], check=False)
+diff --git a/tests/test_routine_fixture_recovery.py b/tests/test_routine_fixture_recovery.py
+index 843fdef64..1207a803a 100644
+--- a/tests/test_routine_fixture_recovery.py
++++ b/tests/test_routine_fixture_recovery.py
+@@ -737,7 +737,7 @@ def test_runner_reaps_owned_lock_holder_before_acquiring_routine_lock(
+                 "MUSTMATCH_BIN": str(bin_dir / "mustmatch"),
+             },
+         )
+-        assert runner.wait(timeout=3) == 0
++        assert runner.wait(timeout=60) == 0
+         _wait_until(lambda: stale.poll() is not None)
+         assert not (
+             workspace / ".cache" / "spec-article-fulltext-source-ownership"

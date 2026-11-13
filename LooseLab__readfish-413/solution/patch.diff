@@ -1,0 +1,40 @@
+diff --git a/src/readfish/_read_until_client.py b/src/readfish/_read_until_client.py
+index f5a55216..3b4c1c07 100644
+--- a/src/readfish/_read_until_client.py
++++ b/src/readfish/_read_until_client.py
+@@ -14,12 +14,17 @@
+ from readfish._loggers import setup_logger
+ from grpc import RpcError
+ 
+-# Check against these states to determine if Minknow is under the impression
+-# The run has fully begun and readfish can be started
++# Check against these states to determine if MinKNOW still considers the run
++# active enough for readfish to remain connected.
+ ACCEPTABLE_ACQUISITION_STATES = {
+     AcquisitionState.ACQUISITION_RUNNING,
+     AcquisitionState.ACQUISITION_STARTING,
+ }
++# Some MinKNOW versions expose explicit pause states. Treat them as non-terminal
++# so readfish waits for sequencing to resume instead of disconnecting.
++for _state_name in ("ACQUISITION_PAUSING", "ACQUISITION_PAUSED"):
++    if hasattr(AcquisitionState, _state_name):
++        ACCEPTABLE_ACQUISITION_STATES.add(getattr(AcquisitionState, _state_name))
+ # Any but these two states suggest the run has stopped
+ ACCEPTABLE_PROTOCOL_STATES = {
+     protocol_service.PROTOCOL_RUNNING,
+diff --git a/src/readfish/_utils.py b/src/readfish/_utils.py
+index 6792952f..d454ec7b 100644
+--- a/src/readfish/_utils.py
++++ b/src/readfish/_utils.py
+@@ -242,9 +242,9 @@ def get_flowcell_array(flowcell_size: int) -> npt.ArrayLike:
+     Traceback (most recent call last):
+         ...
+     ValueError: flowcell_size is not recognised
+-    >>> get_flowcell_array(126)[9][-1]
++    >>> int(get_flowcell_array(126)[9][-1])
+     0
+-    >>> get_flowcell_array(512)[15][-1]
++    >>> int(get_flowcell_array(512)[15][-1])
+     1
+ 
+     """

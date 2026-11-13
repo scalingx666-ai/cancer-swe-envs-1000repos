@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/ChristofferFlensburg__superFreq-52"
+description = "Feature/51 conda support"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "superFreq",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ChristofferFlensburg/superFreq"
+ref = "119bbe3d4c0abae56f0b3590d363fcdc75cc7171"
+reference = "https://github.com/ChristofferFlensburg/superFreq/pull/52"
+source_access = "auto"
+built_at = "2026-11-13T15:36:57.714588+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6a328f9f2c73bafb53fa213816c2ad86f5c605afc2d05a1282ef351f07d9f5e5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-10-13T05:23:35Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "r-superfreq/bld.bat",
+    "r-superfreq/build.sh",
+    "r-superfreq/meta.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 153
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

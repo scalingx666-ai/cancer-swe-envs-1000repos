@@ -1,0 +1,1357 @@
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+new file mode 100644
+index 0000000..534905c
+--- /dev/null
++++ b/.github/workflows/test.yml
+@@ -0,0 +1,22 @@
++name: Tests
++
++on:
++  push:
++    branches: [main]
++  pull_request:
++
++jobs:
++  test:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.11"
++
++      - name: Install package and test dependencies
++        run: pip install -e ".[dev]"
++
++      - name: Run tests
++        run: pytest tests/ -v
+diff --git a/assemblytics/cli.py b/assemblytics/cli.py
+index 9f3742e..c7de9c9 100755
+--- a/assemblytics/cli.py
++++ b/assemblytics/cli.py
+@@ -8,7 +8,7 @@
+ import sys
+ import zipfile
+ 
+-from .dot_prep import run as run_dot_prep
++from .dot_prep import index_for_dot
+ from .dotplot import run as run_dotplot
+ from .index import run as run_index
+ from .nchart import run as run_nchart
+@@ -81,7 +81,7 @@ def run(args):
+     log_progress(log_file, "STARTING,DONE,Starting unique anchor filtering.")
+ 
+     print("1. Filter delta file")
+-    run_uniq_anchor(
++    reference_lengths, fields_by_query = run_uniq_anchor(
+         argparse.Namespace(
+             delta=delta,
+             out=output_dir,
+@@ -153,15 +153,7 @@ def run(args):
+ 
+     print("5. Preparing interactive Dot plot")
+     dot_prefix = os.path.join(output_dir, "assemblytics_dot")
+-    run_dot_prep(
+-        argparse.Namespace(
+-            delta=delta,
+-            out=dot_prefix,
+-            unique_length=unique_length,
+-            overview=1000,
+-        ),
+-        write_delta=False,
+-    )
++    index_for_dot(reference_lengths, fields_by_query, dot_prefix, 1000)
+     print("FILE_READY:assemblytics_dot.coords")
+     print("FILE_READY:assemblytics_dot.coords.idx")
+ 
+diff --git a/assemblytics/dot_prep.py b/assemblytics/dot_prep.py
+index ffdcdf6..a0dae87 100755
+--- a/assemblytics/dot_prep.py
++++ b/assemblytics/dot_prep.py
+@@ -3,289 +3,28 @@
+ # Author: Maria Nattestad
+ # Email: maria.nattestad@gmail.com
+ 
+-# This script prepares a nucmer output delta file for visualization in Dot
+-# Parts of this code is adapted from Assemblytics unique anchor filtering
++# This script prepares alignment coordinates for visualization in Dot
+ 
+ 
+ import argparse
+-import gzip
+-import time
+ import numpy as np
+-import operator
+ import re
+ 
+-def run(args, write_delta=True):
+-	filename = args.delta
+-	unique_length = args.unique_length
+-	output_filename = args.out
+-	keep_small_uniques = True
+-	max_overview_alignments = getattr(args, 'overview', 1000)
+-
+-	header_lines_by_query, lines_by_query = getQueryRefCombinations(filename)
+-	unique_alignments = calculateUniqueness(header_lines_by_query, lines_by_query, unique_length, keep_small_uniques)
+-	reference_lengths, fields_by_query = writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query, write_delta=write_delta)
+-	index_for_dot(reference_lengths, fields_by_query, output_filename, max_overview_alignments)
+-
+ 
+ def scrub(string):
+ 	return string.replace(",","_").replace("!","_").replace("~","_").replace("#", "_")
+ 
+ 
+-def getQueryRefCombinations(filename):
+-	try:
+-		f = gzip.open(filename, 'rt')
+-		f.readline()
+-	except:
+-		f = open(filename, 'r')
+-		f.readline()
+-
+-	# Ignore the first two lines
+-	f.readline()
+-
+-	linecounter = 0
+-
+-	current_query_name = ""
+-	current_header = ""
+-
+-	lines_by_query = {}
+-	header_lines_by_query = {}
+-
+-	before = time.time()
+-
+-	for line in f:
+-		if line[0]==">":
+-			linecounter += 1
+-			current_header = line.strip()
+-			current_query_name = scrub(current_header.split()[1])
+-			
+-			if header_lines_by_query.get(current_query_name, None) == None:
+-				lines_by_query[current_query_name] = []
+-				header_lines_by_query[current_query_name] = []
+-		else:
+-			fields = line.strip().split()
+-			if len(fields) > 4:
+-				# sometimes start and end are the other way around, but for this they need to be in order
+-				query_min = min([int(fields[2]),int(fields[3])])
+-				query_max = max([int(fields[2]),int(fields[3])])
+-				lines_by_query[current_query_name].append((query_min,query_max))
+-				header_lines_by_query[current_query_name].append(current_header)
+-
+-	f.close()
+-
+-	print("First read through the file: %d seconds for %d query-reference combinations" % (time.time()-before,linecounter))
+-	
+-	return (header_lines_by_query, lines_by_query)
+-
+-def calculateUniqueness(header_lines_by_query, lines_by_query, unique_length, keep_small_uniques):
+-	before = time.time()
+-	unique_alignments = {}
+-	num_queries = len(lines_by_query)
+-	print("Filtering alignments of %d queries" % (num_queries))
+-	
+-	num_query_step_to_report = num_queries/100
+-	if num_queries < 100:
+-		num_query_step_to_report = num_queries/10
+-	if num_queries < 10:
+-		num_query_step_to_report = 1
+-
+-	query_counter = 0
+-
+-	for query in lines_by_query:
+-		unique_alignments[query] = summarize_planesweep(lines_by_query[query], unique_length_required = unique_length, keep_small_uniques = keep_small_uniques)
+-		query_counter += 1
+-		if (query_counter % num_query_step_to_report) == 0:
+-			print("Progress: %d%%" % (query_counter*100/num_queries))
+-	
+-	print("Progress: 100%")
+-
+-	print("Deciding which alignments to keep: %d seconds for %d queries" % (time.time()-before,num_queries))
+-
+-	return unique_alignments
+-
+-
+-def summarize_planesweep(lines,unique_length_required, keep_small_uniques=False):
+-
+-	unique_alignments = []
+-
+-	# If no alignments:
+-	if len(lines)==0:
+-		return []
+-
+-	# If only one alignment:
+-	if len(lines) == 1:
+-		if keep_small_uniques == True or abs(lines[0][1] - lines[0][0]) >= unique_length_required:
+-			return [0]
+-		else:
+-			return []
+-
+-	starts_and_stops = []
+-	for query_min,query_max in lines:
+-		starts_and_stops.append((query_min,"start"))
+-		starts_and_stops.append((query_max,"stop"))
+-
+-
+-	sorted_starts_and_stops = sorted(starts_and_stops,key=operator.itemgetter(0))
+-
+-	current_coverage = 0
+-	last_position = -1
+-	sorted_unique_intervals_left = []
+-	sorted_unique_intervals_right = []
+-	for pos,change in sorted_starts_and_stops:
+-		if current_coverage == 1:
+-			sorted_unique_intervals_left.append(last_position)
+-			sorted_unique_intervals_right.append(pos)
+-
+-		if change == "start":
+-			current_coverage += 1
+-		else:
+-			current_coverage -= 1
+-		last_position = pos
+-
+-
+-	linecounter = 0
+-	for query_min,query_max in lines:
+-
+-		i = binary_search(query_min,sorted_unique_intervals_left,0,len(sorted_unique_intervals_left))
+-
+-		exact_match = False
+-		if sorted_unique_intervals_left[i] == query_min and sorted_unique_intervals_right[i] == query_max:
+-			exact_match = True
+-		sum_uniq = 0
+-		while i < len(sorted_unique_intervals_left) and sorted_unique_intervals_left[i] >= query_min and sorted_unique_intervals_right[i] <= query_max:
+-			sum_uniq += sorted_unique_intervals_right[i] - sorted_unique_intervals_left[i]
+-			i += 1
+-
+-		if sum_uniq >= unique_length_required:
+-			unique_alignments.append(linecounter)
+-		elif keep_small_uniques == True and exact_match == True:
+-			unique_alignments.append(linecounter)
+-
+-		linecounter += 1
+-
+-	return unique_alignments
+-
+-
+-
+-def binary_search(query, numbers, left, right):
+-	#  Returns index of the matching element or the first element to the right
+-	
+-	if left >= right:
+-		return right
+-	mid = int((right+left)/2)
+-	
+-
+-	if query == numbers[mid]:
+-		return mid
+-	elif query < numbers[mid]:
+-		return binary_search(query,numbers,left,mid)
+-	else: # if query > numbers[mid]:
+-		return binary_search(query,numbers,mid+1,right)
+-
+-
+ def natural_key(string_):
+ 	"""See http://www.codinghorror.com/blog/archives/001018.html"""
+ 	return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_)]
+ 
+-def writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query, write_delta=True):
+-	before = time.time()
+-
+-	try:
+-		f = gzip.open(filename, 'rt')
+-		header1 = f.readline()
+-	except:
+-		f = open(filename, 'r')
+-		header1 = f.readline()
+-
+-	if write_delta:
+-		f_out_delta = gzip.open(output_filename + ".uniqueAnchorFiltered_l%d.delta.gz" % (unique_length),'wt')
+-		f_out_delta.write(header1)
+-		f_out_delta.write(f.readline())
+-	else:
+-		f.readline()
+-	
+-	linecounter = 0
+-
+-	# For filtered delta file:
+-	list_of_unique_alignments = []
+-	alignment_counter = {}
+-	keep_printing = False
+-
+-	# For coords:
+-	current_query_name = ""
+-	current_query_position = 0
+-
+-	# For basic assembly stats:
+-	ref_sequences = set()
+-	query_sequences = set()
+-	reference_lengths = []
+-	query_lengths = {}
+-	fields_by_query = {}
+-
+-
+-	for line in f:
+-		linecounter += 1
+-		if line[0]==">":
+-			fields = line.strip().split()
+-
+-			query = scrub(fields[1])
+-			list_of_unique_alignments = unique_alignments[query]
+-
+-			if write_delta:
+-				header_needed = any(
+-					line.strip() == header_lines_by_query[query][index]
+-					for index in list_of_unique_alignments
+-				)
+-				if header_needed:
+-					f_out_delta.write(line)
+-			alignment_counter[query] = alignment_counter.get(query, 0)
+-
+-			current_reference_name = scrub(fields[0][1:])
+-			current_query_name = scrub(fields[1])
+-			current_reference_size = int(fields[2])
+-			current_query_size = int(fields[3])
+-
+-			if not current_reference_name in ref_sequences:
+-				reference_lengths.append((current_reference_name, current_reference_size))
+-				ref_sequences.add(current_reference_name)
+-			if not current_query_name in query_sequences:
+-				query_lengths[current_query_name] = current_query_size
+-				query_sequences.add(current_query_name)
+-
+-		else:
+-			fields = line.strip().split()
+-			if len(fields) > 4:
+-				ref_start = int(fields[0])
+-				ref_end = int(fields[1])
+-				query_start = int(fields[2])
+-				query_end = int(fields[3])
+-				csv_tag = "repetitive"
+-				if alignment_counter[query] in list_of_unique_alignments:
+-					if write_delta:
+-						f_out_delta.write(line)
+-					csv_tag = "unique"
+-					keep_printing = True
+-				else:
+-					keep_printing = False
+-				fields = [ref_start, ref_end, query_start, query_end, current_reference_size, current_query_size, current_reference_name, current_query_name, csv_tag]
+-				if fields_by_query.get(current_query_name, None) is None:
+-					fields_by_query[current_query_name] = []
+-				fields_by_query[current_query_name].append(fields)
+-				alignment_counter[query] = alignment_counter[query] + 1
+-
+-			elif keep_printing and write_delta:
+-				f_out_delta.write(line)
+-
+-	f.close()
+-	if write_delta:
+-		f_out_delta.close()
+-	
+-	return reference_lengths, fields_by_query
+ 
+ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overview_alignments):
+ 
+ 	#  Find the order of the reference chromosomes
+ 	reference_lengths.sort(key=lambda x: natural_key(x[0]))
+-	
++
+ 	#  Find the cumulative sums
+ 	cumulative_sum = 0
+ 	ref_chrom_offsets = {}
+@@ -329,7 +68,7 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
+ 			query_name = fields[7]
+ 			query_lengths[query_name] = int(fields[5])
+ 
+-			all_references_by_query[query_name].add(ref)
++			all_references_by_query[query_name].add(fields[6])
+ 			# Only use unique alignments to decide contig orientation
+ 			if tag == "unique":
+ 				query_stop = int(fields[3])
+@@ -361,7 +100,7 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
+ 			query_byte_positions[(last_query, "end")] = f_out_coords.tell()
+ 			query_byte_positions[(query_name, tag)] = f_out_coords.tell()
+ 			f_out_coords.write("!" + query_name + "!" + tag +"\n")
+-			
++
+ 			for fields in lines:
+ 				if fields[8] == tag:
+ 					if flip == True:
+@@ -370,7 +109,7 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
+ 
+ 					output_fields = [fields[0], fields[1], fields[2], fields[3], fields[6]]
+ 					f_out_coords.write(",".join([str(i) for i in output_fields]) + "\n")
+-					
++
+ 					# For alignment overview:
+ 					alignment_length = abs(int(fields[3])-int(fields[2]))
+ 					all_alignments.append(([fields[0], fields[1], fields[2], fields[3], fields[6], fields[7], fields[8]], alignment_length))
+@@ -416,15 +155,23 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
+ 
+ 	f_out_index.close()
+ 
++
+ def main():
+ 	parser=argparse.ArgumentParser(description="Take a delta file, apply Assemblytics unique anchor filtering, and prepare coordinates input files for Dot")
+ 	parser.add_argument("--delta",help="delta file" ,dest="delta", type=str, required=True)
+-	parser.add_argument("--out",help="output file" ,dest="out", type=str, default="output")
++	parser.add_argument("--out",help="output file prefix" ,dest="out", type=str, default="output")
+ 	parser.add_argument("--unique-length",help="The total length of unique sequence an alignment must have on the query side to be retained. Default: 10000" ,dest="unique_length",type=int, default=10000)
+-	parser.add_argument("--overview",help="The number of alignments to include in the coords.idx output file, which will be shown in the overview for Dot. Default: 1000" ,dest="overview",type=int, default=1000)
+-	parser.set_defaults(func=run)
++	parser.add_argument("--overview",help="The number of alignments to include in the coords.idx output file. Default: 1000" ,dest="overview",type=int, default=1000)
+ 	args=parser.parse_args()
+-	args.func(args)
++
++	import os
++	from .uniq_anchor import run as run_uniq_anchor
++	out_dir = os.path.dirname(args.out) or "."
++	reference_lengths, fields_by_query = run_uniq_anchor(
++		argparse.Namespace(delta=args.delta, out=out_dir, unique_length=args.unique_length, keep_small_uniques=True)
++	)
++	index_for_dot(reference_lengths, fields_by_query, args.out, args.overview)
++
+ 
+ if __name__=="__main__":
+ 	main()
+diff --git a/assemblytics/uniq_anchor.py b/assemblytics/uniq_anchor.py
+index 793b47d..7e33b19 100755
+--- a/assemblytics/uniq_anchor.py
++++ b/assemblytics/uniq_anchor.py
+@@ -8,6 +8,10 @@
+ import operator
+ 
+ 
++def scrub(string):
++    return string.replace(",","_").replace("!","_").replace("~","_").replace("#","_")
++
++
+ def run(args):
+     filename = args.delta
+     unique_length = args.unique_length
+@@ -123,6 +127,11 @@ def run(args):
+     ref_lengths = []
+     query_lengths = []
+ 
++    # For dot index (returned to caller):
++    reference_lengths_for_dot = []
++    fields_by_query_for_dot = {}
++    seen_ref_names_for_dot = set()
++
+     # For genome length files (only sequences with at least one unique alignment,
+     # matching what ends up in coords.tab)
+     unique_ref_entries = {}
+@@ -154,6 +163,13 @@ def run(args):
+             current_reference_size = int(fields[2])
+             current_query_size = int(fields[3])
+ 
++            # For dot index:
++            scrubbed_ref = scrub(current_reference_name)
++            scrubbed_query = scrub(current_query_name)
++            if scrubbed_ref not in seen_ref_names_for_dot:
++                seen_ref_names_for_dot.add(scrubbed_ref)
++                reference_lengths_for_dot.append((scrubbed_ref, current_reference_size))
++
+             # For basic assembly stats:
+             if not current_reference_name in ref_sequences:
+                 ref_lengths.append(current_reference_size)
+@@ -181,6 +197,11 @@ def run(args):
+                 else:
+                     keep_printing = False
+                 fcoords_out_csv.write(",".join(map(str,[ref_start,ref_end,query_start, query_end,current_reference_size,current_query_size,current_reference_name.replace(",","_"),current_query_name.replace(",","_"),csv_tag])) + "\n")
++                fields_by_query_for_dot.setdefault(scrubbed_query, []).append(
++                    [str(ref_start), str(ref_end), str(query_start), str(query_end),
++                     str(current_reference_size), str(current_query_size),
++                     scrubbed_ref, scrubbed_query, csv_tag]
++                )
+                 alignment_counter[query] = alignment_counter[query] + 1
+ 
+             elif keep_printing == True:
+@@ -227,6 +248,9 @@ def run(args):
+     fout.close()
+     f_stats_out.close()
+ 
++    return reference_lengths_for_dot, fields_by_query_for_dot
++
++
+ def N50(sorted_list):
+     # List should be sorted as increasing
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index e54f6c3..bf65600 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -30,5 +30,11 @@ Repository = "https://github.com/MariaNattestad/assemblytics"
+ [project.scripts]
+ assemblytics = "assemblytics.cli:main"
+ 
++[project.optional-dependencies]
++dev = ["pytest"]
++
+ [tool.setuptools]
+ packages = ["assemblytics"]
++
++[tool.pytest.ini_options]
++testpaths = ["tests"]
+diff --git a/tests/fixtures/ecoli/assemblytics_assembly_stats.txt b/tests/fixtures/ecoli/assemblytics_assembly_stats.txt
+new file mode 100644
+index 0000000..75fe281
+--- /dev/null
++++ b/tests/fixtures/ecoli/assemblytics_assembly_stats.txt
+@@ -0,0 +1,16 @@
++Reference: GCF_000005845.2_ASM584v2_genomic.fna
++Number of sequences: 1
++Total sequence length: 4.64 Mbp
++Mean: 4.64 Mbp
++Min: 4.64 Mbp
++Max: 4.64 Mbp
++N50: 4.64 Mbp
++
++
++Query: GCF_000801205.1_ASM80120v1_genomic.fna
++Number of sequences: 1
++Total sequence length: 4.64 Mbp
++Mean: 4.64 Mbp
++Min: 4.64 Mbp
++Max: 4.64 Mbp
++N50: 4.64 Mbp
+diff --git a/tests/fixtures/ecoli/assemblytics_coords.csv b/tests/fixtures/ecoli/assemblytics_coords.csv
+new file mode 100644
+index 0000000..dc5f9d8
+--- /dev/null
++++ b/tests/fixtures/ecoli/assemblytics_coords.csv
+@@ -0,0 +1,233 @@
++ref_start,ref_end,query_start,query_end,ref_length,query_length,ref,query,tag
++1,1097583,3695453,2597877,4641652,4636831,NC_000913.3,NZ_CP009685.1,unique
++15377,16741,1185889,1184525,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++19796,20564,115963,116731,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++19796,20563,1721648,1720881,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++19796,20563,1822241,1821474,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++223465,225364,4129150,4127252,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++223535,228885,271160,276500,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++223625,225356,4395331,4393600,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++223625,228880,4301608,4296352,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++223625,225364,4170480,4168740,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++223625,225361,968850,970586,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++225637,228880,4168474,4165232,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++225637,228882,4127072,4123827,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++225637,228882,970856,974091,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++225637,229005,4393411,4390044,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++257908,258675,1822241,1821474,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++257908,258675,1721648,1720881,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++257908,258676,115963,116731,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++270524,271761,3828408,3829645,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++270527,271761,2225998,2224764,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,568813,570011,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273955,275149,1411233,1410039,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,334606,333408,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273950,275149,2298037,2299236,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,48125,46927,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,2394583,2395781,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,1598406,1597208,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++273955,275149,1633992,1632798,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++279162,279930,2644913,2645681,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++290634,291401,2644914,2645681,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++315229,316483,2599961,2601215,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++315229,316483,1529978,1528724,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++315229,316483,3302496,3303750,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++381258,382590,1629878,1631210,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++381260,382592,702466,703798,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++381256,382594,514066,512728,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++381260,382590,3838923,3837593,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++381260,382590,2226040,2227370,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++381885,382590,2044438,2043733,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++391703,392972,3127419,3128688,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++391701,392968,1528716,1529983,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++391709,392963,3378976,3380230,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++525472,527034,2167354,2165792,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++566771,568040,3302487,3303756,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++566775,568034,1529983,1528724,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++566776,568035,2599957,2601216,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574586,575789,48126,46923,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574586,575789,2394582,2395785,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574586,575788,568812,570014,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574587,575789,2298038,2299240,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574587,575790,334606,333403,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574591,575785,1411233,1410039,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574587,575788,1598406,1597205,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++574588,575789,1633995,1632794,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++607997,609361,1185889,1184525,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687846,689053,2298037,2299244,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689055,48125,46917,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689049,334606,333404,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689048,568813,570014,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689049,2394583,2395785,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689048,1598406,1597205,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687851,689045,1411233,1410039,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++687848,689049,1633995,1632794,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++729465,733295,4574925,4571096,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++729582,733302,80967,77247,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1049778,1050545,3404058,3404825,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1049778,1050546,3415529,3416297,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1094244,1095503,3127424,3128683,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1094245,1095499,3378976,3380230,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1094245,1095503,1528724,1529982,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1096961,1873039,2598318,1822242,4641652,4636831,NC_000913.3,NZ_CP009685.1,unique
++1299495,1300697,3006410,3007612,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299495,1300698,3119670,3120873,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299495,1300699,46923,48127,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299490,1300697,333399,334606,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299496,1300699,570014,568811,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299496,1300697,1597205,1598406,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299499,1300697,3420310,3421508,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299499,1300693,1410039,1411233,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1299495,1300696,1632794,1633995,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397242,333404,334606,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397242,3119670,3120872,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396036,1397243,3006406,3007613,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397242,46923,48125,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396041,1397242,1597205,1598406,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396041,1397242,570014,568813,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396044,1397238,1410039,1411233,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396044,1397243,3420310,3421509,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397241,1632794,1633995,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1432208,1434768,2060193,2062753,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1467909,1469240,1631211,1629880,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1467909,1469241,512731,514063,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1469240,3837593,3838923,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1469243,703796,702463,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1469240,3312869,3314199,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1468615,2043733,2044438,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1469296,1470516,3828425,3829645,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1469282,1470516,3424932,3423698,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1527926,1529488,3169987,3168425,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1531672,1532962,75924,74634,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1570641,1572144,33981,32478,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1632528,1635088,2260512,2263072,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,513437,512732,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,2226665,2227370,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,703091,703796,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,3313574,3312869,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651549,3838298,3837592,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,1630505,1631210,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1873031,1972855,1821473,1721649,4641652,4636831,NC_000913.3,NZ_CP009685.1,unique
++1978502,3700157,1721649,1,4641652,4636831,NC_000913.3,NZ_CP009685.1,unique
++1978503,1979285,115963,116745,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1978503,1979270,3437551,3436784,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1978503,1979271,1822241,1821473,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++1978503,1979270,3675660,3674893,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,3007611,3006410,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,3120871,3119670,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,2298039,2299240,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067353,568814,570011,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,2394584,2395785,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2066159,2067353,3421504,3420310,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2068940,2070271,512731,514062,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2068940,2070271,2227371,2226040,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2068941,2070273,3312869,3314201,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2068941,2070271,3837593,3838923,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2068941,2069646,2043733,2044438,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,2394583,2395784,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102943,3421508,3420310,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,3007612,3006411,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,2298038,2299239,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102948,568813,570016,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,3120872,3119671,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2170169,2171436,3302491,3303758,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2170169,2171428,3128684,3127425,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2170170,2171428,2599957,2601215,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2170174,2171428,3380230,3378976,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,3421504,3420310,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,2298042,2299236,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,2394587,2395781,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290117,568817,570015,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,3120868,3119674,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,3007608,3006414,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2514263,2515627,3087462,3086098,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2514263,2515627,3680079,3678715,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2726062,2729297,3466576,3469821,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2726062,2731485,4390167,4395514,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2726052,2731485,4165220,4170663,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2726062,2731303,4123827,4128992,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2726052,2729297,4296340,4299596,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2729567,2731485,4299872,4301791,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2729567,2731303,3470097,3471833,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2996359,2997691,3312867,3314199,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997066,2043733,2044438,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997692,512732,514063,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997691,3837593,3838923,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997694,2227370,2226037,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130141,3131344,1597203,1598406,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131344,2299239,2298038,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131346,2395784,2394581,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131346,46924,48127,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131344,333405,334606,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131345,3119671,3120873,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131344,3006411,3007612,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130142,3131340,1410035,1411233,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130146,3131344,3420310,3421508,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3130146,3131343,1632798,1633995,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3186095,3187427,2226039,2227371,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3186095,3187426,702465,703796,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3186096,3187426,3838923,3837593,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3186096,3187427,1629880,1631211,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3186092,3187430,3314203,3312865,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3186721,3187426,2044438,2043733,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366759,2394583,2395790,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366753,568813,570014,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366754,3007612,3006410,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366754,2298038,2299240,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366755,3120872,3119669,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366750,3421508,3420310,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3423658,3428998,3466573,3471923,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3423658,3426896,4390164,4393411,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3423663,3426896,4165232,4168474,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3423663,3428908,4296352,4301608,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3423662,3426896,4123828,4127072,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3427169,3428908,4168740,4170480,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3427177,3428908,4393600,4395331,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3427169,3428998,4127252,4129080,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3470143,3471328,4159863,4161048,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3583427,3584195,3674892,3675660,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3583427,3584195,3436783,3437551,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3583428,3584196,1821474,1822242,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3583413,3584195,1720866,1721648,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3619192,3622880,4574808,4571120,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3619191,3622911,2965877,2962157,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3624234,3625524,2163608,2162318,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3652030,3653234,2394581,2395785,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3652030,3653233,568811,570014,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3652031,3653234,3120873,3119670,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3652032,3653240,3007612,3006404,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3652032,3653234,2298038,2299240,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3652032,3653230,3421508,3420310,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3666176,3667679,2124639,2123136,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3700158,4296271,4636831,4040722,4641652,4636831,NC_000913.3,NZ_CP009685.1,unique
++3762183,3765871,80966,77278,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3762066,3765895,2965994,2962164,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3941662,3943393,271250,272981,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3941662,3943393,3471833,3470102,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3941479,3946826,968668,974091,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3943582,3946829,273262,276500,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++3943582,3946949,3469821,3466453,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4035385,4040527,3471833,3466692,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4035385,4040641,271250,276495,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4035202,4037121,968668,970586,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4037397,4040527,970856,973975,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4166513,4168253,3471833,3470094,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4166513,4168253,271250,272989,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4166330,4171773,968668,974101,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4168519,4171761,3469821,3466578,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4168519,4171761,273262,276495,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4175945,4177130,228830,230015,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4207843,4209741,3471993,3470094,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4207913,4209741,271160,272989,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4208001,4213166,968850,974091,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4209921,4213166,3469821,3466576,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4209921,4213165,273262,276496,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4295948,4641652,4041158,3695454,4641652,4636831,NC_000913.3,NZ_CP009685.1,unique
++4498181,4499511,3314199,3312869,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,1629880,1631210,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,702466,703796,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,514062,512732,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,2226040,2227370,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4498806,4499512,2044438,2043732,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4507459,4508696,3423698,3424935,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
++4507459,4508679,2224764,2225984,4641652,4636831,NC_000913.3,NZ_CP009685.1,repetitive
+diff --git a/tests/fixtures/ecoli/assemblytics_coords.tab b/tests/fixtures/ecoli/assemblytics_coords.tab
+new file mode 100644
+index 0000000..a2e99a7
+--- /dev/null
++++ b/tests/fixtures/ecoli/assemblytics_coords.tab
+@@ -0,0 +1,6 @@
++1	1097583	3695453	2597877	4641652	4636831	NC_000913.3	NZ_CP009685.1
++1096961	1873039	2598318	1822242	4641652	4636831	NC_000913.3	NZ_CP009685.1
++1873031	1972855	1821473	1721649	4641652	4636831	NC_000913.3	NZ_CP009685.1
++1978502	3700157	1721649	1	4641652	4636831	NC_000913.3	NZ_CP009685.1
++3700158	4296271	4636831	4040722	4641652	4636831	NC_000913.3	NZ_CP009685.1
++4295948	4641652	4041158	3695454	4641652	4636831	NC_000913.3	NZ_CP009685.1
+diff --git a/tests/fixtures/ecoli/assemblytics_dot.coords b/tests/fixtures/ecoli/assemblytics_dot.coords
+new file mode 100644
+index 0000000..60b5fdb
+--- /dev/null
++++ b/tests/fixtures/ecoli/assemblytics_dot.coords
+@@ -0,0 +1,235 @@
++ref_start,ref_end,query_start,query_end,ref
++!NZ_CP009685.1!unique
++1,1097583,941378,2038954,NC_000913.3
++1096961,1873039,2038513,2814589,NC_000913.3
++1873031,1972855,2815358,2915182,NC_000913.3
++1978502,3700157,2915182,4636830,NC_000913.3
++3700158,4296271,0,596109,NC_000913.3
++4295948,4641652,595673,941377,NC_000913.3
++!NZ_CP009685.1!repetitive
++15377,16741,3450942,3452306,NC_000913.3
++19796,20564,4520868,4520100,NC_000913.3
++19796,20563,2915183,2915950,NC_000913.3
++19796,20563,2814590,2815357,NC_000913.3
++223465,225364,507681,509579,NC_000913.3
++223535,228885,4365671,4360331,NC_000913.3
++223625,225356,241500,243231,NC_000913.3
++223625,228880,335223,340479,NC_000913.3
++223625,225364,466351,468091,NC_000913.3
++223625,225361,3667981,3666245,NC_000913.3
++225637,228880,468357,471599,NC_000913.3
++225637,228882,509759,513004,NC_000913.3
++225637,228882,3665975,3662740,NC_000913.3
++225637,229005,243420,246787,NC_000913.3
++257908,258675,2814590,2815357,NC_000913.3
++257908,258675,2915183,2915950,NC_000913.3
++257908,258676,4520868,4520100,NC_000913.3
++270524,271761,808423,807186,NC_000913.3
++270527,271761,2410833,2412067,NC_000913.3
++273951,275149,4068018,4066820,NC_000913.3
++273955,275149,3225598,3226792,NC_000913.3
++273951,275149,4302225,4303423,NC_000913.3
++273950,275149,2338794,2337595,NC_000913.3
++273951,275149,4588706,4589904,NC_000913.3
++273951,275149,2242248,2241050,NC_000913.3
++273951,275149,3038425,3039623,NC_000913.3
++273955,275149,3002839,3004033,NC_000913.3
++279162,279930,1991918,1991150,NC_000913.3
++290634,291401,1991917,1991150,NC_000913.3
++315229,316483,2036870,2035616,NC_000913.3
++315229,316483,3106853,3108107,NC_000913.3
++315229,316483,1334335,1333081,NC_000913.3
++381258,382590,3006953,3005621,NC_000913.3
++381260,382592,3934365,3933033,NC_000913.3
++381256,382594,4122765,4124103,NC_000913.3
++381260,382590,797908,799238,NC_000913.3
++381260,382590,2410791,2409461,NC_000913.3
++381885,382590,2592393,2593098,NC_000913.3
++391703,392972,1509412,1508143,NC_000913.3
++391701,392968,3108115,3106848,NC_000913.3
++391709,392963,1257855,1256601,NC_000913.3
++525472,527034,2469477,2471039,NC_000913.3
++566771,568040,1334344,1333075,NC_000913.3
++566775,568034,3106848,3108107,NC_000913.3
++566776,568035,2036874,2035615,NC_000913.3
++574586,575789,4588705,4589908,NC_000913.3
++574586,575789,2242249,2241046,NC_000913.3
++574586,575788,4068019,4066817,NC_000913.3
++574587,575789,2338793,2337591,NC_000913.3
++574587,575790,4302225,4303428,NC_000913.3
++574591,575785,3225598,3226792,NC_000913.3
++574587,575788,3038425,3039626,NC_000913.3
++574588,575789,3002836,3004037,NC_000913.3
++607997,609361,3450942,3452306,NC_000913.3
++687846,689053,2338794,2337587,NC_000913.3
++687847,689055,4588706,4589914,NC_000913.3
++687847,689049,4302225,4303427,NC_000913.3
++687847,689048,4068018,4066817,NC_000913.3
++687847,689049,2242248,2241046,NC_000913.3
++687847,689048,3038425,3039626,NC_000913.3
++687851,689045,3225598,3226792,NC_000913.3
++687848,689049,3002836,3004037,NC_000913.3
++729465,733295,61906,65735,NC_000913.3
++729582,733302,4555864,4559584,NC_000913.3
++1049778,1050545,1232773,1232006,NC_000913.3
++1049778,1050546,1221302,1220534,NC_000913.3
++1094244,1095503,1509407,1508148,NC_000913.3
++1094245,1095499,1257855,1256601,NC_000913.3
++1094245,1095503,3108107,3106849,NC_000913.3
++1299495,1300697,1630421,1629219,NC_000913.3
++1299495,1300698,1517161,1515958,NC_000913.3
++1299495,1300699,4589908,4588704,NC_000913.3
++1299490,1300697,4303432,4302225,NC_000913.3
++1299496,1300699,4066817,4068020,NC_000913.3
++1299496,1300697,3039626,3038425,NC_000913.3
++1299499,1300697,1216521,1215323,NC_000913.3
++1299499,1300693,3226792,3225598,NC_000913.3
++1299495,1300696,3004037,3002836,NC_000913.3
++1396040,1397242,4303427,4302225,NC_000913.3
++1396040,1397242,1517161,1515959,NC_000913.3
++1396036,1397243,1630425,1629218,NC_000913.3
++1396040,1397242,4589908,4588706,NC_000913.3
++1396041,1397242,3039626,3038425,NC_000913.3
++1396041,1397242,4066817,4068018,NC_000913.3
++1396044,1397238,3226792,3225598,NC_000913.3
++1396044,1397243,1216521,1215322,NC_000913.3
++1396040,1397241,3004037,3002836,NC_000913.3
++1432208,1434768,2576638,2574078,NC_000913.3
++1467909,1469240,3005620,3006951,NC_000913.3
++1467909,1469241,4124100,4122768,NC_000913.3
++1467910,1469240,799238,797908,NC_000913.3
++1467910,1469243,3933035,3934368,NC_000913.3
++1467910,1469240,1323962,1322632,NC_000913.3
++1467910,1468615,2593098,2592393,NC_000913.3
++1469296,1470516,808406,807186,NC_000913.3
++1469282,1470516,1211899,1213133,NC_000913.3
++1527926,1529488,1466844,1468406,NC_000913.3
++1531672,1532962,4560907,4562197,NC_000913.3
++1570641,1572144,4602850,4604353,NC_000913.3
++1632528,1635088,2376319,2373759,NC_000913.3
++1650843,1651548,4123394,4124099,NC_000913.3
++1650843,1651548,2410166,2409461,NC_000913.3
++1650843,1651548,3933740,3933035,NC_000913.3
++1650843,1651548,1323257,1323962,NC_000913.3
++1650843,1651549,798533,799239,NC_000913.3
++1650843,1651548,3006326,3005621,NC_000913.3
++1978503,1979285,4520868,4520086,NC_000913.3
++1978503,1979270,1199280,1200047,NC_000913.3
++1978503,1979271,2814590,2815358,NC_000913.3
++1978503,1979270,961171,961938,NC_000913.3
++2066156,2067357,1629220,1630421,NC_000913.3
++2066156,2067357,1515960,1517161,NC_000913.3
++2066156,2067357,2338792,2337591,NC_000913.3
++2066156,2067353,4068017,4066820,NC_000913.3
++2066156,2067357,2242247,2241046,NC_000913.3
++2066159,2067353,1215327,1216521,NC_000913.3
++2068940,2070271,4124100,4122769,NC_000913.3
++2068940,2070271,2409460,2410791,NC_000913.3
++2068941,2070273,1323962,1322630,NC_000913.3
++2068941,2070271,799238,797908,NC_000913.3
++2068941,2069646,2593098,2592393,NC_000913.3
++2101745,2102946,2242248,2241047,NC_000913.3
++2101745,2102943,1215323,1216521,NC_000913.3
++2101745,2102946,1629219,1630420,NC_000913.3
++2101745,2102946,2338793,2337592,NC_000913.3
++2101745,2102948,4068018,4066815,NC_000913.3
++2101745,2102946,1515959,1517160,NC_000913.3
++2170169,2171436,1334340,1333073,NC_000913.3
++2170169,2171428,1508147,1509406,NC_000913.3
++2170170,2171428,2036874,2035616,NC_000913.3
++2170174,2171428,1256601,1257855,NC_000913.3
++2288919,2290113,1215327,1216521,NC_000913.3
++2288919,2290113,2338789,2337595,NC_000913.3
++2288919,2290113,2242244,2241050,NC_000913.3
++2288919,2290117,4068014,4066816,NC_000913.3
++2288919,2290113,1515963,1517157,NC_000913.3
++2288919,2290113,1629223,1630417,NC_000913.3
++2514263,2515627,1549369,1550733,NC_000913.3
++2514263,2515627,956752,958116,NC_000913.3
++2726062,2729297,1170255,1167010,NC_000913.3
++2726062,2731485,246664,241317,NC_000913.3
++2726052,2731485,471611,466168,NC_000913.3
++2726062,2731303,513004,507839,NC_000913.3
++2726052,2729297,340491,337235,NC_000913.3
++2729567,2731485,336959,335040,NC_000913.3
++2729567,2731303,1166734,1164998,NC_000913.3
++2996359,2997691,1323964,1322632,NC_000913.3
++2996361,2997066,2593098,2592393,NC_000913.3
++2996361,2997692,4124099,4122768,NC_000913.3
++2996361,2997691,799238,797908,NC_000913.3
++2996361,2997694,2409461,2410794,NC_000913.3
++3130141,3131344,3039628,3038425,NC_000913.3
++3130143,3131344,2337592,2338793,NC_000913.3
++3130143,3131346,2241047,2242250,NC_000913.3
++3130143,3131346,4589907,4588704,NC_000913.3
++3130143,3131344,4303426,4302225,NC_000913.3
++3130143,3131345,1517160,1515958,NC_000913.3
++3130143,3131344,1630420,1629219,NC_000913.3
++3130142,3131340,3226796,3225598,NC_000913.3
++3130146,3131344,1216521,1215323,NC_000913.3
++3130146,3131343,3004033,3002836,NC_000913.3
++3186095,3187427,2410792,2409460,NC_000913.3
++3186095,3187426,3934366,3933035,NC_000913.3
++3186096,3187426,797908,799238,NC_000913.3
++3186096,3187427,3006951,3005620,NC_000913.3
++3186092,3187430,1322628,1323966,NC_000913.3
++3186721,3187426,2592393,2593098,NC_000913.3
++3365552,3366759,2242248,2241041,NC_000913.3
++3365552,3366753,4068018,4066817,NC_000913.3
++3365552,3366754,1629219,1630421,NC_000913.3
++3365552,3366754,2338793,2337591,NC_000913.3
++3365552,3366755,1515959,1517162,NC_000913.3
++3365552,3366750,1215323,1216521,NC_000913.3
++3423658,3428998,1170258,1164908,NC_000913.3
++3423658,3426896,246667,243420,NC_000913.3
++3423663,3426896,471599,468357,NC_000913.3
++3423663,3428908,340479,335223,NC_000913.3
++3423662,3426896,513003,509759,NC_000913.3
++3427169,3428908,468091,466351,NC_000913.3
++3427177,3428908,243231,241500,NC_000913.3
++3427169,3428998,509579,507751,NC_000913.3
++3470143,3471328,476968,475783,NC_000913.3
++3583427,3584195,961939,961171,NC_000913.3
++3583427,3584195,1200048,1199280,NC_000913.3
++3583428,3584196,2815357,2814589,NC_000913.3
++3583413,3584195,2915965,2915183,NC_000913.3
++3619192,3622880,62023,65711,NC_000913.3
++3619191,3622911,1670954,1674674,NC_000913.3
++3624234,3625524,2473223,2474513,NC_000913.3
++3652030,3653234,2242250,2241046,NC_000913.3
++3652030,3653233,4068020,4066817,NC_000913.3
++3652031,3653234,1515958,1517161,NC_000913.3
++3652032,3653240,1629219,1630427,NC_000913.3
++3652032,3653234,2338793,2337591,NC_000913.3
++3652032,3653230,1215323,1216521,NC_000913.3
++3666176,3667679,2512192,2513695,NC_000913.3
++3762183,3765871,4555865,4559553,NC_000913.3
++3762066,3765895,1670837,1674667,NC_000913.3
++3941662,3943393,4365581,4363850,NC_000913.3
++3941662,3943393,1164998,1166729,NC_000913.3
++3941479,3946826,3668163,3662740,NC_000913.3
++3943582,3946829,4363569,4360331,NC_000913.3
++3943582,3946949,1167010,1170378,NC_000913.3
++4035385,4040527,1164998,1170139,NC_000913.3
++4035385,4040641,4365581,4360336,NC_000913.3
++4035202,4037121,3668163,3666245,NC_000913.3
++4037397,4040527,3665975,3662856,NC_000913.3
++4166513,4168253,1164998,1166737,NC_000913.3
++4166513,4168253,4365581,4363842,NC_000913.3
++4166330,4171773,3668163,3662730,NC_000913.3
++4168519,4171761,1167010,1170253,NC_000913.3
++4168519,4171761,4363569,4360336,NC_000913.3
++4175945,4177130,4408001,4406816,NC_000913.3
++4207843,4209741,1164838,1166737,NC_000913.3
++4207913,4209741,4365671,4363842,NC_000913.3
++4208001,4213166,3667981,3662740,NC_000913.3
++4209921,4213166,1167010,1170255,NC_000913.3
++4209921,4213165,4363569,4360335,NC_000913.3
++4498181,4499511,1322632,1323962,NC_000913.3
++4498181,4499511,3006951,3005621,NC_000913.3
++4498181,4499511,3934365,3933035,NC_000913.3
++4498181,4499511,4122769,4124099,NC_000913.3
++4498181,4499511,2410791,2409461,NC_000913.3
++4498806,4499512,2592393,2593099,NC_000913.3
++4507459,4508696,1213133,1211896,NC_000913.3
++4507459,4508679,2412067,2410847,NC_000913.3
+diff --git a/tests/fixtures/ecoli/assemblytics_dot.coords.idx b/tests/fixtures/ecoli/assemblytics_dot.coords.idx
+new file mode 100644
+index 0000000..a4e838e
+--- /dev/null
++++ b/tests/fixtures/ecoli/assemblytics_dot.coords.idx
+@@ -0,0 +1,240 @@
++#ref
++ref,ref_length,matching_queries
++NC_000913.3,4641652,NZ_CP009685.1
++#query
++query,query_length,orientation,bytePosition_unique,bytePosition_repetitive,bytePosition_end,unique_matching_refs,matching_refs
++NZ_CP009685.1,4636831,-,44,270,9764,NC_000913.3,NC_000913.3
++#overview
++ref_start,ref_end,query_start,query_end,ref,query,tag
++1978502,3700157,2915182,4636830,NC_000913.3,NZ_CP009685.1,unique
++1,1097583,941378,2038954,NC_000913.3,NZ_CP009685.1,unique
++1096961,1873039,2038513,2814589,NC_000913.3,NZ_CP009685.1,unique
++3700158,4296271,0,596109,NC_000913.3,NZ_CP009685.1,unique
++4295948,4641652,595673,941377,NC_000913.3,NZ_CP009685.1,unique
++1873031,1972855,2815358,2915182,NC_000913.3,NZ_CP009685.1,unique
++2726052,2731485,471611,466168,NC_000913.3,NZ_CP009685.1,repetitive
++4166330,4171773,3668163,3662730,NC_000913.3,NZ_CP009685.1,repetitive
++3941479,3946826,3668163,3662740,NC_000913.3,NZ_CP009685.1,repetitive
++3423658,3428998,1170258,1164908,NC_000913.3,NZ_CP009685.1,repetitive
++2726062,2731485,246664,241317,NC_000913.3,NZ_CP009685.1,repetitive
++223535,228885,4365671,4360331,NC_000913.3,NZ_CP009685.1,repetitive
++223625,228880,335223,340479,NC_000913.3,NZ_CP009685.1,repetitive
++3423663,3428908,340479,335223,NC_000913.3,NZ_CP009685.1,repetitive
++4035385,4040641,4365581,4360336,NC_000913.3,NZ_CP009685.1,repetitive
++4208001,4213166,3667981,3662740,NC_000913.3,NZ_CP009685.1,repetitive
++2726062,2731303,513004,507839,NC_000913.3,NZ_CP009685.1,repetitive
++4035385,4040527,1164998,1170139,NC_000913.3,NZ_CP009685.1,repetitive
++3762066,3765895,1670837,1674667,NC_000913.3,NZ_CP009685.1,repetitive
++729465,733295,61906,65735,NC_000913.3,NZ_CP009685.1,repetitive
++729582,733302,4555864,4559584,NC_000913.3,NZ_CP009685.1,repetitive
++3619191,3622911,1670954,1674674,NC_000913.3,NZ_CP009685.1,repetitive
++3619192,3622880,62023,65711,NC_000913.3,NZ_CP009685.1,repetitive
++3762183,3765871,4555865,4559553,NC_000913.3,NZ_CP009685.1,repetitive
++3943582,3946949,1167010,1170378,NC_000913.3,NZ_CP009685.1,repetitive
++225637,229005,243420,246787,NC_000913.3,NZ_CP009685.1,repetitive
++2726052,2729297,340491,337235,NC_000913.3,NZ_CP009685.1,repetitive
++3423658,3426896,246667,243420,NC_000913.3,NZ_CP009685.1,repetitive
++225637,228882,509759,513004,NC_000913.3,NZ_CP009685.1,repetitive
++2726062,2729297,1170255,1167010,NC_000913.3,NZ_CP009685.1,repetitive
++4209921,4213166,1167010,1170255,NC_000913.3,NZ_CP009685.1,repetitive
++3423662,3426896,513003,509759,NC_000913.3,NZ_CP009685.1,repetitive
++4168519,4171761,1167010,1170253,NC_000913.3,NZ_CP009685.1,repetitive
++225637,228880,468357,471599,NC_000913.3,NZ_CP009685.1,repetitive
++3423663,3426896,471599,468357,NC_000913.3,NZ_CP009685.1,repetitive
++3943582,3946829,4363569,4360331,NC_000913.3,NZ_CP009685.1,repetitive
++225637,228882,3665975,3662740,NC_000913.3,NZ_CP009685.1,repetitive
++4209921,4213165,4363569,4360335,NC_000913.3,NZ_CP009685.1,repetitive
++4168519,4171761,4363569,4360336,NC_000913.3,NZ_CP009685.1,repetitive
++4037397,4040527,3665975,3662856,NC_000913.3,NZ_CP009685.1,repetitive
++1432208,1434768,2576638,2574078,NC_000913.3,NZ_CP009685.1,repetitive
++1632528,1635088,2376319,2373759,NC_000913.3,NZ_CP009685.1,repetitive
++2729567,2731485,336959,335040,NC_000913.3,NZ_CP009685.1,repetitive
++4035202,4037121,3668163,3666245,NC_000913.3,NZ_CP009685.1,repetitive
++4207843,4209741,1164838,1166737,NC_000913.3,NZ_CP009685.1,repetitive
++223465,225364,507681,509579,NC_000913.3,NZ_CP009685.1,repetitive
++4207913,4209741,4365671,4363842,NC_000913.3,NZ_CP009685.1,repetitive
++3427169,3428998,509579,507751,NC_000913.3,NZ_CP009685.1,repetitive
++223625,225364,466351,468091,NC_000913.3,NZ_CP009685.1,repetitive
++3427169,3428908,468091,466351,NC_000913.3,NZ_CP009685.1,repetitive
++4166513,4168253,1164998,1166737,NC_000913.3,NZ_CP009685.1,repetitive
++4166513,4168253,4365581,4363842,NC_000913.3,NZ_CP009685.1,repetitive
++223625,225361,3667981,3666245,NC_000913.3,NZ_CP009685.1,repetitive
++2729567,2731303,1166734,1164998,NC_000913.3,NZ_CP009685.1,repetitive
++223625,225356,241500,243231,NC_000913.3,NZ_CP009685.1,repetitive
++3427177,3428908,243231,241500,NC_000913.3,NZ_CP009685.1,repetitive
++3941662,3943393,4365581,4363850,NC_000913.3,NZ_CP009685.1,repetitive
++3941662,3943393,1164998,1166729,NC_000913.3,NZ_CP009685.1,repetitive
++525472,527034,2469477,2471039,NC_000913.3,NZ_CP009685.1,repetitive
++1527926,1529488,1466844,1468406,NC_000913.3,NZ_CP009685.1,repetitive
++1570641,1572144,4602850,4604353,NC_000913.3,NZ_CP009685.1,repetitive
++3666176,3667679,2512192,2513695,NC_000913.3,NZ_CP009685.1,repetitive
++15377,16741,3450942,3452306,NC_000913.3,NZ_CP009685.1,repetitive
++607997,609361,3450942,3452306,NC_000913.3,NZ_CP009685.1,repetitive
++2514263,2515627,1549369,1550733,NC_000913.3,NZ_CP009685.1,repetitive
++2514263,2515627,956752,958116,NC_000913.3,NZ_CP009685.1,repetitive
++381256,382594,4122765,4124103,NC_000913.3,NZ_CP009685.1,repetitive
++3186092,3187430,1322628,1323966,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1469243,3933035,3934368,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997694,2409461,2410794,NC_000913.3,NZ_CP009685.1,repetitive
++381258,382590,3006953,3005621,NC_000913.3,NZ_CP009685.1,repetitive
++381260,382592,3934365,3933033,NC_000913.3,NZ_CP009685.1,repetitive
++1467909,1469241,4124100,4122768,NC_000913.3,NZ_CP009685.1,repetitive
++2068941,2070273,1323962,1322630,NC_000913.3,NZ_CP009685.1,repetitive
++2996359,2997691,1323964,1322632,NC_000913.3,NZ_CP009685.1,repetitive
++3186095,3187427,2410792,2409460,NC_000913.3,NZ_CP009685.1,repetitive
++1467909,1469240,3005620,3006951,NC_000913.3,NZ_CP009685.1,repetitive
++2068940,2070271,4124100,4122769,NC_000913.3,NZ_CP009685.1,repetitive
++2068940,2070271,2409460,2410791,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997692,4124099,4122768,NC_000913.3,NZ_CP009685.1,repetitive
++3186095,3187426,3934366,3933035,NC_000913.3,NZ_CP009685.1,repetitive
++3186096,3187427,3006951,3005620,NC_000913.3,NZ_CP009685.1,repetitive
++381260,382590,797908,799238,NC_000913.3,NZ_CP009685.1,repetitive
++381260,382590,2410791,2409461,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1469240,799238,797908,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1469240,1323962,1322632,NC_000913.3,NZ_CP009685.1,repetitive
++2068941,2070271,799238,797908,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997691,799238,797908,NC_000913.3,NZ_CP009685.1,repetitive
++3186096,3187426,797908,799238,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,1322632,1323962,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,3006951,3005621,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,3934365,3933035,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,4122769,4124099,NC_000913.3,NZ_CP009685.1,repetitive
++4498181,4499511,2410791,2409461,NC_000913.3,NZ_CP009685.1,repetitive
++1531672,1532962,4560907,4562197,NC_000913.3,NZ_CP009685.1,repetitive
++3624234,3625524,2473223,2474513,NC_000913.3,NZ_CP009685.1,repetitive
++391703,392972,1509412,1508143,NC_000913.3,NZ_CP009685.1,repetitive
++566771,568040,1334344,1333075,NC_000913.3,NZ_CP009685.1,repetitive
++391701,392968,3108115,3106848,NC_000913.3,NZ_CP009685.1,repetitive
++2170169,2171436,1334340,1333073,NC_000913.3,NZ_CP009685.1,repetitive
++566775,568034,3106848,3108107,NC_000913.3,NZ_CP009685.1,repetitive
++566776,568035,2036874,2035615,NC_000913.3,NZ_CP009685.1,repetitive
++1094244,1095503,1509407,1508148,NC_000913.3,NZ_CP009685.1,repetitive
++2170169,2171428,1508147,1509406,NC_000913.3,NZ_CP009685.1,repetitive
++1094245,1095503,3108107,3106849,NC_000913.3,NZ_CP009685.1,repetitive
++2170170,2171428,2036874,2035616,NC_000913.3,NZ_CP009685.1,repetitive
++315229,316483,2036870,2035616,NC_000913.3,NZ_CP009685.1,repetitive
++315229,316483,3106853,3108107,NC_000913.3,NZ_CP009685.1,repetitive
++315229,316483,1334335,1333081,NC_000913.3,NZ_CP009685.1,repetitive
++391709,392963,1257855,1256601,NC_000913.3,NZ_CP009685.1,repetitive
++1094245,1095499,1257855,1256601,NC_000913.3,NZ_CP009685.1,repetitive
++2170174,2171428,1256601,1257855,NC_000913.3,NZ_CP009685.1,repetitive
++270524,271761,808423,807186,NC_000913.3,NZ_CP009685.1,repetitive
++4507459,4508696,1213133,1211896,NC_000913.3,NZ_CP009685.1,repetitive
++270527,271761,2410833,2412067,NC_000913.3,NZ_CP009685.1,repetitive
++1469282,1470516,1211899,1213133,NC_000913.3,NZ_CP009685.1,repetitive
++1469296,1470516,808406,807186,NC_000913.3,NZ_CP009685.1,repetitive
++4507459,4508679,2412067,2410847,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689055,4588706,4589914,NC_000913.3,NZ_CP009685.1,repetitive
++3652032,3653240,1629219,1630427,NC_000913.3,NZ_CP009685.1,repetitive
++687846,689053,2338794,2337587,NC_000913.3,NZ_CP009685.1,repetitive
++1299490,1300697,4303432,4302225,NC_000913.3,NZ_CP009685.1,repetitive
++1396036,1397243,1630425,1629218,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366759,2242248,2241041,NC_000913.3,NZ_CP009685.1,repetitive
++1299495,1300699,4589908,4588704,NC_000913.3,NZ_CP009685.1,repetitive
++3652030,3653234,2242250,2241046,NC_000913.3,NZ_CP009685.1,repetitive
++574586,575789,4588705,4589908,NC_000913.3,NZ_CP009685.1,repetitive
++574586,575789,2242249,2241046,NC_000913.3,NZ_CP009685.1,repetitive
++574587,575790,4302225,4303428,NC_000913.3,NZ_CP009685.1,repetitive
++1299495,1300698,1517161,1515958,NC_000913.3,NZ_CP009685.1,repetitive
++1299496,1300699,4066817,4068020,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102948,4068018,4066815,NC_000913.3,NZ_CP009685.1,repetitive
++3130141,3131344,3039628,3038425,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131346,2241047,2242250,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131346,4589907,4588704,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366755,1515959,1517162,NC_000913.3,NZ_CP009685.1,repetitive
++3652030,3653233,4068020,4066817,NC_000913.3,NZ_CP009685.1,repetitive
++3652031,3653234,1515958,1517161,NC_000913.3,NZ_CP009685.1,repetitive
++574586,575788,4068019,4066817,NC_000913.3,NZ_CP009685.1,repetitive
++574587,575789,2338793,2337591,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689049,4302225,4303427,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689049,2242248,2241046,NC_000913.3,NZ_CP009685.1,repetitive
++1299495,1300697,1630421,1629219,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397242,4303427,4302225,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397242,1517161,1515959,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397242,4589908,4588706,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131345,1517160,1515958,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366754,1629219,1630421,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366754,2338793,2337591,NC_000913.3,NZ_CP009685.1,repetitive
++3652032,3653234,2338793,2337591,NC_000913.3,NZ_CP009685.1,repetitive
++574587,575788,3038425,3039626,NC_000913.3,NZ_CP009685.1,repetitive
++574588,575789,3002836,3004037,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689048,4068018,4066817,NC_000913.3,NZ_CP009685.1,repetitive
++687847,689048,3038425,3039626,NC_000913.3,NZ_CP009685.1,repetitive
++687848,689049,3002836,3004037,NC_000913.3,NZ_CP009685.1,repetitive
++1299496,1300697,3039626,3038425,NC_000913.3,NZ_CP009685.1,repetitive
++1299495,1300696,3004037,3002836,NC_000913.3,NZ_CP009685.1,repetitive
++1396041,1397242,3039626,3038425,NC_000913.3,NZ_CP009685.1,repetitive
++1396041,1397242,4066817,4068018,NC_000913.3,NZ_CP009685.1,repetitive
++1396040,1397241,3004037,3002836,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,1629220,1630421,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,1515960,1517161,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,2338792,2337591,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067357,2242247,2241046,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,2242248,2241047,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,1629219,1630420,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,2338793,2337592,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102946,1515959,1517160,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131344,2337592,2338793,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131344,4303426,4302225,NC_000913.3,NZ_CP009685.1,repetitive
++3130143,3131344,1630420,1629219,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366753,4068018,4066817,NC_000913.3,NZ_CP009685.1,repetitive
++273950,275149,2338794,2337595,NC_000913.3,NZ_CP009685.1,repetitive
++1396044,1397243,1216521,1215322,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,4068018,4066820,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,4302225,4303423,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,4588706,4589904,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,2242248,2241050,NC_000913.3,NZ_CP009685.1,repetitive
++273951,275149,3038425,3039623,NC_000913.3,NZ_CP009685.1,repetitive
++1299499,1300697,1216521,1215323,NC_000913.3,NZ_CP009685.1,repetitive
++2101745,2102943,1215323,1216521,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290117,4068014,4066816,NC_000913.3,NZ_CP009685.1,repetitive
++3130142,3131340,3226796,3225598,NC_000913.3,NZ_CP009685.1,repetitive
++3130146,3131344,1216521,1215323,NC_000913.3,NZ_CP009685.1,repetitive
++3365552,3366750,1215323,1216521,NC_000913.3,NZ_CP009685.1,repetitive
++3652032,3653230,1215323,1216521,NC_000913.3,NZ_CP009685.1,repetitive
++2066156,2067353,4068017,4066820,NC_000913.3,NZ_CP009685.1,repetitive
++3130146,3131343,3004033,3002836,NC_000913.3,NZ_CP009685.1,repetitive
++273955,275149,3225598,3226792,NC_000913.3,NZ_CP009685.1,repetitive
++273955,275149,3002839,3004033,NC_000913.3,NZ_CP009685.1,repetitive
++574591,575785,3225598,3226792,NC_000913.3,NZ_CP009685.1,repetitive
++687851,689045,3225598,3226792,NC_000913.3,NZ_CP009685.1,repetitive
++1299499,1300693,3226792,3225598,NC_000913.3,NZ_CP009685.1,repetitive
++1396044,1397238,3226792,3225598,NC_000913.3,NZ_CP009685.1,repetitive
++2066159,2067353,1215327,1216521,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,1215327,1216521,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,2338789,2337595,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,2242244,2241050,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,1515963,1517157,NC_000913.3,NZ_CP009685.1,repetitive
++2288919,2290113,1629223,1630417,NC_000913.3,NZ_CP009685.1,repetitive
++3470143,3471328,476968,475783,NC_000913.3,NZ_CP009685.1,repetitive
++4175945,4177130,4408001,4406816,NC_000913.3,NZ_CP009685.1,repetitive
++1978503,1979285,4520868,4520086,NC_000913.3,NZ_CP009685.1,repetitive
++3583413,3584195,2915965,2915183,NC_000913.3,NZ_CP009685.1,repetitive
++19796,20564,4520868,4520100,NC_000913.3,NZ_CP009685.1,repetitive
++257908,258676,4520868,4520100,NC_000913.3,NZ_CP009685.1,repetitive
++279162,279930,1991918,1991150,NC_000913.3,NZ_CP009685.1,repetitive
++1049778,1050546,1221302,1220534,NC_000913.3,NZ_CP009685.1,repetitive
++1978503,1979271,2814590,2815358,NC_000913.3,NZ_CP009685.1,repetitive
++3583427,3584195,961939,961171,NC_000913.3,NZ_CP009685.1,repetitive
++3583427,3584195,1200048,1199280,NC_000913.3,NZ_CP009685.1,repetitive
++3583428,3584196,2815357,2814589,NC_000913.3,NZ_CP009685.1,repetitive
++19796,20563,2915183,2915950,NC_000913.3,NZ_CP009685.1,repetitive
++19796,20563,2814590,2815357,NC_000913.3,NZ_CP009685.1,repetitive
++257908,258675,2814590,2815357,NC_000913.3,NZ_CP009685.1,repetitive
++257908,258675,2915183,2915950,NC_000913.3,NZ_CP009685.1,repetitive
++290634,291401,1991917,1991150,NC_000913.3,NZ_CP009685.1,repetitive
++1049778,1050545,1232773,1232006,NC_000913.3,NZ_CP009685.1,repetitive
++1978503,1979270,1199280,1200047,NC_000913.3,NZ_CP009685.1,repetitive
++1978503,1979270,961171,961938,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651549,798533,799239,NC_000913.3,NZ_CP009685.1,repetitive
++4498806,4499512,2592393,2593099,NC_000913.3,NZ_CP009685.1,repetitive
++381885,382590,2592393,2593098,NC_000913.3,NZ_CP009685.1,repetitive
++1467910,1468615,2593098,2592393,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,4123394,4124099,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,2410166,2409461,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,3933740,3933035,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,1323257,1323962,NC_000913.3,NZ_CP009685.1,repetitive
++1650843,1651548,3006326,3005621,NC_000913.3,NZ_CP009685.1,repetitive
++2068941,2069646,2593098,2592393,NC_000913.3,NZ_CP009685.1,repetitive
++2996361,2997066,2593098,2592393,NC_000913.3,NZ_CP009685.1,repetitive
++3186721,3187426,2592393,2593098,NC_000913.3,NZ_CP009685.1,repetitive
+diff --git a/tests/fixtures/ecoli/assemblytics_structural_variants.bed b/tests/fixtures/ecoli/assemblytics_structural_variants.bed
+new file mode 100644
+index 0000000..4242945
+--- /dev/null
++++ b/tests/fixtures/ecoli/assemblytics_structural_variants.bed
+@@ -0,0 +1,5 @@
++#reference	ref_start	ref_stop	ID	size	strand	type	ref_gap_size	query_gap_size	query_coordinates	method
++NC_000913.3	1972855	1978502	Assemblytics_b_1	5647	+	Deletion	5647	0	NZ_CP009685.1:1721649-1721649:+	between_alignments
++NC_000913.3	1873031	1873039	Assemblytics_b_2	777	+	Insertion	-8	769	NZ_CP009685.1:1821473-1822242:+	between_alignments
++NC_000913.3	1096961	1097583	Assemblytics_b_3	181	+	Tandem_expansion	-622	-441	NZ_CP009685.1:2597877-2598318:-	between_alignments
++NC_000913.3	4295948	4296271	Assemblytics_b_5	113	+	Tandem_contraction	-323	-436	NZ_CP009685.1:4040722-4041158:-	between_alignments
+diff --git a/tests/test_pipeline.py b/tests/test_pipeline.py
+new file mode 100644
+index 0000000..49b8fed
+--- /dev/null
++++ b/tests/test_pipeline.py
+@@ -0,0 +1,83 @@
++"""Regression tests for the Assemblytics pipeline.
++
++Run with: pytest tests/
++"""
++
++import os
++import tempfile
++import pytest
++
++from assemblytics.cli import run
++import argparse
++
++FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "ecoli")
++ECOLI_DELTA = os.path.join(os.path.dirname(__file__), "..", "input_examples", "ecoli.delta.gz")
++
++
++@pytest.fixture(scope="module")
++def ecoli_output():
++    with tempfile.TemporaryDirectory() as tmp:
++        run(argparse.Namespace(
++            delta=ECOLI_DELTA,
++            output_dir=tmp,
++            unique_length=10000,
++            minimum_size=50,
++            maximum_size=10000,
++            long_range=False,
++        ))
++        yield tmp
++
++
++TEXT_FILES = [
++    "assemblytics_structural_variants.bed",
++    "assemblytics_coords.tab",
++    "assemblytics_coords.csv",
++    "assemblytics_dot.coords",
++    "assemblytics_dot.coords.idx",
++    "assemblytics_assembly_stats.txt",
++]
++
++
++@pytest.mark.parametrize("filename", TEXT_FILES)
++def test_output_matches_fixture(ecoli_output, filename):
++    actual_path = os.path.join(ecoli_output, filename)
++    fixture_path = os.path.join(FIXTURES, filename)
++
++    assert os.path.exists(actual_path), f"{filename} was not produced"
++
++    with open(actual_path) as f:
++        actual = f.read()
++    with open(fixture_path) as f:
++        expected = f.read()
++
++    assert actual == expected, f"{filename} differs from fixture"
++
++
++def test_variants_bed_has_header_and_variants(ecoli_output):
++    path = os.path.join(ecoli_output, "assemblytics_structural_variants.bed")
++    with open(path) as f:
++        lines = f.readlines()
++    assert lines[0].startswith("#reference"), "BED file missing header"
++    assert len(lines) > 1, "No variants called"
++
++
++def test_dot_coords_sections(ecoli_output):
++    idx_path = os.path.join(ecoli_output, "assemblytics_dot.coords.idx")
++    with open(idx_path) as f:
++        content = f.read()
++    for section in ("#ref", "#query", "#overview"):
++        assert section in content, f"Missing {section} section in .coords.idx"
++
++
++def test_all_expected_files_produced(ecoli_output):
++    expected = [
++        "assemblytics_structural_variants.bed",
++        "assemblytics_coords.csv",
++        "assemblytics_coords.tab",
++        "assemblytics_assembly_stats.txt",
++        "assemblytics_dot.coords",
++        "assemblytics_dot.coords.idx",
++        "assemblytics_results.zip",
++    ]
++    for f in expected:
++        assert os.path.exists(os.path.join(ecoli_output, f)), f"Missing expected output: {f}"

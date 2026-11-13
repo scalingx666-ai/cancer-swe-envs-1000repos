@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/exomiser__Exomiser-614"
+description = "Ph/re scale boqa raw log score"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Exomiser",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "exomiser/Exomiser"
+ref = "984691f3541f3b5d0526a68a467c988b9847355d"
+reference = "https://github.com/exomiser/Exomiser/pull/614"
+source_access = "auto"
+built_at = "2026-11-13T16:04:31.793896+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6d533fc8ab6d6c9c8953db198ce139024a2e7051ae99c96b2cd5a2424947c02f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-03T09:22:18Z"
+diff_format = "unified"
+context_files = [
+    "exomiser-core/pom.xml",
+    "exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/prioritisers/BoqaPrioritiser.java",
+    "exomiser-spring-boot-autoconfigure/src/main/java/org/monarchinitiative/exomiser/autoconfigure/phenotype/PrioritiserAutoConfiguration.java",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 107
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,94 @@
+diff --git a/.travis.yml b/.travis.yml
+new file mode 100644
+index 0000000..c30e21f
+--- /dev/null
++++ b/.travis.yml
+@@ -0,0 +1,7 @@
++language: c++
++script:
++- mkdir build
++- cd build
++- cmake ..
++- make
++- make test
+diff --git a/filetype.cpp b/filetype.cpp
+index 5849c49..883e75a 100644
+--- a/filetype.cpp
++++ b/filetype.cpp
+@@ -1,10 +1,23 @@
+ #include "filetype.h"
+ 
++short fastaOrFastq(istream &inStream)
++{
++    char firstChar = inStream.peek();
++    switch (firstChar)
++    {
++        case '>':
++            return FASTA_FILE;
++        case '@':
++            return FASTQ_FILE;
++        default:
++            return UNKNOWN;
++    }
++}
++
+ short fastaOrFastq(string filename)
+ {
+     ifstream ifs;
+     ifs.open(filename.c_str());
+-    char firstChar;
+ 
+     if (! ifs.is_open())
+     {
+@@ -12,17 +25,7 @@ short fastaOrFastq(string filename)
+         exit(1);
+     }
+ 
+-    firstChar = ifs.get();
++    short result = fastaOrFastq(ifs);
+     ifs.close();
+-
+-    switch (firstChar)
+-    {
+-        case '>':
+-            return FASTA_FILE;
+-        case '@':
+-            return FASTQ_FILE;
+-        default:
+-            return UNKNOWN;
+-    }
++    return result;
+ }
+-
+diff --git a/filetype.h b/filetype.h
+index cad6304..1531796 100644
+--- a/filetype.h
++++ b/filetype.h
+@@ -11,6 +11,7 @@ const short FASTA_FILE = 1;
+ const short FASTQ_FILE = 2;
+ const short UNKNOWN = 3;
+ 
++short fastaOrFastq(istream &inputstream);
+ short fastaOrFastq(string filename);
+ 
+ #endif // FILETYPE
+diff --git a/stats.cpp b/stats.cpp
+index 88bdceb..e3fb0a4 100644
+--- a/stats.cpp
++++ b/stats.cpp
+@@ -31,7 +31,6 @@ Stats::Stats(string filename, unsigned long minimumLength)
+     vector<int> seqLengths;
+     ifstream inStream;
+     unsigned long cumulativeLength = 0;
+-    short filetype = fastaOrFastq(filename);
+ 
+     inStream.open(filename.c_str());
+ 
+@@ -43,6 +42,7 @@ Stats::Stats(string filename, unsigned long minimumLength)
+ 
+     filename_ = filename;
+ 
++    short filetype = fastaOrFastq(inStream);
+     while(inStream.good())
+     {
+         Fasta* seq;

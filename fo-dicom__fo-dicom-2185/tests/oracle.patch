@@ -1,0 +1,26 @@
+diff --git a/Tests/FO-DICOM.Tests.Windows/FO-DICOM.Tests.Windows.csproj b/Tests/FO-DICOM.Tests.Windows/FO-DICOM.Tests.Windows.csproj
+index bacd0f5bb..94cf3fd5e 100644
+--- a/Tests/FO-DICOM.Tests.Windows/FO-DICOM.Tests.Windows.csproj
++++ b/Tests/FO-DICOM.Tests.Windows/FO-DICOM.Tests.Windows.csproj
+@@ -20,7 +20,7 @@
+ 
+ 	<ItemGroup>
+ 		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />
+-		<PackageReference Include="coverlet.collector" Version="10.0.1">
++		<PackageReference Include="coverlet.collector" Version="10.1.0">
+ 			<PrivateAssets>all</PrivateAssets>
+ 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+ 		</PackageReference>
+diff --git a/Tests/FO-DICOM.Tests/FO-DICOM.Tests.csproj b/Tests/FO-DICOM.Tests/FO-DICOM.Tests.csproj
+index 145453763..b1e13610f 100644
+--- a/Tests/FO-DICOM.Tests/FO-DICOM.Tests.csproj
++++ b/Tests/FO-DICOM.Tests/FO-DICOM.Tests.csproj
+@@ -21,7 +21,7 @@
+ 
+   <ItemGroup>
+     <PackageReference Include="Ben.Demystifier" Version="0.4.1" />
+-    <PackageReference Include="coverlet.collector" Version="10.0.1">
++    <PackageReference Include="coverlet.collector" Version="10.1.0">
+       <PrivateAssets>all</PrivateAssets>
+       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+     </PackageReference>

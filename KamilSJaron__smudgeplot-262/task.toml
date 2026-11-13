@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/KamilSJaron__smudgeplot-262"
+description = "Update publish action cibuildwheel version to v3.3.1"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "smudgeplot",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "KamilSJaron/smudgeplot"
+ref = "6a47410b01960cb7b373f44d5dace3613666b5a9"
+reference = "https://github.com/KamilSJaron/smudgeplot/pull/262"
+source_access = "auto"
+built_at = "2026-11-13T16:01:00.077386+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:37d6a257c4e84e80718d168efa3abe6c80de75a3419d19356a1c43cb047ff065"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-03T09:37:07Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/publish.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

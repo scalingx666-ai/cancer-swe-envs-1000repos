@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/higlass__higlass-1298"
+description = "Kerpedji/cross section fix"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "higlass",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "higlass/higlass"
+ref = "2dcd2190180bb7688068a353b768c3b997f60051"
+reference = "https://github.com/higlass/higlass/pull/1298"
+source_access = "auto"
+built_at = "2026-11-13T15:59:07.926288+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:43c301b91178354d30b0a45145f38302dc6499743a1b5f15f5cdc37c57318f47"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-19T05:29:17Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "app/scripts/BarTrack.js",
+    "app/scripts/Tiled1DPixiTrack.js",
+    "app/scripts/data-fetchers/DataFetcher.js",
+    "app/scripts/services/tile-proxy.js",
+    "package-lock.json",
+    "package.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 41
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

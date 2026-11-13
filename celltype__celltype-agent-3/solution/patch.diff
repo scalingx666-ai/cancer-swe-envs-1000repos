@@ -1,0 +1,178 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 61b3425..a119b55 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -17,7 +17,7 @@ dependencies = [
+     "typer>=0.12",
+     "rich>=13.0",
+     "prompt-toolkit>=3.0",
+-    "anthropic>=0.40",
++    "anthropic>=0.74.0",
+     "openai>=1.0",
+     "claude-agent-sdk>=0.1",
+     "httpx>=0.27",
+diff --git a/src/ct/agent/config.py b/src/ct/agent/config.py
+index 1b9ae9c..e5ad15f 100644
+--- a/src/ct/agent/config.py
++++ b/src/ct/agent/config.py
+@@ -456,6 +456,13 @@ def llm_preflight_issue(self) -> Optional[str]:
+         if self.llm_api_key(provider):
+             return None
+ 
++        # Azure AI Foundry: Foundry-specific env vars are valid Anthropic auth
++        if provider == "anthropic" and (
++            os.environ.get("ANTHROPIC_FOUNDRY_API_KEY")
++            or os.environ.get("ANTHROPIC_FOUNDRY_RESOURCE")
++        ):
++            return None
++
+         if provider == "openai":
+             return (
+                 "OpenAI API key not configured. Set OPENAI_API_KEY or run:\n"
+@@ -464,7 +471,9 @@ def llm_preflight_issue(self) -> Optional[str]:
+ 
+         return (
+             "Anthropic API key not configured. Set ANTHROPIC_API_KEY or run:\n"
+-            "  ct config set llm.api_key <key>"
++            "  ct config set llm.api_key <key>\n"
++            "For Azure AI Foundry: set ANTHROPIC_FOUNDRY_API_KEY and "
++            "ANTHROPIC_FOUNDRY_RESOURCE"
+         )
+ 
+     def keys_table(self) -> Table:
+diff --git a/src/ct/agent/doctor.py b/src/ct/agent/doctor.py
+index 3322e9a..e5fdf27 100644
+--- a/src/ct/agent/doctor.py
++++ b/src/ct/agent/doctor.py
+@@ -6,6 +6,7 @@
+ 
+ from dataclasses import dataclass
+ import logging
++import os
+ from pathlib import Path
+ 
+ from rich.table import Table
+@@ -67,12 +68,12 @@ def run_checks(config: Config | None = None, session=None) -> list[DoctorCheck]:
+     if llm_issue:
+         checks.append(DoctorCheck(name="llm", status="error", detail=llm_issue))
+     else:
++        if os.environ.get("ANTHROPIC_FOUNDRY_API_KEY") or os.environ.get("ANTHROPIC_FOUNDRY_RESOURCE"):
++            detail = f"provider=anthropic (Azure Foundry), model={model}"
++        else:
++            detail = f"provider={provider}, model={model}"
+         checks.append(
+-            DoctorCheck(
+-                name="llm",
+-                status="ok",
+-                detail=f"provider={provider}, model={model}",
+-            )
++            DoctorCheck(name="llm", status="ok", detail=detail)
+         )
+ 
+     # 3) Output directory availability
+diff --git a/src/ct/agent/runner.py b/src/ct/agent/runner.py
+index f6d8d0b..6ff615c 100644
+--- a/src/ct/agent/runner.py
++++ b/src/ct/agent/runner.py
+@@ -357,6 +357,24 @@ async def _run_async(
+         # Suppress warnings in SDK subprocess (matplotlib, pydeseq2, numpy, etc.)
+         clean_env["PYTHONWARNINGS"] = "ignore"
+ 
++        # Enable Foundry mode for Agent SDK subprocess if Foundry env vars present
++        if any(clean_env.get(v) for v in (
++            "ANTHROPIC_FOUNDRY_API_KEY",
++            "ANTHROPIC_FOUNDRY_RESOURCE",
++            "ANTHROPIC_FOUNDRY_BASE_URL",
++        )):
++            clean_env["CLAUDE_CODE_USE_FOUNDRY"] = "1"
++            # Pin model names for Foundry deployments
++            clean_env.setdefault(
++                "ANTHROPIC_DEFAULT_SONNET_MODEL", model
++            )
++            clean_env.setdefault(
++                "ANTHROPIC_DEFAULT_OPUS_MODEL", model
++            )
++            clean_env.setdefault(
++                "ANTHROPIC_DEFAULT_HAIKU_MODEL", model
++            )
++
+         # Plan mode: use SDK's built-in plan permission mode.
+         # In plan mode, Claude outputs a plan then calls ExitPlanMode.
+         # We intercept that to show the plan and ask for approval.
+diff --git a/src/ct/cli.py b/src/ct/cli.py
+index ada1961..9f604da 100644
+--- a/src/ct/cli.py
++++ b/src/ct/cli.py
+@@ -128,6 +128,13 @@ def setup_cmd(
+ 
+     cfg = Config.load()
+ 
++    # Azure AI Foundry: skip interactive key prompt when Foundry is configured
++    if os.environ.get("ANTHROPIC_FOUNDRY_API_KEY") or os.environ.get("ANTHROPIC_FOUNDRY_RESOURCE"):
++        console.print("\n  [green]Azure AI Foundry detected. No API key needed.[/green]")
++        cfg.set("llm.provider", "anthropic")
++        cfg.save()
++        return
++
+     console.print()
+     console.print(
+         Panel(
+diff --git a/src/ct/models/llm.py b/src/ct/models/llm.py
+index 203b173..dbdcf57 100644
+--- a/src/ct/models/llm.py
++++ b/src/ct/models/llm.py
+@@ -120,9 +120,12 @@ def _get_client(self):
+ 
+         if self.provider == "anthropic":
+             import anthropic
+-            self._client = anthropic.Anthropic(
+-                api_key=self.api_key or os.environ.get("ANTHROPIC_API_KEY")
+-            )
++            if os.environ.get("ANTHROPIC_FOUNDRY_API_KEY") or os.environ.get("ANTHROPIC_FOUNDRY_RESOURCE"):
++                self._client = anthropic.AnthropicFoundry()
++            else:
++                self._client = anthropic.Anthropic(
++                    api_key=self.api_key or os.environ.get("ANTHROPIC_API_KEY")
++                )
+ 
+         elif self.provider == "openai":
+             import openai
+diff --git a/tests/test_config.py b/tests/test_config.py
+index 09761a2..d170198 100644
+--- a/tests/test_config.py
++++ b/tests/test_config.py
+@@ -21,13 +21,33 @@ def test_load_invalid_json_does_not_crash(monkeypatch, tmp_path):
+     assert cfg.get("llm.provider") == "anthropic"
+ 
+ 
+-def test_llm_preflight_requires_anthropic_key():
++def test_llm_preflight_requires_anthropic_key(monkeypatch):
++    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
++    monkeypatch.delenv("ANTHROPIC_FOUNDRY_API_KEY", raising=False)
++    monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
+     cfg = Config(data={"llm.provider": "anthropic"})
+     issue = cfg.llm_preflight_issue()
+     assert issue is not None
+     assert "Anthropic API key" in issue
+ 
+ 
++def test_llm_preflight_accepts_foundry_env_vars(monkeypatch):
++    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
++    monkeypatch.setenv("ANTHROPIC_FOUNDRY_API_KEY", "test-key")
++    monkeypatch.setenv("ANTHROPIC_FOUNDRY_RESOURCE", "test-resource")
++    cfg = Config(data={"llm.provider": "anthropic"})
++    assert cfg.llm_preflight_issue() is None
++
++
++def test_llm_preflight_error_mentions_foundry(monkeypatch):
++    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
++    monkeypatch.delenv("ANTHROPIC_FOUNDRY_API_KEY", raising=False)
++    monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
++    cfg = Config(data={"llm.provider": "anthropic"})
++    issue = cfg.llm_preflight_issue()
++    assert "Foundry" in issue
++
++
+ def test_llm_preflight_requires_openai_key():
+     cfg = Config(data={"llm.provider": "openai"})
+     issue = cfg.llm_preflight_issue()

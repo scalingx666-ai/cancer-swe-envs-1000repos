@@ -1,0 +1,986 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index ef420f0227..bd80fc5154 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -214,6 +214,7 @@ The build enforces this list.  Main sources are checked at the bytecode level by
+ ### VCF
+ 
+ - **BCF output is now BCF 2.2 with BGZF compression by default**, the form bcftools writes and reads natively.  `VariantContextWriterBuilder.setBCFVersion(BCFVersion)` selects the container version, and `BCFVersion.BCF_2_1` still writes the raw format earlier htsjdk versions read.  The embedded header text carries `IDX=` on every FILTER, INFO, FORMAT and contig line, with the indices htslib would assign (an `IDX` already on a line is honoured), the flag encoding is `BCF_BT_NULL` (matching the spec and htslib), INFO and FORMAT vectors are sized from the values present rather than from the header `Number`, a shorter genotype is padded with END_OF_VECTOR in 2.2 (MISSING in 2.1), the GT integer width follows the site's allele count (a site with more than 63 alleles uses INT16 or INT32), string lists in 2.2 are written without a leading comma, a missing FORMAT string is `.` in 2.2, and String values are percent-encoded element by element under a VCF 4.3 or later header.  Genotype bytes read from a BCF pass through unchanged only when the BCF version, the dictionary and the percent-encoding rule all match; otherwise they are decoded and re-encoded.  A genotype with a leading phase indicator (`|0/1`) is allowed from VCF 4.4.  A BGZF BCF written with `INDEX_ON_THE_FLY` produces a bare CSI index (`x.bcf.csi`), as bcftools does; `AbstractFeatureReader.getFeatureReader` with a `BCF2Codec`, and so `VCFFileReader`, opens a BGZF BCF through the new `BCFFileReader`, which answers region queries from an htsjdk or bcftools CSI: the one named, or `x.bcf.csi` or `x.csi` beside the file.  Whether a BCF is BGZF-compressed is told from its bytes, so `x.bcf.gz` works too.  A raw BCF is still read through a Tribble index.  A named index that can't address the BCF (a TBI, which htslib refuses to build for BCF; a CSI over raw BCF; a Tribble index over BGZF BCF, whose offsets would find nothing; or a file that is no index) is refused with the reason, and one found beside the BCF is ignored with a warning, or refused if an index is required.  `BCFFileReader` is an `AbstractFeatureReader`; it holds the BCF open and its CSI in memory, and its iterators each read from their own place in the one stream, so they may be used side by side and one left unclosed holds nothing open.  `BCF2Writer` is public for callers that want raw BCF at either version without BGZF framing.
++- **An existing BGZF-compressed BCF can be given a CSI index:** `IndexFactory.createIndex(path, codec, IndexType.CSI, dictionary)` on a BCF, recognised by its contents, builds the bare CSI `bcftools index` writes, the same index the writer builds on the fly, as the new `BCFCsiIndex` (also from `BCFFileReader.createCsiIndex()`).  So a BCF written without `INDEX_ON_THE_FLY`, or by bcftools, no longer needs bcftools to be indexed, so long as its contigs come in the order of the header's contig lines (bcftools takes them in any order, each contig's records together).  The index is used from its file: write it with `BCFCsiIndex.write` or `writeBasedOnFeaturePath`, and open the BCF with `getFeatureReader` or `BCFFileReader`.  A bare CSI names no contigs, so `IndexFactory.loadIndex` cannot read it.  `getFeatureReader(resource, codec, Index)` refuses a TBI or CSI index given in memory (a `TabixIndex` or `BCFCsiIndex`), whose BGZF virtual offsets it would take for file offsets, so that a query found nothing or failed on compressed bytes; open the file with the index's path instead.  `IndexType.TABIX` is refused for a BCF, as htslib refuses it, and `IndexType.CSI` for a raw BCF, which a CSI cannot address; both used to fail with "Binary codecs does not support tabix".
+ - **BCF 2.1 and 2.2 files are read, both raw and BGZF-compressed** (issue #946).  `TribbleIndexedFeatureReader` now recognises gzip and BGZF input from its bytes rather than its file name, so a BGZF BCF named `.bcf` opens through `VCFFileReader`, `AbstractFeatureReader` and `VCFIteratorBuilder` whatever the extension (bcftools output, `-Ob` and `-Ou` alike, is BGZF), any gzipped Tribble file without a `.gz` extension reads correctly, and a file named `.gz` that is not compressed reads as plain text.  `BCF2Codec` reads decompressed bytes like every other Tribble codec and refuses a compressed stream with a message saying to decompress it first (with `IOUtil.openGzipOrBgzfStream`, for example); so a Tribble index cannot be built over a BGZF BCF.  An error in a BCF record cites its CHROM and POS once they are decoded, as htslib does, rather than a record number that counted every record the codec had decoded.  The BCF dictionaries are built as htslib builds them: a header line takes the index its `IDX` attribute names, a line without one the next index after the highest so far, `PASS` is always 0, an ID seen twice keeps its first index, and only two IDs naming one index is an error; so files with sparse indices (from `bcftools annotate -x`, for example) and headers that mix lines with and without `IDX` decode correctly.  The header exposed to callers carries no `IDX`.  END_OF_VECTOR ends every typed vector, so mixed-ploidy genotypes and ragged FORMAT arrays from htslib decode correctly.  Values come back as the VCF reader would hold them: an interior missing value in a generic INFO or FORMAT vector is null, in `AD` or `PL` it makes the field absent; a FORMAT String of `.` is missing; an INFO String with commas is a list; and from VCF 4.3, String values are percent-decoded.  The n_sample field uses its 24 bits.  BCF record strings are decoded as UTF-8.  The first allele's phase bit is ignored below VCF 4.4 and taken literally from 4.4 as the leading indicator of a diploid or polyploid GT; a haploid call is unphased at every version, as the text reader reads `1`.  BCF versions other than 2.1 and 2.2 are rejected with a clear message.  `BCF2Codec.ALLOWED_MINOR_VERSION`, `ALLOWED_BCF_VERSION`, `validateVersionCompatibility` and `error(String)` are deprecated: nothing is gated on them any more.  The codec keeps no per-record state, so records may be decoded on several threads at once.
+ - **A `VCFHeader` keeps the version it declares.**  A fileformat line among the lines a header is built from now sets its version instead of being discarded, `addMetaDataLine` of a fileformat line does the same, the copy constructor copies it, and `getMetaDataInInputOrder`/`getMetaDataInSortedOrder` lead with the declared version rather than with 4.2 (or 4.3 for a 4.3 header).  So `new VCFHeader(in.getMetaDataInInputOrder(), samples)` keeps the input's version, which it used to lose.  A header that declares no version reads back as null from `getVCFHeaderVersion()`, its lines carry no fileformat line (they used to lead with 4.2), and a header rebuilt from them declares none either.  When the lines a header is built from carry several fileformat lines, as lines gathered from several headers may, the highest version wins whatever their order.  `setVCFHeaderVersion` accepts any version after any other, and `VCFHeader.validateVersionTransition` is gone: the version is a label.  The VCF and BCF writers still write every header as 4.2, and no longer refuse one that declares 4.3 or later: headers now keep that version through copies and merges, so refusing it would refuse nearly everything derived from a 4.3 input, which used to be written as 4.2 precisely because the copy had lost its version.
+ - **Merging headers takes the highest version among them** (`VCFUtils.smartMergeHeaders`), where it used to refuse to merge a 4.3 header with any other version.  The merged lines lead with that version's fileformat line so a header built from them keeps it.  Where two inputs define the same INFO or FORMAT field alike but differ in `Source`, `Version` or another attribute, the merge used to keep the first silently.  It now keeps the line with the later `Version` when both give one for the same `Source` (compared without regard to case, and versions as a person reads them, so `1.10` follows `1.9` and `151` follows `99`), and otherwise the first; either way the line is taken whole and the choice is reported with the other merge warnings.
+diff --git a/src/main/java/htsjdk/tribble/AbstractFeatureReader.java b/src/main/java/htsjdk/tribble/AbstractFeatureReader.java
+index 9e7c2fabb8..c81b9e22e8 100755
+--- a/src/main/java/htsjdk/tribble/AbstractFeatureReader.java
++++ b/src/main/java/htsjdk/tribble/AbstractFeatureReader.java
+@@ -26,9 +26,11 @@
+ import htsjdk.samtools.util.Log;
+ import htsjdk.tribble.index.Index;
+ import htsjdk.tribble.index.IndexFactory;
++import htsjdk.tribble.index.tabix.TabixIndex;
+ import htsjdk.tribble.util.ParsingUtils;
+ import htsjdk.tribble.util.TabixUtils;
+ import htsjdk.variant.bcf2.BCF2Codec;
++import htsjdk.variant.bcf2.BCFCsiIndex;
+ import htsjdk.variant.bcf2.BCFFileReader;
+ import java.io.BufferedInputStream;
+ import java.io.Closeable;
+@@ -269,8 +271,9 @@ private static <FEATURE extends Feature, SOURCE> AbstractFeatureReader<FEATURE,
+             "it is a CSI index, whose offsets are BGZF virtual offsets, and the BCF is not BGZF-compressed";
+     private static final String TRIBBLE_OVER_BGZF_BCF = "it is a Tribble index, whose offsets are into the "
+             + "decompressed data, so a query through it would find nothing in a BGZF-compressed BCF";
+-    private static final String FIX_FOR_BGZF_BCF = "Index the BCF with CSI, as bcftools index does, or as "
+-            + "VariantContextWriterBuilder does with Options.INDEX_ON_THE_FLY when it writes the BCF";
++    private static final String FIX_FOR_BGZF_BCF = "Index the BCF with CSI, as bcftools index or "
++            + "IndexFactory.createIndex with IndexType.CSI does, or as VariantContextWriterBuilder does with "
++            + "Options.INDEX_ON_THE_FLY when it writes the BCF";
+     private static final String FIX_FOR_RAW_BCF = "Index the BCF with a Tribble index "
+             + "(IndexFactory.createDynamicIndex), or compress it to BGZF with bcftools view -Ob and index that with "
+             + "bcftools index";
+@@ -434,13 +437,20 @@ private static String unusableIndexMessage(
+      *
+      * @param featureResource the path to the source file containing the features
+      * @param codec used to decode the features
+-     * @param index index of featureResource
++     * @param index a Tribble index of featureResource; not a TBI or CSI index ({@link TabixIndex} or
++     *     {@link BCFCsiIndex}), which is read from its file
+      * @return a reader for this data
+      * @throws TribbleException
+      */
+     public static <FEATURE extends Feature, SOURCE> AbstractFeatureReader<FEATURE, SOURCE> getFeatureReader(
+             final String featureResource, final FeatureCodec<FEATURE, SOURCE> codec, final Index index)
+             throws TribbleException {
++        // Their blocks are BGZF virtual offsets, which TribbleIndexedFeatureReader would take for file offsets
++        if (index instanceof TabixIndex || index instanceof BCFCsiIndex) {
++            throw new TribbleException("A TBI or CSI index is not read from memory: write it to a file if it is not "
++                    + "in one, and open the file it indexes through getFeatureReader with the index's path, or with "
++                    + "none to find it beside the file: " + featureResource);
++        }
+         try {
+             return new TribbleIndexedFeatureReader<>(featureResource, codec, index);
+         } catch (final IOException e) {
+diff --git a/src/main/java/htsjdk/tribble/index/IndexFactory.java b/src/main/java/htsjdk/tribble/index/IndexFactory.java
+index ef5e6a5f61..d045ef782a 100644
+--- a/src/main/java/htsjdk/tribble/index/IndexFactory.java
++++ b/src/main/java/htsjdk/tribble/index/IndexFactory.java
+@@ -32,6 +32,7 @@
+ import htsjdk.samtools.util.FileExtensions;
+ import htsjdk.samtools.util.IOUtil;
+ import htsjdk.samtools.util.LocationAware;
++import htsjdk.samtools.util.RuntimeIOException;
+ import htsjdk.tribble.CloseableTribbleIterator;
+ import htsjdk.tribble.Feature;
+ import htsjdk.tribble.FeatureCodec;
+@@ -48,6 +49,9 @@
+ import htsjdk.tribble.util.LittleEndianInputStream;
+ import htsjdk.tribble.util.ParsingUtils;
+ import htsjdk.utils.ValidationUtils;
++import htsjdk.variant.bcf2.BCFCsiIndex;
++import htsjdk.variant.bcf2.BCFFileReader;
++import htsjdk.variant.vcf.VariantFileType;
+ import java.io.BufferedInputStream;
+ import java.io.EOFException;
+ import java.io.FileNotFoundException;
+@@ -313,12 +317,18 @@ public static <FEATURE_TYPE extends Feature, SOURCE_TYPE> Index createIndex(
+     }
+ 
+     /**
+-     * Create an index of the specified type with default binning parameters
++     * Create an index of the specified type with default binning parameters.
++     *
++     * <p>A BCF, recognised by its contents, takes {@link IndexType#CSI} if it is BGZF-compressed, which gives the bare
++     * CSI {@code bcftools index} writes (a {@link BCFCsiIndex}), and {@link IndexType#LINEAR} or
++     * {@link IndexType#INTERVAL_TREE} if it is uncompressed. Neither takes {@link IndexType#TABIX}, which htslib cannot
++     * build for a BCF either.
+      *
+      * @param inputPath the input path to load features from
+-     * @param codec     the codec to use for decoding records
++     * @param codec     the codec to use for decoding records; unused for a BCF given {@link IndexType#CSI}
+      * @param type      the type of index to create
+      * @param sequenceDictionary May be null, but if present may reduce memory footprint for tabix index creation
++     * @throws TribbleException if the file cannot take an index of the type, or cannot be read or indexed
+      */
+     public static <FEATURE_TYPE extends Feature, SOURCE_TYPE> Index createIndex(
+             final Path inputPath,
+@@ -331,8 +341,15 @@ public static <FEATURE_TYPE extends Feature, SOURCE_TYPE> Index createIndex(
+             case LINEAR:
+                 return createLinearIndex(inputPath, codec);
+             case TABIX:
++                if (isBcf(inputPath)) {
++                    throw new TribbleException("A TBI index cannot address a BCF, as htslib's cannot; use "
++                            + IndexType.CSI + " for a BGZF-compressed BCF: " + inputPath.toUri());
++                }
+                 return createTabixIndex(inputPath, codec, sequenceDictionary);
+             case CSI:
++                if (isBcf(inputPath)) {
++                    return createBcfCsiIndex(inputPath);
++                }
+                 return createTabixIndex(
+                         inputPath, codec, codec.getTabixFormat(), sequenceDictionary, TabixIndexType.CSI);
+             default:
+@@ -340,6 +357,41 @@ public static <FEATURE_TYPE extends Feature, SOURCE_TYPE> Index createIndex(
+         }
+     }
+ 
++    /**
++     * @return whether the file's contents are BCF's, compressed or not; false if the file cannot be read, so that
++     *     the indexer of other formats reports it
++     */
++    private static boolean isBcf(final Path inputPath) {
++        try {
++            return VariantFileType.fromContents(inputPath)
++                    .filter(t -> t == VariantFileType.BCF)
++                    .isPresent();
++        } catch (final RuntimeIOException e) {
++            return false;
++        }
++    }
++
++    /**
++     * Builds the CSI index of a BGZF-compressed BCF; see {@link BCFFileReader#createCsiIndex()}.
++     *
++     * @throws TribbleException if the BCF is not BGZF-compressed, which a CSI index cannot address, or cannot be
++     *     read or indexed
++     */
++    private static BCFCsiIndex createBcfCsiIndex(final Path bcfPath) {
++        try {
++            if (!IOUtil.isBlockCompressed(bcfPath)) {
++                throw new TribbleException("A CSI index needs a BGZF-compressed BCF, as bcftools writes: compress the "
++                        + "BCF with bcftools view -Ob, or index an uncompressed BCF with " + IndexType.LINEAR + " or "
++                        + IndexType.INTERVAL_TREE + ": " + bcfPath.toUri());
++            }
++            try (final BCFFileReader reader = new BCFFileReader(bcfPath, null)) {
++                return reader.createCsiIndex();
++            }
++        } catch (final IOException e) {
++            throw new TribbleException("Could not index " + bcfPath.toUri(), e);
++        }
++    }
++
+     /**
+      * create a dynamic index, given an input path, codec, and balance approach
+      *
+diff --git a/src/main/java/htsjdk/tribble/index/tabix/TabixIndex.java b/src/main/java/htsjdk/tribble/index/tabix/TabixIndex.java
+index b697f80462..bcb6053ea6 100644
+--- a/src/main/java/htsjdk/tribble/index/tabix/TabixIndex.java
++++ b/src/main/java/htsjdk/tribble/index/tabix/TabixIndex.java
+@@ -230,7 +230,9 @@ public static Header readCsiAux(final byte[] aux) {
+     private static List<String> parseAux(final byte[] aux, final TabixFormat formatSpec) {
+         if (aux.length < CSI_AUX_HEADER_BYTES) {
+             throw new TribbleException(String.format(
+-                    "CSI index has a %d-byte aux block, too short for a tabix header; it is not a tabix index",
++                    "CSI index has a %d-byte aux block, too short for a tabix header; it is not a tabix index. A "
++                            + "CSI without one, as bcftools writes for a BCF and samtools for a BAM, names no "
++                            + "sequences, so it is read with the file it indexes",
+                     aux.length));
+         }
+         final BinaryCodec codec = new BinaryCodec(new ByteArrayInputStream(aux));
+diff --git a/src/main/java/htsjdk/variant/bcf2/BCF2Codec.java b/src/main/java/htsjdk/variant/bcf2/BCF2Codec.java
+index 32d1379ee1..4b7fc7deb0 100644
+--- a/src/main/java/htsjdk/variant/bcf2/BCF2Codec.java
++++ b/src/main/java/htsjdk/variant/bcf2/BCF2Codec.java
+@@ -108,7 +108,8 @@ public class BCF2Codec extends BinaryFeatureCodec<VariantContext> {
+     private static final String CANNOT_INDEX_COMPRESSED_BCF = "A gzip/BGZF-compressed BCF cannot be indexed through "
+             + "BCF2Codec, whose positions are offsets into the decompressed data rather than into the file. Index a "
+             + "BGZF-compressed BCF with CSI instead: VariantContextWriterBuilder writes one as it writes the BCF "
+-            + "(Options.INDEX_ON_THE_FLY), and bcftools index makes one for an existing file";
++            + "(Options.INDEX_ON_THE_FLY), and IndexFactory.createIndex with IndexType.CSI, or bcftools index, makes "
++            + "one for an existing file";
+ 
+     private static final int MAX_HEADER_SIZE = 128 * 1024 * 1024; // 128 MiB
+ 
+diff --git a/src/main/java/htsjdk/variant/bcf2/BCFCsiIndex.java b/src/main/java/htsjdk/variant/bcf2/BCFCsiIndex.java
+new file mode 100644
+index 0000000000..33e210ad4d
+--- /dev/null
++++ b/src/main/java/htsjdk/variant/bcf2/BCFCsiIndex.java
+@@ -0,0 +1,157 @@
++package htsjdk.variant.bcf2;
++
++import htsjdk.index.BinningIndex;
++import htsjdk.samtools.Chunk;
++import htsjdk.samtools.util.BinaryCodec;
++import htsjdk.samtools.util.BlockCompressedOutputStream;
++import htsjdk.samtools.util.FileExtensions;
++import htsjdk.tribble.index.Block;
++import htsjdk.tribble.index.Index;
++import htsjdk.tribble.util.LittleEndianOutputStream;
++import htsjdk.variant.vcf.VCFContigHeaderLine;
++import htsjdk.variant.vcf.VCFHeader;
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++import java.util.Map;
++import java.util.Objects;
++
++/**
++ * The CSI index of a BGZF-compressed BCF, as {@code bcftools index} writes it: a CSI file whose references are the
++ * BCF's contigs, numbered as its contig dictionary numbers them, with no tabix header. Made by
++ * {@link BCFFileReader#createCsiIndex()}, and by {@link htsjdk.tribble.index.IndexFactory#createIndex} given
++ * {@link htsjdk.tribble.index.IndexFactory.IndexType#CSI} and a BCF. The index is used from its file, which names no
++ * contigs: write it, then open the BCF through it with {@link BCFFileReader} or
++ * {@link htsjdk.tribble.AbstractFeatureReader#getFeatureReader}.
++ */
++public final class BCFCsiIndex implements Index {
++    /** log2 of the span of the smallest bins, as {@code bcftools index} has them. */
++    private static final int MIN_SHIFT = 14;
++
++    /** The reach htslib gives the index of a BCF whose contig lines give no lengths: the largest POS a BCF holds. */
++    private static final long REACH_WITHOUT_CONTIG_LENGTHS = Integer.MAX_VALUE;
++
++    private final Map<String, Integer> referenceIndexByContig;
++    private final List<String> contigs;
++    private final BinningIndex binningIndex;
++
++    /**
++     * @param referenceIndexByContig each contig's number in the BCF's contig dictionary
++     * @param contigs the contigs in the order of their numbers
++     * @param binningIndex the index, its references numbered as {@code referenceIndexByContig} numbers them
++     */
++    BCFCsiIndex(
++            final Map<String, Integer> referenceIndexByContig,
++            final List<String> contigs,
++            final BinningIndex binningIndex) {
++        this.referenceIndexByContig = Map.copyOf(referenceIndexByContig);
++        this.contigs = List.copyOf(contigs);
++        this.binningIndex = binningIndex;
++    }
++
++    /**
++     * Starts the bins of a BCF's CSI index with the scheme {@code bcftools index} chooses: bins of 2^14 bases at the
++     * smallest, and as few levels as the longest contig in the header needs, or as reach 2^31 - 1 bases if no contig
++     * line gives a length.
++     *
++     * @param header the BCF's header
++     * @return a builder of an index bound for CSI
++     */
++    public static BinningIndex.Builder binningIndexBuilderFor(final VCFHeader header) {
++        long longestContig = 0;
++        for (final VCFContigHeaderLine contig : header.getContigLines()) {
++            longestContig =
++                    Math.max(longestContig, contig.getSAMSequenceRecord().getSequenceLength());
++        }
++        final BinningIndex.Geometry geometry = BinningIndex.shallowestCsiGeometry(
++                MIN_SHIFT, longestContig > 0 ? longestContig : REACH_WITHOUT_CONTIG_LENGTHS);
++        return new BinningIndex.Builder(geometry.minShift(), geometry.depth(), true);
++    }
++
++    /** @return the index's bins */
++    public BinningIndex getBinningIndex() {
++        return binningIndex;
++    }
++
++    @Override
++    public List<Block> getBlocks(final String chr, final int start, final int end) {
++        final Integer referenceIndex = referenceIndexByContig.get(chr);
++        if (referenceIndex == null) {
++            return Collections.emptyList();
++        }
++        final List<Chunk> chunks =
++                binningIndex.getSpanOverlapping(referenceIndex, start, end).getChunks();
++        final List<Block> blocks = new ArrayList<>(chunks.size());
++        for (final Chunk chunk : chunks) {
++            blocks.add(new Block(chunk.getChunkStart(), chunk.getChunkEnd() - chunk.getChunkStart()));
++        }
++        return blocks;
++    }
++
++    @Override
++    public boolean isCurrentVersion() {
++        return true;
++    }
++
++    @Override
++    public List<String> getSequenceNames() {
++        return contigs;
++    }
++
++    @Override
++    public boolean containsChromosome(final String chr) {
++        return referenceIndexByContig.containsKey(chr);
++    }
++
++    /** Writes the CSI uncompressed, for a stream the caller BGZF-compresses; {@link #write(Path)} compresses. */
++    @Override
++    public void write(final LittleEndianOutputStream stream) throws IOException {
++        // The codec is not closed, since that would close the caller's stream; it holds nothing to flush. The aux
++        // block is empty, as bcftools leaves it: a BCF's CSI names no contigs, the BCF's header does.
++        binningIndex.writeCsi(new BinaryCodec(stream), new byte[0]);
++    }
++
++    @Override
++    public void write(final Path indexPath) throws IOException {
++        try (final LittleEndianOutputStream stream = new LittleEndianOutputStream(
++                new BlockCompressedOutputStream(Files.newOutputStream(indexPath), (Path) null))) {
++            write(stream);
++        }
++    }
++
++    /** Writes the index beside the BCF, as {@code x.bcf.csi}. */
++    @Override
++    public void writeBasedOnFeaturePath(final Path featurePath) throws IOException {
++        if (!Files.isRegularFile(featurePath)) {
++            throw new IOException("Cannot write based on a non-regular file: " + featurePath.toUri());
++        }
++        write(featurePath.resolveSibling(featurePath.getFileName() + FileExtensions.CSI));
++    }
++
++    /** @return null, as a CSI holds no properties */
++    @Override
++    public Map<String, String> getProperties() {
++        return null;
++    }
++
++    @Override
++    public boolean equalsIgnoreProperties(final Object o) {
++        return equals(o);
++    }
++
++    @Override
++    public boolean equals(final Object o) {
++        if (this == o) return true;
++        if (!(o instanceof BCFCsiIndex)) return false;
++        final BCFCsiIndex that = (BCFCsiIndex) o;
++        return referenceIndexByContig.equals(that.referenceIndexByContig) && binningIndex.equals(that.binningIndex);
++    }
++
++    @Override
++    public int hashCode() {
++        return Objects.hash(referenceIndexByContig, binningIndex);
++    }
++}
+diff --git a/src/main/java/htsjdk/variant/bcf2/BCFFileReader.java b/src/main/java/htsjdk/variant/bcf2/BCFFileReader.java
+index 6c6e88d0bc..110146e245 100644
+--- a/src/main/java/htsjdk/variant/bcf2/BCFFileReader.java
++++ b/src/main/java/htsjdk/variant/bcf2/BCFFileReader.java
+@@ -1,5 +1,6 @@
+ package htsjdk.variant.bcf2;
+ 
++import htsjdk.index.BinningIndex;
+ import htsjdk.index.FileBackedBinningIndex;
+ import htsjdk.index.ReferenceBinsSource;
+ import htsjdk.samtools.BAMFileSpan;
+@@ -29,6 +30,7 @@
+ import java.util.Arrays;
+ import java.util.Iterator;
+ import java.util.List;
++import java.util.Map;
+ import java.util.NoSuchElementException;
+ import java.util.function.Function;
+ 
+@@ -197,6 +199,68 @@ public List<String> getSequenceNames() {
+         return names;
+     }
+ 
++    /**
++     * Builds a CSI index of the BCF from its records: the index {@code bcftools index} builds, and the one
++     * {@link htsjdk.variant.variantcontext.writer.BCF2Writer} builds while writing, with the scheme
++     * {@link BCFCsiIndex#binningIndexBuilderFor} chooses. A record at POS 0, a telomere, is indexed at 1, as htslib
++     * indexes it.
++     *
++     * @return the index
++     * @throws TribbleException.MalformedFeatureFile if the records are not sorted by contig, in the order of the
++     *     header's contig lines, and then by position, or one lies beyond the reach of the index
++     * @throws IllegalStateException if the reader is closed, before or while the index is built
++     * @throws IOException if the BCF cannot be read
++     */
++    public BCFCsiIndex createCsiIndex() throws IOException {
++        checkOpen();
++        final BinningIndex.Builder builder = BCFCsiIndex.binningIndexBuilderFor(getHeader());
++        final RecordIterator cursor = new RecordIterator(firstRecordOffset) {
++            @Override
++            VariantContext readNext() {
++                throw new UnsupportedOperationException("the cursor only marks a place in the BCF");
++            }
++        };
++        int previousReference = -1;
++        int previousStart = 0;
++        while (true) {
++            final long recordStart = cursor.position;
++            final byte[] recordBytes = readRecordBytes(cursor);
++            if (recordBytes == null) {
++                break;
++            }
++            final VariantContext vc = decode(recordBytes);
++            final int reference = contigDictionary.getIndex(vc.getContig());
++            if (reference < previousReference || (reference == previousReference && vc.getStart() < previousStart)) {
++                throw new TribbleException.MalformedFeatureFile(
++                        "Records are not sorted by contig, in the order of the header's contig lines, and then by "
++                                + "position, as a CSI index needs: " + vc.getContig() + ":" + vc.getStart()
++                                + " follows a record at contig index " + previousReference + " position "
++                                + previousStart,
++                        dataPath.toString());
++            }
++            try {
++                // The position after a record that ends a BGZF block is the next block's start, so the last record's
++                // chunk ends where BCF2Writer and htslib end it.
++                builder.add(reference, Math.max(vc.getStart(), 1), vc.getEnd(), recordStart, cursor.position);
++            } catch (final IllegalArgumentException e) {
++                throw new TribbleException.MalformedFeatureFile(
++                        "Cannot index " + vc.getContig() + ":" + vc.getStart() + ": " + e.getMessage(),
++                        dataPath.toString(),
++                        e);
++            }
++            previousReference = reference;
++            previousStart = vc.getStart();
++        }
++        // A reader closed while the index was being built reads as the end of the records.
++        checkOpen();
++
++        final List<String> contigs = contigDictionary.asMap().entrySet().stream()
++                .sorted(Map.Entry.comparingByValue())
++                .map(Map.Entry::getKey)
++                .toList();
++        return new BCFCsiIndex(contigDictionary.asMap(), contigs, builder.build(contigDictionary.size()));
++    }
++
+     /** @return true if the reader was opened with a CSI index, and so can be queried */
+     @Override
+     public boolean hasIndex() {
+diff --git a/src/main/java/htsjdk/variant/variantcontext/writer/BCF2Writer.java b/src/main/java/htsjdk/variant/variantcontext/writer/BCF2Writer.java
+index c41c225bb2..933c7b1472 100644
+--- a/src/main/java/htsjdk/variant/variantcontext/writer/BCF2Writer.java
++++ b/src/main/java/htsjdk/variant/variantcontext/writer/BCF2Writer.java
+@@ -27,7 +27,6 @@
+ 
+ import htsjdk.index.BinningIndex;
+ import htsjdk.samtools.SAMSequenceDictionary;
+-import htsjdk.samtools.SAMSequenceRecord;
+ import htsjdk.samtools.util.BinaryCodec;
+ import htsjdk.samtools.util.BlockCompressedOutputStream;
+ import htsjdk.samtools.util.RuntimeIOException;
+@@ -35,6 +34,7 @@
+ import htsjdk.variant.bcf2.BCF2Codec;
+ import htsjdk.variant.bcf2.BCF2Type;
+ import htsjdk.variant.bcf2.BCF2Utils;
++import htsjdk.variant.bcf2.BCFCsiIndex;
+ import htsjdk.variant.bcf2.BCFDictionary;
+ import htsjdk.variant.bcf2.BCFVersion;
+ import htsjdk.variant.utils.GeneralUtils;
+@@ -355,7 +355,8 @@ public void add(VariantContext vc) {
+                 }
+                 final long chunkEnd = bgzfStream.getFilePointer();
+                 try {
+-                    csiIndexBuilder.add(refIdx, vc.getStart(), vc.getEnd(), chunkStart, chunkEnd);
++                    // A record at POS 0, a telomere, is indexed at 1, as htslib indexes it
++                    csiIndexBuilder.add(refIdx, Math.max(vc.getStart(), 1), vc.getEnd(), chunkStart, chunkEnd);
+                 } catch (final RuntimeException e) {
+                     csiFailed = true;
+                     throw e;
+@@ -467,13 +468,7 @@ public void setHeader(final VCFHeader header) {
+         fieldManager.setup(this.header, encoder, stringDictionaryMap, bcfVersion, outputVersion);
+ 
+         if (csiIndexPath != null) {
+-            long longestContig = 0;
+-            for (final SAMSequenceRecord seq :
+-                    this.header.getSequenceDictionary().getSequences()) {
+-                longestContig = Math.max(longestContig, seq.getSequenceLength());
+-            }
+-            final BinningIndex.Geometry geo = BinningIndex.shallowestCsiGeometry(14, longestContig);
+-            csiIndexBuilder = new BinningIndex.Builder(geo.minShift(), geo.depth(), true);
++            csiIndexBuilder = BCFCsiIndex.binningIndexBuilderFor(this.header);
+         }
+     }
+ 
+diff --git a/src/test/java/htsjdk/tribble/AbstractFeatureReaderTest.java b/src/test/java/htsjdk/tribble/AbstractFeatureReaderTest.java
+index aa36009429..db89668eb0 100644
+--- a/src/test/java/htsjdk/tribble/AbstractFeatureReaderTest.java
++++ b/src/test/java/htsjdk/tribble/AbstractFeatureReaderTest.java
+@@ -18,11 +18,14 @@
+ import htsjdk.testutil.streams.RecordingChannelWrapper;
+ import htsjdk.tribble.bed.BEDCodec;
+ import htsjdk.tribble.bed.BEDFeature;
++import htsjdk.tribble.index.Index;
+ import htsjdk.tribble.index.IndexFactory;
+ import htsjdk.tribble.readers.LineIterator;
+ import htsjdk.tribble.util.LittleEndianOutputStream;
+ import htsjdk.variant.VariantBaseTest;
+ import htsjdk.variant.bcf2.BCF2Codec;
++import htsjdk.variant.bcf2.BCFCsiIndex;
++import htsjdk.variant.bcf2.BCFFileReader;
+ import htsjdk.variant.bcf2.BCFVersion;
+ import htsjdk.variant.variantcontext.Allele;
+ import htsjdk.variant.variantcontext.VariantContext;
+@@ -506,6 +509,29 @@ public void aBgzfBcfWithoutACsiIsRefusedWhenAnIndexIsRequired() throws IOExcepti
+         Assert.assertTrue(e.getMessage().contains("bcftools index"), e.getMessage());
+     }
+ 
++    @Test
++    public void aBcfCsiIndexInMemoryIsRefused() throws IOException {
++        final Path bcf = writeBgzfBcf(newBcfTestDir().resolve("x.bcf"), false);
++        final BCFCsiIndex index;
++        try (BCFFileReader reader = new BCFFileReader(bcf, null)) {
++            index = reader.createCsiIndex();
++        }
++        final TribbleException e = Assert.expectThrows(
++                TribbleException.class,
++                () -> AbstractFeatureReader.getFeatureReader(bcf.toString(), new BCF2Codec(), index));
++        Assert.assertTrue(e.getMessage().contains("not read from memory"), e.getMessage());
++    }
++
++    @Test
++    public void aTbiIndexInMemoryIsRefused() throws IOException {
++        final Path tbi = writeTbi(newBcfTestDir());
++        final String vcf = tbi.toString().substring(0, tbi.toString().length() - FileExtensions.TABIX_INDEX.length());
++        final Index index = IndexFactory.loadIndex(tbi.toString());
++        final TribbleException e = Assert.expectThrows(
++                TribbleException.class, () -> AbstractFeatureReader.getFeatureReader(vcf, new VCFCodec(), index));
++        Assert.assertTrue(e.getMessage().contains("not read from memory"), e.getMessage());
++    }
++
+     @Test
+     public void aRawBcfWithATribbleIndexIsQueryable() throws IOException {
+         final Path bcf = writeRawBcf(newBcfTestDir().resolve("x.bcf"), true);
+diff --git a/src/test/java/htsjdk/tribble/index/IndexFactoryTest.java b/src/test/java/htsjdk/tribble/index/IndexFactoryTest.java
+index 62d99797ea..bc21117ffd 100644
+--- a/src/test/java/htsjdk/tribble/index/IndexFactoryTest.java
++++ b/src/test/java/htsjdk/tribble/index/IndexFactoryTest.java
+@@ -43,9 +43,17 @@
+ import htsjdk.tribble.index.tabix.TabixIndex;
+ import htsjdk.tribble.readers.LineIterator;
+ import htsjdk.variant.bcf2.BCF2Codec;
++import htsjdk.variant.bcf2.BCFFileReader;
++import htsjdk.variant.bcf2.BCFVersion;
++import htsjdk.variant.variantcontext.Allele;
+ import htsjdk.variant.variantcontext.VariantContext;
++import htsjdk.variant.variantcontext.VariantContextBuilder;
++import htsjdk.variant.variantcontext.writer.Options;
++import htsjdk.variant.variantcontext.writer.VariantContextWriter;
++import htsjdk.variant.variantcontext.writer.VariantContextWriterBuilder;
+ import htsjdk.variant.vcf.VCFCodec;
+ import htsjdk.variant.vcf.VCFFileReader;
++import htsjdk.variant.vcf.VCFHeader;
+ import java.io.IOException;
+ import java.nio.file.FileSystem;
+ import java.nio.file.Files;
+@@ -53,6 +61,7 @@
+ import java.nio.file.Paths;
+ import java.util.Iterator;
+ import java.util.List;
++import java.util.Set;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+ import org.testng.annotations.Test;
+@@ -361,4 +370,63 @@ public boolean canDecode(final String path) {
+                 () -> IndexFactory.createIndex(input, codec, IndexFactory.IndexType.LINEAR));
+         assertMessageContains(e, input.toString(), "abc");
+     }
++
++    /** Writes a BCF of two SNPs on chr1, BGZF-compressed BCF 2.2 or raw BCF 2.1, without an index. */
++    private static Path writeBcf(final BCFVersion version) throws IOException {
++        final SAMSequenceDictionary dictionary =
++                new SAMSequenceDictionary(List.of(new SAMSequenceRecord("chr1", 10000)));
++        final VCFHeader header = new VCFHeader(Set.of(), List.of());
++        header.setSequenceDictionary(dictionary);
++        final Path bcf = Files.createTempFile("IndexFactoryTest.", ".bcf");
++        bcf.toFile().deleteOnExit();
++        try (VariantContextWriter writer = new VariantContextWriterBuilder()
++                .setOutputPath(bcf)
++                .setReferenceDictionary(dictionary)
++                .setBCFVersion(version)
++                .unsetOption(Options.INDEX_ON_THE_FLY)
++                .build()) {
++            writer.writeHeader(header);
++            for (final int position : new int[] {100, 300}) {
++                writer.add(new VariantContextBuilder(
++                                "test", "chr1", position, position, List.of(Allele.REF_A, Allele.ALT_C))
++                        .make());
++            }
++        }
++        return bcf;
++    }
++
++    @Test
++    public void csiIndexOfABgzfBcfIsTheIndexBcfFileReaderBuilds() throws IOException {
++        final Path bcf = writeBcf(BCFVersion.BCF_2_2);
++        final Index index = IndexFactory.createIndex(bcf, new BCF2Codec(), IndexFactory.IndexType.CSI, null);
++        try (BCFFileReader reader = new BCFFileReader(bcf, null)) {
++            Assert.assertEquals(index, reader.createCsiIndex());
++        }
++    }
++
++    @Test
++    public void tabixIndexOfABcfIsRefused() throws IOException {
++        final Path bcf = writeBcf(BCFVersion.BCF_2_2);
++        final TribbleException e = Assert.expectThrows(
++                TribbleException.class,
++                () -> IndexFactory.createIndex(bcf, new BCF2Codec(), IndexFactory.IndexType.TABIX, null));
++        assertMessageContains(e, "TBI index cannot address a BCF", IndexFactory.IndexType.CSI.toString());
++    }
++
++    @Test
++    public void tabixIndexOfAMissingVcfFailsWithATribbleException() {
++        final Path missing = Path.of("does-not-exist.vcf.gz");
++        Assert.assertThrows(
++                TribbleException.class,
++                () -> IndexFactory.createIndex(missing, new VCFCodec(), IndexFactory.IndexType.TABIX, null));
++    }
++
++    @Test
++    public void csiIndexOfARawBcfIsRefused() throws IOException {
++        final Path bcf = writeBcf(BCFVersion.BCF_2_1);
++        final TribbleException e = Assert.expectThrows(
++                TribbleException.class,
++                () -> IndexFactory.createIndex(bcf, new BCF2Codec(), IndexFactory.IndexType.CSI, null));
++        assertMessageContains(e, "needs a BGZF-compressed BCF");
++    }
+ }
+diff --git a/src/test/java/htsjdk/variant/bcf2/BCF2WriterUnitTest.java b/src/test/java/htsjdk/variant/bcf2/BCF2WriterUnitTest.java
+index 399c426d50..72b5ae53b4 100644
+--- a/src/test/java/htsjdk/variant/bcf2/BCF2WriterUnitTest.java
++++ b/src/test/java/htsjdk/variant/bcf2/BCF2WriterUnitTest.java
+@@ -2385,6 +2385,47 @@ public void closingABcfWriterTwiceDoesNotThrow() throws IOException {
+         }
+     }
+ 
++    /** Writes the records to a BGZF BCF with its CSI made on the fly, and returns the BCF's path. */
++    private Path writeWithOnTheFlyCsi(final VCFHeader header, final List<VariantContext> records) throws IOException {
++        final Path output = Files.createTempFile(tempDir, "onTheFlyCsi.", ".bcf");
++        output.toFile().deleteOnExit();
++        output.resolveSibling(output.getFileName() + FileExtensions.CSI)
++                .toFile()
++                .deleteOnExit();
++        try (final VariantContextWriter writer = new VariantContextWriterBuilder()
++                .setOutputPath(output)
++                .setReferenceDictionary(header.getSequenceDictionary())
++                .setOption(Options.INDEX_ON_THE_FLY)
++                .build()) {
++            writer.writeHeader(header);
++            records.forEach(writer::add);
++        }
++        return output;
++    }
++
++    /** @return the records the query finds in the BCF through the CSI beside it */
++    private static List<String> queryThroughCsi(final Path bcf, final String contig, final int start, final int end)
++            throws IOException {
++        try (final BCFFileReader reader =
++                        new BCFFileReader(bcf, bcf.resolveSibling(bcf.getFileName() + FileExtensions.CSI));
++                final CloseableIterator<VariantContext> records = reader.query(contig, start, end)) {
++            return contigsAndStarts(records);
++        }
++    }
++
++    @Test
++    public void onTheFlyCsiReachesPastContigsWithoutLengths() throws IOException {
++        final VCFHeader header = new VCFHeader(Set.of(new VCFContigHeaderLine(Map.of("ID", "chr1"), 0)), List.of());
++        final Path bcf = writeWithOnTheFlyCsi(header, List.of(siteAt("chr1", 100), siteAt("chr1", 151000)));
++        Assert.assertEquals(queryThroughCsi(bcf, "chr1", 150000, 152000), List.of("chr1:151000"));
++    }
++
++    @Test
++    public void onTheFlyCsiAcceptsARecordAtPositionZero() throws IOException {
++        final Path bcf = writeWithOnTheFlyCsi(twoContigSitesHeader(), List.of(siteAt("chr1", 0), siteAt("chr1", 10)));
++        Assert.assertEquals(queryThroughCsi(bcf, "chr1", 1, 100), List.of("chr1:10"));
++    }
++
+     // ============================================================
+     // Constructor guard: Tribble indexing over a BGZF stream is refused
+     // ============================================================
+diff --git a/src/test/java/htsjdk/variant/bcf2/BCFCsiIndexTest.java b/src/test/java/htsjdk/variant/bcf2/BCFCsiIndexTest.java
+new file mode 100644
+index 0000000000..28e458d218
+--- /dev/null
++++ b/src/test/java/htsjdk/variant/bcf2/BCFCsiIndexTest.java
+@@ -0,0 +1,100 @@
++package htsjdk.variant.bcf2;
++
++import htsjdk.HtsjdkTest;
++import htsjdk.samtools.SAMSequenceDictionary;
++import htsjdk.samtools.SAMSequenceRecord;
++import htsjdk.samtools.util.FileExtensions;
++import htsjdk.tribble.CloseableTribbleIterator;
++import htsjdk.variant.variantcontext.Allele;
++import htsjdk.variant.variantcontext.VariantContext;
++import htsjdk.variant.variantcontext.VariantContextBuilder;
++import htsjdk.variant.variantcontext.writer.Options;
++import htsjdk.variant.variantcontext.writer.VariantContextWriter;
++import htsjdk.variant.variantcontext.writer.VariantContextWriterBuilder;
++import htsjdk.variant.vcf.VCFHeader;
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Set;
++import org.testng.Assert;
++import org.testng.annotations.Test;
++
++public class BCFCsiIndexTest extends HtsjdkTest {
++
++    /** Writes a BGZF BCF without an index: SNPs at 100 and 300 on chr1, and at 50 on chr2. */
++    private static Path writeBcfWithoutIndex() throws IOException {
++        final SAMSequenceDictionary dictionary = new SAMSequenceDictionary(
++                List.of(new SAMSequenceRecord("chr1", 10000), new SAMSequenceRecord("chr2", 5000)));
++        final VCFHeader header = new VCFHeader(Set.of(), List.of());
++        header.setSequenceDictionary(dictionary);
++        final Path bcf = Files.createTempFile("BCFCsiIndexTest.", ".bcf");
++        bcf.toFile().deleteOnExit();
++        bcf.resolveSibling(bcf.getFileName() + FileExtensions.CSI).toFile().deleteOnExit();
++        try (VariantContextWriter writer = new VariantContextWriterBuilder()
++                .setOutputPath(bcf)
++                .setReferenceDictionary(dictionary)
++                .unsetOption(Options.INDEX_ON_THE_FLY)
++                .build()) {
++            writer.writeHeader(header);
++            writer.add(snp("chr1", 100));
++            writer.add(snp("chr1", 300));
++            writer.add(snp("chr2", 50));
++        }
++        return bcf;
++    }
++
++    private static VariantContext snp(final String contig, final int position) {
++        return new VariantContextBuilder("test", contig, position, position, List.of(Allele.REF_A, Allele.ALT_C))
++                .make();
++    }
++
++    private static BCFCsiIndex createIndex(final Path bcf) throws IOException {
++        try (BCFFileReader reader = new BCFFileReader(bcf, null)) {
++            return reader.createCsiIndex();
++        }
++    }
++
++    private static List<Integer> queryStarts(
++            final Path bcf, final Path csi, final String contig, final int start, final int end) throws IOException {
++        final List<Integer> starts = new ArrayList<>();
++        try (BCFFileReader reader = new BCFFileReader(bcf, csi);
++                CloseableTribbleIterator<VariantContext> records = reader.query(contig, start, end)) {
++            records.forEachRemaining(vc -> starts.add(vc.getStart()));
++        }
++        return starts;
++    }
++
++    @Test
++    public void writtenIndexAnswersRegionQueries() throws IOException {
++        final Path bcf = writeBcfWithoutIndex();
++        final Path csi = Files.createTempFile("BCFCsiIndexTest.", FileExtensions.CSI);
++        csi.toFile().deleteOnExit();
++        createIndex(bcf).write(csi);
++
++        Assert.assertEquals(queryStarts(bcf, csi, "chr1", 200, 400), List.of(300));
++        Assert.assertEquals(queryStarts(bcf, csi, "chr2", 1, 5000), List.of(50));
++    }
++
++    @Test
++    public void writeBasedOnFeaturePathWritesTheIndexBesideTheBcf() throws IOException {
++        final Path bcf = writeBcfWithoutIndex();
++        createIndex(bcf).writeBasedOnFeaturePath(bcf);
++
++        final Path csi = bcf.resolveSibling(bcf.getFileName() + FileExtensions.CSI);
++        Assert.assertEquals(queryStarts(bcf, csi, "chr1", 1, 150), List.of(100));
++    }
++
++    @Test
++    public void contigsAreListedInTheOrderOfTheBcfDictionary() throws IOException {
++        Assert.assertEquals(createIndex(writeBcfWithoutIndex()).getSequenceNames(), List.of("chr1", "chr2"));
++    }
++
++    @Test
++    public void aContigNotInTheBcfHasNoBlocks() throws IOException {
++        final BCFCsiIndex index = createIndex(writeBcfWithoutIndex());
++        Assert.assertFalse(index.containsChromosome("chrZ"));
++        Assert.assertTrue(index.getBlocks("chrZ", 1, 1000).isEmpty());
++    }
++}
+diff --git a/src/test/java/htsjdk/variant/bcf2/BCFFileReaderTest.java b/src/test/java/htsjdk/variant/bcf2/BCFFileReaderTest.java
+index edeee38aff..19f3bb0722 100644
+--- a/src/test/java/htsjdk/variant/bcf2/BCFFileReaderTest.java
++++ b/src/test/java/htsjdk/variant/bcf2/BCFFileReaderTest.java
+@@ -2,8 +2,11 @@
+ 
+ import com.google.common.jimfs.Configuration;
+ import com.google.common.jimfs.Jimfs;
++import htsjdk.index.BinningIndex;
+ import htsjdk.samtools.SAMSequenceDictionary;
+ import htsjdk.samtools.SAMSequenceRecord;
++import htsjdk.samtools.util.BinaryCodec;
++import htsjdk.samtools.util.BlockCompressedInputStream;
+ import htsjdk.samtools.util.CloseableIterator;
+ import htsjdk.samtools.util.FileExtensions;
+ import htsjdk.samtools.util.IOUtil;
+@@ -36,6 +39,7 @@
+ import java.util.Collections;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+@@ -112,6 +116,91 @@ private static VariantContext endRecord(VCFHeader header, String contig, int pos
+                 .make();
+     }
+ 
++    /**
++     * Writes a BCF of SNPs on chr1 and chr2 large enough to span many BGZF blocks, with or without its CSI written on
++     * the fly, and returns its path.
++     */
++    private Path writeManyRecordBcf(final boolean indexOnTheFly) throws IOException {
++        final VCFHeader header = multiContigHeader();
++        final Path bcf = Files.createTempFile(tempDir, "many.", ".bcf");
++        bcf.toFile().deleteOnExit();
++        csiOf(bcf).toFile().deleteOnExit();
++        final VariantContextWriterBuilder builder = new VariantContextWriterBuilder()
++                .setOutputPath(bcf)
++                .setReferenceDictionary(header.getSequenceDictionary());
++        if (indexOnTheFly) {
++            builder.setOption(Options.INDEX_ON_THE_FLY);
++        } else {
++            builder.unsetOption(Options.INDEX_ON_THE_FLY);
++        }
++        try (VariantContextWriter w = builder.build()) {
++            w.writeHeader(header);
++            for (int pos = 1; pos <= 80000; pos += 4) {
++                w.add(snp(header, "chr1", pos));
++            }
++            for (int pos = 1; pos <= 40000; pos += 4) {
++                w.add(snp(header, "chr2", pos));
++            }
++        }
++        return bcf;
++    }
++
++    private static Path csiOf(final Path bcf) {
++        return bcf.resolveSibling(bcf.getFileName() + FileExtensions.CSI);
++    }
++
++    /** Writes the index {@link BCFFileReader#createCsiIndex()} builds for the BCF and reads it back as a file. */
++    private Path writeCreatedCsiIndex(final Path bcf) throws IOException {
++        final Path csi = Files.createTempFile(tempDir, "created.", FileExtensions.CSI);
++        csi.toFile().deleteOnExit();
++        try (BCFFileReader reader = new BCFFileReader(bcf, null)) {
++            reader.createCsiIndex().write(csi);
++        }
++        return csi;
++    }
++
++    private static BinningIndex readCsi(final Path csi) throws IOException {
++        try (BinaryCodec codec = new BinaryCodec(new BlockCompressedInputStream(Files.newInputStream(csi)))) {
++            return BinningIndex.readCsi(codec).index();
++        }
++    }
++
++    /** Writes the records to a BGZF BCF without an index and returns its path. */
++    private Path writeBcfWithoutIndex(final VCFHeader header, final List<VariantContext> records) throws IOException {
++        final Path bcf = Files.createTempFile(tempDir, "unindexed.", ".bcf");
++        bcf.toFile().deleteOnExit();
++        csiOf(bcf).toFile().deleteOnExit();
++        try (VariantContextWriter w = new VariantContextWriterBuilder()
++                .setOutputPath(bcf)
++                .setReferenceDictionary(header.getSequenceDictionary())
++                .unsetOption(Options.INDEX_ON_THE_FLY)
++                .build()) {
++            w.writeHeader(header);
++            records.forEach(w::add);
++        }
++        return bcf;
++    }
++
++    /** {@link #multiContigHeader()}'s lines, with contig lines for chr1 and chr2 that give no length. */
++    private static VCFHeader headerWithContigsWithoutLengths() {
++        final Set<VCFHeaderLine> meta = new LinkedHashSet<>(multiContigHeader().getMetaDataInInputOrder());
++        meta.removeIf(line -> line instanceof VCFContigHeaderLine);
++        meta.add(new VCFContigHeaderLine(Map.of("ID", "chr1"), 0));
++        meta.add(new VCFContigHeaderLine(Map.of("ID", "chr2"), 1));
++        return new VCFHeader(meta, Collections.singletonList("sample1"));
++    }
++
++    /** @return the starts of the records the query finds through the CSI {@link BCFFileReader#createCsiIndex} builds */
++    private List<Integer> queryThroughCreatedIndex(final Path bcf, final String contig, final int start, final int end)
++            throws IOException {
++        try (BCFFileReader reader = new BCFFileReader(bcf, writeCreatedCsiIndex(bcf));
++                CloseableIterator<VariantContext> records = reader.query(contig, start, end)) {
++            final List<Integer> starts = new ArrayList<>();
++            records.forEachRemaining(vc -> starts.add(vc.getStart()));
++            return starts;
++        }
++    }
++
+     // ============================================================
+     // Query tests
+     // ============================================================
+@@ -849,4 +938,80 @@ private static List<VariantContext> toList(CloseableIterator<VariantContext> ite
+         iter.close();
+         return result;
+     }
++
++    // ============================================================
++    // Building a CSI index
++    // ============================================================
++
++    @Test
++    public void createCsiIndexBuildsTheIndexTheWriterWritesOnTheFly() throws IOException {
++        final Path bcf = writeManyRecordBcf(true);
++        Assert.assertEquals(readCsi(writeCreatedCsiIndex(bcf)), readCsi(csiOf(bcf)));
++    }
++
++    @Test
++    public void createCsiIndexBuildsTheIndexBcftoolsBuilds() throws IOException {
++        if (!BcftoolsTestUtils.isBcftoolsAvailable()) {
++            throw new SkipException("bcftools not available");
++        }
++        final Path bcf = writeManyRecordBcf(false);
++        BcftoolsTestUtils.executeBcftools("index", "--csi", bcf.toString());
++        Assert.assertEquals(readCsi(writeCreatedCsiIndex(bcf)), readCsi(csiOf(bcf)));
++    }
++
++    @Test
++    public void createCsiIndexRefusesRecordsOutOfOrder() throws IOException {
++        final VCFHeader header = multiContigHeader();
++        final Path bcf = writeBcfWithoutIndex(header, List.of(snp(header, "chr1", 500), snp(header, "chr1", 100)));
++        try (BCFFileReader reader = new BCFFileReader(bcf, null)) {
++            final TribbleException e =
++                    Assert.expectThrows(TribbleException.MalformedFeatureFile.class, reader::createCsiIndex);
++            Assert.assertTrue(e.getMessage().contains("not sorted"), e.getMessage());
++        }
++    }
++
++    @Test
++    public void createCsiIndexReachesPastContigsWithoutLengths() throws IOException {
++        final VCFHeader header = headerWithContigsWithoutLengths();
++        final Path bcf = writeBcfWithoutIndex(header, List.of(snp(header, "chr1", 100), snp(header, "chr1", 151000)));
++        Assert.assertEquals(queryThroughCreatedIndex(bcf, "chr1", 150000, 152000), List.of(151000));
++    }
++
++    @Test
++    public void createCsiIndexOfContigsWithoutLengthsBuildsTheIndexBcftoolsBuilds() throws IOException {
++        if (!BcftoolsTestUtils.isBcftoolsAvailable()) {
++            throw new SkipException("bcftools not available");
++        }
++        final VCFHeader header = headerWithContigsWithoutLengths();
++        final Path bcf = writeBcfWithoutIndex(header, List.of(snp(header, "chr1", 100), snp(header, "chr2", 151000)));
++        BcftoolsTestUtils.executeBcftools("index", "--csi", bcf.toString());
++        Assert.assertEquals(readCsi(writeCreatedCsiIndex(bcf)), readCsi(csiOf(bcf)));
++    }
++
++    @Test
++    public void createCsiIndexAcceptsARecordAtPositionZero() throws IOException {
++        final VCFHeader header = multiContigHeader();
++        final Path bcf = writeBcfWithoutIndex(header, List.of(snp(header, "chr1", 0), snp(header, "chr1", 100)));
++        Assert.assertEquals(queryThroughCreatedIndex(bcf, "chr1", 1, 200), List.of(100));
++    }
++
++    @Test
++    public void createCsiIndexOfARecordAtPositionZeroBuildsTheIndexBcftoolsBuilds() throws IOException {
++        if (!BcftoolsTestUtils.isBcftoolsAvailable()) {
++            throw new SkipException("bcftools not available");
++        }
++        final VCFHeader header = multiContigHeader();
++        final Path bcf = writeBcfWithoutIndex(header, List.of(snp(header, "chr1", 0), snp(header, "chr1", 100)));
++        BcftoolsTestUtils.executeBcftools("index", "--csi", bcf.toString());
++        Assert.assertEquals(readCsi(writeCreatedCsiIndex(bcf)), readCsi(csiOf(bcf)));
++    }
++
++    @Test
++    public void createCsiIndexOfAClosedReaderIsRefused() throws IOException {
++        final VCFHeader header = multiContigHeader();
++        final Path bcf = writeBcfWithoutIndex(header, List.of(snp(header, "chr1", 100)));
++        final BCFFileReader reader = new BCFFileReader(bcf, null);
++        reader.close();
++        Assert.assertThrows(IllegalStateException.class, reader::createCsiIndex);
++    }
+ }

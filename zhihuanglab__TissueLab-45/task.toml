@@ -1,0 +1,86 @@
+version = "1.0"
+
+[task]
+name = "default/zhihuanglab__TissueLab-45"
+description = "Fix review saving, sign-in cancel, chat code blocks and other UI issues"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "TissueLab",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zhihuanglab/TissueLab"
+ref = "d87c6402f2a0eff51bc22af71c919f9f4c50ae52"
+reference = "https://github.com/zhihuanglab/TissueLab/pull/45"
+source_access = "auto"
+built_at = "2026-11-13T16:34:30.310838+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7ee6faea70c8a64f5ccc68c843ed081c8dfdc1a1a46e48125c20a5d9b240083c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-10T19:05:29Z"
+diff_format = "unified"
+context_files = [
+    "app/electron/ipc/oauth-helpers.js",
+    "app/electron/main.js",
+    "app/electron/main_electron.js",
+    "app/electron/preload.js",
+    "app/render/components/auth/GlobalSignupModal/GlobalSignupModal.tsx",
+    "app/render/components/dashboard/LocalFileManager.tsx",
+    "app/render/components/dashboard/WebFileManager.tsx",
+    "app/render/components/imageViewer/review/CandidateGallery.tsx",
+    "app/render/components/imageViewer/review/CellReviewModal.tsx",
+    "app/render/components/imageViewer/review/PatchReviewDialog.tsx",
+    "app/render/components/imageViewer/review/ReviewPanel.tsx",
+    "app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx",
+    "app/render/components/imageViewer/sidebar/agent/chat/LoadingMessage.tsx",
+    "app/render/components/imageViewer/sidebar/agent/chat/ReasoningWidget.tsx",
+    "app/render/components/imageViewer/sidebar/agent/workflow/ContentRenderer.tsx",
+    "app/render/components/imageViewer/sidebar/agent/workflow/CustomPromptField.tsx",
+    "app/render/components/imageViewer/sidebar/agent/workflow/card/Patch-ClassRow.tsx",
+    "app/render/components/imageViewer/sidebar/settings/SidebarViewerSetting.tsx",
+    "app/render/hooks/auth/useGlobalSignup.ts",
+    "app/render/hooks/viewer/useShortcuts.ts",
+    "app/render/pages/community.tsx",
+    "app/render/public/brand/agent_avatar.png",
+    "app/render/services/classifier/community.ts",
+    "app/render/services/fileManager.service.ts",
+    "app/render/types/electron.d.ts",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 492
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

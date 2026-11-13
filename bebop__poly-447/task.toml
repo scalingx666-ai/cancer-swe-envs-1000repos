@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/bebop__poly-447"
+description = "Separated minimums between design and simulate"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "poly",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bebop/poly"
+ref = "529ccc7d9671360e56707fc54ca8a62a78907856"
+reference = "https://github.com/bebop/poly/pull/447"
+source_access = "auto"
+built_at = "2026-11-13T15:50:25.473701+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6584d7b123eb6f8e7117b59900819b3fd1679d923eef8b12574b8e09db960ac7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-10-21T20:44:49Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "primers/pcr/pcr.go",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 24
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

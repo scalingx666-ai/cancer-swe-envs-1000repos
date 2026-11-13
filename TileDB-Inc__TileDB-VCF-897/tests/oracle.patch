@@ -1,0 +1,14 @@
+diff --git a/.github/workflows/nightly.yml b/.github/workflows/nightly.yml
+index db80107e3..678ddf347 100644
+--- a/.github/workflows/nightly.yml
++++ b/.github/workflows/nightly.yml
+@@ -28,6 +28,9 @@ jobs:
+           - {libtiledb: main, tiledb-py: main}
+     env:
+       MACOSX_DEPLOYMENT_TARGET: 10.15
++      # Disable EC2 IMDS because the runners aren't on EC2 and the response
++      # timeout/retry config causes the run-time to ballon on macOS
++      AWS_EC2_METADATA_DISABLED: "true"
+     steps:
+       - name: Clone TileDB
+         uses: actions/checkout@v6

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/biowasm__aioli-49"
+description = "Add close worker function"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "aioli",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "biowasm/aioli"
+ref = "4e85963becf3833b1e14fb99bb321d6db2348211"
+reference = "https://github.com/biowasm/aioli/pull/49"
+source_access = "auto"
+built_at = "2026-11-13T16:23:21.251706+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7b3cd57ec9816439cebafc8b81e1530bbd006dc265f24503a91cd7d3ce3e0e80"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-10-18T03:40:13Z"
+diff_format = "unified"
+context_files = [
+    "src/worker.js",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

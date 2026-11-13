@@ -1,0 +1,354 @@
+diff --git a/.idea/bashsupport_project.xml b/.idea/bashsupport_project.xml
+index 6a4acb9..e0815d7 100644
+--- a/.idea/bashsupport_project.xml
++++ b/.idea/bashsupport_project.xml
+@@ -5,13 +5,17 @@
+       <set>
+         <option value="ACCOUNT" />
+         <option value="BOOT_DISK_SIZE" />
+-        <option value="CLIENT_INSTANCES" />
+         <option value="CLIENT_INSTANCE_TYPE" />
+         <option value="CLIENT_TAG" />
++        <option value="CLUSTER_NAME" />
++        <option value="COMPUTE_ZONE" />
+         <option value="GCLOUD_ARGS" />
+         <option value="PERSISTENT_DISK" />
+         <option value="PROJECT" />
++        <option value="PROJECT_ID" />
+         <option value="TEAMTERI_IMAGE" />
++        <option value="TOOLS_INSTANCE" />
++        <option value="VANILLA_INSTANCE" />
+         <option value="ZONE" />
+       </set>
+     </option>
+diff --git a/Galaxy/kubernetes/00-standup.sh b/Galaxy/kubernetes/00-standup.sh
+index 35d9440..989b785 100644
+--- a/Galaxy/kubernetes/00-standup.sh
++++ b/Galaxy/kubernetes/00-standup.sh
+@@ -1,9 +1,25 @@
+ #!/usr/bin/env bash
+ 
++echo "Importing configuration from cluster.rc"
+ source ./cluster.rc
+ 
++echo "Setting cli defaults..."
+ gcloud config set core/project ${PROJECT_ID}
+ gcloud config set compute/zone ${COMPUTE_ZONE}
+-gcloud container clusters create ${CLUSTER_NAME}
+-gcloud container clusters get-credentials ${CLUSTER_NAME} --zone ${COMPUTE_ZONE} --project ${PROJECT_ID}
+ 
++echo "Starting cluster and creating external disk..."
++gcloud container clusters create ${CLUSTER_NAME} &
++
++gcloud compute disks create \
++    --size=500GB \
++    --zone=${COMPUTE_ZONE} \
++    galaxy-export \
++    &
++
++echo "Waiting for cluster and disk to become available..."
++wait
++
++echo "Getting cluster credentials for kubectl..."
++gcloud container clusters get-credentials ${CLUSTER_NAME} \
++    --zone ${COMPUTE_ZONE} \
++    --project ${PROJECT_ID}
+\ No newline at end of file
+diff --git a/Galaxy/kubernetes/01-disks.sh b/Galaxy/kubernetes/01-disks.sh
+deleted file mode 100644
+index 664146c..0000000
+--- a/Galaxy/kubernetes/01-disks.sh
++++ /dev/null
+@@ -1,5 +0,0 @@
+-#!/usr/bin/env bash
+-
+-source ./cluster.rc
+-
+-gcloud compute disks create --size=500GB --zone=${COMPUTE_ZONE} galaxy-export
+\ No newline at end of file
+diff --git a/Galaxy/kubernetes/99-teardown.sh b/Galaxy/kubernetes/99-teardown.sh
+index 37b9642..d6631e3 100644
+--- a/Galaxy/kubernetes/99-teardown.sh
++++ b/Galaxy/kubernetes/99-teardown.sh
+@@ -4,4 +4,4 @@ source ./cluster.rc
+ 
+ killall -9 kubectl
+ gcloud container clusters delete ${CLUSTER_NAME} -z ${COMPUTE_ZONE}
+-gcloud compute disks delete --zone=${COMPUTE_ZONE} galaxy-data
+\ No newline at end of file
++gcloud compute disks delete --zone=${COMPUTE_ZONE} galaxy-export
+\ No newline at end of file
+diff --git a/Galaxy/kubernetes/kubernetes-steps.md b/Galaxy/kubernetes/kubernetes-steps.md
+new file mode 100644
+index 0000000..778b587
+--- /dev/null
++++ b/Galaxy/kubernetes/kubernetes-steps.md
+@@ -0,0 +1,19 @@
++Update cluster.rc, add your project name.
++
++Run `bash 00-standup.sh`
++
++When the cluster is up you can deploy Galaxy with this command:
++
++`kubectl apply -f primary-deployment.yaml`
++
++This command tells kubernetes to create the recplication controller and service described in the YAML file.
++
++Next you can monitor progress of the deployment by creating a proxy that allows access to the kubernetes UI.
++
++`kubectl proxy`
++
++This command will print a message indicating that the proxy has started.  Next, you can visit the cluster UI at this address:
++
++http://localhost:8001/ui
++
++In the UI, you can go to "Services" in the left hand menu, and then click the hyperlink there which will take you to the IP where Galaxy is running.
+\ No newline at end of file
+diff --git a/Galaxy/kubernetes/primary-deployment.yaml b/Galaxy/kubernetes/primary-deployment.yaml
+index 6c51a0a..4482688 100644
+--- a/Galaxy/kubernetes/primary-deployment.yaml
++++ b/Galaxy/kubernetes/primary-deployment.yaml
+@@ -23,4 +23,17 @@ spec:
+         - name: export-volume
+           gcePersistentDisk:
+             pdName: galaxy-export
+-            fsType: ext4
+\ No newline at end of file
++            fsType: ext4
++---
++apiVersion: v1
++kind: Service
++metadata:
++  name: galaxy-service
++spec:
++  selector:
++    app: galaxy
++  type: LoadBalancer
++  ports:
++    - protocol: TCP
++      port: 80
++      targetPort: 80
+\ No newline at end of file
+diff --git a/Galaxy/kubernetes/primary-service.yaml b/Galaxy/kubernetes/primary-service.yaml
+deleted file mode 100644
+index a840499..0000000
+--- a/Galaxy/kubernetes/primary-service.yaml
++++ /dev/null
+@@ -1,12 +0,0 @@
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: galaxy-service
+-spec:
+-  selector:
+-    app: galaxy
+-  type: LoadBalancer
+-  ports:
+-    - protocol: TCP
+-      port: 80
+-      targetPort: 80
+\ No newline at end of file
+diff --git a/Galaxy/setupScriptsForGalaxy/0_cli.rc b/Galaxy/setupScriptsForGalaxy/0_cli.rc
+index 4c65003..8778c34 100644
+--- a/Galaxy/setupScriptsForGalaxy/0_cli.rc
++++ b/Galaxy/setupScriptsForGalaxy/0_cli.rc
+@@ -9,8 +9,7 @@ USE_PERSISTENT_DISK=0                   # set to 0 for no extra disk, 1 for extr
+ TEAMTERI_IMAGE=galaxy-image-1           # the Galaxy image you create & store in GCE Images
+ BOOT_DISK_SIZE=200GB                    # set to 30 GB or greater for ability to 'dockerize'
+ CLIENT_TAG=galaxy-client
+-CLIENT_INSTANCES=galaxy-client-${ID}
+-PERSISTENT_DISK=galaxy-data-${ID}
++VANILLA_INSTANCE=galaxy-vanilla-${ID}
++TOOLS_INSTANCE=galaxy-tools-${ID}
+ 
+-CLIENT_INSTANCES=`for i in $(seq 1 ${NUM_AS_CLIENTS}); do echo galaxy-client-${i}; done`
+ GCLOUD_ARGS="--zone ${ZONE} --project ${PROJECT}"
+diff --git a/Galaxy/setupScriptsForGalaxy/1_gce-standup.sh b/Galaxy/setupScriptsForGalaxy/1_gce-standup.sh
+new file mode 100755
+index 0000000..189548e
+--- /dev/null
++++ b/Galaxy/setupScriptsForGalaxy/1_gce-standup.sh
+@@ -0,0 +1,44 @@
++#!/bin/bash
++
++echo "Importing configuration from cli.rc..."
++source ./0_cli.rc
++
++echo "authenticate to GCP from your working directory via Terminal"
++echo "will not launch if ${ACCOUNT} already has credentials"
++gcloud auth login ${ACCOUNT} --brief
++
++echo "Creating firewall rule..."
++gcloud compute firewall-rules create --project ${PROJECT} galaxy-allow-http \
++    --allow tcp:80 \
++    --target-tags ${CLIENT_TAG} \
++    &
++
++echo "Creating client image, please wait..."
++gcloud compute images create --project ${PROJECT} ${TEAMTERI_IMAGE} \
++    --description="Galaxy_client" \
++    --source-uri="http://storage.googleapis.com/galaxyproject_images/planemo_machine_smc.06.image.tar.gz" \
++    &
++
++echo "Waiting for image to become available..."
++wait
++
++echo "Creating client instances, please wait..."
++gcloud compute instances create ${GCLOUD_ARGS} ${VANILLA_INSTANCE} \
++	--machine-type ${CLIENT_INSTANCE_TYPE} \
++	--tags ${CLIENT_TAG} \
++	--image ${TEAMTERI_IMAGE} \
++	--image-project ${PROJECT} \
++	--boot-disk-size ${BOOT_DISK_SIZE} \
++	&
++
++gcloud compute instances create ${GCLOUD_ARGS} ${TOOLS_INSTANCE} \
++	--machine-type ${CLIENT_INSTANCE_TYPE} \
++	--tags ${CLIENT_TAG} \
++	--image ${TEAMTERI_IMAGE} \
++	--image-project ${PROJECT} \
++	--boot-disk-size ${BOOT_DISK_SIZE} \
++	--metadata-from-file startup-script=./boot.sh \
++    &
++
++echo "Waiting for instances to become available..."
++wait
+\ No newline at end of file
+diff --git a/Galaxy/setupScriptsForGalaxy/1a_gce-standup.sh b/Galaxy/setupScriptsForGalaxy/1a_gce-standup.sh
+deleted file mode 100755
+index bdb021a..0000000
+--- a/Galaxy/setupScriptsForGalaxy/1a_gce-standup.sh
++++ /dev/null
+@@ -1,24 +0,0 @@
+-#!/bin/bash
+-
+-echo "Importing configuration from cli.rc..."
+-source ./0_cli.rc
+-
+-echo "authenticate to GCP from your working directory via Terminal"
+-echo "will not launch if ${ACCOUNT} already has credentials"
+-gcloud auth login ${ACCOUNT} --brief
+-
+-echo "Creating firewall rule..."
+-gcloud compute firewall-rules create galaxy-allow-http --allow tcp:80 --target-tags ${CLIENT_TAG}
+-
+-echo "Creating client image, please wait..."
+-gcloud compute images create ${TEAMTERI_IMAGE} \
+-    --description="Galaxy_client" \
+-    --source-uri="http://storage.googleapis.com/galaxyproject_images/planemo_machine_smc.06.image.tar.gz"
+-
+-echo "Creating client instances, please wait..."
+-gcloud compute instances create ${GCLOUD_ARGS} ${CLIENT_INSTANCES} \
+-	--machine-type ${CLIENT_INSTANCE_TYPE} \
+-	--tags ${CLIENT_TAG} \
+-	--image ${TEAMTERI_IMAGE} \
+-	--image-project ${PROJECT} \
+-	--boot-disk-size ${BOOT_DISK_SIZE} 
+diff --git a/Galaxy/setupScriptsForGalaxy/1b_gce-standup_and_run_boot-script.sh b/Galaxy/setupScriptsForGalaxy/1b_gce-standup_and_run_boot-script.sh
+deleted file mode 100755
+index 2bf348a..0000000
+--- a/Galaxy/setupScriptsForGalaxy/1b_gce-standup_and_run_boot-script.sh
++++ /dev/null
+@@ -1,25 +0,0 @@
+-#!/bin/bash
+-
+-echo "Importing configuration from cli.rc..."
+-source ./cli.rc
+-
+-echo "authenticate to GCP from your working directory via Terminal"
+-echo "will not launch if ${ACCOUNT} already has credentials"
+-gcloud auth login ${ACCOUNT} --brief
+-
+-echo "Creating firewall rule..."
+-gcloud compute firewall-rules create galaxy-allow-http --allow tcp:80 --target-tags ${CLIENT_TAG}
+-
+-echo "Creating client image, please wait..."
+-gcloud compute images create ${TEAMTERI_IMAGE} \
+-    --description="Galaxy_client" \
+-    --source-uri="http://storage.googleapis.com/galaxyproject_images/planemo_machine_smc.06.image.tar.gz"
+-
+-echo "Creating client instances, please wait..."
+-gcloud compute instances create ${GCLOUD_ARGS} ${CLIENT_INSTANCES} \
+-	--machine-type ${CLIENT_INSTANCE_TYPE} 
+-	--tags ${CLIENT_TAG} 
+-	--image ${TEAMTERI_IMAGE} 
+-	--image-project ${PROJECT} 
+-	--boot-disk-size ${BOOT_DISK_SIZE}
+-	--metadata-from-file startup-script=./boot.sh
+\ No newline at end of file
+diff --git a/Galaxy/setupScriptsForGalaxy/2_gce-cleanup.sh b/Galaxy/setupScriptsForGalaxy/2_gce-cleanup.sh
+index 915392c..8fb3fb4 100755
+--- a/Galaxy/setupScriptsForGalaxy/2_gce-cleanup.sh
++++ b/Galaxy/setupScriptsForGalaxy/2_gce-cleanup.sh
+@@ -5,26 +5,13 @@ source ./0_cli.rc
+ # ------------------- CLEAN UP  -----------------------
+ 
+ echo "Delete firewall rule"
+-gcloud compute firewall-rules delete galaxy-allow-http
++gcloud compute firewall-rules delete --quiet --project ${PROJECT} galaxy-allow-http &
+ 
+ echo "Deleting VM image..."
+-gcloud compute images delete ${TEAMTERI_IMAGE}
+-
+-echo "TODO: Detaching disks..."
+-
+-echo "TODO: Deleting disks..."
++gcloud compute images delete --quiet --project ${PROJECT} ${TEAMTERI_IMAGE} &
+ 
+ echo "Deleting VM instances..."
+-gcloud compute instances delete --quiet ${GCLOUD_ARGS} ${CLIENT_INSTANCES}
++gcloud compute instances delete --quiet ${GCLOUD_ARGS} ${VANILLA_INSTANCE} ${TOOLS_INSTANCE} &
+ 
+-## DELETE DISKS (Optional - you may wish to save these disks for reuse with new VM instances)
+-#if [ ${USE_PERSISTENT_DISK} -eq 1 ]
+-#then
+-#    /bin/echo "Detaching persistent disks..."
+-#    for i in $(seq 1 ${NUM_AS_CLIENTS}); do
+-#      /bin/echo -n "  galaxy-persistent-disk-$i"
+-#      gcloud compute instances detach-disk ${GCLOUD_ARGS} galaxy-client-${i} --disk galaxy-persistent-disk-${i}
+-#    done
+-#    /bin/echo "  deleting disks..."
+-#    gcloud compute disks delete ${GCLOUD_ARGS} ${CLIENT_DISKS} -q
+-#fi
++echo "Waiting for gcloud to delete resources..."
++wait
+diff --git a/Galaxy/setupScriptsForGalaxy/add-galaxy-tools-and-use.sh b/Galaxy/setupScriptsForGalaxy/add-galaxy-tools-and-use.sh
+index 0dad7e7..1d24e9d 100644
+--- a/Galaxy/setupScriptsForGalaxy/add-galaxy-tools-and-use.sh
++++ b/Galaxy/setupScriptsForGalaxy/add-galaxy-tools-and-use.sh
+@@ -6,7 +6,6 @@
+ sudo su ubuntu
+ cd /opt/galaxy/tools
+ git clone https://github.com/Sage-Bionetworks/SMC-Het-Challenge-Examples.git
+-# cd SMC-Het-Challenge-Examples
+ 
+ sudo service docker restart
+ restart_galaxy
+diff --git a/Galaxy/setupScriptsForGalaxy/boot.sh b/Galaxy/setupScriptsForGalaxy/boot.sh
+index 79612fc..6bfe8b8 100644
+--- a/Galaxy/setupScriptsForGalaxy/boot.sh
++++ b/Galaxy/setupScriptsForGalaxy/boot.sh
+@@ -3,20 +3,4 @@
+ cd /opt/galaxy/tools
+ git clone https://github.com/Sage-Bionetworks/SMC-Het-Challenge-Examples.git
+ service docker restart
+-restart_galaxy
+-
+-#mkfs.ext4 -F -E lazy_itable_init=0,lazy_journal_init=0,discard /dev/disk/by-id/google-galaxy-data
+-#mkdir -p /mnt/disks/data
+-#mount -o discard,defaults /dev/disk/by-id/google-galaxy-data /mnt/disks/data
+-#chmod a+w /mnt/disks/data
+-#echo UUID=`sudo blkid -s UUID -o value /dev/disk/by-id/google-galaxy-data` /mnt/disks/data ext4 discard,defaults,
+-#nobootwait 0 2 | tee -a /etc/fstab
+-#cd /mnt/disks/data
+-#apt-get install gcc python-dev python-setuptools
+-#easy_install -U pip
+-#pip uninstall crcmod
+-#pip install -U crcmod
+-#
+-#mkdir /mnt/disks/data/dream
+-#chmod a+w /mnt/disks/data/dream
+-#gsutil -m cp -R gs://public-dream-data/* /mnt/disks/data/dream/ &
+\ No newline at end of file
++restart_galaxy
+\ No newline at end of file

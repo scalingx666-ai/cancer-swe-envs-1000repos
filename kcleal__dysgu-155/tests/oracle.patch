@@ -1,0 +1,147 @@
+diff --git a/dysgu/call_component.pyx b/dysgu/call_component.pyx
+index 69e7413..045dfdd 100644
+--- a/dysgu/call_component.pyx
++++ b/dysgu/call_component.pyx
+@@ -1211,7 +1211,7 @@ cdef tuple break_ops(positions, precise, int limit, float median_pos):
+     if is_precise and len(precise) > 1:
+         cipos95 = 0
+     else:
+-        cipos95 = int(abs(int(np.percentile(positions, [97.5])) - median_pos))
++        cipos95 = int(abs(int(np.percentile(positions, 97.5)) - median_pos))
+     return break_point, cipos95, is_precise
+ 
+ 
+@@ -1865,10 +1865,10 @@ cdef one_edge(u_reads_info, v_reads_info, int clip_length, int insert_size, int
+     if len(spanning_alignments) > 0:
+         posA_arr = [i.pos for i in spanning_alignments]
+         posA = int(np.median(posA_arr))
+-        posA_95 = int(abs(int(np.percentile(posA_arr, [97.5])) - posA))
++        posA_95 = int(abs(int(np.percentile(posA_arr, 97.5)) - posA))
+         posB_arr = [i.end for i in spanning_alignments]
+         posB = int(np.median(posB_arr))
+-        posB_95 = int(abs(int(np.percentile(posB_arr, [97.5])) - posB))
++        posB_95 = int(abs(int(np.percentile(posB_arr, 97.5)) - posB))
+         chrom = spanning_alignments[0].chrom
+         # choose representative alignment to use
+         best_index = 0
+diff --git a/dysgu/io_funcs.pyx b/dysgu/io_funcs.pyx
+index e97fa8a..0e53160 100644
+--- a/dysgu/io_funcs.pyx
++++ b/dysgu/io_funcs.pyx
+@@ -208,7 +208,7 @@ def make_main_record(r, dysgu_version, index, format_f, df_rows, add_kind, small
+     if r["contigB"]:
+         info_extras.append(f"CONTIGB={r['contigB']}")
+ 
+-    if not r["variant_seq"] or r["variant_seq"][0] == "<":
++    if not r["variant_seq"] or (isinstance(r["variant_seq"], str) and r["variant_seq"][0] == "<"):
+         if "left_ins_seq" in r and r["left_ins_seq"]:
+             info_extras.append(f"LEFT_SVINSSEQ={r['left_ins_seq']}")
+         if "right_ins_seq" in r and r["right_ins_seq"]:
+diff --git a/dysgu/post_call.py b/dysgu/post_call.py
+index dc375fd..223e394 100644
+--- a/dysgu/post_call.py
++++ b/dysgu/post_call.py
+@@ -900,7 +900,7 @@ def update_prob_at_sites(df, events, thresholds, parse_probs, default_prob):
+                 new_probs.append(p)
+         else:
+             new_probs.append(p)
+-    df.prob = new_probs
++    df["prob"] = new_probs
+     PASS = ['lowProb'] * len(df)
+     for idx, (svt, i) in enumerate(zip(df["svtype"], new_probs)):
+         if (svt in thresholds and i >= thresholds[svt]) or (svt not in thresholds and i >= 0.5):
+diff --git a/dysgu/view.py b/dysgu/view.py
+index 969247a..6c7fb09 100644
+--- a/dysgu/view.py
++++ b/dysgu/view.py
+@@ -300,11 +300,11 @@ def vcf_to_df(path):
+                "CT": ("join_type", str),
+                "CIPOS95": ("cipos95A", np.int64),
+                "CIEND95": ("cipos95B", np.int64),
+-               "NMP": ("NMpri", float),
+-               "NMB": ("NMbase", float),
+-               "NMS": ("NMsupp", float),
+-               "MAPQP": ("MAPQpri", float),
+-               "MAPQS": ("MAPQsupp", float),
++               "NMP": ("NMpri", np.float64),
++               "NMB": ("NMbase", np.float64),
++               "NMS": ("NMsupp", np.float64),
++               "MAPQP": ("MAPQpri", np.float64),
++               "MAPQS": ("MAPQsupp", np.float64),
+                "NP": ("NP", np.int64),
+                "OL": ("query_overlap", np.int64),
+                "MAS": ("maxASsupp", np.int64),
+@@ -314,23 +314,23 @@ def vcf_to_df(path):
+                "SR": ("supp", np.int64),
+                "SC": ("sc", np.int64),
+                "BND": ("bnd", np.int64),
+-               "SQC": ("sqc", float),
+-               "SCW": ("scw", float),
+-               "SQR": ("clip_qual_ratio", float),
++               "SQC": ("sqc", np.float64),
++               "SCW": ("scw", np.float64),
++               "SQR": ("clip_qual_ratio", np.float64),
+                "RT": ("type", str),
+                "BE": ("block_edge", np.int64),
+-               "COV": ("raw_reads_10kb", float),
+-               "MCOV": ("mcov", float),
++               "COV": ("raw_reads_10kb", np.float64),
++               "MCOV": ("mcov", np.float64),
+                "LNK": ("linked", np.int64),
+                "CONTIGA": ("contigA", str),
+                "CONTIGB": ("contigB", str),
+                "ref_seq": ("ref_seq", str),
+                "variant_seq": ("variant_seq", str),
+-               "GC": ("gc", float),
++               "GC": ("gc", np.float64),
+                "NEIGH": ("neigh", np.int64),
+                "NEIGH10": ("neigh10kb", np.int64),
+-               "REP": ("rep", float),
+-               "REPSC": ("rep_sc", float),
++               "REP": ("rep", np.float64),
++               "REPSC": ("rep_sc", np.float64),
+                "LPREC": ("svlen_precise", np.int64),
+                "NEXP": ("n_expansion", np.int64),
+                "STRIDE": ("stride", np.int64),
+@@ -342,11 +342,11 @@ def vcf_to_df(path):
+                "SVLEN": ("svlen", np.int64),
+                "PS": ("plus", np.int64),
+                "MS": ("minus", np.int64),
+-               "SBT": ("strand_binom_t", float),
+-               "PROB": ("prob", float),
+-               "NG": ("n_gaps", float),
+-               "NSA": ("n_sa", float),
+-               "NXA": ("n_xa", float),
++               "SBT": ("strand_binom_t", np.float64),
++               "PROB": ("prob", np.float64),
++               "NG": ("n_gaps", np.float64),
++               "NSA": ("n_sa", np.float64),
++               "NXA": ("n_xa", np.float64),
+                "NMU": ("n_unmapped_mates", np.int64),
+                "NDC": ("double_clips", np.int64),
+                "RMS": ("remap_score", np.int64),
+@@ -355,17 +355,17 @@ def vcf_to_df(path):
+                "STL": ("n_small_tlen", np.int64),
+                "RAS": ("ras", np.int64),
+                "FAS": ("fas", np.int64),
+-               "ICN": ("inner_cn", float),
+-               "OCN": ("outer_cn", float),
+-               "CMP": ("compress", float),
+-               "FCC": ("fcc", float),
+-               "RR": ("ref_rep", float),
+-               "JIT": ("jitter", float),
++               "ICN": ("inner_cn", np.float64),
++               "OCN": ("outer_cn", np.float64),
++               "CMP": ("compress", np.float64),
++               "FCC": ("fcc", np.float64),
++               "RR": ("ref_rep", np.float64),
++               "JIT": ("jitter", np.float64),
+                "LEFT_SVINSSEQ": ("left_ins_seq", str),
+                "RIGHT_SVINSSEQ": ("right_ins_seq", str),
+                "PSET": ("phase_set", np.int64),
+                "HP": ("haplotype", str),
+-               "AF": ("a_freq", float),
++               "AF": ("a_freq", np.float64),
+                }
+ 
+     # First check which original columns are missing before renaming

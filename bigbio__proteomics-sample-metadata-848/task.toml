@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/bigbio__proteomics-sample-metadata-848"
+description = "Dev"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "proteomics-sample-metadata",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bigbio/proteomics-sample-metadata"
+ref = "03df7bc728dc740a7e9aa2a56262cf32848545f6"
+reference = "https://github.com/bigbio/proteomics-sample-metadata/pull/848"
+source_access = "auto"
+built_at = "2026-11-13T16:24:37.622536+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:17ce367cc7419338e60ad9f85433b4373c91a57d436f1a231a635a20463d6736"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-23T10:54:42Z"
+diff_format = "unified"
+context_files = [
+    "llms.txt",
+    "psi-document/sdrf-proteomics-specification-v1.1.0-dev.pdf",
+    "sdrf-proteomics/README.adoc",
+    "sdrf-proteomics/TERMS.tsv",
+    "sdrf-proteomics/TOOLS.adoc",
+    "site/templates/template-page.html.j2",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 34
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

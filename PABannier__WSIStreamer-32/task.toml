@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/PABannier__WSIStreamer-32"
+description = "doc: embed imgur gif in README"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "WSIStreamer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "PABannier/WSIStreamer"
+ref = "fb090e707a0d976e0680a0c1abcbfa957fef31d2"
+reference = "https://github.com/PABannier/WSIStreamer/pull/32"
+source_access = "auto"
+built_at = "2026-11-13T16:12:56.872029+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e7f0769d6530990538ceb615e0210d2165fb91ba0eabcefa1a6f4ff13def75d1"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-01-14T13:27:39Z"
+diff_format = "unified"
+context_files = [
+    "Cargo.lock",
+    "Cargo.toml",
+    "README.md",
+    "src/main.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 103
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

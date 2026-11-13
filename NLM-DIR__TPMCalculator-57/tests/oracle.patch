@@ -1,0 +1,195 @@
+diff --git a/includes/GenomeFactory.h b/includes/GenomeFactory.h
+index 22cbe92..a7ecdb1 100644
+--- a/includes/GenomeFactory.h
++++ b/includes/GenomeFactory.h
+@@ -1018,9 +1018,12 @@ namespace genome {
+             std::string isoformName;
+             std::unordered_map<std::string, std::string> fieldsMap;
+             GeneUnMapItr<T> it;
+-            int wStart, wEnd;
++            int wStart = atoi(words[3].c_str());
++            int wEnd;
+ 
+-            wStart = atoi(words[3].c_str()) - 1;
++            if (wStart != 0) {
++                wStart = wStart - 1;
++            }
+             wEnd = atoi(words[4].c_str()) - 1;
+             BString::split(words[8], ";", fields);
+             geneName = "";
+@@ -1192,7 +1195,7 @@ namespace genome {
+ 
+             return currentIso;
+         }
+-        
++
+         std::deque<std::string> getChrOrder() const {
+             return chrOrder;
+         }
+@@ -1202,8 +1205,13 @@ namespace genome {
+             setCurrentChr(chrName);
+             SPtrGene<T> g = std::make_shared<Gene < T >> ("gene", start, end);
+             it = currentChr->getGenes().lower_bound(g);
+-            if (it == currentChr->getGenes().end()) --it;
+-
++            if (it == currentChr->getGenes().end()) {
++                if (!currentChr->getGenes().empty()) {
++                    --it;
++                } else {
++                    throw exceptions::NotFoundException("Chromosome " + currentChr->getId() + " does not have genes");
++                }
++            }
+             return it;
+         }
+ 
+@@ -1259,7 +1267,7 @@ namespace genome {
+                             currentChr->processGTFLine(fParser.getWords(), geneIdKey, isoformIdKey);
+                         } catch (exceptions::NotFoundException ex) {
+                             std::cerr << ex.what() << std::endl;
+-                            std::cerr << "Error processing GTF line at Chromosome level:\n" +  fParser.getLine() << std::endl;
++                            std::cerr << "Error processing GTF line at Chromosome level:\n" + fParser.getLine() << std::endl;
+                             exit(-1);
+                         }
+                     }
+diff --git a/nbproject/Makefile-Release.mk b/nbproject/Makefile-Release.mk
+index 8a53a41..16ab2be 100644
+--- a/nbproject/Makefile-Release.mk
++++ b/nbproject/Makefile-Release.mk
+@@ -78,7 +78,7 @@ FFLAGS=
+ ASFLAGS=
+ 
+ # Link Libraries and Options
+-LDLIBSOPTIONS=
++LDLIBSOPTIONS=-L../../bamtools/lib
+ 
+ # Build Targets
+ .build-conf: ${BUILD_SUBPROJECTS}
+@@ -91,32 +91,32 @@ bin/TPMCalculator: ${OBJECTFILES}
+ ${OBJECTDIR}/src/DiffExpIR.o: src/DiffExpIR.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/DiffExpIR.o src/DiffExpIR.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/DiffExpIR.o src/DiffExpIR.cpp
+ 
+ ${OBJECTDIR}/src/FastaFactory.o: src/FastaFactory.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/FastaFactory.o src/FastaFactory.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/FastaFactory.o src/FastaFactory.cpp
+ 
+ ${OBJECTDIR}/src/RandomFactory.o: src/RandomFactory.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/RandomFactory.o src/RandomFactory.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/RandomFactory.o src/RandomFactory.cpp
+ 
+ ${OBJECTDIR}/src/ReadFactory.o: src/ReadFactory.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/ReadFactory.o src/ReadFactory.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/ReadFactory.o src/ReadFactory.cpp
+ 
+ ${OBJECTDIR}/src/Stats.o: src/Stats.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/Stats.o src/Stats.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/Stats.o src/Stats.cpp
+ 
+ ${OBJECTDIR}/src/TextParser.o: src/TextParser.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/TextParser.o src/TextParser.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/TextParser.o src/TextParser.cpp
+ 
+ ${OBJECTDIR}/src/bd0.o: src/bd0.c
+ 	${MKDIR} -p ${OBJECTDIR}/src
+@@ -131,7 +131,7 @@ ${OBJECTDIR}/src/bratio.o: src/bratio.c
+ ${OBJECTDIR}/src/bstring.o: src/bstring.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/bstring.o src/bstring.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/bstring.o src/bstring.cpp
+ 
+ ${OBJECTDIR}/src/chebyshev.o: src/chebyshev.c
+ 	${MKDIR} -p ${OBJECTDIR}/src
+@@ -176,7 +176,7 @@ ${OBJECTDIR}/src/lgammacor.o: src/lgammacor.c
+ ${OBJECTDIR}/src/main.o: src/main.cpp
+ 	${MKDIR} -p ${OBJECTDIR}/src
+ 	${RM} "$@.d"
+-	$(COMPILE.cc) -O2 -Iincludes -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/main.o src/main.cpp
++	$(COMPILE.cc) -O2 -Iincludes -I../../bamtools/include/bamtools -std=c++14 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/src/main.o src/main.cpp
+ 
+ ${OBJECTDIR}/src/pbeta.o: src/pbeta.c
+ 	${MKDIR} -p ${OBJECTDIR}/src
+diff --git a/nbproject/configurations.xml b/nbproject/configurations.xml
+index 4eda248..cf4f079 100644
+--- a/nbproject/configurations.xml
++++ b/nbproject/configurations.xml
+@@ -94,6 +94,7 @@
+           <standard>11</standard>
+           <incDir>
+             <pElem>includes</pElem>
++            <pElem>../../bamtools/include/bamtools</pElem>
+           </incDir>
+           <commandLine>-g</commandLine>
+         </ccTool>
+@@ -105,6 +106,9 @@
+         </asmTool>
+         <linkerTool>
+           <output>bin/TPMCalculator</output>
++          <linkerAddLib>
++            <pElem>../../bamtools/lib</pElem>
++          </linkerAddLib>
+           <linkerDynSerch>
+             <pElem>.</pElem>
+             <pElem>.</pElem>
+diff --git a/nbproject/private/private.xml b/nbproject/private/private.xml
+index 72d04ad..29d081b 100644
+--- a/nbproject/private/private.xml
++++ b/nbproject/private/private.xml
+@@ -8,6 +8,9 @@
+     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
+         <group name="KillerMutations"/>
+         <group>
++            <file>file:/Users/veraalva/Work/Developer/C/ncbi/TPMCalculator/includes/GenomeFactory.h</file>
++            <file>file:/Users/veraalva/Work/Developer/C/ncbi/TPMCalculator/src/ReadFactory.cpp</file>
++            <file>file:/Users/veraalva/Work/Developer/C/ncbi/TPMCalculator/Dockerfile</file>
+             <file>file:/Users/veraalva/Work/Developer/C/ncbi/TPMCalculator/src/main.cpp</file>
+         </group>
+     </open-files>
+diff --git a/src/ReadFactory.cpp b/src/ReadFactory.cpp
+index 4a00909..5928e6a 100644
+--- a/src/ReadFactory.cpp
++++ b/src/ReadFactory.cpp
+@@ -47,12 +47,16 @@ void ReadFactory::processReadAtGenomeLevel(std::string chrName, std::string samp
+     GeneMultiSetNGS::iterator geneIt;
+     try {
+         if (!read_coords.empty()) {
+-            geneIt = genomeFactory.findGeneUpperBound(chrName, read_coords.rbegin()->first, read_coords.rbegin()->second);
+-            for (auto it = geneIt;; --it) {
+-                this->processReadAtGeneLevel(*it, sampleName, read_coords, minOverlap);
+-                if (done) break;
+-                if (std::distance(it, geneIt) > 6 && (*it)->getEnd() < (*read_coords.begin()).first) done = true;
+-                if (it == genomeFactory.getCurrentChr()->getGenes().begin()) break;
++            try {
++                geneIt = genomeFactory.findGeneUpperBound(chrName, read_coords.rbegin()->first, read_coords.rbegin()->second);
++                for (auto it = geneIt;; --it) {
++                    this->processReadAtGeneLevel(*it, sampleName, read_coords, minOverlap);
++                    if (done) break;
++                    if (std::distance(it, geneIt) > 6 && (*it)->getEnd() < (*read_coords.begin()).first) done = true;
++                    if (it == genomeFactory.getCurrentChr()->getGenes().begin()) break;
++                }
++            } catch (exceptions::NotFoundException ex) {
++                std::cerr << ex.what() << std::endl;
+             }
+         }
+     } catch (exceptions::NotFoundException) {
+@@ -383,7 +387,7 @@ int ReadFactory::processReadsFromBAM(std::string bamFileName, std::string sample
+         }
+     }
+     reader.Close();
+-
++    
+     calculateTPMperSample(sampleName);
+     return count;
+ }

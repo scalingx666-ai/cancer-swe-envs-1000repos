@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/mlcommons__GaNDLF-1035"
+description = "Add a new tag for the docker images being built"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "GaNDLF",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mlcommons/GaNDLF"
+ref = "86c4d81c3328a4d567f9431b3b4445995c075886"
+reference = "https://github.com/mlcommons/GaNDLF/pull/1035"
+source_access = "auto"
+built_at = "2026-11-13T16:12:17.870491+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:983e2971a7d1ad1147cce86dab6f69a0be241795ff80391df7ea47906fc6fb51"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-08-15T13:51:02Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/docker-image.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

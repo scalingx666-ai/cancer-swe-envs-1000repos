@@ -1,0 +1,79 @@
+version = "1.0"
+
+[task]
+name = "default/camicroscope__caMicroscope-1089"
+description = "For 3.12.2"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "caMicroscope",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "camicroscope/caMicroscope"
+ref = "1ae3c52429582cf36c1c31c8fe53f91be67c4d07"
+reference = "https://github.com/camicroscope/caMicroscope/pull/1089"
+source_access = "auto"
+built_at = "2026-11-13T16:41:19.326549+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:26171791ad8abe94dd9eb55fc5c52bdb4bd39f4470d807cb08f47824ee569fe8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-06-13T19:23:17Z"
+diff_format = "unified"
+context_files = [
+    ".eslintrc.js",
+    ".github/workflows/axe-a11y-check.yml",
+    "apps/dicom-connect/table.js",
+    "apps/dicom-web/table.css",
+    "apps/dicom-web/table.html",
+    "apps/dicom-web/table.js",
+    "apps/port/xml2geo.js",
+    "apps/viewer/init.js",
+    "apps/viewer/viewer.html",
+    "common/DicomWebMods.js",
+    "common/dynamicLoadScript.js",
+    "common/util.js",
+    "core/CaMic.js",
+    "core/Store.js",
+    "core/extension/openseadragon-canvas-draw-overlay.js",
+    "core/extension/openseadragon-overlays-manage.js",
+    "core/openseadragon/openseadragon.js",
+    "package.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1621
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

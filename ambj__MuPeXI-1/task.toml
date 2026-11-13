@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/ambj__MuPeXI-1"
+description = "Replace call to pandas's deprecated method"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "MuPeXI",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ambj/MuPeXI"
+ref = "2bc5da0b3b87c4b512493c92146ea0a5ce2dd474"
+reference = "https://github.com/ambj/MuPeXI/pull/1"
+source_access = "auto"
+built_at = "2026-11-13T15:45:12.102674+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9e7d0af5f94aa8d5753464a4cd6c76d642454801bb63dcec29394222be1972a8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-06-07T21:06:23Z"
+diff_format = "unified"
+context_files = [
+    "MuPeXI.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

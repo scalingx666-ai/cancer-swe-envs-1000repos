@@ -1,0 +1,113 @@
+diff --git a/.github/workflows/snakemake-run.yaml b/.github/workflows/snakemake-run.yaml
+index e862a4f5..22f0dbb8 100644
+--- a/.github/workflows/snakemake-run.yaml
++++ b/.github/workflows/snakemake-run.yaml
+@@ -18,10 +18,12 @@ jobs:
+     strategy:
+       fail-fast: false
+       matrix:
+-        os: [macos-15-intel, ubuntu-latest]
++        os: [macos-15-intel, ubuntu-latest, macos-latest]
+         include:
+         - os: macos-15-intel
+           rversion: '4.5'
++        - os: macos-latest
++          rversion: '4.5'
+         - os: ubuntu-latest
+           rversion: '4.5'
+     steps:
+diff --git a/NEWS b/NEWS
+index 173b0d06..7c9a3b83 100755
+--- a/NEWS
++++ b/NEWS
+@@ -1,3 +1,7 @@
++v1.5.12
++======
++o Update tool versions in conda environments
++
+ v1.5.11
+ ======
+ o Update tool versions in conda environments
+diff --git a/Snakefile b/Snakefile
+index 211d23ab..d7639e86 100755
+--- a/Snakefile
++++ b/Snakefile
+@@ -148,7 +148,7 @@ rule softwareversions:
+ 		"echo -n 'ARMOR version ' && cat version; "
+ 		"salmon --version; trim_galore --version; "
+ 		"echo -n 'cutadapt ' && cutadapt --version; "
+-		"fastqc --version; STAR --version; samtools --version; multiqc --version; "
++		"fastqc --version; samtools --version; multiqc --version; "
+ 		"bedtools --version"
+ 
+ ## ------------------------------------------------------------------------------------ ##
+@@ -224,7 +224,7 @@ rule starindex:
+ 		readlength = config["readlength"],
+ 		starextraparams = config["additional_star_index"]
+ 	conda:
+-		"envs/environment.yaml"
++		"envs/environment_STAR.yaml"
+ 	threads:
+ 		config["ncores"]
+ 	shell:
+@@ -439,7 +439,7 @@ rule starSE:
+ 		STARdir = lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),   ## dirname of first output
+ 		starextraparams = config["additional_star_align"]
+ 	conda:
+-		"envs/environment.yaml"
++		"envs/environment_STAR.yaml"
+ 	shell:
+ 	    """
+ 		echo 'STAR version:\n' > {log}; 
+@@ -471,7 +471,7 @@ rule starPE:
+ 		STARdir = lambda wildcards, output: os.path.dirname(os.path.dirname(output[0])),   ## dirname of first output
+ 		starextraparams = config["additional_star_align"]
+ 	conda:
+-		"envs/environment.yaml"
++		"envs/environment_STAR.yaml"
+ 	shell:
+ 	    """
+ 		echo 'STAR version:\n' > {log}; 
+diff --git a/config.yaml b/config.yaml
+index 70fdb27f..86a7ea2c 100755
+--- a/config.yaml
++++ b/config.yaml
+@@ -37,7 +37,7 @@ STARindex: example_data/reference/STARIndex/Homo_sapiens.GRCh38.93.STAR.idx
+ ##--------------------------------------------------------------------------------------------
+ ## Add or remove parameters inside the ""
+ additional_star_index: ""
+-additional_star_align: ""
++additional_star_align: "--sysShell /bin/sh"
+ 
+ ## Additional Salmon parameters
+ ## Here, you can specify any optional parameters for the index building and/or 
+diff --git a/envs/environment.yaml b/envs/environment.yaml
+index c11a3a23..19abee88 100755
+--- a/envs/environment.yaml
++++ b/envs/environment.yaml
+@@ -4,7 +4,6 @@ channels:
+ dependencies:
+ - samtools=1.22
+ - salmon=1.10.3
+-- star=2.7.10b
+ - fastqc=0.12.1
+ - multiqc=1.35
+ - trim-galore=0.6.11
+diff --git a/envs/environment_STAR.yaml b/envs/environment_STAR.yaml
+new file mode 100755
+index 00000000..fb21bcd5
+--- /dev/null
++++ b/envs/environment_STAR.yaml
+@@ -0,0 +1,5 @@
++channels:
++- bioconda
++- conda-forge
++dependencies:
++- star=2.7.11b=*_9
+diff --git a/version b/version
+index f81fd1d8..87ed4317 100755
+--- a/version
++++ b/version
+@@ -1 +1 @@
+-1.5.11 (2026-06-13)
++1.5.12 (2026-10-31)

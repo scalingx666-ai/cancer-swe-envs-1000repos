@@ -1,0 +1,1557 @@
+diff --git a/.gitignore b/.gitignore
+index 31146ff..8984ffe 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -8,6 +8,7 @@ __pycache__/
+ 
+ # subrepos
+ PORPOISE/
++MultiModN/
+ gdc-client/
+ CLAM/
+ data/tcga/omic/
+diff --git a/environment.yml b/environment.yml
+index 9568e21..ff504f9 100644
+--- a/environment.yml
++++ b/environment.yml
+@@ -8,6 +8,7 @@ channels:
+ dependencies:
+   - einops
+   - jupyter
++  - pytest
+   - python=3.9
+   - pytorch=1.13.1=cuda112py39hb0b7ed5_200
+   - cudatoolkit=11.3.1
+@@ -16,6 +17,7 @@ dependencies:
+   - scikit-learn
+   - scikit-survival
+   - seaborn
++  - torchmetrics=1.2.1
+   - torchvision=0.14.1=cuda112py39h1a1de93_0
+   - tqdm
+   - python-box
+diff --git a/healnet/baselines/__init__.py b/healnet/baselines/__init__.py
+index cddd310..b86ba43 100644
+--- a/healnet/baselines/__init__.py
++++ b/healnet/baselines/__init__.py
+@@ -1,5 +1,6 @@
+ from healnet.baselines.mm_prognosis import MMPrognosis
+ from healnet.baselines.generic import FCNN, RegularizedFCNN
+ from healnet.baselines.mcat import MCAT, SNN, MILAttentionNet
++from healnet.baselines.multimodn.better_multimodn import MultiModNModule
+ 
+ __all__ = ["MMPrognosis", "FCNN", "RegularizedFCNN", "MCAT", "SNN", "MILAttentionNet"]
+\ No newline at end of file
+diff --git a/healnet/baselines/multimodn/__init__.py b/healnet/baselines/multimodn/__init__.py
+new file mode 100644
+index 0000000..d0bb13e
+--- /dev/null
++++ b/healnet/baselines/multimodn/__init__.py
+@@ -0,0 +1,16 @@
++"""
++Import relevant objects to benchmark from https://github.com/EPFLiGHT/MultiModN/
++"""
++
++from healnet.baselines.multimodn.encoders import MLPEncoder, ResNet, PatchEncoder
++from healnet.baselines.multimodn.decoders import ClassDecoder, LogisticDecoder
++from healnet.baselines.multimodn.multimodn import MultiModN
++
++__all__ = [
++    "MLPEncoder",
++    "MLPFeatureEncoder",
++    "ResNet",
++    "ClassDecoder",
++    "LogisticDecoder",
++    "MultiModN"
++]
+\ No newline at end of file
+diff --git a/healnet/baselines/multimodn/better_multimodn.py b/healnet/baselines/multimodn/better_multimodn.py
+new file mode 100644
+index 0000000..7c390b5
+--- /dev/null
++++ b/healnet/baselines/multimodn/better_multimodn.py
+@@ -0,0 +1,71 @@
++import torch
++import torch.nn as nn
++import einops
++from typing import *
++from healnet.baselines.multimodn.encoders import MultiModEncoder
++from healnet.baselines.multimodn.decoders import MultiModDecoder
++from healnet.baselines.multimodn.utils import TrainableInitState
++
++class MultiModNModule(nn.Module):
++    def __init__(self,
++                 state_size: int,
++                 encoders: List[MultiModEncoder], # needs to be in right order of modalities in x
++                 decoders: List[MultiModDecoder], # just 1 in our case
++                 err_penalty: float = 1.0, # from main pipeline
++                 state_change_penalty: float = 0.0,
++                 ):
++        super().__init__()
++        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++        self.state_size = state_size
++        # self.state = TrainableInitState(state_size=state_size, device=self.device)
++        self.state = nn.Parameter(torch.randn(state_size), requires_grad=True)
++        self.encoders = encoders
++        self.decoders = decoders
++        self.err_penalty = err_penalty
++        self.state_change_penalty = state_change_penalty
++
++
++        self.model = nn.ModuleList(encoders)
++        self.decoder = nn.ModuleList(decoders)
++
++    def forward(self, x: List[torch.Tensor], target: torch.Tensor) -> torch.Tensor:
++        assert len(x) == len(self.encoders), "Number of inputs must match number of encoders"
++
++        b, *_ = x[0].shape # get batch dims
++
++        # each sample in batch gets assigned state
++        # only expand once
++        # if len(self.state.shape) == 1:
++        self.state = nn.Parameter(einops.repeat(self.state, "d -> b d", b=b))
++
++
++        running_loss = 0
++        for encoder, mod in zip(self.encoders, x):
++            old_state = self.state.clone()
++            self.state = encoder(state=self.state, x=mod) # (l_d)
++
++        # iterate through decoders as it's multitask
++            for decoder in self.decoders:
++                pred = decoder(self.state)
++                loss = self.calc_loss(pred, target, old_state, self.state)
++            running_loss += loss
++
++        running_loss /= len(self.encoders)
++        # reduce state over batch dim
++        self.state = nn.Parameter(self.state.mean(dim=0))
++        # return expected loss over batches and encoders and predictions after the last state (encoder)
++        return running_loss, pred
++
++
++
++    def calc_loss(self, pred: torch.Tensor, actual: torch.Tensor, s_old: torch.Tensor, s_new: torch.Tensor):
++        b, *_ = pred.shape
++        err_loss = nn.CrossEntropyLoss()(pred, actual.float())
++        state_change_loss = torch.mean((s_new - s_old) ** 2)
++
++        # mean over mini-batch
++        loss = torch.mean((err_loss * self.err_penalty + state_change_loss * self.state_change_penalty), dim=0)
++
++        return loss
++
++
+diff --git a/healnet/baselines/multimodn/decoders.py b/healnet/baselines/multimodn/decoders.py
+new file mode 100755
+index 0000000..2e3a7fc
+--- /dev/null
++++ b/healnet/baselines/multimodn/decoders.py
+@@ -0,0 +1,70 @@
++import torch
++from abc import abstractmethod, ABC
++from torch import Tensor, sigmoid
++from typing import Callable, Optional, Tuple
++import torch.nn as nn
++import einops
++import torch.nn.functional as F
++
++
++class MultiModDecoder(nn.Module, ABC):
++    """Abstract decoder for MultiModN"""
++
++    def __init__(self, state_size: int):
++        super(MultiModDecoder, self).__init__()
++        self.state_size = state_size
++
++    @abstractmethod
++    def forward(self, state: Tensor) -> Tensor:
++        pass
++
++
++class ClassDecoder(MultiModDecoder):
++    """Classifier for MultiModN"""
++
++    def __init__(self, state_size: int, n_classes: int, activation: Callable,
++                 device: Optional[torch.device] = None):
++        super().__init__(state_size)
++        self.n_classes = n_classes
++        self.fc = nn.Linear(state_size, n_classes, device=device)
++        self.activation = activation
++
++    def forward(self, state: Tensor) -> Tensor:
++        return self.activation(self.fc(state))
++    
++class MLPDecoder(MultiModDecoder):
++    """Multi-layer perceptron decoder"""
++    def __init__(
++            self,
++            state_size: int,            
++            hidden_layers: Tuple[int],
++            n_classes: int = 2,
++            output_activation: Callable = sigmoid,
++            hidden_activation: Callable = F.relu,
++            device: Optional[torch.device] = None,
++    ):
++        super().__init__(state_size)
++        self.output_activation = output_activation
++        self.hidden_activation = hidden_activation
++        self.n_classes = n_classes
++        dim_layers = [self.state_size] + list(hidden_layers) + [n_classes, ]
++        self.layers = nn.ModuleList()
++        for i, (in_dim, out_dim) in enumerate(zip(dim_layers, dim_layers[1:])):  
++            self.layers.append(nn.Linear(in_dim, out_dim, device=device))
++
++    def forward(self, latent: Tensor) -> Tensor:
++
++        # # expand to num_classes
++        # latent = einops.repeat(latent, "d -> b d", b = self.n_classes)
++
++        for layer in self.layers[0:-1]:
++            latent = self.hidden_activation((layer(latent)))
++        output = self.output_activation(self.layers[-1](latent))
++        return output
++
++
++class LogisticDecoder(ClassDecoder):
++    """Logistic decoder for MultiModN"""
++
++    def __init__(self, state_size: int, device: Optional[torch.device] = None):
++        super().__init__(state_size, 2, sigmoid, device)
+diff --git a/healnet/baselines/multimodn/encoders.py b/healnet/baselines/multimodn/encoders.py
+new file mode 100755
+index 0000000..1e6695a
+--- /dev/null
++++ b/healnet/baselines/multimodn/encoders.py
+@@ -0,0 +1,151 @@
++import torch
++from torch import Tensor
++import torch.nn as nn
++import einops
++import torch.nn.functional as F
++from abc import ABC, abstractmethod
++from typing import Callable, Tuple, Optional
++from torchvision.models import resnet18, ResNet18_Weights
++
++
++
++class MultiModEncoder(nn.Module, ABC):
++    """Abstract encoder for MultiModN"""
++
++    def __init__(self, state_size: int):
++        super(MultiModEncoder, self).__init__()
++        self.state_size = state_size
++
++    @abstractmethod
++    def forward(self, state: Tensor, x: Tensor) -> Tensor:
++        pass
++
++
++
++
++class MLPEncoder(MultiModEncoder):
++    """Multi-layer perceptron encoder"""
++    def __init__(
++            self,
++            state_size: int,
++            n_features: int,
++            hidden_layers: Tuple[int],
++            activation: Callable = F.relu,
++            device: Optional[torch.device] = None,
++    ):
++        super().__init__(state_size)
++
++        self.activation = activation
++
++        dim_layers = [n_features] + list(hidden_layers) + [self.state_size, ]
++
++        self.layers = nn.ModuleList()
++        for i, (in_dim, out_dim) in enumerate(zip(dim_layers, dim_layers[1:])):
++            # The state is concatenated to the input of the last layer
++            if i == len(dim_layers) - 2:
++                self.layers.append(
++                    nn.Linear(in_dim + self.state_size, out_dim, device=device))
++            else:
++                self.layers.append(nn.Linear(in_dim, out_dim, device=device))
++
++    def forward(self, state: Tensor, x: Tensor) -> Tensor:
++        # b, *_ = x.shape
++        # state = einops.repeat(state, "d -> b d", b=b)
++
++        for layer in self.layers[0:-1]:
++            x = self.activation(layer(x))
++
++        output = self.layers[-1](torch.cat([x, state], dim=1))
++
++        # reduce state over batch
++        # output = nn.Parameter(einops.reduce(output, "b d -> d", "mean"))
++
++        return nn.Parameter(output)
++
++
++class PatchEncoder(MultiModEncoder):
++    """RNN encoder adjusted for patched images"""
++
++    def __init__(
++        self,
++        state_size: int,
++        n_features: int,
++        hidden_layers: Tuple[int],
++        activation: Callable = F.relu,
++    ):
++        super().__init__(state_size)
++
++        self.activation = activation
++
++        dim_layers = [n_features] + list(hidden_layers) + [self.state_size,]
++
++        self.layers = nn.ModuleList()
++        for i, (inDim, outDim) in enumerate(zip(dim_layers, dim_layers[1:])):
++            # The state is concatenated to the input of the last layer
++            if i == len(dim_layers)-2:
++                self.layers.append(nn.RNN(inDim + self.state_size, outDim, batch_first=True))
++            else:
++                self.layers.append(nn.RNN(inDim, outDim, batch_first=True))
++
++    def forward(self, state: Tensor, x: Tensor) -> Tensor:
++        # expand state
++        # b, *_ = x.shape
++        # state = einops.repeat(state, "d -> b d", b=b)
++
++        for layer in self.layers[:-1]:
++            out, h_n = layer(x)
++            x = self.activation(out)
++
++        # need to average over patches
++        output, h_n = self.layers[-1](torch.cat([einops.reduce(tensor=x, pattern="b c d -> b d", reduction="sum"), state], dim=1))
++
++        # reduce state over batch
++        # output = nn.Parameter(einops.reduce(output, "b d -> d", "mean"))
++
++        return nn.Parameter(output)
++
++
++
++class ResNet(nn.Module):
++    def __init__(self, *, state_size=0, freeze=False, pretrained_path=None, pretrained=True):
++        super().__init__()
++
++        if pretrained_path is not None and pretrained:
++            raise ValueError(
++                "Loading a pretrained ResNet should either be from torch.vision (pretrained=True) "
++                "or from a checkpoint (pretrained_path) but not both."
++            )
++
++        # if pretrained, loads ResNet18 pretrained on ImageNet
++        # self.resnet = models.resnet18(pretrained=pretrained)
++        self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
++        self.state_size = state_size
++
++        self.fc = nn.Linear(512 + self.state_size, self.state_size)
++
++        # load pre-trained ResNet from path
++        if pretrained_path:
++            model_dict = self.resnet.state_dict()
++            # filter out unnecessary keys
++            pretrained_dict = {
++                k: v for k, v in torch.load(pretrained_path).items() if k in model_dict
++            }
++            # overwrite entries in the existing state dict
++            model_dict.update(pretrained_dict)
++            # load the new state dict
++            self.resnet.load_state_dict(model_dict)
++
++        # remove final classification layer
++        self.resnet.fc = nn.Identity()
++
++        if freeze:
++            for p in self.resnet.parameters():
++                p.requires_grad = False
++
++    def forward(self, state, x):
++        # expand state
++
++        representations = self.resnet(x)
++        output = self.fc(torch.cat([representations, state], dim=1))
++
++        return nn.Parameter(output)
+diff --git a/healnet/baselines/multimodn/multimodn.py b/healnet/baselines/multimodn/multimodn.py
+new file mode 100644
+index 0000000..6022be4
+--- /dev/null
++++ b/healnet/baselines/multimodn/multimodn.py
+@@ -0,0 +1,541 @@
++import random
++import torch
++from torch.optim import Optimizer
++from torch import Tensor
++from torch.utils.data import DataLoader
++
++from healnet.baselines.multimodn.encoders import MultiModEncoder
++from healnet.baselines.multimodn.decoders import MultiModDecoder
++
++
++from healnet.baselines.multimodn.utils import InitState, TrainableInitState, MultiModNHistory
++# from multimodn.state import InitState, TrainableInitState
++# from multimodn.history import MultiModNHistory
++from typing import List, Optional, Iterable, Tuple, Callable, Union
++import torch.nn as nn
++import numpy as np
++from torchsummary import summary
++
++from torchmetrics import ConfusionMatrix, F1Score, ROC, PrecisionRecallCurve, Accuracy, AUROC
++
++performance_metrics = ['f1', 'auc', 'accuracy', 'sensitivity', 'specificity', 'fpr', 'tpr', 'precision', 'recall', \
++                       'tn', 'fp', 'fn', 'tp', 'thr_roc', 'thr_pr']
++
++
++# Calculation of various performance metrics for the binary classification task (default)
++def get_performance_metrics(y_true, y_pred, y_prob):
++    f1_score = F1Score(task="binary", average='macro')
++    roc = ROC(task="binary")
++    pr_curve = PrecisionRecallCurve(task="binary")
++    accuracy_score = Accuracy(task="binary")
++    roc_auc_score = AUROC(task="binary", average='macro')
++    confmat = ConfusionMatrix(task="binary")
++
++    cm = confmat(y_pred, y_true)
++    tp = cm[1][1]
++    fp = cm[0][1]
++    fn = cm[1][0]
++    tn = cm[0][0]
++
++    if (tp + fn) != 0:
++        sensitivity = tp / (tp + fn)
++    else:
++        sensitivity = 0
++    if (tn + fp) != 0:
++        specificity = tn / (tn + fp)
++    else:
++        specificity = 0
++
++    fpr, tpr, thr_roc = roc(y_prob, y_true)
++    precision, recall, thr_pr = pr_curve(y_prob, y_true)
++
++    return f1_score(y_prob, y_true), roc_auc_score(y_prob, y_true), accuracy_score(y_pred,
++                                                                                   y_true), sensitivity, specificity, fpr, tpr, precision, recall, \
++        tn, fp, fn, tp, thr_roc, thr_pr
++
++
++def compute_metrics(tp, tn, fp, fn, cm, enc_idx, dec_idx):
++    if cm is not None:
++        # In torch cm fp are in rows, fn are in columns
++        # According to https://torchmetrics.readthedocs.io/en/stable/classification/confusion_matrix.html
++        tp[enc_idx][dec_idx] += cm[1][1]
++        tn[enc_idx][dec_idx] += cm[0][0]
++        fp[enc_idx][dec_idx] += cm[0][1]
++        fn[enc_idx][dec_idx] += cm[1][0]
++    else:
++        tp[enc_idx][dec_idx] = float('nan')
++        tn[enc_idx][dec_idx] = float('nan')
++        fp[enc_idx][dec_idx] = float('nan')
++        fn[enc_idx][dec_idx] = float('nan')
++
++
++
++
++
++class MultiModN(nn.Module):
++    def __init__(
++            self,
++            state_size: int,
++            encoders: List[MultiModEncoder],
++            decoders: List[MultiModDecoder],
++            err_penalty: float,
++            state_change_penalty: float,
++            shuffle_mode: Optional[bool] = False,
++            init_state: Optional[InitState] = None,
++            device: Optional[torch.device] = None,
++    ):
++        super(MultiModN, self).__init__()
++        self.shuffle_mode = shuffle_mode
++        self.device = device if device else torch.device(
++            "cuda" if torch.cuda.is_available() else "cpu")
++        self.init_state = TrainableInitState(
++            state_size, self.device) if not init_state else init_state
++        self.encoders = nn.ModuleList(encoders)
++        self.decoders = nn.ModuleList(decoders)
++        self.err_penalty = err_penalty
++        self.state_change_penalty = 0.01 * state_change_penalty
++        self.to(self.device)  # Move to device
++
++    def train_epoch(
++            self,
++            train_loader: DataLoader,
++            optimizer: Optimizer,
++            criterion: Union[nn.Module, Callable],
++            history: Optional[MultiModNHistory] = None,
++            log_interval: Optional[int] = None,
++            logger: Optional[Callable] = None,
++            last_epoch: Optional[bool] = False,
++    ) -> None:
++        # If log interval is given and logger is not, use print as default logger
++        if log_interval and not logger:
++            logger = print
++        self.train()
++
++        n_batches = len(train_loader)
++        n_samples_epoch = np.ones((len(self.encoders) + 1, 1))
++
++        err_loss_epoch = np.zeros((len(self.encoders) + 1, len(self.decoders)))
++        state_change_epoch = np.zeros(len(self.encoders))
++        n_correct_epoch = np.zeros((len(self.encoders) + 1, len(self.decoders)))
++
++        # For computation of sensitivity, specificity and balanced accuracy
++        tp_epoch = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++        tn_epoch = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++        fp_epoch = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++        fn_epoch = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++
++        for batch_idx, batch in enumerate(train_loader):
++            # Note: for multiclass target should be = [0, n_classes -1] for the correctness of CrossEntropyLoss
++            data, target, encoder_sequence = (list(batch) + [None])[:3]
++            batch_size = target.shape[0]
++            n_samples_epoch[0] += batch_size
++
++            err_loss = torch.zeros((len(self.encoders) + 1, len(self.decoders)))
++            state_change = torch.zeros(len(self.encoders))
++
++            # Collect metrics from each step
++            tp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++            tn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++            fp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++            fn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++
++            data_encoders = [data_encoder.to(self.device) for data_encoder in data]
++
++            target = target.type(torch.LongTensor)
++            target = target.to(self.device)
++
++            optimizer.zero_grad()
++
++            state: Tensor = self.init_state(batch_size)
++
++            for dec_idx, decoder in enumerate(self.decoders):
++                target_decoder = target[:, dec_idx]
++                output_decoder = decoder(state)
++                _, prediction = torch.max(output_decoder, dim=1)
++
++                err_loss[0][dec_idx] = criterion(output_decoder, target_decoder)
++                n_correct_epoch[0][dec_idx] += sum(prediction == target_decoder).float()
++
++                # Each decoder can possibly solve different task, so we redefine confusion matrices for each decoder,
++                # and store them in list for the next encoding steps
++                # Now, for simplicity we only calculate confusion matrix for deocders with binary tasks
++                cm = None
++                if decoder.n_classes == 2:
++                    confmat = ConfusionMatrix(task="binary", num_classes=2).to(self.device)
++                    cm = confmat(prediction, target_decoder)
++
++                compute_metrics(tp, tn, fp, fn, cm, 0, dec_idx)
++
++            for data_idx, enc_idx in self.get_encoder_iterable(encoder_sequence,
++                                                               shuffle_mode=self.shuffle_mode,
++                                                               train=True):
++                encoder = self.encoders[enc_idx]
++                data_encoder = data_encoders[data_idx]
++
++                old_state = state.clone()
++
++                # Skip encoder if data contains nan value
++                if any(data_encoder.isnan().flatten()):
++                    continue
++
++                n_samples_epoch[enc_idx + 1] += batch_size
++
++                state = encoder(state, data_encoder)
++                state_change[enc_idx] = torch.mean((state - old_state) ** 2)
++
++                for dec_idx, decoder in enumerate(self.decoders):
++                    target_decoder = target[:, dec_idx]
++                    output_decoder = decoder(state)
++                    _, prediction = torch.max(output_decoder, dim=1)
++
++                    err_loss[enc_idx + 1][dec_idx] = criterion(output_decoder,
++                                                               target_decoder)
++                    n_correct_epoch[enc_idx + 1][dec_idx] += sum(
++                        prediction == target_decoder)
++
++                    cm = None
++                    if decoder.n_classes == 2:
++                        confmat = ConfusionMatrix(task="binary", num_classes=2).to(self.device)
++                        cm = confmat(prediction, target_decoder)
++
++                    compute_metrics(tp, tn, fp, fn, cm, enc_idx + 1, dec_idx)
++
++            # Global losses (combining all encoders and decoders) at batch level
++            global_err_loss = torch.sum(err_loss) / (
++                    len(self.decoders) * (len(self.encoders) + 1))
++            global_state_change = torch.sum(state_change) / (len(self.encoders))
++            # Loss = global_err_loss * err_penalty +
++            #        0.01 * global_state_change * state_change_penalty
++            loss = (
++                    global_err_loss * self.err_penalty +
++                    global_state_change * self.state_change_penalty
++            )
++            loss.backward()
++            optimizer.step()
++
++            err_loss_epoch += err_loss.detach().numpy()
++            state_change_epoch += state_change.detach().numpy()
++
++            tp_epoch += tp
++            fp_epoch += fp
++            fn_epoch += fn
++            tn_epoch += tn
++
++            if log_interval and batch_idx % log_interval == log_interval - 1:
++                logger(
++                    f"Batch {batch_idx + 1}/{n_batches}\n"
++                    f"\tLoss: {loss.item():.4f}\n"
++                    f"\tErr loss: {global_err_loss.item():.4f}\n"
++                    f"\tState change: {global_state_change.item():.4f}"
++                )
++
++        err_loss_epoch /= n_batches
++        state_change_epoch /= n_batches
++        accuracy_epoch = n_correct_epoch / n_samples_epoch
++
++        # Compute metrics for the current epoch
++        # Use np.where to avoid NaNs, set the whole metric to zero
++        # in case of the equality of denominator to zero
++        # At the end move all metrics to cpu and convert to numpy for history
++
++        # Note, that here we compute metrics for all encoders and decoders, \
++        # and at the history file select the last encoder for the final metric
++
++        sensitivity_denominator = tp_epoch + fn_epoch
++        sensitivity_epoch = torch.where(sensitivity_denominator == 0, 0,
++                                        tp_epoch / sensitivity_denominator).detach().cpu().numpy()
++
++        specificity_denominator = tn_epoch + fp_epoch
++        specificity_epoch = torch.where(specificity_denominator == 0, 0,
++                                        tn_epoch / specificity_denominator).detach().cpu().numpy()
++
++        balanced_accuracy_epoch = (sensitivity_epoch + specificity_epoch) / 2
++
++        if history is not None:
++            history.state_change_loss.append(state_change_epoch)
++            history.loss['train'].append(err_loss_epoch)
++            history.accuracy['train'].append(accuracy_epoch)
++            history.sensitivity['train'].append(sensitivity_epoch)
++            history.specificity['train'].append(specificity_epoch)
++            history.balanced_accuracy['train'].append(balanced_accuracy_epoch)
++        if last_epoch:
++            return self.test(train_loader, criterion, history=None)
++
++    def test(
++            self,
++            test_loader: DataLoader,
++            criterion: Union[nn.Module, Callable],
++            history: Optional[MultiModNHistory] = None,
++            tag: str = 'test',
++            log_results: bool = False,
++            logger: Optional[Callable] = None,
++    ):
++        # If log interval is given and logger is not, use print as default logger
++        if log_results and not logger:
++            logger = print
++        self.eval()
++
++        n_batches = len(test_loader)
++        n_samples_prediction = np.ones((len(self.encoders) + 1, 1))
++
++        err_loss_prediction = np.zeros((len(self.encoders) + 1, len(self.decoders)))
++        n_correct_prediction = np.zeros((len(self.encoders) + 1, len(self.decoders)))
++
++        output_decoder_epoch = [[]] * len(self.decoders)
++
++        tp_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++        tn_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++        fp_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++        fn_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++
++        with torch.no_grad():
++            for batch_idx, batch in enumerate(test_loader):
++                data, target, encoder_sequence = (list(batch) + [None])[:3]
++
++                batch_size = target.shape[0]
++                n_samples_prediction[0] += batch_size
++
++                err_loss = torch.zeros((len(self.encoders) + 1, len(self.decoders)))
++                # Matrices for each batch
++                tp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++                tn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++                fp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++                fn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
++
++                data_encoders = [data_encoder.to(self.device) for data_encoder in data]
++
++                target = target.type(torch.LongTensor)
++                target = target.to(self.device)
++
++                state: Tensor = self.init_state(batch_size)
++
++                if batch_idx == 0:
++                    target_decoder_epoch = target.cpu().detach()
++                else:
++                    target_decoder_epoch = torch.cat((target_decoder_epoch, target.cpu().detach()), dim=0)
++
++                for dec_idx, decoder in enumerate(self.decoders):
++                    target_decoder = target[:, dec_idx]
++                    output_decoder = decoder(state)
++                    _, prediction = torch.max(output_decoder, dim=1)
++
++                    err_loss[0][dec_idx] = criterion(output_decoder, target_decoder)
++                    n_correct_prediction[0][dec_idx] += sum(
++                        prediction == target_decoder).float()
++
++                    cm = None
++                    if decoder.n_classes == 2:
++                        confmat = ConfusionMatrix(task="binary", num_classes=2).to(self.device)
++                        cm = confmat(prediction, target_decoder)
++
++                    compute_metrics(tp, tn, fp, fn, cm, 0, dec_idx)
++
++                for data_idx, enc_idx in self.get_encoder_iterable(encoder_sequence,
++                                                                   shuffle_mode=self.shuffle_mode,
++                                                                   train=False):
++                    encoder = self.encoders[enc_idx]
++                    data_encoder = data_encoders[data_idx]
++
++                    # skip encoder if data contains nan value
++                    if any(data_encoder.isnan().flatten()):
++                        continue
++
++                    n_samples_prediction[enc_idx + 1] += batch_size
++
++                    state = encoder(state, data_encoder)
++
++                    for dec_idx, decoder in enumerate(self.decoders):
++                        target_decoder = target[:, dec_idx]
++                        output_decoder = decoder(state)
++                        _, prediction = torch.max(output_decoder, dim=1)
++                        err_loss[enc_idx + 1][dec_idx] = criterion(output_decoder,
++                                                                   target_decoder)
++                        n_correct_prediction[enc_idx + 1][dec_idx] += sum(
++                            prediction == target_decoder)
++
++                        cm = confmat(prediction, target_decoder)
++                        tp[enc_idx + 1][dec_idx] += cm[1][1]
++                        fp[enc_idx + 1][dec_idx] += cm[0][1]
++                        fn[enc_idx + 1][dec_idx] += cm[1][0]
++                        tn[enc_idx + 1][dec_idx] += cm[0][0]
++
++                        # To calculate the performance metrics for the decoder taking as input the state after the last encoder
++                        if enc_idx == len(self.encoders) - 1 and batch_idx == 0:
++                            output_decoder_epoch[dec_idx] = output_decoder.cpu().detach()
++                        elif enc_idx == len(self.encoders) - 1:
++                            output_decoder_epoch[dec_idx] = torch.cat(
++                                (output_decoder_epoch[dec_idx], output_decoder.cpu().detach()), dim=0)
++
++                err_loss_prediction += err_loss.detach().numpy()
++
++                tp_prediction += tp
++                fp_prediction += fp
++                fn_prediction += fn
++                tn_prediction += tn
++
++        err_loss_prediction /= n_batches
++        accuracy_prediction = n_correct_prediction / n_samples_prediction
++
++        sensitivity_denominator = tp_prediction + fn_prediction
++        sensitivity_prediction = torch.where(sensitivity_denominator == 0, 0,
++                                             tp_prediction / sensitivity_denominator).detach().cpu().numpy()
++
++        specificity_denominator = tn_prediction + fp_prediction
++        specificity_prediction = torch.where(specificity_denominator == 0, 0,
++                                             tn_prediction / specificity_denominator).detach().cpu().numpy()
++
++        balanced_accuracy_prediction = (sensitivity_prediction + specificity_prediction) / 2
++
++        if log_results:
++            logger(
++                f"{tag.capitalize()} results\n"
++                f"\tAverage loss: {np.mean(err_loss_prediction):.4f}\n"
++                f"\tAccuracy: {np.mean(accuracy_prediction):.4f}\n"
++                f"\tSensitivity: {sensitivity_prediction:.4f}\n"
++                f"\tSpecificity: {specificity_prediction:.4f}\n"
++                f"\tBalanced accuracy: {balanced_accuracy_prediction:.4f}"
++            )
++
++        if history is not None:
++            if tag not in history.loss:
++                history.loss[tag] = []
++            history.loss[tag].append(err_loss_prediction)
++
++            if tag not in history.accuracy:
++                history.accuracy[tag] = []
++            history.accuracy[tag].append(accuracy_prediction)
++
++            if tag not in history.sensitivity:
++                history.sensitivity[tag] = []
++            history.sensitivity[tag].append(sensitivity_prediction)
++
++            if tag not in history.specificity:
++                history.specificity[tag] = []
++            history.specificity[tag].append(specificity_prediction)
++
++            if tag not in history.balanced_accuracy:
++                history.balanced_accuracy[tag] = []
++            history.balanced_accuracy[tag].append(balanced_accuracy_prediction)
++        # Output the results for each decoder with the state vector after the last encoder as input
++        results = [[]] * len(self.decoders)
++        for dec_idx in range(len(output_decoder_epoch)):
++            output_decoder_epoch_dec_idx = output_decoder_epoch[dec_idx]
++            # Normalize so that the class probabilities sum to 1
++            output_decoder_epoch_dec_idx = torch.div(output_decoder_epoch_dec_idx,
++                                                     torch.sum(output_decoder_epoch_dec_idx, dim=1).reshape(-1, 1))
++            _, prediction_epoch_dec_idx = torch.max(output_decoder_epoch_dec_idx, dim=1)
++            target_decoder_epoch_dec_idx = target_decoder_epoch[:, dec_idx]
++            results[dec_idx] = get_performance_metrics(target_decoder_epoch_dec_idx, prediction_epoch_dec_idx,
++                                                       output_decoder_epoch_dec_idx[:, 1])
++        return results
++
++    def predict(
++            self,
++            x: List[Tensor],
++            encoder_sequence: Optional[np.ndarray] = None,
++    ) -> np.ndarray:
++        self.eval()
++        n_samples = x[0].shape[0]
++        full_predictions = np.zeros(
++            (len(self.encoders) + 1, len(self.decoders), n_samples))
++
++        with torch.no_grad():
++            x_encoders = [x_encoder.to(self.device) for x_encoder in x]
++            state: Tensor = self.init_state(n_samples)
++
++            for dec_idx, decoder in enumerate(self.decoders):
++                output_decoder = decoder(state)
++                _, prediction = torch.max(output_decoder, dim=1)
++
++                full_predictions[0][dec_idx] = prediction.detach().numpy()
++
++                # To predict probabilities instead of final class
++                # full_predictions[0][dec_idx] = output_decoder[..., -1].item()
++
++            for data_idx, enc_idx in self.get_encoder_iterable(encoder_sequence,
++                                                               shuffle_mode=self.shuffle_mode,
++                                                               train=False):
++                encoder = self.encoders[enc_idx]
++                state = encoder(state, x_encoders[data_idx])
++
++                for dec_idx, decoder in enumerate(self.decoders):
++                    output_decoder = decoder(state)
++                    _, prediction = torch.max(output_decoder, dim=1)
++
++                    full_predictions[enc_idx + 1][dec_idx] = prediction.detach().numpy()
++                    # full_predictions[enc_idx + 1][dec_idx] = output_decoder[..., -1].item()
++
++        return full_predictions
++
++    def get_states(
++            self,
++            data_loader: DataLoader,
++    ) -> List[Tensor]:
++        self.eval()
++
++        batch_states = []
++
++        with torch.no_grad():
++            for batch in data_loader:
++                data, _, encoder_sequence = (list(batch) + [None])[:3]
++
++                batch_size = data[0].shape[0]
++
++                data_encoders = [data_encoder.to(self.device) for data_encoder in data]
++
++                state: Tensor = self.init_state(batch_size)
++
++                for data_idx, enc_idx in self.get_encoder_iterable(encoder_sequence,
++                                                                   shuffle_mode=self.shuffle_mode,
++                                                                   train=False):
++                    encoder = self.encoders[enc_idx]
++                    data_encoder = data_encoders[data_idx]
++
++                    # skip encoder if data contains nan value
++                    if any(data_encoder.isnan().flatten()):
++                        continue
++
++                    state = encoder(state, data_encoder)
++
++                batch_states.append(state)
++
++        return list(torch.cat(batch_states, dim=0))
++
++    def display_arch(self, input: np.ndarray):
++        for i, enc in enumerate(self.encoders):
++            print('Encoder {}:'.format(i))
++            state_shape = torch.Size([self.init_state.state_size])
++
++            summary(enc, [state_shape, input[i].shape])
++            print()
++
++        for i, dec in enumerate(self.decoders):
++            print('Decoder {}:'.format(i))
++            state_shape = torch.Size([self.init_state.state_size])
++
++            summary(dec, state_shape)
++            print()
++
++    def get_encoder_iterable(
++            self,
++            encoder_sequence: List[int],
++            shuffle_mode: bool,
++            train: bool,
++    ) -> Iterable[Tuple[int, int]]:
++        if encoder_sequence is None:
++            encoder_iterable = enumerate(range(len(self.encoders)))
++        else:
++            encoder_iterable_batch = encoder_sequence.numpy().copy()
++            encoder_iterable = encoder_iterable_batch[0]
++            if not (encoder_iterable_batch == encoder_iterable).all():
++                raise ValueError(
++                    "Encoder sequence has different values across the batch. Hint: set batch size to 1 to avoid this error."
++                )
++
++            encoder_iterable = enumerate(encoder_iterable)
++
++        if shuffle_mode and train:
++            encoder_iterable = list(encoder_iterable)
++            random.shuffle(encoder_iterable)
++
++        return encoder_iterable
+\ No newline at end of file
+diff --git a/healnet/baselines/multimodn/utils.py b/healnet/baselines/multimodn/utils.py
+new file mode 100644
+index 0000000..654f066
+--- /dev/null
++++ b/healnet/baselines/multimodn/utils.py
+@@ -0,0 +1,200 @@
++# State
++from abc import ABC, abstractmethod
++from typing import List, Optional
++import pandas as pd
++import torch
++from torch import nn, Tensor
++from itertools import cycle
++
++
++class InitState(nn.Module, ABC):
++    """Trainable initial state"""
++
++    def __init__(self, state_size: int):
++        super().__init__()
++        self.state_size = state_size
++
++    @abstractmethod
++    def forward(self, batch_size) -> Tensor:
++        pass
++
++
++class TrainableInitState(InitState):
++    """Trainable initial state"""
++
++    def __init__(self, state_size: int, device: Optional[torch.device] = None):
++        super().__init__(state_size)
++        self.device = device
++        self.state_value = nn.Parameter(
++            torch.randn((1, state_size), requires_grad=True, device=self.device)
++        )
++
++    def forward(self, batch_size) -> Tensor:
++        init_tensor = torch.tile(self.state_value, [batch_size, 1])
++
++        return init_tensor
++
++
++class MultiModNHistory():
++    """Training history of MultiModN"""
++
++    def __init__(
++        self,
++        targets: List[str]
++    ):
++        self.decoder_names: List[str] = targets
++
++        self.state_change_loss: List[np.ndarray] = []
++
++        self.loss: Dict[str, List[np.ndarray]] = {
++            'train': [],
++        }
++        self.accuracy: Dict[str, List[np.ndarray]] = {
++            'train': [],
++        }
++
++        self.sensitivity: Dict[str, List[np.ndarray]] = {
++            'train': [],
++        }
++        self.specificity: Dict[str, List[np.ndarray]] = {
++            'train': [],
++        }
++        self.balanced_accuracy: Dict[str, List[np.ndarray]] = {
++            'train': [],
++        }
++
++    def plot(
++        self,
++        filepath: str,
++        targets_to_display: List[str],
++        show_state_change: bool = False,
++    ):
++        n_cols = len(self.loss)
++        n_rows = 5 # number of metrics to plot
++        fig, ax = plt.subplots(figsize=(10*n_cols, 5*n_rows), nrows=n_rows, ncols=n_cols)
++
++        # Plot state change loss curve
++        if show_state_change:
++            ax.plot(list(map(lambda x: x[-1], self.state_change_loss)), label='State change loss')
++
++        # Plot curves for each target
++        for i, target_name in enumerate(targets_to_display):
++            if target_name not in self.decoder_names:
++                raise ValueError(
++                    f"Target name '{target_name}' is not part of the MultiModN history"
++                )
++
++            # Plot loss curves
++            for col_idx, (key, value) in enumerate(self.loss.items()):
++                label = f"{target_name}"
++                ax[0][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
++                ax[0][col_idx].legend(loc="best")
++                ax[0][col_idx].set_title(f"{key.capitalize()} Loss")
++                ax[0][col_idx].grid(True)
++            # Plot accuracy curves
++            for col_idx, (key, value) in enumerate(self.accuracy.items()):
++                label = f"{target_name}"
++                ax[1][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
++                ax[1][col_idx].legend(loc="best")
++                ax[1][col_idx].set_title(f"{key.capitalize()} Accuracy")
++                ax[1][col_idx].grid(True)
++
++            # Should be similar to accuracy and loss, but I don't use this function, so I hadn't implement it yet
++            # Plot sensitivity curves
++            for col_idx, (key, value) in enumerate(self.sensitivity.items()):
++                label = f"{target_name}"
++                ax[2][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
++                ax[2][col_idx].legend(loc="best")
++                ax[2][col_idx].set_title(f"{key.capitalize()} Sensitivity")
++                ax[2][col_idx].grid(True)
++
++            # Plot specificity curves
++            for col_idx, (key, value) in enumerate(self.specificity.items()):
++                label = f"{target_name}"
++                ax[3][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
++                ax[3][col_idx].legend(loc="best")
++                ax[3][col_idx].set_title(f"{key.capitalize()} Specificity")
++                ax[3][col_idx].grid(True)
++
++            # Plot balanced accuracy curves
++            for col_idx, (key, value) in enumerate(self.balanced_accuracy.items()):
++                label = f"{target_name}"
++                ax[4][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
++                ax[4][col_idx].legend(loc="best")
++                ax[4][col_idx].set_title(f"{key.capitalize()} Balanced Accuracy")
++                ax[4][col_idx].grid(True)
++
++        plt.tight_layout()
++        fig.savefig(filepath)
++
++    def get_results(self) -> pd.DataFrame:
++        n_metrics = len(self.loss) + len(self.accuracy) + len(self.sensitivity) +\
++                    len(self.specificity) + len(self.balanced_accuracy) + 1
++        start_index = 0
++        columns = []
++        results = np.zeros((len(self.decoder_names), n_metrics))
++
++        # State change loss, same value for each row (independent of decoder)
++        results[:, start_index] = [self.state_change_loss[-1][-1]]*len(self.decoder_names)
++        columns.append('State change loss')
++        start_index += 1
++
++        # Losses
++        for j, (key, value) in enumerate(self.loss.items()):
++            columns.append(f'{display_title(key)} loss')
++
++            for i, _ in enumerate(self.decoder_names):
++                results[i, j+start_index] = value[-1][-1][i]
++        start_index += len(self.loss)
++
++        # Accuracies
++        for j, (key, value) in enumerate(self.accuracy.items()):
++            columns.append(f'{display_title(key)} accuracy')
++
++            for i, _ in enumerate(self.decoder_names):
++                results[i, j+start_index] = value[-1][-1][i]
++        start_index += len(self.accuracy)
++
++        # Sensitivities
++        for j, (key, value) in enumerate(self.sensitivity.items()):
++            columns.append(f'{display_title(key)} sensitivity')
++
++            for i, _ in enumerate(self.decoder_names):
++                results[i, j+start_index] = value[-1][-1][i]
++        start_index += len(self.sensitivity)
++
++        # Specificities
++        for j, (key, value) in enumerate(self.specificity.items()):
++            columns.append(f'{display_title(key)} specificity')
++
++            for i, _ in enumerate(self.decoder_names):
++                results[i, j+start_index] = value[-1][-1][i]
++        start_index += len(self.specificity)
++
++        # Balances accuracies
++        for j, (key, value) in enumerate(self.balanced_accuracy.items()):
++            columns.append(f'{display_title(key)} balanced accuracy')
++
++            for i, _ in enumerate(self.decoder_names):
++                results[i, j+start_index] = value[-1][-1][i]
++        start_index += len(self.balanced_accuracy)
++
++        df = pd.DataFrame(results, columns=columns)
++        df.index = self.decoder_names
++
++        return df
++
++    def print_results(self):
++        print(self.get_results())
++
++    def save_results(self, path):
++        df = self.get_results()
++
++        df.to_csv(path, index_label='Target')
++
++
++def display_title(key: str):
++    title = key.replace('_', ' ')
++    title = title.capitalize()
++
++    return title
+diff --git a/healnet/etl/loaders.py b/healnet/etl/loaders.py
+index ab48a9f..e34b848 100644
+--- a/healnet/etl/loaders.py
++++ b/healnet/etl/loaders.py
+@@ -184,6 +184,7 @@ def __getitem__(self, index):
+                 return [omic_tensor, slide_tensor], censorship, event_time, y_disc
+ 
+     def get_resize_dims(self, level: int, patch_height: int = 128, patch_width: int = 128, override=False):
++        # TODO - use TIA to handle resizing
+         if override is False:
+             width = self.sample_slide.level_dimensions[level][0]
+             height = self.sample_slide.level_dimensions[level][1]
+@@ -221,22 +222,18 @@ def _get_slide_dict(self):
+         svs_dict = {path.name: path for path in svs_files}
+         return svs_dict
+ 
+-    def _load_patch_coords(self):
+-        """
+-        Loads all patch coordinates for the dataset and level specified in the config and writes it to a dictionary
+-        with key: slide_id and value: patch coordinates (where each coordinate is a x,y tupe)
+-        """
+-        coords = {}
+-        for slide_id in self.slide_ids:
+-            patch_path = self.prep_path.joinpath(f"patches/{slide_id}.h5")
+-            h5_file = h5py.File(patch_path, "r")
+-            patch_coords = h5_file["coords"][:]
+-            coords[slide_id] = patch_coords
+-        return coords
+-
+-    # @property
+-    # def sample_slide_id(self):
+-    #     return next(iter(self.wsi_paths.keys()))
++    # def _load_patch_coords(self):
++    #     """
++    #     Loads all patch coordinates for the dataset and level specified in the config and writes it to a dictionary
++    #     with key: slide_id and value: patch coordinates (where each coordinate is a x,y tupe)
++    #     """
++    #     coords = {}
++    #     for slide_id in self.slide_ids:
++    #         patch_path = self.prep_path.joinpath(f"patches/{slide_id}.h5")
++    #         h5_file = h5py.File(patch_path, "r")
++    #         patch_coords = h5_file["coords"][:]
++    #         coords[slide_id] = patch_coords
++    #     return coords
+ 
+     def get_info(self, full_detail: bool = False):
+         """
+@@ -370,9 +367,6 @@ def load_wsi(self, slide_id: str, level: int = None) -> Tuple:
+             Tuple (openslide object, tensor of region)
+         """
+ 
+-        # load in openslide object
+-        # slide_path = self.wsi_paths[slide_id]
+-        # slide = OpenSlide(slide_path + ".svs")
+         slide = OpenSlide(self.raw_path.joinpath(f"{slide_id}.svs"))
+ 
+         # specify resolution level
+diff --git a/healnet/main.py b/healnet/main.py
+index c4d7cd6..17e4b45 100644
+--- a/healnet/main.py
++++ b/healnet/main.py
+@@ -1,5 +1,6 @@
+ import torch
+ import torch.nn as nn
++import torch.nn.functional as F
+ from sklearn.model_selection import KFold, ParameterGrid
+ import multiprocessing
+ import argparse
+@@ -9,7 +10,8 @@
+ 
+ from healnet.utils import EarlyStopping, calc_reg_loss, pickle_obj
+ from healnet.models.survival_loss import CrossEntropySurvLoss, CoxPHSurvLoss, nll_loss
+-from healnet.baselines import RegularizedFCNN, MMPrognosis, MCAT, SNN, MILAttentionNet
++from healnet.baselines import RegularizedFCNN, MMPrognosis, MCAT, SNN, MILAttentionNet, MultiModNModule
++from healnet.baselines.multimodn import MLPEncoder, PatchEncoder, ClassDecoder
+ from healnet.models import HealNet
+ from healnet.utils import Config, flatten_config
+ from healnet.etl import TCGADataset
+@@ -92,10 +94,10 @@ def _check_config(self) -> None:
+         # # check that model parameters are specified
+         # assert self.config.dataset in self.config.model_params.keys(), f"Model parameters not specified for dataset {self.config.dataset}"
+ 
+-        valid_models = ["healnet", "fcnn", "healnet_early", "mcat", "mm_prognosis"]
++        valid_models = ["healnet", "fcnn", "healnet_early", "mcat", "mm_prognosis", "multimodn"]
+         assert self.config.model in valid_models, f"Invalid model specified. Valid models are {valid_models}"
+ 
+-        valid_class_weights = ["inverse", "inverse_root", None]
++        valid_class_weights = ["inverse", "inverse_root", "None"]
+         assert self.config[f"model_params.class_weights"] in valid_class_weights, f"Invalid class weight specified. " \
+                                                                                 f"Valid weights are {valid_class_weights}"
+ 
+@@ -315,6 +317,25 @@ def make_model(self, train_data: DataLoader):
+             model = RegularizedFCNN(output_dim=self.output_dims)
+             model.to(self.device)
+ 
++        elif self.config.model == "multimodn":
++            l_d = 2000
++            tab_features = feat[0].shape[1]
++            patch_dims = feat[1].shape[2]
++            encoders = [
++                MLPEncoder(state_size=l_d, hidden_layers=[1024, 256, 128, 64], n_features=tab_features),
++                PatchEncoder(state_size=l_d, hidden_layers=[512, 256, 128, 64], n_features=patch_dims)
++            ]
++            decoders = [ClassDecoder(state_size=l_d, n_classes=self.output_dims, activation=torch.sigmoid)]
++
++
++            model = MultiModNModule(
++                state_size=l_d,
++                encoders=encoders,
++                decoders=decoders
++            )
++            model.float()
++            model.to(self.device)
++
+         elif self.config.model == "mm_prognosis":
+             if len(self.config["sources"]) == 1:
+                 input_dim = feat[0].shape[1]
+@@ -407,7 +428,12 @@ def train_survival_fold(self,
+ 
+                 optimizer.zero_grad()
+                 # forward + backward + optimize
+-                logits = model.forward(features)
++                if self.config["model"] == "multimodn":
++                    # note that we need to pass the target here for the intermediate loss calc
++                    model_loss, logits = model.forward(features, F.one_hot(y_disc, num_classes=self.output_dims))
++                else:
++                    logits = model.forward(features)
++                    model_loss = 0.0
+                 y_hat = torch.topk(logits, k=1, dim=1)[1]
+                 hazards = torch.sigmoid(logits)  # sigmoid to get hazards from predictions for surv analysis
+                 survival = torch.cumprod(1-hazards, dim=1)  # as per paper, survival = cumprod(1-hazards)
+@@ -416,14 +442,15 @@ def train_survival_fold(self,
+                 if self.config["survival.loss"] == "nll":
+                     # loss_fn = NLLSurvLoss()
+                     # loss = loss_fn(h=hazards, y=y_disc, c=censorship)
+-                    loss = nll_loss(hazards=hazards, S=survival, Y=y_disc, c=censorship, weights=self.class_weights)
++                    surv_loss = nll_loss(hazards=hazards, S=survival, Y=y_disc, c=censorship, weights=self.class_weights)
+                 elif self.config["survival.loss"] == "ce_survival":
+                     loss_fn = CrossEntropySurvLoss()
+-                    loss = loss_fn(hazards=hazards, survival=survival, y_disc=y_disc, censorship=censorship)
++                    surv_loss = loss_fn(hazards=hazards, survival=survival, y_disc=y_disc, censorship=censorship)
+                 elif self.config["survival.loss"] == "cox":
+                     loss_fn = CoxPHSurvLoss()
+                     loss_fn(hazards=hazards, survival=survival, censorship=censorship)
+ 
++
+                 dataset = self.config.dataset
+                 reg_loss = calc_reg_loss(model, self.config[f"model_params.l1"], self.config.model, self.config.sources)
+ 
+@@ -432,12 +459,12 @@ def train_survival_fold(self,
+                 censorships.append(censorship.detach().cpu().numpy())
+                 event_times.append(event_time.detach().cpu().numpy())
+ 
+-                loss_value = loss.item()
++                loss_value = surv_loss.item()
+                 train_loss_surv += loss_value
+                 train_loss += loss_value + reg_loss
+                 # backward pass
+-                loss = loss / gc + reg_loss # gradient accumulation step
+-                loss.backward()
++                surv_loss = surv_loss / gc + reg_loss + model_loss  # gradient accumulation step
++                surv_loss.backward()
+                 optimizer.step()
+                 optimizer.zero_grad()
+                 scheduler.step()
+@@ -543,7 +570,11 @@ def evaluate_survival_epoch(self,
+             event_time = event_time.to(self.device)
+             y_disc = y_disc.to(self.device)
+ 
+-            logits = model.forward(features)
++            if self.config["model"] == "multimodn":
++                model_loss, logits = model.forward(features, F.one_hot(y_disc, num_classes=self.output_dims))
++            else:
++                logits = model.forward(features)
++                modeL_loss = 0.0
+             hazards = torch.sigmoid(logits)
+             survival = torch.cumprod(1-hazards, dim=1)
+             risk = -torch.sum(survival, dim=1).detach().cpu().numpy()
+@@ -568,7 +599,7 @@ def evaluate_survival_epoch(self,
+ 
+             loss_value = loss.item()
+             val_loss_surv += loss_value
+-            val_loss += loss_value + reg_loss
++            val_loss += loss_value + reg_loss + model_loss
+ 
+             predictions.append(logits.argmax(1).cpu().tolist())
+             labels.append(y_disc.detach().cpu().tolist())
+diff --git a/healnet/models/__init__.py b/healnet/models/__init__.py
+index bfeb31a..48a44d0 100644
+--- a/healnet/models/__init__.py
++++ b/healnet/models/__init__.py
+@@ -1,5 +1,5 @@
+-from healnet.models.healnet import HealNet
++from healnet.models.healnet import HealNet, Attention
+ from healnet.baselines import FCNN
+ from healnet.models.survival_loss import CrossEntropySurvLoss, CoxPHSurvLoss
+ 
+-__all__ = ["CrossEntropySurvLoss", "CoxPHSurvLoss", "FCNN", "HealNet"]
+\ No newline at end of file
++__all__ = ["CrossEntropySurvLoss", "CoxPHSurvLoss", "FCNN", "HealNet", "Attention"]
+\ No newline at end of file
+diff --git a/healnet/tests/test_baselines.py b/healnet/tests/test_baselines.py
+new file mode 100644
+index 0000000..7d8d60b
+--- /dev/null
++++ b/healnet/tests/test_baselines.py
+@@ -0,0 +1,109 @@
++import pytest
++import torch
++import einops
++import torch.nn as nn
++from healnet.baselines.multimodn import ResNet, MLPEncoder, ClassDecoder, PatchEncoder, MultiModN
++from healnet.baselines.multimodn.better_multimodn import MultiModNModule
++from typing import *
++
++
++@pytest.fixture(autouse=True, scope="module")
++def vars():
++    b = 1
++    # tabular
++    # Note - dimensions always denoted as
++    t_c = 1 # number of channels (1 for tabular) ; note that channels correspond to modality input/features
++    t_d = 2189 # dimensions of each channel
++    i_c = 100 # number of patches
++    i_d = 1024 # dimensions per patch
++    l_c = 256 # number of latent channels (num_latents)
++    l_d = 32 # latent dims
++    # latent_dim
++    query = torch.randn(b, t_c, t_d)
++    latent = torch.randn(b, l_c, l_d)
++
++    tab_tensor = torch.randn(b, t_d, t_c)  # expects (b dims channels)
++    img_tensor = torch.randn(b, i_c, i_d)
++    return b, t_c, t_d, i_c, i_d, l_c, l_d, query, latent, tab_tensor, img_tensor
++
++
++def test_multmodn_encoders(vars):
++    b, t_c, t_d, i_c, i_d, l_c, l_d, query, latent, tab_tensor, img_tensor = vars
++
++    # init state
++    # only allows 1D stat
++    state = nn.Parameter(torch.randn(b, l_d), requires_grad=True) #  doesn't allow channels :(
++
++    # expects raw image
++    img_tensor = torch.randn(b, 3, 255, 255) # standard resnet18 dims
++
++    # image encoder pass
++    img_enc = ResNet(
++        state_size=l_d,
++        )
++    upd_state = img_enc(state=state, x=img_tensor)
++
++    assert upd_state.shape == (b, l_d)
++
++    # # patched image
++    patch_tensor = torch.randn(b, i_c, i_d)
++    # for patched images, it makes sense to use their RNN encoder
++    patch_enc = PatchEncoder(
++        state_size=l_d,
++        hidden_layers=[128, 64],
++        n_features=i_d,
++    )
++
++    upd_state = patch_enc(state=state, x=patch_tensor)
++
++    assert upd_state.shape == (b, l_d)
++
++
++    # omic
++    omic_tensor = torch.randn(b, t_d)
++    omic_enc = MLPEncoder(
++        state_size=l_d,
++        hidden_layers=[128, 64],
++        n_features=t_d,
++    )
++    upd_state = omic_enc(state=state, x=omic_tensor)
++    assert upd_state.shape == (b, l_d)
++
++#
++def test_multimodn_decoders(vars):
++    b, t_c, t_d, i_c, i_d, l_c, l_d, query, latent, tab_tensor, img_tensor = vars
++
++    # latent
++
++    latent = nn.Parameter(torch.randn(b, l_d))
++    # the "decoders" are actually task-specific FF classifier heads
++    head = ClassDecoder(state_size=l_d,
++                        activation=torch.sigmoid,
++                        n_classes=4
++                        )
++
++    logits = head(latent)
++    assert logits.shape == (b, 4)
++
++def test_multimodn_task(vars):
++    b, t_c, t_d, i_c, i_d, l_c, l_d, query, latent, tab_tensor, img_tensor = vars
++
++    # ModN model spec
++    tab_tensor = torch.randn(b, t_d)
++    encoders = [
++        MLPEncoder(state_size=l_d, hidden_layers=[128, 64], n_features=t_d),
++        PatchEncoder(state_size=l_d, hidden_layers=[128, 64], n_features=i_d)
++    ]
++    decoders = [ClassDecoder(state_size=l_d, activation=torch.sigmoid, n_classes=4)]
++
++    target = torch.rand(4)
++
++    model = MultiModNModule(
++        state_size=l_d,
++        encoders=encoders,
++        decoders=decoders,
++    )
++
++    loss, logits = model(x=[tab_tensor, img_tensor], target=target)
++
++    assert logits.shape == (b, 4)
+diff --git a/healnet/tests/test_healnet.py b/healnet/tests/test_healnet.py
+index 579ea7a..fb2e2c9 100644
+--- a/healnet/tests/test_healnet.py
++++ b/healnet/tests/test_healnet.py
+@@ -4,8 +4,8 @@
+ import torch
+ 
+ 
+-@pytest.fixture(autouse=True)
+-def shape_test_vars():
++@pytest.fixture(autouse=True, scope="module")
++def vars():
+     b = 10
+     # tabular
+     # Note - dimensions always denoted as
+@@ -21,31 +21,8 @@ def shape_test_vars():
+     return b, t_c, t_d, i_c, i_d, l_c, l_d, query, latent
+ 
+ 
+-def test_latent_cross_attention(shape_test_vars):
+-
+-    b, t_c, t_d, _, _, l_c, l_d, query, latent = shape_test_vars
+-    print("\nquery", query.shape)
+-    print("context", latent.shape)
+-
+-
+-    # latent cross attention
+-    lc_attention = LatentCrossAttention(query_dim=t_c, latent_dim=l_d)
+-    lc_context = lc_attention(query, latent)
+-    # expect updated context to be of original context shape
+-    assert lc_context.shape == (b, l_c, l_d)
+-    # attn weights: (b, x_d) (feature-dim)
+-
+-
+-def test_attention_update(shape_test_vars):
+-
+-    b, t_c, t_d, _, _, l_c, l_d, query, latent = shape_test_vars
+-    attention_update = AttentionUpdate(c_n=t_d, l_d=l_d)
+-    updated_context = attention_update(x=query, context=latent)
+-    assert updated_context.shape == (b, l_c, l_d)
+-    # attn weights: (b, x_d)
+-
+-def test_attention(shape_test_vars):
+-    b, t_c, t_d, _, _, l_c, l_d, query, latent = shape_test_vars
++def test_attention(vars):
++    b, t_c, t_d, _, _, l_c, l_d, query, latent = vars
+     # attention
+     attention = Attention(query_dim=l_d, context_dim=t_d)
+     # NOTE - traditional attention expectes the latent as the query and returns the latent
+@@ -53,28 +30,41 @@ def test_attention(shape_test_vars):
+     updated_latent = attention(x=latent, context=query)
+ 
+     assert updated_latent.shape == (b, l_c, l_d)
+-    # attn weights: (b, l_c)
+-
+-
+-# def test_healnet(shape_test_vars):
+-#     b, t_c, t_d, i_c, i_d, l_c, l_d, query, latent = shape_test_vars
+-#
+-#     tabular_data = torch.randn(b,t_d, t_c) # expects (b dims channels)
+-#     image_data = torch.randn(b, i_c, i_d)
+-#     # print(t_n)
+-#
+-#     healnet = HealNet(modalities=1,
+-#                       input_channels=[t_d],
+-#                       input_axes=[2], # second axis
+-#                       max_freq=8.,
+-#                       depth=1,
+-#                       num_classes=4,
+-#                       )
+-#
+-#     logits = healnet([tabular_data])
+ 
+ 
+ 
++def test_healnet(vars):
++    b, t_c, t_d, i_c, i_d, l_c, l_d, query, latent = vars
++
++    tabular_data = torch.randn(b, t_d, t_c)  # expects (b dims channels)
++    image_data = torch.randn(b, i_c, i_d)
++
++    # unimodal case smoke test
++    m1 = HealNet(modalities=1,
++                 input_channels=[t_d],
++                 input_axes=[1],  # second axis
++                 num_classes=5
++                 )
++    logits1 = m1([tabular_data])
++    assert logits1.shape == (b, 5)
++
++    # bi-modal case
++    m2 = HealNet(modalities=2,
++                 input_channels=[t_c, i_c],  # level of attention
++                 input_axes=[1, 1],
++                 num_classes=4
++                 )
++    logits2 = m2([tabular_data, image_data])
++    assert logits2.shape == (b, 4) # default num_classes
++
++    # check misaligned args (1 mod but list of tensors)
++    with pytest.raises(AssertionError):
++        m3 = HealNet(modalities=1,
++                     input_channels=[t_c, i_c],  # level of attention
++                     input_axes=[1, 1],
++                     )
++
++
+ 
+ 
+ 

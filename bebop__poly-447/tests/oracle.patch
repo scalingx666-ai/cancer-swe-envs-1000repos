@@ -1,0 +1,63 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d654efaf..3bc15306 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++## [Unreleased]
++
++### Fixed
++ - Made it possible to simulate primers shorter than design minimum.
++
+ ## [0.31.1] - 2024-01-31
+ 
+ ### Added
+diff --git a/primers/pcr/pcr.go b/primers/pcr/pcr.go
+index 648bc8ac..ce574e85 100644
+--- a/primers/pcr/pcr.go
++++ b/primers/pcr/pcr.go
+@@ -32,7 +32,10 @@ import (
+ )
+ 
+ // https://doi.org/10.1089/dna.1994.13.75
+-var minimalPrimerLength int = 15
++const minimalPrimerLength int = 7
++
++// what we want for designs
++const designedMinimalPrimerLength int = 15
+ 
+ // DesignPrimersWithOverhangs designs two primers to amplify a target sequence,
+ // adding on an overhang to the forward and reverse strand. This overhang can
+@@ -40,13 +43,13 @@ var minimalPrimerLength int = 15
+ // or GoldenGate restriction enzyme sites.
+ func DesignPrimersWithOverhangs(sequence, forwardOverhang, reverseOverhang string, targetTm float64) (string, string) {
+ 	sequence = strings.ToUpper(sequence)
+-	forwardPrimer := sequence[0:minimalPrimerLength]
++	forwardPrimer := sequence[0:designedMinimalPrimerLength]
+ 	for additionalNucleotides := 0; primers.MeltingTemp(forwardPrimer) < targetTm; additionalNucleotides++ {
+-		forwardPrimer = sequence[0 : minimalPrimerLength+additionalNucleotides]
++		forwardPrimer = sequence[0 : designedMinimalPrimerLength+additionalNucleotides]
+ 	}
+-	reversePrimer := transform.ReverseComplement(sequence[len(sequence)-minimalPrimerLength:])
++	reversePrimer := transform.ReverseComplement(sequence[len(sequence)-designedMinimalPrimerLength:])
+ 	for additionalNucleotides := 0; primers.MeltingTemp(reversePrimer) < targetTm; additionalNucleotides++ {
+-		reversePrimer = transform.ReverseComplement(sequence[len(sequence)-(minimalPrimerLength+additionalNucleotides):])
++		reversePrimer = transform.ReverseComplement(sequence[len(sequence)-(designedMinimalPrimerLength+additionalNucleotides):])
+ 	}
+ 
+ 	// Add overhangs to primer
+@@ -168,6 +171,12 @@ func SimulateSimple(sequences []string, targetTm float64, circular bool, primerL
+ // in your reaction, which can lead to confusing results. The variable
+ // `circular` is for if the target template is circular, like a plasmid.
+ func Simulate(sequences []string, targetTm float64, circular bool, primerList []string) ([]string, error) {
++	// make sure no primers are too short
++	for _, primer := range primerList {
++		if len(primer) < minimalPrimerLength {
++			return nil, errors.New("Primers are too short.")
++		}
++	}
+ 	initialAmplification := SimulateSimple(sequences, targetTm, circular, primerList)
+ 	subsequentAmplification := SimulateSimple(sequences, targetTm, circular, append(primerList, initialAmplification...))
+ 	if len(initialAmplification) != len(subsequentAmplification) {

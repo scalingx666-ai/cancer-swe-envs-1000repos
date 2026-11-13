@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/ImprintLab__Medical-SAM-Adapter-114"
+description = "Remove duplication and generalize code in validation script"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "Medical-SAM-Adapter",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ImprintLab/Medical-SAM-Adapter"
+ref = "721c4f043e7c8ca0744b7e8b66e9dc628a0a1c17"
+reference = "https://github.com/ImprintLab/Medical-SAM-Adapter/pull/114"
+source_access = "auto"
+built_at = "2026-11-13T15:47:21.141374+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:da863b4ca8d41c118b7269d14ebfa81f98191da19ce6a32a98faf8b5d74c8d58"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-06-14T17:07:52Z"
+diff_format = "unified"
+context_files = [
+    "val.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 43
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,13 @@
+diff --git a/build.gradle b/build.gradle
+index 52c02b5bd1..ea3666a3d4 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -107,7 +107,7 @@ java {
+ //
+ // To change the planned bump (e.g. after a release lands), update nextVersionBump
+ // below and commit.
+-final nextVersionBump = "x"
++final nextVersionBump = "x.x.x"
+ 
+ final isRelease = Boolean.getBoolean("release")
+ final details = versionDetails()

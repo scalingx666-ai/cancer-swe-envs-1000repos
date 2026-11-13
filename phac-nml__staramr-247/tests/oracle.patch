@@ -1,0 +1,220 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index a2368962..fac37d03 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,3 +1,8 @@
++# Version 0.12.2
++
++- Fixed a problem where sometimes integers in the output (ex: start and end positions) would be converted to floats. [PR #243](https://github.com/phac-nml/staramr/pull/243)
++- Fixed a bug where extra MLST header lines were included in the MLST output when StarAMR was run with multiple input files. [PR #246](https://github.com/phac-nml/staramr/pull/246)
++
+ # Version 0.12.1
+ 
+ - Updating Biopython minimum version to v.1.86 in setup.py file. [PR #239](https://github.com/phac-nml/staramr/pull/239)
+diff --git a/staramr/__init__.py b/staramr/__init__.py
+index f8d90954..92a60bdf 100644
+--- a/staramr/__init__.py
++++ b/staramr/__init__.py
+@@ -1 +1 @@
+-__version__ = '0.12.1'
++__version__ = '0.12.2'
+diff --git a/staramr/detection/AMRDetection.py b/staramr/detection/AMRDetection.py
+index 56065431..a16223c3 100644
+--- a/staramr/detection/AMRDetection.py
++++ b/staramr/detection/AMRDetection.py
+@@ -117,6 +117,8 @@ def _generate_empty_columns(self, row: list, max_cols: int, cur_cols: int) -> li
+ 
+     def _create_mlst_dataframe(self, mlst_data: str) -> DataFrame:
+ 
++        MLST_HEADER_ROW = "FILE\tSCHEME\tST\tSTATUS\tSCORE\tALLELES"
++
+         columns = ['Isolate ID', 'Scheme', 'Sequence Type', 'Status', 'Score']
+         curr_data = []
+         max_columns = 0
+@@ -124,27 +126,32 @@ def _create_mlst_dataframe(self, mlst_data: str) -> DataFrame:
+ 
+         mlst_split = mlst_data.splitlines()
+ 
+-        if len(mlst_split) >= 1:
+-            # Parse and format the current row
+-            for row in mlst_split[1:]: # Skip the header row
+-                # Row format: [FILE\tSCHEME\tST\tSTATUS\tSCORE\tALLELES]
+-                # Where: ALLELES is seperated with ";". Ex: adk(7);atpA(1);gmk(1)
++        # Parse and format the current row
++        for row in mlst_split:
++            # Row format: [FILE\tSCHEME\tST\tSTATUS\tSCORE\tALLELES]
++            # Where: ALLELES is seperated with ";". Ex: adk(7);atpA(1);gmk(1)
++
++            # Skip the header row.
++            # The header row may appear multiple times as the output
++            # from multiple runs is concatenated together.
++            if row == MLST_HEADER_ROW:
++                continue
+ 
+-                tokens = re.split('\t', row)
+-                array_format = tokens[:-1]
++            tokens = re.split('\t', row)
++            array_format = tokens[:-1]
+ 
+-                if len(tokens[-1]) > 0:
+-                    array_format += re.split(';', tokens[-1])
++            if len(tokens[-1]) > 0:
++                array_format += re.split(';', tokens[-1])
+ 
+-                num_columns = len(array_format)
++            num_columns = len(array_format)
+ 
+-                # We want the file name without the extension
+-                array_format[0] = path.basename(path.splitext(array_format[0])[0])
++            # We want the file name without the extension
++            array_format[0] = path.basename(path.splitext(array_format[0])[0])
+ 
+-                if max_columns < num_columns:
+-                    max_columns = num_columns
++            if max_columns < num_columns:
++                max_columns = num_columns
+ 
+-                curr_data.append(array_format)
++            curr_data.append(array_format)
+ 
+         # Go through each row and append additional columns for the dataframes
+         curr_data = list(map(lambda x: self._generate_empty_columns(x, max_columns, len(x)), curr_data))
+diff --git a/staramr/results/AMRDetectionSummary.py b/staramr/results/AMRDetectionSummary.py
+index be1a84a8..67db743c 100644
+--- a/staramr/results/AMRDetectionSummary.py
++++ b/staramr/results/AMRDetectionSummary.py
+@@ -25,15 +25,29 @@ def __init__(self, files, resfinder_dataframe: DataFrame, quality_module_datafra
+         :param pointfinder_dataframe: The pd.DataFrame containing the PointFinder results.
+         """
+         self._names = [path.splitext(path.basename(x))[0] for x in files]
+-        self._resfinder_dataframe = resfinder_dataframe
+-        self._plasmidfinder_dataframe = plasmidfinder_dataframe
+-        self._mlst_dataframe = mlst_dataframe
++
++        if resfinder_dataframe is not None:
++            self._resfinder_dataframe = resfinder_dataframe.astype(pd.StringDtype())
++        else:
++            self._resfinder_dataframe = None
++
++        if plasmidfinder_dataframe is not None:
++            self._plasmidfinder_dataframe = plasmidfinder_dataframe.astype(pd.StringDtype())
++        else:
++            self._plasmidfinder_dataframe = None
++
++        if mlst_dataframe is not None:
++            self._mlst_dataframe = mlst_dataframe.astype(pd.StringDtype())
++        else:
++            self._mlst_dataframe = None
++
+         if pointfinder_dataframe is not None:
+             self._has_pointfinder = True
+-            self._pointfinder_dataframe = pointfinder_dataframe
+-
++            self._pointfinder_dataframe = pointfinder_dataframe.astype(pd.StringDtype())
+         else:
+             self._has_pointfinder = False
++            self._pointfinder_dataframe = None
++
+         self._quality_module_dataframe=quality_module_dataframe
+ 
+     def _compile_results(self, resistance_frame: DataFrame) -> DataFrame:
+diff --git a/staramr/tests/integration/detection/test_AMRDetection.py b/staramr/tests/integration/detection/test_AMRDetection.py
+index 01e9d7a4..dd4f7161 100644
+--- a/staramr/tests/integration/detection/test_AMRDetection.py
++++ b/staramr/tests/integration/detection/test_AMRDetection.py
+@@ -1120,6 +1120,14 @@ def testResfinderPointfinderSalmonella_16Src_C1065T_gyrArc_A67_beta_lactam_Succe
+         self.assertEqual(expected_records2['16S_rrsD'].seq.upper(), records['16S-rrsD_1_CP049983.1'].seq.upper(),
+                          "records don't match")
+ 
++        detailed_summary_results = amr_detection.get_detailed_summary_results()
++        resistance = detailed_summary_results[detailed_summary_results['Data'] == "blaIMP-42"]
++
++        self.assertEqual(resistance['%Identity'].iloc[0], '99.73', msg='Wrong pid')
++        self.assertEqual(resistance['%Overlap'].iloc[0], '100.0', msg='Wrong overlap')
++        self.assertEqual(resistance['Start'].iloc[0], '4381', msg='Wrong start')
++        self.assertEqual(resistance['End'].iloc[0], '5121', msg='Wrong end')
++
+     def testResfinderExcludeNonMatches(self):
+         amr_detection = AMRDetectionResistance(self.resfinder_database, self.resfinder_drug_table,
+                                                self.cge_drug_table, self.blast_handler,
+diff --git a/staramr/tests/integration/detection/test_AMRDetectionMLST.py b/staramr/tests/integration/detection/test_AMRDetectionMLST.py
+index 86431af5..9704f832 100644
+--- a/staramr/tests/integration/detection/test_AMRDetectionMLST.py
++++ b/staramr/tests/integration/detection/test_AMRDetectionMLST.py
+@@ -83,3 +83,50 @@ def testNoMLSTResults(self):
+ 
+         self.assertEqual(mlst_results['Scheme'].iloc[0], '-', msg='Scheme is found, expected none')
+         self.assertEqual(mlst_results['Sequence Type'].iloc[0], '-', msg='Sequence Type is found, expected none')
++
++    def testMLSTMultiple(self):
++        files = [path.join(self.test_data_dir, "test-mlst-summary.fsa"), # Salmonella
++                 path.join(self.test_data_dir, "gyrA-S97N.fsa"), # None
++                 path.join(self.test_data_dir, "gyrA-S83I.fsa")] # None
++        self.amr_detection.run_amr_detection(files, 99, 90, 90, 90,0,0,0,0,0)
++
++        mlst_results = self.amr_detection.get_mlst_results()
++
++        self.assertEqual(len(mlst_results.index), 3, 'Wrong number of results detected')
++        self.assertEqual(len(mlst_results.columns), 11, 'Wrong number of columns detected')
++
++        self.assertEqual(mlst_results['Scheme'].iloc[0], 'salmonella', msg='Wrong Scheme')
++        self.assertEqual(mlst_results['Sequence Type'].iloc[0], '1', msg='Wrong Sequence Type')
++        self.assertEqual(mlst_results['Status'].iloc[0], 'PERFECT', msg='Wrong Status')
++        self.assertEqual(mlst_results['Score'].iloc[0], '100', msg='Wrong Score')
++        self.assertEqual(mlst_results['Locus 1'].iloc[0], 'aroC(1)', msg='Wrong Locus 1 Result')
++        self.assertEqual(mlst_results['Locus 2'].iloc[0], 'dnaN(1)', msg='Wrong Locus 2 Result')
++        self.assertEqual(mlst_results['Locus 3'].iloc[0], 'hemD(1)', msg='Wrong Locus 3 Result')
++        self.assertEqual(mlst_results['Locus 4'].iloc[0], 'hisD(1)', msg='Wrong Locus 4 Result')
++        self.assertEqual(mlst_results['Locus 5'].iloc[0], 'purE(1)', msg='Wrong Locus 5 Result')
++        self.assertEqual(mlst_results['Locus 6'].iloc[0], 'sucA(1)', msg='Wrong Locus 6 Result')
++        self.assertEqual(mlst_results['Locus 7'].iloc[0], 'thrA(5)', msg='Wrong Locus 7 Result')
++
++        self.assertEqual(mlst_results['Scheme'].iloc[1], '-', msg='Wrong Scheme')
++        self.assertEqual(mlst_results['Sequence Type'].iloc[1], '-', msg='Wrong Sequence Type')
++        self.assertEqual(mlst_results['Status'].iloc[1], 'NONE', msg='Wrong Status')
++        self.assertEqual(mlst_results['Score'].iloc[1], '0', msg='Wrong Score')
++        self.assertEqual(mlst_results['Locus 1'].iloc[1], '-', msg='Wrong Locus 1 Result')
++        self.assertEqual(mlst_results['Locus 2'].iloc[1], '-', msg='Wrong Locus 2 Result')
++        self.assertEqual(mlst_results['Locus 3'].iloc[1], '-', msg='Wrong Locus 3 Result')
++        self.assertEqual(mlst_results['Locus 4'].iloc[1], '-', msg='Wrong Locus 4 Result')
++        self.assertEqual(mlst_results['Locus 5'].iloc[1], '-', msg='Wrong Locus 5 Result')
++        self.assertEqual(mlst_results['Locus 6'].iloc[1], '-', msg='Wrong Locus 6 Result')
++        self.assertEqual(mlst_results['Locus 7'].iloc[1], '-', msg='Wrong Locus 7 Result')
++
++        self.assertEqual(mlst_results['Scheme'].iloc[2], '-', msg='Wrong Scheme')
++        self.assertEqual(mlst_results['Sequence Type'].iloc[2], '-', msg='Wrong Sequence Type')
++        self.assertEqual(mlst_results['Status'].iloc[2], 'NONE', msg='Wrong Status')
++        self.assertEqual(mlst_results['Score'].iloc[2], '0', msg='Wrong Score')
++        self.assertEqual(mlst_results['Locus 1'].iloc[2], '-', msg='Wrong Locus 1 Result')
++        self.assertEqual(mlst_results['Locus 2'].iloc[2], '-', msg='Wrong Locus 2 Result')
++        self.assertEqual(mlst_results['Locus 3'].iloc[2], '-', msg='Wrong Locus 3 Result')
++        self.assertEqual(mlst_results['Locus 4'].iloc[2], '-', msg='Wrong Locus 4 Result')
++        self.assertEqual(mlst_results['Locus 5'].iloc[2], '-', msg='Wrong Locus 5 Result')
++        self.assertEqual(mlst_results['Locus 6'].iloc[2], '-', msg='Wrong Locus 6 Result')
++        self.assertEqual(mlst_results['Locus 7'].iloc[2], '-', msg='Wrong Locus 7 Result')
+diff --git a/staramr/tests/integration/detection/test_AMRDetectionPlasmid.py b/staramr/tests/integration/detection/test_AMRDetectionPlasmid.py
+index c5310b95..5baf9b7a 100644
+--- a/staramr/tests/integration/detection/test_AMRDetectionPlasmid.py
++++ b/staramr/tests/integration/detection/test_AMRDetectionPlasmid.py
+@@ -158,8 +158,8 @@ def testDetailedSummary_ResPlasmid(self):
+         plasmid_type = detailed_summary_results[detailed_summary_results['Data'] == "rep1"]
+         self.assertEqual(len(plasmid_type.index), 1, 'Wrong number of results detected')
+         self.assertEqual(plasmid_type['Predicted Phenotype'].iloc[0], '', msg='Wrong predicted phenotype')
+-        self.assertAlmostEqual(plasmid_type['%Identity'].iloc[0], 100.00, places=2, msg='Wrong pid')
+-        self.assertAlmostEqual(plasmid_type['%Overlap'].iloc[0], 100.00, places=2, msg='Wrong overlap')
++        self.assertEqual(plasmid_type['%Identity'].iloc[0], '100.0', msg='Wrong pid')
++        self.assertEqual(plasmid_type['%Overlap'].iloc[0], '100.0', msg='Wrong overlap')
+         self.assertEqual(plasmid_type['Accession'].iloc[0], 'AY357120', msg='Wrong accession')
+         self.assertEqual(plasmid_type['HSP Length/Total Length'].iloc[0], '1491/1491', msg='Wrong lengths')
+         self.assertEqual(plasmid_type['Data Type'].iloc[0], 'Plasmid', msg='Wrong data type')
+@@ -167,8 +167,8 @@ def testDetailedSummary_ResPlasmid(self):
+         res_type = detailed_summary_results[detailed_summary_results['Data'] == "tet(47)"]
+         self.assertEqual(len(res_type.index), 1, 'Wrong number of results detected')
+         self.assertEqual(res_type['Predicted Phenotype'].iloc[0], 'tetracycline', msg='Wrong predicted phenotype')
+-        self.assertAlmostEqual(res_type['%Identity'].iloc[0], 100.00, places=2, msg='Wrong pid')
+-        self.assertAlmostEqual(res_type['%Overlap'].iloc[0], 100.00, places=2, msg='Wrong overlap')
++        self.assertEqual(res_type['%Identity'].iloc[0], '100.0', msg='Wrong pid')
++        self.assertEqual(res_type['%Overlap'].iloc[0], '100.0', msg='Wrong overlap')
+         self.assertEqual(res_type['Accession'].iloc[0], 'KR857681', msg='Wrong accession')
+         self.assertEqual(res_type['HSP Length/Total Length'].iloc[0], '1248/1248', msg='Wrong lengths')
+         self.assertEqual(res_type['Data Type'].iloc[0], 'Resistance', msg='Wrong data type')

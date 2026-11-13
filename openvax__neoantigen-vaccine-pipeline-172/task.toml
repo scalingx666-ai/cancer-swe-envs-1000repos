@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/openvax__neoantigen-vaccine-pipeline-172"
+description = "Reenabling PDF outputs for OpenVax pipeline and a few other small fixes"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "neoantigen-vaccine-pipeline",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "openvax/neoantigen-vaccine-pipeline"
+ref = "ee71eecbd9f075052a62dcbca7845b1c02ca769c"
+reference = "https://github.com/openvax/neoantigen-vaccine-pipeline/pull/172"
+source_access = "auto"
+built_at = "2026-11-13T15:37:10.505745+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c45e20756604a189877a516aa8a56a55548d96e2afe3d382d936f83ca1a116b8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T22:00:16Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "datagen/idh1_config_iedb.yaml",
+    "docker/Dockerfile",
+    "pipeline/scripts/vaccine_report_pdf.css",
+    "pipeline/special_sauce.rules",
+    "pipeline/strelka_config.txt",
+    "pipeline/variant_calling.rules",
+    "run_snakemake.py",
+    "test/idh1_config.yaml",
+    "test/idh1_config_grch38.yaml",
+    "test/test_snakemake_pipeline.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 367
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

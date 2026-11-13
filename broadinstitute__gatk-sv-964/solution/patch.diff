@@ -1,0 +1,151 @@
+diff --git a/dockerfiles/sv-pipeline/Dockerfile b/dockerfiles/sv-pipeline/Dockerfile
+index 91c60f8b6..e6134d816 100644
+--- a/dockerfiles/sv-pipeline/Dockerfile
++++ b/dockerfiles/sv-pipeline/Dockerfile
+@@ -3,7 +3,7 @@
+ ARG SVBASE_IMAGE=sv-base:latest
+ ARG VIRTUAL_ENV_IMAGE=sv-pipeline-virtual-env:latest
+ ARG GATK_SV_GD_REPO=https://github.com/broadinstitute/gatk-sv-gd.git
+-ARG GATK_SV_GD_COMMIT=ed244c9ca4a215923e7ace0fa2ac42847426b81b
++ARG GATK_SV_GD_COMMIT=e16f9a5f7129cadfedcb327c16b511088f7253b6
+ 
+ ################# get alias for updating dependencies
+ FROM $SVBASE_IMAGE as base
+@@ -45,6 +45,10 @@ ARG BUILD_DEPS="git make cmake g++ gcc gfortran"
+ ARG GATK_SV_GD_REPO
+ ARG GATK_SV_GD_COMMIT
+ ARG DEBIAN_FRONTEND=noninteractive
++# The setuptools cap below keeps pkg_resources importable. torch/triton require
++# setuptools>=77.0.3, which now resolves to 84.x — the release that dropped
++# pkg_resources — while the svtk/svtest/svqc console scripts are still the old
++# __import__('pkg_resources').require(...) style and fail without it.
+ RUN export APT_TRANSIENT_PACKAGES=$(diff_of_lists.sh "$BUILD_DEPS" $APT_REQUIRED_PACKAGES) && \
+     apt-get -qqy update --fix-missing && \
+     apt-get -qqy install --no-upgrade --no-install-recommends $BUILD_DEPS $(fix_spaces.sh $APT_REQUIRED_PACKAGES) && \
+@@ -55,6 +59,7 @@ RUN export APT_TRANSIENT_PACKAGES=$(diff_of_lists.sh "$BUILD_DEPS" $APT_REQUIRED
+     pip install -e /opt/svtest && \
+     pip install -e /opt/svqc && \
+     pip install -e /opt/gatk-sv-gd && \
++    pip install 'setuptools>=77.0.3,<81' && \
+     apt-get -qqy remove --purge $APT_TRANSIENT_PACKAGES && \
+     apt-get -qqy autoremove --purge && \
+     apt-get -qqy clean && \
+diff --git a/inputs/templates/terra_workspaces/cohort_mode/workflow_configurations/CallGenomicDisorderCNVs.json.tmpl b/inputs/templates/terra_workspaces/cohort_mode/workflow_configurations/CallGenomicDisorderCNVs.json.tmpl
+index e2944ed76..f8a05df12 100644
+--- a/inputs/templates/terra_workspaces/cohort_mode/workflow_configurations/CallGenomicDisorderCNVs.json.tmpl
++++ b/inputs/templates/terra_workspaces/cohort_mode/workflow_configurations/CallGenomicDisorderCNVs.json.tmpl
+@@ -16,5 +16,6 @@
+   "CallGenomicDisorderCNVs.hard_inclusion_bed": "${workspace.gd_hard_inclusion_bed}",
+   "CallGenomicDisorderCNVs.par_bed": "${workspace.par_bed}",
+   "CallGenomicDisorderCNVs.gaps_bed": "${workspace.gd_gaps_bed}",
+-  "CallGenomicDisorderCNVs.gtf": "${workspace.gd_gtf}"
++  "CallGenomicDisorderCNVs.gtf": "${workspace.gd_gtf}",
++  "CallGenomicDisorderCNVs.ploidy_table": "${this.ploidy_table}"
+ }
+diff --git a/inputs/templates/test/CallGenomicDisorderCNVs/CallGenomicDisorderCNVs.json.tmpl b/inputs/templates/test/CallGenomicDisorderCNVs/CallGenomicDisorderCNVs.json.tmpl
+index 55b1402e0..58b58a588 100644
+--- a/inputs/templates/test/CallGenomicDisorderCNVs/CallGenomicDisorderCNVs.json.tmpl
++++ b/inputs/templates/test/CallGenomicDisorderCNVs/CallGenomicDisorderCNVs.json.tmpl
+@@ -17,6 +17,7 @@
+   "CallGenomicDisorderCNVs.par_bed": {{ reference_resources.par_bed | tojson }},
+   "CallGenomicDisorderCNVs.gaps_bed": {{ reference_resources.gd_gaps_bed | tojson }},
+   "CallGenomicDisorderCNVs.gtf": {{ reference_resources.gd_gtf | tojson }},
++  "CallGenomicDisorderCNVs.ploidy_table": {{ test_batch.ploidy_table | tojson }},
+ 
+   "CallGenomicDisorderCNVs.flank_exclusion_intervals": [{{ reference_resources.gd_segdup_bed | tojson }}]
+ }
+diff --git a/wdl/CallGenomicDisorderCNVs.wdl b/wdl/CallGenomicDisorderCNVs.wdl
+index b775f2e28..b920de612 100644
+--- a/wdl/CallGenomicDisorderCNVs.wdl
++++ b/wdl/CallGenomicDisorderCNVs.wdl
+@@ -24,6 +24,12 @@ workflow CallGenomicDisorderCNVs {
+     File gtf
+     File? truth_table
+ 
++    # Wide GATK-SV ploidy table (sample + one column per contig). This must be
++    # the same table given to IntegrateGDVcf: it is the authority on which
++    # sample/contig pairs are genotypable, and GD calls scored against any
++    # other ploidy cannot be encoded as GATK-SV genotypes downstream.
++    File ploidy_table
++
+     Int rebinned_interval_size = 10000
+     String sv_pipeline_docker
+     String gatk_docker
+@@ -67,6 +73,7 @@ workflow CallGenomicDisorderCNVs {
+       gaps_bed = gaps_bed,
+       gtf = gtf,
+       truth_table = truth_table,
++      ploidy_table = ploidy_table,
+       sv_pipeline_docker = sv_pipeline_docker,
+       preprocess_args = preprocess_args,
+       infer_args = infer_args,
+@@ -101,6 +108,7 @@ task RunGenomicDisorderCNVs {
+     File gaps_bed
+     File gtf
+     File? truth_table
++    File ploidy_table
+     String sv_pipeline_docker
+     String? preprocess_args
+     String? infer_args
+@@ -148,6 +156,7 @@ task RunGenomicDisorderCNVs {
+       --par-bed ~{par_bed} \
+       --gaps-bed ~{gaps_bed} \
+       --gtf ~{gtf} \
++      --ploidy-table ~{ploidy_table} \
+       --preprocess-args '~{default="" preprocess_args}' \
+       --infer-args '~{default="" infer_args}' \
+       --call-args '~{default="" call_args}' \
+diff --git a/wdl/GATKSVPipelineSingleSample.wdl b/wdl/GATKSVPipelineSingleSample.wdl
+index 1bccbd366..42606de21 100644
+--- a/wdl/GATKSVPipelineSingleSample.wdl
++++ b/wdl/GATKSVPipelineSingleSample.wdl
+@@ -862,7 +862,8 @@ workflow GATKSVPipelineSingleSample {
+       infer_args = gd_infer_args,
+       call_args = gd_call_args,
+       eval_args = gd_eval_args,
+-      plot_args = gd_plot_args
++      plot_args = gd_plot_args,
++      ploidy_table = CreatePloidyTableFromPed.out
+   }
+ 
+   # Integrate GD calls into the filtered VCF
+diff --git a/wdl/IntegrateGDVcf.wdl b/wdl/IntegrateGDVcf.wdl
+index 0ba99a866..4d26da2ad 100644
+--- a/wdl/IntegrateGDVcf.wdl
++++ b/wdl/IntegrateGDVcf.wdl
+@@ -129,11 +129,21 @@ task PrepareGDCallsTask {
+     # --- Combine per-batch ploidy tables (wide format, one row per sample) ---
+     FIRST=1
+     cat /dev/null > combined_ploidy.tsv
++    PLOIDY_HEADER=""
+     for pt in ~{sep=" " ploidy_tables}; do
++      HEADER=$(head -n 1 "$pt")
+       if [ $FIRST -eq 1 ]; then
++        PLOIDY_HEADER="$HEADER"
+         cat "$pt" >> combined_ploidy.tsv
+         FIRST=0
+       else
++        # Differing contig columns would append rows that do not line up with
++        # the header the GD tools read, so fail here rather than emitting a
++        # table whose trailing contigs silently read back as ploidy 2.
++        if [ "$HEADER" != "$PLOIDY_HEADER" ]; then
++          echo "ERROR: ploidy table $pt header does not match the first table" >&2
++          exit 1
++        fi
+         awk 'NR>1' "$pt" >> combined_ploidy.tsv
+       fi
+     done
+diff --git a/website/docs/modules/call_genomic_disorder_cnvs.md b/website/docs/modules/call_genomic_disorder_cnvs.md
+index a088e967e..2dcf285d2 100644
+--- a/website/docs/modules/call_genomic_disorder_cnvs.md
++++ b/website/docs/modules/call_genomic_disorder_cnvs.md
+@@ -74,6 +74,9 @@ Path to assembly gap regions (BED).
+ #### `gtf`
+ Path to gene annotation file (GTF).
+ 
++#### `ploidy_table`
++Wide GATK-SV ploidy table (a `sample` column plus one column per contig), as produced by `CreatePloidyTableFromPed`. This must be the **same** table passed to IntegrateGDVcf: it is the authority on per-contig ploidy, and calls scored against any other ploidy cannot be encoded as GATK-SV genotypes. A sample/contig pair with ploidy 0 — the allosomes of a `sex=0` sample, for example — is not genotypable, so no calls are emitted for it.
++
+ #### <HighlightOptionalArg>Optional</HighlightOptionalArg> `flank_exclusion_intervals`
+ Array of BED files defining intervals to exclude from flank analysis. Typically set to the same file as `segdup_bed`.
+ 

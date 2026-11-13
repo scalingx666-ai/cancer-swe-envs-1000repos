@@ -1,0 +1,141 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 401e4048f..9fbe3d0e3 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,14 @@
+ # Release notes
+ 
++## 2.3.2
++
++- Fix horizontal cross sections on tilesets with resolutions
++
++## 2.3.1
++
++- Fix two identical gene annotation tracks showing "multiple annotation tracks"
++- Fix chromsizes present yet showing "no chromsizes present"
++
+ ## 2.3.0
+ 
+ - Added support for React 19.
+diff --git a/app/scripts/BarTrack.js b/app/scripts/BarTrack.js
+index 3a0d04a99..55189f2f6 100644
+--- a/app/scripts/BarTrack.js
++++ b/app/scripts/BarTrack.js
+@@ -90,6 +90,10 @@ class BarTrack extends HorizontalLine1DPixiTrack {
+     }
+ 
+     const { graphics } = tile;
++    const numBins =
++      this.tilesetInfo.tile_size ||
++      this.tilesetInfo.bins_per_dimension ||
++      tile.tileData.dense.length;
+ 
+     // Reset svg data to avoid overplotting
+     tile.svgData = undefined;
+@@ -97,7 +101,7 @@ class BarTrack extends HorizontalLine1DPixiTrack {
+     const { tileX, tileWidth } = this.getTilePosAndDimensions(
+       tile.tileData.zoomLevel,
+       tile.tileData.tilePos,
+-      this.tilesetInfo.bins_per_dimension || this.tilesetInfo.tile_size,
++      numBins,
+     );
+     const tileValues = tile.tileData.dense;
+ 
+@@ -142,10 +146,7 @@ class BarTrack extends HorizontalLine1DPixiTrack {
+     // this scale should go from an index in the data array to
+     // a position in the genome coordinates
+     const tileXScale = scaleLinear()
+-      .domain([
+-        0,
+-        this.tilesetInfo.tile_size || this.tilesetInfo.bins_per_dimension,
+-      ])
++      .domain([0, numBins])
+       .range([tileX, tileX + tileWidth]);
+ 
+     const strokeWidth = 0;
+diff --git a/app/scripts/Tiled1DPixiTrack.js b/app/scripts/Tiled1DPixiTrack.js
+index 09a9ff9e6..dfb57135e 100644
+--- a/app/scripts/Tiled1DPixiTrack.js
++++ b/app/scripts/Tiled1DPixiTrack.js
+@@ -212,13 +212,17 @@ class Tiled1DPixiTrack extends TiledPixiTrack {
+     const { tileX, tileWidth } = this.getTilePosAndDimensions(
+       tile.tileData.zoomLevel,
+       tile.tileData.tilePos,
+-      this.tilesetInfo.bins_per_dimension || this.tilesetInfo.tile_size,
++      this.tilesetInfo.bins_per_dimension ||
++        this.tilesetInfo.tile_size ||
++        tile.tileData.dense.length,
+     );
+ 
+     const tileXScale = scaleLinear()
+       .domain([
+         0,
+-        this.tilesetInfo.tile_size || this.tilesetInfo.bins_per_dimension,
++        this.tilesetInfo.tile_size ||
++          this.tilesetInfo.bins_per_dimension ||
++          tile.tileData.dense.length,
+       ])
+       .range([tileX, tileX + tileWidth]);
+ 
+diff --git a/app/scripts/data-fetchers/DataFetcher.js b/app/scripts/data-fetchers/DataFetcher.js
+index 5f1e797ce..9d1139eed 100644
+--- a/app/scripts/data-fetchers/DataFetcher.js
++++ b/app/scripts/data-fetchers/DataFetcher.js
+@@ -450,7 +450,7 @@ export default class DataFetcher {
+       // we need to extract the row corresponding to the data we need
+ 
+       const tilesetUid = dictValues(returnedTiles)[0].tilesetUid;
+-      // console.log('tilesetUid:', tilesetUid);
++
+       /** @type {Record<string, Tile>} */
+       const newTiles = {};
+ 
+@@ -486,6 +486,7 @@ export default class DataFetcher {
+             sliceIndex,
+             1,
+           );
++
+           for (let j = 0; j < dataSlice.length; j++) {
+             dataSlice[j] += mirroredDataSlice[j];
+           }
+diff --git a/app/scripts/services/tile-proxy.js b/app/scripts/services/tile-proxy.js
+index d8c5bda50..c92946e09 100644
+--- a/app/scripts/services/tile-proxy.js
++++ b/app/scripts/services/tile-proxy.js
+@@ -483,7 +483,11 @@ export function calculateTileAndPosInTile(
+     : 256;
+ 
+   if (!isLegacyTilesetInfo(tilesetInfo)) {
+-    tileWidth = tilesetInfo.resolutions[zoomLevel] * pixelsPerTile;
++    const sortedResolutions = tilesetInfo.resolutions
++      .map((x) => +x)
++      .sort((a, b) => b - a);
++
++    tileWidth = sortedResolutions[zoomLevel] * pixelsPerTile;
+   } else {
+     tileWidth = maxDim / 2 ** zoomLevel;
+   }
+diff --git a/package-lock.json b/package-lock.json
+index 7582e794a..f51817143 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "higlass",
+-  "version": "2.3.0",
++  "version": "2.3.1",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+diff --git a/package.json b/package.json
+index 36a30169f..68335b0db 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "higlass",
+-  "version": "2.3.0",
++  "version": "2.3.1",
+   "description": "HiGlass Hi-C / genomic / large data viewer",
+   "author": "Peter Kerpedjiev <pkerpedjiev@gmail.com>",
+   "main": "dist/hglib.js",

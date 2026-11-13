@@ -1,0 +1,61 @@
+diff --git a/setup.py b/setup.py
+index 61687ad..837133d 100644
+--- a/setup.py
++++ b/setup.py
+@@ -5,9 +5,6 @@
+ with open('README.md') as f:
+     readme = f.read()
+ 
+-with open('LICENSE') as f:
+-    license = f.read()
+-
+ with open('svtyper/version.py') as f:
+     exec(f.read())
+ 
+@@ -16,12 +13,13 @@
+     version=__version__,
+     description='Bayesian genotyper for structural variants',
+     long_description=readme,
++    long_description_content_type='text/markdown',
+     author=__author__,
+     author_email='colbychiang@wustl.edu',
+-    license=license,
++    license='MIT License',
+     url='https://github.com/hall-lab/svtyper',
+     setup_requires=['pytest-runner'],
+-    tests_require=['pytest'],
++    tests_require=['pytest==4.6.4'],
+     install_requires=[
+         'pysam>=0.15.0',
+         'numpy',
+diff --git a/svtyper/parsers.py b/svtyper/parsers.py
+index e17d234..1357b8c 100644
+--- a/svtyper/parsers.py
++++ b/svtyper/parsers.py
+@@ -53,15 +53,15 @@ def add_header(self, header):
+             elif line.split('=')[0] == '##reference':
+                 self.reference = line.rstrip().split('=')[1]
+             elif line.split('=')[0] == '##INFO':
+-                a = line[line.find('<')+1:line.find('>')]
++                a = line[line.find('<')+1:line.rfind('>')]
+                 r = re.compile(r'(?:[^,\"]|\"[^\"]*\")+')
+                 self.add_info(*[b.split('=')[1] for b in r.findall(a)])
+             elif line.split('=')[0] == '##ALT':
+-                a = line[line.find('<')+1:line.find('>')]
++                a = line[line.find('<')+1:line.rfind('>')]
+                 r = re.compile(r'(?:[^,\"]|\"[^\"]*\")+')
+                 self.add_alt(*[b.split('=')[1] for b in r.findall(a)])
+             elif line.split('=')[0] == '##FORMAT':
+-                a = line[line.find('<')+1:line.find('>')]
++                a = line[line.find('<')+1:line.rfind('>')]
+                 r = re.compile(r'(?:[^,\"]|\"[^\"]*\")+')
+                 self.add_format(*[b.split('=')[1] for b in r.findall(a)])
+             elif line[0] == '#' and line[1] != '#':
+diff --git a/svtyper/version.py b/svtyper/version.py
+index 3e98833..6518ba0 100644
+--- a/svtyper/version.py
++++ b/svtyper/version.py
+@@ -1,2 +1,2 @@
+ __author__ = "Colby Chiang (colbychiang@wustl.edu)"
+-__version__ = "v0.7.0"
++__version__ = "v0.7.1"

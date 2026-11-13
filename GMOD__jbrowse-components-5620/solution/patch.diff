@@ -1,0 +1,290 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 90770a83c02..99839464d4d 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -112,6 +112,13 @@ checkout, so ordinary git is yours to use without asking.
+   resolve only through `resolveConf`, never `getConf`.
+ - In React, `autorun` inside `useEffect` to track observables (prefer over
+   `reaction`).
++- **Never `destroy` a node React may still be rendering — `detach` it.** React
++  reads the outgoing props after your effect cleanup runs, and MobX runs an
++  action's reactions at the `endBatch` closing it, so a destroy in either place
++  gets read. On an already-read property that is a liveliness warning; on a
++  child node never materialized it is a hard throw that takes the page down.
++  Register whatever reaches outside the tree as a detach-time disposer instead.
++  Deferring the destroy does not work. ADR-069.
+ - **An `autorun` must do its own reads. MST actions run untracked**, so
+   factoring the body of one into an action — the obvious way to share it with a
+   menu item or a flush-on-teardown path — leaves the autorun with no
+diff --git a/agent-docs/architecture-decision-records/README.md b/agent-docs/architecture-decision-records/README.md
+index d5dc8240864..915cdf210fb 100644
+--- a/agent-docs/architecture-decision-records/README.md
++++ b/agent-docs/architecture-decision-records/README.md
+@@ -78,4 +78,5 @@ action needed under current workloads), **Proposed** (not yet decided).
+ | [066](adr-066-callback-slots-are-read-raw-at-the-call-site.md) | Accepted | A config slot holding a `jexl:` callback is forwarded by reading it raw (`self.conf.slot`) at the call site — the reader was NOT changed to skip evaluation on an arg-less read, because that changes plugin-ABI semantics for every caller to fix two |
+ | [067](adr-067-synteny-dotplot-window-relative-float32.md) | Accepted | Synteny and dotplot corners are window-relative Float32 against a fetch-time base (supersedes ADR-010 and ADR-018) |
+ | [068](adr-068-workspace-layout-is-an-mst-tree.md) | Accepted | The workspace layout is one MST tree that React renders; dockview is gone. Supersedes ADR-057, whose ~8-9k-line estimate against this was about four times too high and was the thing holding the decision |
++| [069](adr-069-detach-do-not-destroy-what-react-may-hold.md) | Accepted | An MST node React may still be rendering is detached, never destroyed in place. Destroying it is what turned a plugin install into a white page, and no deferral is provably long enough |
+ <!-- END GENERATED ADR INDEX -->
+diff --git a/agent-docs/architecture-decision-records/adr-069-detach-do-not-destroy-what-react-may-hold.md b/agent-docs/architecture-decision-records/adr-069-detach-do-not-destroy-what-react-may-hold.md
+new file mode 100644
+index 00000000000..ac6d7068b93
+--- /dev/null
++++ b/agent-docs/architecture-decision-records/adr-069-detach-do-not-destroy-what-react-may-hold.md
+@@ -0,0 +1,119 @@
++---
++status: Accepted
++summary: "An MST node React may still be rendering is detached, never destroyed in place. Destroying it is what turned a plugin install into a white page, and no deferral is provably long enough"
++---
++
++# ADR-069: detach, do not destroy, a tree React may still hold
++
++## Status
++
++Accepted (2026-08-13).
++
++## Context
++
++A plugin install rebuilds jbrowse-web in place: a replacement `SessionLoader` is
++built and the old one, with its `pluginManager` and rootModel, is torn down. That
++teardown ran from a React effect cleanup, and it destroyed the outgoing tree
++there.
++
++React is not finished with the outgoing props at that point. Its dev-mode
++`logComponentRender` diffs each component's previous props against its new ones
++and recurses four levels into any plain object it finds, which reaches the
++rootModel through `{pluginManager}` and the session below it. Reading a
++destroyed MST node warns; reading a child node that was never materialized
++**throws** `the creation of the observable instance must be done on the
++initializing phase`, because `createObservableInstance` asserts the node is
++INITIALIZING and a dead one is not. That throw went through React's error
++boundary and took the page down (#5616, #5618).
++
++Which of the two you got was decided by whether the property the walk happened
++to land on had been read before — that is, by what the user had open.
++
++The same shape had a second door. `setSession` did `self.session = cast(...)`,
++and replacing an MST property destroys the old subtree **in place, inside the
++action**. MobX runs an action's pending reactions at the `endBatch` closing it,
++so every observer over that session got a final run against a node that died
++mid-action: 19 liveliness reads on an ordinary volvox session. Every way a user
++reaches a different session — New Session, opening a saved one, import, factory
++reset — goes through it.
++
++## Decision
++
++**A tree React may still be rendering is detached, not destroyed.** Concretely:
++
++- `disposeLoader` no longer destroys a superseded loader (it needed no teardown;
++  `deactivate()` already released what held it open).
++- `disposePluginManager` calls `rootModel.detach()`, a new action that runs the
++  things reaching *outside* the tree — the `beforeunload` listener, the
++  sessionStorage and IndexedDB autoruns, registered through `addDetachDisposer`
++  rather than `addDisposer` — and leaves the tree alone.
++The same shape applies to `setSession`, where the outgoing session would be
++detached inside the action and destroyed on a later task. That one is proposed
++rather than landed (#5621) and is a weaker case: measured, every read there is
++of a scalar or a reference, which warns and cannot throw, so it buys a quieter
++console rather than preventing a crash.
++
++## Rejected
++
++**Defer the destroy.** The obvious fix, and the one PR #5616 proposed. It works
++for the reported crash and does not generalise: a `queueMicrotask` around the
++rootModel destroy takes the dead reads from 16 to **4**, not to 0, because
++`act()` drains microtasks between flushes and a later one still diffs a widget
++React is holding. There is no delay provably long enough, which is the whole
++reason this is a rule and not a timing tweak.
++
++The one place a timer *is* used — `setSession` — is not that shape. It waits for
++this action's `endBatch`, a synchronous bounded flush, not for React to release
++fibers. Deferring it 250ms instead of 0 changed the residual from 14 to 16, i.e.
++nothing, which is the evidence that the wait is not doing hopeful work.
++
++**Never destroy anything.** Available for the loader, not for the rest.
++`beforeDestroy` is a plugin-facing contract: jbrowse-plugin-apollo aborts the
++`AbortController` for its in-flight fetches there, and core's `BaseTrackModel`
++releases the `rpcSessionId` claim that lets `CoreFreeResources` evict a parsed
++adapter from the worker. Detaching and never destroying zeroes the warning count
++while leaking both, the adapter one without bound across repeated switches.
++
++**Guard the getters with `isAlive`.** Tried on
++`HierarchicalTrackSelectorWidget.trackContainer` and reverted. A model getter
++defending itself against its own node being dead is a band-aid over the actual
++problem — something is still observing a computed on a tree being destroyed —
++and it did not work either: the residual stayed flaky, because the next getter
++along has the same exposure.
++
++## Consequences
++
++The dangerous window is empty and deterministically so, on both paths: while
++components are mounted over a tree, nothing reads a dead node. In a browser the
++plugin-install path went from **46 dead-node reads to 0**.
++
++It does **not** make the console silent. A session switch still logs ~14 reads
++while the detached tree is destroyed, down from 19. What changed is where a read
++can land: those are now plain reads on a tree nothing renders, and the throw
++they can produce lands in a `setTimeout` callback instead of React's error
++boundary. Severity, not volume.
++
++It does not promise prompt collection either. Measured with a `WeakRef` after a
++forced gc, a superseded root is still reachable — and so is one that has been
++`destroy`ed, so the retention is not something this introduces. The likely cause
++is filed separately: mobx-react `observer()` reactions from renders React
++discarded are never disposed, and go on observing the tree. See
++[TODO.md](../TODO.md).
++
++## Tests
++
++Each fails without its fix and is scoped to what is deterministic:
++
++- `products/jbrowse-web/src/tests/rootModelTeardown.test.tsx` — real teardown,
++  real component tree, React's real render-logging, zero dead reads.
++- `products/jbrowse-web/src/components/workerPoolTeardown.test.ts` — a spy on
++  `rpcManager.destroy`, because the bug was that nothing called it. No harness
++  here can watch a worker thread die; see [TODO.md](../TODO.md).
++- `plugin-reload-browser-tests` carries a browser suite for the same reload,
++  where the production-build failure is visible and jsdom's is not. It lands
++  once its prerequisites are merged.
++
++`enableReactRenderLogging.ts` is what makes any of this observable under jest:
++React gates render-logging on `console.timeStamp` and `performance.measure`
++both being functions, jsdom supplies neither, and that single fact is why the
++whole suite was blind to a crash a user hit on first load.
+diff --git a/products/jbrowse-web/src/SessionLoader.ts b/products/jbrowse-web/src/SessionLoader.ts
+index a8c7b9751b9..42182c3e031 100644
+--- a/products/jbrowse-web/src/SessionLoader.ts
++++ b/products/jbrowse-web/src/SessionLoader.ts
+@@ -409,26 +409,9 @@ const SessionLoader = types
+           // already-loaded records restore the snapshot as-is.
+           self.sessionPlugins ??= []
+         }
+-        // Detached, not destroyed — the same answer disposeLoader reached for
+-        // superseded loaders, for the same reason.
+-        //
+-        // This runs from a React effect cleanup, i.e. the unmount half of a
+-        // passive-effect flush; React's dev-mode logComponentRender then diffs
+-        // the outgoing props in the mount half of that flush and in flushes
+-        // after it, recursing four levels into any plain object it finds. That
+-        // reaches this rootModel through `{pluginManager}` and the session
+-        // below it, so destroying here made each property it walked a
+-        // liveliness warning — 16 on an ordinary volvox session — and would
+-        // make any landing on an unmaterialized array child a hard throw
+-        // instead, which is the crash this fixed for the loader.
+-        //
+-        // Deferring the destroy a microtask was tried and rejected: it takes
+-        // that 16 to 4, not to 0, because a later flush still diffs a widget
+-        // React is holding. There is no delay that is provably long enough,
+-        // which is what makes "stop the effects, keep the node" the fix rather
+-        // than a workaround. detach() stops everything of this root's that
+-        // reaches outside the tree; see it for what
+-        // that does and does not claim about the tree being collected.
++        // Detached, not destroyed. This runs from a React effect cleanup, and
++        // React reads the outgoing props after that — destroying here is what
++        // crashed the page. ADR-069.
+         ;(rootModel as unknown as DetachableRootModel).detach()
+       }
+       self.pluginManager = undefined
+diff --git a/products/jbrowse-web/src/components/workerPoolTeardown.test.ts b/products/jbrowse-web/src/components/workerPoolTeardown.test.ts
+new file mode 100644
+index 00000000000..5b10bdcad88
+--- /dev/null
++++ b/products/jbrowse-web/src/components/workerPoolTeardown.test.ts
+@@ -0,0 +1,38 @@
++import { when } from 'mobx'
++
++import SessionLoader from '../SessionLoader.ts'
++import { disposeLoader } from './disposeLoader.ts'
++
++jest.mock('../makeWorkerInstance', () => () => {})
++
++// What this can and cannot say.
++//
++// It cannot say a worker thread died: jsdom has no web workers, and the browser
++// suite cannot see jbrowse's either — page.workers(), browser.targets() and a
++// window.Worker wrapper all report none (see agent-docs/TODO.md). What it does
++// say is the thing that was actually wrong, which was not that termination was
++// broken but that NOTHING CALLED IT. RpcManager.destroy's own docstring names
++// this caller and no code did, so a plugin install left a pool of up to five
++// workers running for the life of the tab.
++//
++// A spy on that call is therefore the whole of the regression: the wiring, not
++// the effect.
++test('tearing down the rootModel terminates its rpc worker pool', async () => {
++  const loader = SessionLoader.create({
++    initialTimestamp: 1,
++    configSnapshot: {},
++    sessionSource: { type: 'snapshot', snapshot: { id: 'a', name: 'a' } },
++  })
++  loader.activate(() => {})
++  await when(() => !!loader.pluginManager)
++
++  const { rootModel } = loader.pluginManager!
++  const { rpcManager } = rootModel as unknown as {
++    rpcManager: { destroy: () => void }
++  }
++  const destroySpy = jest.spyOn(rpcManager, 'destroy')
++
++  disposeLoader(loader)
++
++  expect(destroySpy).toHaveBeenCalledTimes(1)
++})
+diff --git a/products/jbrowse-web/src/rootModel/rootModel.ts b/products/jbrowse-web/src/rootModel/rootModel.ts
+index 470e0152782..355708ff46d 100644
+--- a/products/jbrowse-web/src/rootModel/rootModel.ts
++++ b/products/jbrowse-web/src/rootModel/rootModel.ts
+@@ -320,33 +320,17 @@ export default function RootModel({
+       /**
+        * #action
+        * The React host has let go of this root: stop everything of ours that
+-       * reaches outside the tree, and leave the tree itself alone.
++       * reaches outside the tree — the worker pool, the `beforeunload`
++       * listener, the sessionStorage and IndexedDB autoruns — and leave the
++       * tree itself alone.
+        *
+-       * This is the whole teardown — there is no `destroy` after it, for the
+-       * same reason disposeLoader stopped destroying superseded loaders.
+-       * Destroying from a React effect cleanup is unsound: React reads the
+-       * outgoing props later in that same passive-effect flush, and in flushes
+-       * after it, so every property it walks on a destroyed node is a
+-       * liveliness warning and any it finds on an unmaterialized array child
+-       * is a hard throw. Deferring the destroy a microtask was tried and is
+-       * not enough — it takes the count from 16 to 4 rather than to 0, because
+-       * a later flush still diffs a widget it is holding.
+-       *
+-       * In-flight async work (an assembly still loading) then lands on live
+-       * nodes and is discarded with them, instead of writing to a corpse —
+-       * which is the "races with pending async work" that tests/loaderUtil.tsx
+-       * used to mock this path out to avoid.
+-       *
+-       * What this does NOT claim is that the tree is promptly collected. Its
+-       * own autoruns keep observing it, and any of them subscribed to a
+-       * module-level observable is reachable from outside. Measured with a
+-       * WeakRef after a forced gc, a superseded root is still reachable — and
+-       * so is one that has been `destroy`ed, which is what says the retention
+-       * is not something this change introduced, and that jsdom is not where
+-       * the question gets settled. A browser heap snapshot across two plugin
+-       * installs is.
++       * This is the whole teardown; there is no `destroy` after it, and the
++       * tree is left for the GC rather than freed here. ADR-069.
+        */
+       detach() {
++        // rpcManager is a plain object on a volatile, so MST teardown never
++        // reached it and the pool outlived every plugin install
++        self.rpcManager.destroy()
+         const disposers = self.detachDisposers
+         self.detachDisposers = []
+         for (const disposer of disposers) {
+diff --git a/website/docs/models/JBrowseWebRootModel.md b/website/docs/models/JBrowseWebRootModel.md
+index a863ff7c45f..6ddbc7759d4 100644
+--- a/website/docs/models/JBrowseWebRootModel.md
++++ b/website/docs/models/JBrowseWebRootModel.md
+@@ -64,7 +64,7 @@ the whole surface.
+ | <span id="action-upsertsessionmetadata">**upsertSessionMetadata**</span><br><code>(meta: SessionMetadata) =&gt; void</code> | Merges a row this model has just written into the in-memory list. The autosave autorun writes exactly one row on every debounced session edit — every 400ms for as long as you keep panning — and already holds its contents, so re-reading every session's metadata to learn what it just stored is the expensive way to move one row to the top. | JBrowseWebRootModel |
+ | <span id="action-setsessiondb">**setSessionDB**</span><br><code>(sessionDB: SessionDBHandle &#124; undefined) =&gt; void</code> |  | JBrowseWebRootModel |
+ | <span id="action-adddetachdisposer">**addDetachDisposer**</span><br><code>(disposer: () =&gt; void) =&gt; void</code> | Register something that must stop when the React host detaches this root. See the `detachDisposers` volatile for why this is not `addDisposer`. | JBrowseWebRootModel |
+-| <span id="action-detach">**detach**</span><br><code>() =&gt; void</code> | The React host has let go of this root: stop everything of ours that reaches outside the tree, and leave the tree itself alone.<br><br>This is the whole teardown — there is no `destroy` after it, for the same reason disposeLoader stopped destroying superseded loaders. Destroying from a React effect cleanup is unsound: React reads the outgoing props later in that same passive-effect flush, and in flushes after it, so every property it walks on a destroyed node is a liveliness warning and any it finds on an unmaterialized array child is a hard throw. Deferring the destroy a microtask was tried and is not enough — it takes the count from 16 to 4 rather than to 0, because a later flush still diffs a widget it is holding.<br><br>In-flight async work (an assembly still loading) then lands on live nodes and is discarded with them, instead of writing to a corpse — which is the "races with pending async work" that tests/loaderUtil.tsx used to mock this path out to avoid.<br><br>What this does NOT claim is that the tree is promptly collected. Its own autoruns keep observing it, and any of them subscribed to a module-level observable is reachable from outside. Measured with a WeakRef after a forced gc, a superseded root is still reachable — and so is one that has been `destroy`ed, which is what says the retention is not something this change introduced, and that jsdom is not where the question gets settled. A browser heap snapshot across two plugin installs is. | JBrowseWebRootModel |
++| <span id="action-detach">**detach**</span><br><code>() =&gt; void</code> | The React host has let go of this root: stop everything of ours that reaches outside the tree — the worker pool, the `beforeunload` listener, the sessionStorage and IndexedDB autoruns — and leave the tree itself alone.<br><br>This is the whole teardown; there is no `destroy` after it, and the tree is left for the GC rather than freed here. ADR-069. | JBrowseWebRootModel |
+ | <span id="action-setpluginsupdated">**setPluginsUpdated**</span><br><code>() =&gt; void</code> |  | JBrowseWebRootModel |
+ | <span id="action-setreloadpluginmanagercallback">**setReloadPluginManagerCallback**</span><br><span class="cell-more"><button type="button" class="cell-more-trigger"><code>(callback: (configSnapshot: Record&lt;string, unknown&gt;, sessionSna…</code></button><dialog class="cell-dialog"><form method="dialog"><button class="cell-dialog-close" aria-label="Close">✕</button></form><pre><code>(callback: (configSnapshot: Record&lt;string, unknown&gt;, sessionSnapshot: Record&lt;string, unknown&gt;) =&gt; void) =&gt; void</code></pre></dialog></span> |  | JBrowseWebRootModel |
+ | <span id="action-activatesession">**activateSession**</span><br><code>(id: string) =&gt; Promise&lt;void&gt;</code> |  | JBrowseWebRootModel |

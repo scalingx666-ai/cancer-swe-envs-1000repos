@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Liu-Hy__GenoMAS-3"
+description = "Create python-app.yml for pip packaging"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "GenoMAS",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Liu-Hy/GenoMAS"
+ref = "7cc2062cbfe08925ffb278656868b9e278b44795"
+reference = "https://github.com/Liu-Hy/GenoMAS/pull/3"
+source_access = "auto"
+built_at = "2026-11-13T15:35:54.724428+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f1267e79b1d01bbd4f9f574d5664aff2a17be127e21287e9ae3b03af3a0d5384"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-03-25T04:57:52Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/python-app.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 30
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

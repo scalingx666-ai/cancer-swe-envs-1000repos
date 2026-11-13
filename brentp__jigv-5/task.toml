@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/brentp__jigv-5"
+description = "updates alignment track click"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "jigv",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "brentp/jigv"
+ref = "02ff307b0fe573bf3c532791d72cb22e3b308cd8"
+reference = "https://github.com/brentp/jigv/pull/5"
+source_access = "auto"
+built_at = "2026-11-13T16:21:40.470246+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a9242d0977439175c6ee61dc2d0fcebcc5b574987691e648106f273440825db7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-03-31T23:25:09Z"
+diff_format = "unified"
+context_files = [
+    "jigv-template.html",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 131
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

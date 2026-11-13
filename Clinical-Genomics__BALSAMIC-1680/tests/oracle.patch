@@ -1,0 +1,46 @@
+diff --git a/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule b/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule
+index 0182bd2ea..6f39ac138 100644
+--- a/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule
++++ b/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule
+@@ -364,7 +364,7 @@ rule bcftools_sort_cnvkitCNV_research:
+         "Sorting CNVs using bcftools for {params.case_name}"
+     shell:
+       """
+-bgzip -k -l 9 {input.vcf};
++bgzip -f -k -l 9 {input.vcf}
+ 
+ tabix -p vcf -f {input.vcf}.gz;
+ 
+diff --git a/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_only_tga.rule b/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_only_tga.rule
+index ffd70f5a3..90fc77841 100644
+--- a/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_only_tga.rule
++++ b/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_only_tga.rule
+@@ -289,7 +289,7 @@ rule bcftools_sort_cnvkitCNV_research:
+         ("Sorting CNVs using bcftools for {params.case_name}")
+     shell:
+       """
+-bgzip -k -l 9 {input.vcf};
++bgzip -f -k -l 9 {input.vcf};
+ 
+ tabix -p vcf -f {input.vcf}.gz;
+ 
+diff --git a/CHANGELOG.rst b/CHANGELOG.rst
+index 725105159..eb889a4ce 100644
+--- a/CHANGELOG.rst
++++ b/CHANGELOG.rst
+@@ -1,5 +1,6 @@
+ [X.X.X]
+ -------
++
+ Added:
+ ^^^^^^
+ 
+@@ -12,6 +13,8 @@ Removed:
+ 
+ Fixed:
+ ^^^^^^
++* added "-f" flag to bgzip for cnvkit to overwrite existing bgzipped file https://github.com/Clinical-Genomics/BALSAMIC/pull/1679
++
+ 
+ [19.0.0]
+ -------

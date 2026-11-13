@@ -1,0 +1,498 @@
+diff --git a/docs/development.html b/docs/development.html
+index e45f11a..e3b1dcd 100644
+--- a/docs/development.html
++++ b/docs/development.html
+@@ -685,7 +685,6 @@ <h1><strong>Project Management</strong></h1>
+ </ul>
+ <p><br></p>
+ <hr />
+-<p><br></p>
+ <div id="github-project" class="section level2">
+ <h2>Github Project</h2>
+ <ul>
+diff --git a/docs/genomics.html b/docs/genomics.html
+index 2211c53..35437f0 100644
+--- a/docs/genomics.html
++++ b/docs/genomics.html
+@@ -470,6 +470,13 @@ <h1 class="title toc-ignore"><img src="images/ohdsi40x40.png"></img>
+ <p><svg aria-hidden="true" role="img" viewBox="0 0 512 512" style="height:1em;width:1em;vertical-align:-0.125em;margin-left:auto;margin-right:auto;font-size:inherit;fill:orange;overflow:visible;position:relative;"><path d="M256 32c14.2 0 27.3 7.5 34.5 19.8l216 368c7.3 12.4 7.3 27.7 .2 40.1S486.3 480 472 480H40c-14.3 0-27.6-7.7-34.7-20.1s-7-27.8 .2-40.1l216-368C228.7 39.5 241.8 32 256 32zm0 128c-13.3 0-24 10.7-24 24V296c0 13.3 10.7 24 24 24s24-10.7 24-24V184c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"/></svg>
+ Under Construction</p>
+ </blockquote>
++<hr />
++<p>While work is in progress on this section…</p>
++<p>…if you are looking to get oriented to how the working group is
++approaching genomics data standardization, there is a particular meeting
++recording, albeit a bit dated, which provides a nice overview.</p>
++<p>Link: - <a
++href="https://ohdsiorg.sharepoint.com/:v:/s/Workgroup-Oncology/EdioIyS_iQRIoifsnlGuWc8Bell7Qme4sLlbfGHOm_1jBA?e=hwYBxm&amp;nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D">Recording</a></p>
+ 
+ 
+ 
+diff --git a/docs/gettingInvolved.html b/docs/gettingInvolved.html
+index 7e82a44..1ef5c8a 100644
+--- a/docs/gettingInvolved.html
++++ b/docs/gettingInvolved.html
+@@ -470,10 +470,11 @@ <h1 class="title toc-ignore"><img src="images/ohdsi40x40.png"></img>
+ <hr />
+ <div id="join-collaboration-channels" class="section level1">
+ <h1><strong>Join collaboration channels</strong></h1>
++<p><br></p>
+ <p>We communicate and coordinate through the OHDSI Microsoft Teams
+ environment and Github.</p>
+ <div id="ms-teams" class="section level2">
+-<h2>MS Teams</h2>
++<h2>1) MS Teams</h2>
+ <p>To join the MS Teams environment you need to complete two steps:</p>
+ <table>
+ <colgroup>
+@@ -506,11 +507,14 @@ <h2>MS Teams</h2>
+ </tbody>
+ </table>
+ <p>Once you’ve joined the Oncology WG teams, there is a “Workgroup -
+-Oncology -&gt; General” channel where we encourage new members to say hi
++Oncology -&gt; <a
++href="https://teams.microsoft.com/l/channel/19%3A239caede18574bc183f75a7a5eb9e826%40thread.tacv2/?groupId=25293b33-d337-4867-a5f5-cd314582a34e&amp;tenantId=a30f0094-9120-4aab-ba4c-e5509023b2d5"><strong>General”</strong>
++channel</a> where we encourage new members to say <strong>“hi!”</strong>
+ and let us know how we can best collaborate together.</p>
++<hr />
+ </div>
+ <div id="github" class="section level2">
+-<h2>Github</h2>
++<h2>2) Github</h2>
+ <p>We use Github in a variety of ways including project planning and
+ topic specific discussions.</p>
+ <p>The root link to our Github page is: <a
+@@ -522,8 +526,22 @@ <h2>Github</h2>
+ <hr />
+ </div>
+ </div>
++<div id="submit-a-new-collaborator-form" class="section level1">
++<h1><strong>Submit a new collaborator form</strong></h1>
++<p>(Optional) This form asks a few questions to help us understand your
++areas of interest, resources, and appetite for taking on different kinds
++of work. We’re hoping this can speed up the process of getting the right
++folks connected and up to speed.</p>
++<p>Additionally, the form asks for a Github username so that we can add
++you as a contributor to the project.</p>
++<p>Google Form link: <a href="https://forms.gle/R8hYMY3qH2TkqyuX9"
++class="uri">https://forms.gle/R8hYMY3qH2TkqyuX9</a></p>
++<hr />
++</div>
+ <div id="review-project-documentation" class="section level1">
+ <h1><strong>Review Project Documentation</strong></h1>
++<p>Becoming familiar with our development approach is highly
++recommended:</p>
+ <ul>
+ <li><a href="development.html">Development Effort Overview</a></li>
+ <li><a href="githubProject.html">Github Project Orientation</a></li>
+@@ -533,31 +551,41 @@ <h1><strong>Review Project Documentation</strong></h1>
+ </div>
+ <div id="contributing" class="section level1">
+ <h1><strong>Contributing</strong></h1>
+-<ol style="list-style-type: decimal">
+-<li><p>Submitting use cases, questions, documentation gaps, etc.:</p>
+-<ul>
+-<li>(preferred) Submit an issue on the OncologyWG repository
++<div id="submitting-content" class="section level2">
++<h2>Submitting content</h2>
+ <ul>
+-<li>Ticket will be triaged accordingly</li>
+-</ul></li>
+-<li>(alternate) If Github is a barrier, send a message in the OHDSI
+-Oncology WG MS Teams channel
+-<ul>
+-<li>If applicable, someone will create a ticket for you</li>
+-</ul></li>
+-</ul></li>
+-</ol>
++<li><strong>Use cases</strong>: There is a specific “issue template”,
++similar to a form, that we ask you fill out. “Issues” -&gt; <a
++href="https://github.com/OHDSI/OncologyWG/issues/new/choose">“New
++Issue”</a> -&gt; “Use Case” (currently under construction). There is
++also a <a
++href="https://teams.microsoft.com/l/channel/19%3Aaec07bd25b014f5fb2d0e3f900c01930%40thread.tacv2/Use%20cases%20-%20Oncology%20WG?groupId=25293b33-d337-4867-a5f5-cd314582a34e&amp;tenantId=a30f0094-9120-4aab-ba4c-e5509023b2d5">‘use
++cases’ channel</a> in teams to facilitate conversations.</li>
++<li><strong>Questions</strong>: We have a specific <a
++href="https://teams.microsoft.com/l/channel/19%3Ab38d09e840eb4dcf84f100b88cde7339%40thread.tacv2/Helpdesk?groupId=25293b33-d337-4867-a5f5-cd314582a34e&amp;tenantId=a30f0094-9120-4aab-ba4c-e5509023b2d5">“Helpdesk”</a>
++channel in teams which is intended to serve as a Q&amp;A for the effort.
++Should clarity be needed or direction be given or anything in between -
++Ask away and we’ll try to steer you in the right direction.</li>
++<li><strong>Documentation Gaps</strong>: Please create a standard issue
++and we will triage it appropriately</li>
++<li><strong>Everything else</strong>: Please see the Project
++documentation above</li>
++</ul>
+ <p><br></p>
+-<ol start="2" style="list-style-type: decimal">
+-<li><p>Volunteering to contribute to a specific task</p>
++</div>
++<div id="taking-on-work" class="section level2">
++<h2>Taking on work</h2>
+ <ul>
+ <li>If you are already a contributor to the OncologyWG Github
+-repository, assign yourself to that ticket</li>
++repository, assign yourself to that ticket and comment within it your
++intent.</li>
+ <li>Otherwise, make a comment on the Github ticket for that task stating
+ your intent and you will be invited to the repository and assigned
+-accordingly</li>
+-</ul></li>
+-</ol>
++accordingly, and then please go sign up for Github :)</li>
++<li>There will also be opportunities during our development calls to
++assign tasks should that be easier</li>
++</ul>
++</div>
+ </div>
+ 
+ 
+diff --git a/docs/index.html b/docs/index.html
+index dfb9143..e25cf53 100644
+--- a/docs/index.html
++++ b/docs/index.html
+@@ -480,6 +480,10 @@ <h2><strong>Mission</strong></h2>
+ </div>
+ <div id="subgroups-meeting-schedule" class="section level2">
+ <h2><strong>Subgroups &amp; Meeting Schedule</strong></h2>
++<p><em>TODO: update the following table with the new 2024 meeting links.
++Until then, and even after then, it is highly recommended that you add
++the meetings series to your own calendar, which are found within the
++oncology teams calendar, instead of reyling on this table.</em></p>
+ <table>
+ <colgroup>
+ <col width="25%" />
+@@ -564,8 +568,8 @@ <h2><strong>Problem Space</strong></h2>
+ <div id="site-map" class="section level2">
+ <h2><strong>Site Map</strong></h2>
+ <p>This site contains the following sections:</p>
+-<div id="background" class="section level4">
+-<h4><strong><a href="background.html">Background</a></strong></h4>
++<div id="wg-home" class="section level4">
++<h4><strong><a href="index.html">WG Home</a></strong></h4>
+ <table>
+ <colgroup>
+ <col width="40%" />
+@@ -573,19 +577,10 @@ <h4><strong><a href="background.html">Background</a></strong></h4>
+ </colgroup>
+ <tbody>
+ <tr class="odd">
+-<td><a href="background.html#Problem_Space">Problem Space</a></td>
++<td><a href="index.html#Problem_Space">Problem Space</a></td>
+ <td align="left">High level summary of working group mission</td>
+ </tr>
+ <tr class="even">
+-<td><a href="background.html#Goals">Goals</a></td>
+-<td align="left">Goals of working group</td>
+-</tr>
+-<tr class="odd">
+-<td><a href="background.html#Notable_Challenges">Notable
+-Challenges</a></td>
+-<td align="left">Core challenges of effort</td>
+-</tr>
+-<tr class="even">
+ <td><a
+ href="background.html#PublicationsPresentation">Publications/Presentations</a></td>
+ <td align="left">Links to some relevant publications &amp;
+@@ -604,10 +599,12 @@ <h4><strong>Development Effort</strong></h4>
+ <tbody>
+ <tr class="odd">
+ <td><strong><a href="development.html">Development Overview</a></strong>
+-<br> <a href="development.html#Purpose_and_Goals">Purpose and Goals</a>
+-<br> <a href="development.html#Context">Context</a> <br> <a
++<br> <a href="development.html#Purpose">Purpose</a> <br> <a
++href="development.html#Goals">Goals</a> <br> <a
++href="development.html#Notable_Challenges">Notable Challenges</a> <br>
++<a href="development.html#Context">Context</a> <br> <a
+ href="development.html#Scope">Scope</a> <br> <a
+-href="development.html##What_we_need">What we need</a> <br> <a
++href="development.html#What_we_need">What we need</a> <br> <a
+ href="development.html#Project_Management">Project Management</a></td>
+ <td align="left">Overview of current development effort</td>
+ </tr>
+@@ -621,28 +618,30 @@ <h4><strong>Development Effort</strong></h4>
+ <tr class="odd">
+ <td><strong><a href="githubProject.html">Github Project
+ Orientation</a></strong> <br> <a
+-href="githubProject.html#Approach">Approach</a> <br> <a
+ href="githubProject.html#Architecture">Architecture</a> <br> <a
+-href="githubProject.html#Project_Views">Project Views</a> <br> <a
+-href="githubProject.html#Approach">Example Walkthrough</a></td>
++href="githubProject.html#strategy">Strategy</a> <br> <a
++href="githubProject.html#Project_Navigation">Project Navigation</a> <br>
++<a href="githubProject.html#Approach">Example Walkthrough</a></td>
+ <td align="left">Documentation about navigating and understanding the
+ Github Project and approach</td>
+ </tr>
+ <tr class="even">
+ <td><strong><a href="gettingInvolved.html">Getting Involved</a></strong>
+-<br> <a
+-href="gettingInvolved.html#join_collaboration_channels">Collaboration
+-Channels</a> <br> <a
++<br> <a href="gettingInvolved.html#join_collaboration_channels">Join
++Collaboration Channels</a> <br> <a
++href="gettingInvolved.html#Submit_a_new_collaborator_form">Submit
++Collaborator Form</a> <br> <a
+ href="gettingInvolved.html#Review_Project_Documentation">Review Project
+-Documentation</a></td>
++Documentation</a> <br> <a
++href="gettingInvolved.html#Contributing">Contributing</a></td>
+ <td align="left">Suggestions and links for getting started in the
+ effort!</td>
+ </tr>
+ </tbody>
+ </table>
+ </div>
+-<div id="conventions" class="section level4">
+-<h4><strong><a href="conventions.html">Conventions</a></strong></h4>
++<div id="specifications" class="section level4">
++<h4><strong>Specifications</strong></h4>
+ <table>
+ <colgroup>
+ <col width="40%" />
+@@ -650,24 +649,48 @@ <h4><strong><a href="conventions.html">Conventions</a></strong></h4>
+ </colgroup>
+ <tbody>
+ <tr class="odd">
+-<td><a href="conventions.html#Diagnostic">Diagnostic</a></td>
++<td><strong><a href="conventions.html">Conventions</a></strong> <br> <a
++href="conventions.html#Diagnostic">Diagnostic</a> <br> <a
++href="conventions.html#Treatment">Treatment</a></td>
+ <td align="left">Overview of current development effort</td>
+ </tr>
+ <tr class="even">
+-<td><a href="conventions.html#Treatment">Treatment</a></td>
+-<td align="left">Overview of current development effort</td>
++<td><strong><a href="model.html">Model</a></strong></td>
++<td align="left"></td>
++</tr>
++<tr class="odd">
++<td><strong><a href="genomics.html">Genomics</a></strong></td>
++<td align="left"></td>
+ </tr>
+ </tbody>
+ </table>
++<hr />
+ </div>
+-<div id="tools" class="section level4">
+-<h4><strong><a href="tooling.html">Tools</a></strong></h4>
++<div id="implementation" class="section level4">
++<h4><strong>Implementation</strong></h4>
++<table>
++<tbody>
++<tr class="odd">
++<td><strong><a href="installation.html">Installation</a></strong></td>
++<td align="left"></td>
++</tr>
++<tr class="even">
++<td><strong><a href="tooling.html">Tooling</a></strong></td>
++<td align="left"></td>
++</tr>
++<tr class="odd">
++<td><strong>ETLs</strong> <br> <strong><a href="naaccr.html">NAACCR
++ETL</a></strong></td>
++<td align="left"></td>
++</tr>
++</tbody>
++</table>
+ <hr />
+ <p><br></p>
+ </div>
+ </div>
+-<div id="publicationspresentation" class="section level2">
+-<h2><strong>Publications/Presentation</strong></h2>
++<div id="publicationspresentations" class="section level2">
++<h2><strong>Publications/Presentations</strong></h2>
+ <ul>
+ <li><p><a
+ href="https://github.com/OHDSI/OncologyWG/wiki/Oncology-Tutorial">2020
+diff --git a/rmd/development.rmd b/rmd/development.rmd
+index 9986815..46200ce 100644
+--- a/rmd/development.rmd
++++ b/rmd/development.rmd
+@@ -188,7 +188,6 @@ The overarching goals of the OHDSI Oncology Working Group:
+ 
+ ---
+ 
+-<br>
+ 
+ ## Github Project
+ 
+diff --git a/rmd/genomics.Rmd b/rmd/genomics.Rmd
+index 92d8d3d..1d00f75 100644
+--- a/rmd/genomics.Rmd
++++ b/rmd/genomics.Rmd
+@@ -13,3 +13,14 @@ library(fontawesome)
+ ```
+ 
+ > `r fa("triangle-exclamation", fill="orange")` Under Construction 
++
++
++---
++
++While work is in progress on this section...
++
++...if you are looking to get oriented to how the working group is approaching genomics data standardization, there is a particular meeting recording, albeit a bit dated, which provides a nice overview.
++
++
++Link:
++- [Recording](https://ohdsiorg.sharepoint.com/:v:/s/Workgroup-Oncology/EdioIyS_iQRIoifsnlGuWc8Bell7Qme4sLlbfGHOm_1jBA?e=hwYBxm&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D)
+diff --git a/rmd/gettingInvolved.rmd b/rmd/gettingInvolved.rmd
+index 902698c..74294c3 100644
+--- a/rmd/gettingInvolved.rmd
++++ b/rmd/gettingInvolved.rmd
+@@ -14,9 +14,11 @@ output:
+ 
+ # **Join collaboration channels**
+ 
++<br>
++
+ We communicate and coordinate through the OHDSI Microsoft Teams environment and Github. 
+ 
+-## MS Teams
++## 1) MS Teams
+ 
+ To join the MS Teams environment you need to complete two steps:
+ 
+@@ -25,9 +27,11 @@ To join the MS Teams environment you need to complete two steps:
+ | 1 | Sign up for an OHDSI Teams Account | [link](https://forms.office.com/Pages/ResponsePage.aspx?id=lAAPoyCRq0q6TOVQkCOy1ZyG6Ud_r2tKuS0HcGnqiQZUQ05MOU9BSzEwOThZVjNQVVFGTDNZRENONiQlQCN0PWcu)|
+ | 2 | Register for the workgroup by filling out the specified form selecting the tickbox for "Oncology" - which will automatically add you to our channel | [link](https://forms.office.com/Pages/ResponsePage.aspx?id=lAAPoyCRq0q6TOVQkCOy1ZyG6Ud_r2tKuS0HcGnqiQZUOVJFUzBFWE1aSVlLN0ozR01MUVQ4T0RGNyQlQCN0PWcu)|
+ 
+-Once you've joined the Oncology WG teams, there is a "Workgroup - Oncology -> General" channel where we encourage new members to say hi and let us know how we can best collaborate together. 
++Once you've joined the Oncology WG teams, there is a "Workgroup - Oncology -> [**General"** channel](https://teams.microsoft.com/l/channel/19%3A239caede18574bc183f75a7a5eb9e826%40thread.tacv2/?groupId=25293b33-d337-4867-a5f5-cd314582a34e&tenantId=a30f0094-9120-4aab-ba4c-e5509023b2d5) where we encourage new members to say **"hi!"** and let us know how we can best collaborate together. 
++
++---
+ 
+-## Github
++## 2) Github
+ 
+ We use Github in a variety of ways including project planning and topic specific discussions. 
+ 
+@@ -38,10 +42,20 @@ And the Github 'Project' where we manage our work can be found here: https://git
+ 
+ --- 
+ 
++# **Submit a new collaborator form** 
++
++(Optional) This form asks a few questions to help us understand your areas of interest, resources, and appetite for taking on different kinds of work. We're hoping this can speed up the process of getting the right folks connected and up to speed. 
++
++Additionally, the form asks for a Github username so that we can add you as a contributor to the project. 
++
++Google Form link: 	https://forms.gle/R8hYMY3qH2TkqyuX9
+ 
++---
+ 
+ # **Review Project Documentation**
+ 
++Becoming familiar with our development approach is highly recommended:
++
+  - [Development Effort Overview](development.html)
+  - [Github Project Orientation](githubProject.html)
+ 
+@@ -51,16 +65,20 @@ And the Github 'Project' where we manage our work can be found here: https://git
+  
+ # **Contributing**
+ 
+-1) Submitting use cases, questions, documentation gaps, etc.:
++## Submitting content
++
++- **Use cases**: There is a specific "issue template", similar to a form, that we ask you fill out. "Issues" -> ["New Issue"](https://github.com/OHDSI/OncologyWG/issues/new/choose) -> "Use Case" (currently under construction). There is also a ['use cases' channel](https://teams.microsoft.com/l/channel/19%3Aaec07bd25b014f5fb2d0e3f900c01930%40thread.tacv2/Use%20cases%20-%20Oncology%20WG?groupId=25293b33-d337-4867-a5f5-cd314582a34e&tenantId=a30f0094-9120-4aab-ba4c-e5509023b2d5) in teams to facilitate conversations. 
++- **Questions**: We have a specific ["Helpdesk"](https://teams.microsoft.com/l/channel/19%3Ab38d09e840eb4dcf84f100b88cde7339%40thread.tacv2/Helpdesk?groupId=25293b33-d337-4867-a5f5-cd314582a34e&tenantId=a30f0094-9120-4aab-ba4c-e5509023b2d5) channel in teams  which is intended to serve as a Q&A for the effort. Should clarity be needed or direction be given or anything in between - Ask away and we'll try to steer you in the right direction.
++- **Documentation Gaps**: Please create a standard issue and we will triage it appropriately 
++- **Everything else**: Please see the Project documentation above
++
+ 
+-    - (preferred) Submit an issue on the OncologyWG repository
+-      - Ticket will be triaged accordingly
+-    - (alternate) If Github is a barrier, send a message in the OHDSI Oncology WG MS Teams channel 
+-      - If applicable, someone will create a ticket for you
+ 
+ <br>  
+     
+-2) Volunteering to contribute to a specific task
+-
+-    - If you are already a contributor to the OncologyWG Github repository, assign yourself to that ticket
+-    - Otherwise, make a comment on the Github ticket for that task stating your intent and you will be invited to the repository and assigned accordingly 
+\ No newline at end of file
++## Taking on work
++- If you are already a contributor to the OncologyWG Github repository, assign yourself to that ticket and comment within it your intent. 
++- Otherwise, make a comment on the Github ticket for that task stating your intent and you will be invited to the repository and assigned accordingly, and then please go sign up for Github :) 
++- There will also be opportunities during our development calls to assign tasks should that be easier
++    
++    
+diff --git a/rmd/index.Rmd b/rmd/index.Rmd
+index a2c4047..6a6def0 100644
+--- a/rmd/index.Rmd
++++ b/rmd/index.Rmd
+@@ -24,6 +24,8 @@ Oncology support in OMOP is a work in progress. We welcome your participation!
+ 
+ ##   **Subgroups & Meeting Schedule**
+ 
++*TODO: update the following table with the new 2024 meeting links. Until then, and even after then, it is highly recommended that you add the meetings series to your own calendar, which are found within the oncology teams calendar, instead of reyling on this table.*
++
+ subgroup|schedule|meeting details|Team Lead
+ :------------------|:--------------------------|:------------|:--------------
+ |CDM/Vocabulary & Development|First Thu 1PM EST<br>Third Thu 9AM EST|[link](https://teams.microsoft.com/l/meetup-join/19%3a239caede18574bc183f75a7a5eb9e826%40thread.tacv2/1608665830064?context=%7b%22Tid%22%3a%22a30f0094-9120-4aab-ba4c-e5509023b2d5%22%2c%22Oid%22%3a%22e1bfdbcb-c8d0-4744-bdf5-a26789ddd15b%22%7d)|Thomas Falconer, Michael Gurley, & Robert Miller
+@@ -59,47 +61,49 @@ The extension has been tested in EHR and Cancer Registry data against a number o
+ This site contains the following sections:
+ 
+ 
+-#### **[Background](background.html)**
++#### **[WG Home](index.html)**
+ 
+ |  |    |
+ | -------- | :----------- |
+-| [Problem Space](background.html#Problem_Space)      | High level summary of working group mission |
+-| [Goals](background.html#Goals)        | Goals of working group |
+-| [Notable Challenges](background.html#Notable_Challenges)      | Core challenges of effort |
++| [Problem Space](index.html#Problem_Space)      | High level summary of working group mission |
+ | [Publications/Presentations](background.html#PublicationsPresentation)      | Links to some relevant publications & presentations |
+ 
+ #### **Development Effort** 
+  
+ | | | 
+ | -------- | :----------- |
+-| **[Development Overview](development.html)**    <br> [Purpose and Goals](development.html#Purpose_and_Goals) <br> [Context](development.html#Context) <br> [Scope](development.html#Scope) <br> [What we need](development.html##What_we_need) <br> [Project Management](development.html#Project_Management)| Overview of current development effort |
++| **[Development Overview](development.html)**    <br> [Purpose](development.html#Purpose) <br> [Goals](development.html#Goals)  <br>  [Notable Challenges](development.html#Notable_Challenges)  <br>     [Context](development.html#Context) <br> [Scope](development.html#Scope) <br> [What we need](development.html#What_we_need) <br> [Project Management](development.html#Project_Management)| Overview of current development effort |
+ | **[Progress Map](progressMap.html)**  <br> [Miro Map](progressMap.html#Miro_Map)  <br> [Roadmap](progressMap.html#Roadmap)  | Miro Map of completed and outstanding work within scope (with links)  |
+-| **[Github Project Orientation](githubProject.html)**    <br> [Approach](githubProject.html#Approach)   <br> [Architecture](githubProject.html#Architecture) <br> [Project Views](githubProject.html#Project_Views)  <br> [Example Walkthrough](githubProject.html#Approach)   | Documentation about navigating and understanding the Github Project and approach  |
+-| **[Getting Involved](gettingInvolved.html)** <br> [Collaboration Channels](gettingInvolved.html#join_collaboration_channels) <br> [Review Project Documentation](gettingInvolved.html#Review_Project_Documentation)      | Suggestions and links for getting started in the effort!  |
++| **[Github Project Orientation](githubProject.html)**    <br>  [Architecture](githubProject.html#Architecture) <br> [Strategy](githubProject.html#strategy)   <br> [Project Navigation](githubProject.html#Project_Navigation)  <br> [Example Walkthrough](githubProject.html#Approach)   | Documentation about navigating and understanding the Github Project and approach  |
++| **[Getting Involved](gettingInvolved.html)** <br> [Join Collaboration Channels](gettingInvolved.html#join_collaboration_channels) <br> [Submit Collaborator Form](gettingInvolved.html#Submit_a_new_collaborator_form) <br> [Review Project Documentation](gettingInvolved.html#Review_Project_Documentation) <br> [Contributing](gettingInvolved.html#Contributing)     | Suggestions and links for getting started in the effort!  |
+ 
+ 
+ 
+-#### **[Conventions](conventions.html)**
++#### **Specifications**
+ 
+ 
+ | | | 
+ | -------- | :----------- |
+-| [Diagnostic](conventions.html#Diagnostic)      | Overview of current development effort |  |
+-| [Treatment](conventions.html#Treatment)      | Overview of current development effort |
++| **[Conventions](conventions.html)** <br> [Diagnostic](conventions.html#Diagnostic)  <br> [Treatment](conventions.html#Treatment)      | Overview of current development effort |
++| **[Model](model.html)** ||
++| **[Genomics](genomics.html)** ||
+ 
+ ---
+-#### **[Model](model.html)**
+----
+-#### **[Tools](tooling.html)**
+ 
+ 
++#### **Implementation**
+ 
++| | | 
++| -------- | :----------- |
++| **[Installation](installation.html)** ||
++| **[Tooling](tooling.html)** ||
++| **ETLs** <br> **[NAACCR ETL](naaccr.html)** ||
+ ------------------------------------------------------------------------
+ 
+ 
+ <br>
+ 
+-## **Publications/Presentation**
++## **Publications/Presentations**
+ 
+ -   [2020 OHDSI Symposium - Oncology Tutorial](https://github.com/OHDSI/OncologyWG/wiki/Oncology-Tutorial)
+ 

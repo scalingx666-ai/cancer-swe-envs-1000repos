@@ -1,0 +1,34 @@
+diff --git a/setup.sh b/setup.sh
+index 02e666a..2c49f1a 100755
+--- a/setup.sh
++++ b/setup.sh
+@@ -123,8 +123,6 @@ else
+   touch $SETUP_DIR/caveman.success
+ fi
+ 
+-exit
+-
+ # cleanup all junk
+ rm -rf $SETUP_DIR 
+ make clean
+diff --git a/src/generateCavemanVCFUnmatchedNormalPanel.c b/src/generateCavemanVCFUnmatchedNormalPanel.c
+index a9bbf09..92bb2eb 100644
+--- a/src/generateCavemanVCFUnmatchedNormalPanel.c
++++ b/src/generateCavemanVCFUnmatchedNormalPanel.c
+@@ -303,7 +303,7 @@ List *gen_panel_get_list_of_samples_and_locs(){
+ 	char *bamchar = NULL;
+ 	samples = List_create();
+ 	//Iterate through list of sample_names using comma as separator
+-	char *new_sample_names = malloc((strlen(sample_names)+1) * sizeof(char));
++	char *new_sample_names = calloc((strlen(sample_names)+2), sizeof(char));
+ 	check_mem(new_sample_names);
+ 	sampchar = strtok(sample_names,",");
+ 	while(sampchar != NULL){
+@@ -316,7 +316,6 @@ List *gen_panel_get_list_of_samples_and_locs(){
+ 		sampchar = strtok(NULL,",");
+ 		List_push(samples,this_samp);
+ 	}
+-	free(sampchar);
+ 
+ 	bamchar = strtok(bam_file_locs,",");
+ 	LIST_FOREACH(samples, first, next, cur){

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/ambj__MuPeXI-2"
+description = "Permitting console users to specify fork and assembly; minor bug fixes at the VEP stage"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MuPeXI",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ambj/MuPeXI"
+ref = "08c167732e2ec2821311b072a9ea5e981a40c981"
+reference = "https://github.com/ambj/MuPeXI/pull/2"
+source_access = "auto"
+built_at = "2026-11-13T15:45:09.911964+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a6c8773091c91775b68dc39a61d434059f400b5bb25417c4a5fcf3810fb5ef83"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-06-21T18:35:23Z"
+diff_format = "unified"
+context_files = [
+    "MuPeXI.py",
+    "doc/MuPeXI_User_Manual.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 91
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

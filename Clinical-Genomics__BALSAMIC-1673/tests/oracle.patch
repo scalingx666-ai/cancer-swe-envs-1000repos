@@ -1,0 +1,64 @@
+diff --git a/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule b/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule
+index 8f301e30f..0182bd2ea 100644
+--- a/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule
++++ b/BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule
+@@ -238,6 +238,7 @@ rule cnvkit_call_CNV_research:
+         gender = config_model.get_gender,
+         tumor_sample_id = "TUMOR",
+         normal_sample_id = "NORMAL",
++        cust_case_id = lambda wildcards,cust_case_id=config_model.analysis.cust_case_id: f"--title {cust_case_id}" if cust_case_id else "",
+     message:
+         "Computing tumor purity and ploidy using PureCN for {params.case_name}"
+     shell:
+@@ -260,14 +261,19 @@ cnvkit.py call {input.cns_initial} \
+ 
+ # Plot bin-level log2 coverages and segmentation calls
+ cnvkit.py scatter {input.cnr} \
++--vcf {input.snv_merged} \
+ --segment {output.cns} \
+---output {output.scatter};
++--output {output.scatter} \
++-i {params.tumor_sample_id} -n {params.normal_sample_id} \
++{params.cust_case_id} --fig-size 18 8 ;
+ 
+-# Draw copy number (.cnr or .cns) on chromosomes as an ideogram
+ # Draw copy number (.cnr or .cns) on chromosomes as an ideogram
+ cnvkit.py diagram {input.cnr} \
+ --segment  {output.cns} \
+---output {output.diagram};
++--gender {params.gender} \
++--min-probes 5 \
++--output {output.diagram} \
++{params.cust_case_id} ;
+ 
+ # Identify targeted genes with copy number gain or loss
+ cnvkit.py genemetrics {input.cnr} \
+diff --git a/CHANGELOG.rst b/CHANGELOG.rst
+index df16fbefb..4e67e2514 100644
+--- a/CHANGELOG.rst
++++ b/CHANGELOG.rst
+@@ -8,7 +8,6 @@ Added:
+ * add automatic download of cytoband coordinates file via init command https://github.com/Clinical-Genomics/BALSAMIC/pull/1651
+ * add argument for cosmic file https://github.com/Clinical-Genomics/BALSAMIC/pull/1656
+ * add CNV interactive report for targeted analyses https://github.com/Clinical-Genomics/BALSAMIC/pull/1648
+-* add cust-case-id to case config and CNV plots https://github.com/Clinical-Genomics/BALSAMIC/pull/1648
+ * add cancer-genelist with cancer genes from custs and oncokb https://github.com/Clinical-Genomics/BALSAMIC/pull/1648
+ * add bcftools split multialleles for DNAscope calls https://github.com/Clinical-Genomics/BALSAMIC/pull/1648
+ * add germline vcf to create VAF plot in CNVkit scatter https://github.com/Clinical-Genomics/BALSAMIC/pull/1648
+@@ -22,7 +21,7 @@ Changed:
+ * change SOR filter threshold for wgs tumor only to 4 https://github.com/Clinical-Genomics/BALSAMIC/pull/1659
+ * changed DNAscope germline panel bedfile to padded bed https://github.com/Clinical-Genomics/BALSAMIC/pull/1659
+ * changed GC dropout QC threshold for myeloid panel https://github.com/Clinical-Genomics/BALSAMIC/pull/1667
+-* changed GC dropout QC threshold for lymphoid panel
++* changed GC dropout QC threshold for lymphoid panel https://github.com/Clinical-Genomics/BALSAMIC/pull/1666
+ 
+ Removed:
+ ^^^^^^^^
+@@ -32,6 +31,7 @@ Removed:
+ Fixed:
+ ^^^^^^
+ * removed gc_dropout and at_dropout gcbias metric from deliverables https://github.com/Clinical-Genomics/BALSAMIC/pull/1661
++* add cust-case-id to case config and CNV plots https://github.com/Clinical-Genomics/BALSAMIC/pull/1648 https://github.com/Clinical-Genomics/BALSAMIC/pull/1673
+ 
+ [18.0.1]
+ --------

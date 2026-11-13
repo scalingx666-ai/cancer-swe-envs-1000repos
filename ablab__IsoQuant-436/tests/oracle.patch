@@ -1,0 +1,393 @@
+diff --git a/docs/cmd.md b/docs/cmd.md
+index 9faadd66..2d44880f 100644
+--- a/docs/cmd.md
++++ b/docs/cmd.md
+@@ -244,6 +244,10 @@ python -m isoquant_lib.scripts.convert_read_info --read_info SAMPLE.read_info.ts
+ 
+ Note that large output files are gzipped by default unless `--no_gzip` is specified.
+ 
++`--no_report`
++    Do not write the per-experiment run summary (`SAMPLE_ID.summary.html` and `SAMPLE_ID.summary_stats.json`),
++    which is produced by default. See [output](output.md) for its contents.
++
+ ## Pipeline options
+ 
+ `--analysis`
+diff --git a/docs/output.md b/docs/output.md
+index 7e06f592..21cc45e0 100644
+--- a/docs/output.md
++++ b/docs/output.md
+@@ -235,6 +235,22 @@ Produced for every experiment unless `--no_report` is set:
+   UMI deduplication and per-barcode statistics;
+ * `SAMPLE_ID.summary_stats.json` - the same numbers in machine-readable form.
+ 
++How the main numbers are defined:
++
++* **Input reads** are primary alignments plus unaligned reads (secondary and supplementary
++  alignments are extra records of the same reads); the mapping rate is primary alignments over that total.
++  When reads are split into cDNA molecules before mapping (`--split_molecules`), these are
++  **input molecules**.
++* When some references carrying alignments are not processed (`--process_only_chr`, `--discard_chr`,
++  or an annotation that does not cover the whole genome), primary alignments are only counted
++  on the processed references while unaligned reads are counted for the whole input.
++  The total is then reported as **reads on processed references**, and `covers_all_input_reads`
++  is `false` in the JSON file.
++* In single-cell and spatial modes the counts hold only the reads that survived UMI deduplication,
++  so counted reads are reported **after UMI deduplication**.
++* The **UMI duplication rate** is the share of deduplicated reads removed as duplicates.
++  Only reads assigned to a gene and carrying a barcode are deduplicated, so the rate is computed over them.
++
+ ## Other files
+ 
+ Additionally, an `isoquant.log` log file will be saved to the output directory.  
+diff --git a/docs/visualization.md b/docs/visualization.md
+index 2c1ad172..46b21910 100644
+--- a/docs/visualization.md
++++ b/docs/visualization.md
+@@ -21,9 +21,13 @@ python isoquant_visualize.py <output_directory> --gene_list <gene_list> [options
+ * `--counts`: Use counts instead of TPM files for visualization.
+ * `--ref_only`: Use only reference transcript quantification instead of transcript model quantification.
+ * `--filter_transcripts`: Filter transcripts by minimum value occurring in at least one condition.
+-* `--read_group_strategy`: Grouping strategy (`--read_group` value, e.g. `file_name` or `barcode`)
+-whose grouped counts are visualized. Defaults to the first `--read_group` value of the original run
+-that has grouped counts in the output directory.
++* `--read_group_strategy`: Grouping strategy whose grouped counts are visualized, named as it
++appears in the grouped counts file names (`SAMPLE_ID.gene_grouped_<strategy>_counts.tsv`), e.g.
++`file_name`, `barcode`, `tag_CB` for `--read_group tag:CB` or `file0_col1` for a grouping table.
++Defaults to the first strategy given with `--read_group` in the original run that has grouped counts
++in the output directory; strategies IsoQuant adds on its own (e.g. `barcode` in single-cell modes,
++`file_name` for several input files) are not recorded, so for them the alphabetically first strategy
++is used. An unknown strategy is reported as an error.
+ 
+ ## Input files
+ 
+diff --git a/isoquant_lib/dataset_processor.py b/isoquant_lib/dataset_processor.py
+index b74b58b1..c70b61cc 100644
+--- a/isoquant_lib/dataset_processor.py
++++ b/isoquant_lib/dataset_processor.py
+@@ -171,7 +171,9 @@ def process_all_samples(self, input_data):
+     def process_sample(self, sample):
+         logger.info("Processing experiment " + sample.prefix)
+         self.run_summary = RunSummary(sample.prefix, isoquant_version=self.args._version,
+-                                      command_line=self.args._cmd_line, mode=self.args.mode.name)
++                                      command_line=self.args._cmd_line, mode=self.args.mode.name,
++                                      molecules_split=bool(getattr(self.args, "split_molecules", False)),
++                                      umi_deduplicated=self.args.mode.needs_pcr_deduplication())
+         # Alignment statistics are per experiment: without the reset a second sample
+         # would report (and store as __not_aligned) the counts of the previous one too.
+         self.alignment_stat_counter = EnumStats()
+diff --git a/isoquant_lib/report/html_report.py b/isoquant_lib/report/html_report.py
+index a3a6e602..869fe8da 100644
+--- a/isoquant_lib/report/html_report.py
++++ b/isoquant_lib/report/html_report.py
+@@ -140,18 +140,32 @@ def _bar_chart_svg(title: str, labels: List[str], values: List[float]) -> str:
+ 
+ 
+ def _input_reads_label(summary: RunSummary) -> str:
+-    """Label of the primary + unaligned total: it is the input read count only when
+-    every reference carrying alignments was processed."""
++    """Label of the primary + unaligned total. It counts molecules when reads were split
++    into molecules before mapping, and it is the whole input only when every reference
++    carrying alignments was processed."""
++    unit = "molecules" if summary.molecules_split else "reads"
+     if summary.alignment_covers_all_reads:
+-        return "Input reads"
+-    return "Reads on processed references"
++        return "Input %s" % unit
++    return "%s on processed references" % unit.capitalize()
++
++
++def _share_label(summary: RunSummary) -> str:
++    """Label of a count taken as a share of the primary + unaligned total."""
++    label = _input_reads_label(summary)
++    return "share of " + label[0].lower() + label[1:]
++
++
++def _mapping_rate_label(summary: RunSummary) -> str:
++    if summary.alignment_covers_all_reads:
++        return "Mapping rate"
++    return "Mapping rate (processed references)"
+ 
+ 
+ def _kpi_tiles(summary: RunSummary) -> str:
+     tiles: List[str] = []
+     if summary.total_reads is not None:
+         tiles.append(_tile(_input_reads_label(summary), _format_number(summary.total_reads)))
+-        tiles.append(_tile("Mapping rate", _format_percent(summary.mapping_rate)))
++        tiles.append(_tile(_mapping_rate_label(summary), _format_percent(summary.mapping_rate)))
+     rollup = summary.assignment_rollup()
+     if rollup:
+         tiles.append(_tile("Uniquely assigned",
+@@ -188,7 +202,7 @@ def _alignment_section(summary: RunSummary) -> str:
+             for name, count in summary.alignment.items()]
+     rows.append(("%s (primary + unaligned)" % _input_reads_label(summary),
+                  _format_number(summary.total_reads)))
+-    rows.append(("Mapping rate", _format_percent(summary.mapping_rate)))
++    rows.append((_mapping_rate_label(summary), _format_percent(summary.mapping_rate)))
+     note = ""
+     if not summary.alignment_covers_all_reads:
+         note = ('<p class="subtitle">Some references carrying alignments were not processed '
+@@ -230,8 +244,11 @@ def _quantification_section(summary: RunSummary) -> str:
+     for feature, stats in summary.quantification.items():
+         name = feature.capitalize()
+         counted = stats.get("counted")
+-        rows.append(("%s: counted reads" % name, _format_number(counted)))
+-        rows.append(("%s: share of input reads" % name,
++        # In UMI modes the counts only hold the reads that survived deduplication.
++        counted_label = ("counted reads (after UMI deduplication)" if summary.umi_deduplicated
++                         else "counted reads")
++        rows.append(("%s: %s" % (name, counted_label), _format_number(counted)))
++        rows.append(("%s: %s" % (name, _share_label(summary)),
+                      _format_percent(_safe_rate(counted, summary.total_reads))))
+         rows.append(("%s: ambiguous" % name, _format_number(stats.get("ambiguous"))))
+         rows.append(("%s: no feature" % name, _format_number(stats.get("no_feature"))))
+@@ -264,10 +281,10 @@ def _umi_section(summary: RunSummary) -> str:
+     if not summary.umi_filtering:
+         return ""
+     rows = [(name, _format_number(count)) for name, count in summary.umi_filtering.items()]
+-    saved = summary.umi_filtering.get("Total reads saved")
+-    processed = summary.umi_filtering.get("Total assignments processed")
+-    if saved is not None and processed:
+-        rows.append(("Duplication rate", _format_percent((processed - saved) / processed)))
++    if summary.umi_duplication_rate is not None:
++        # Over barcoded gene-assigned reads, the only ones deduplicated.
++        rows.append(("Duplication rate (of barcoded assigned reads)",
++                     _format_percent(summary.umi_duplication_rate)))
+     title = "UMI deduplication"
+     if summary.umi_edit_distance is not None:
+         title += " (edit distance %d)" % summary.umi_edit_distance
+@@ -286,8 +303,12 @@ def _rank_plot_points(ranked_reads: List[float]) -> Tuple[List[int], List[float]
+     if total <= RANK_PLOT_POINTS:
+         return list(range(1, total + 1)), list(ranked_reads)
+     last = math.log10(total)
+-    indices = sorted({min(total - 1, int(10 ** (last * step / (RANK_PLOT_POINTS - 1))) - 1)
+-                      for step in range(RANK_PLOT_POINTS)})
++    # The last rank is added explicitly: 10 ** log10(total) rounds below total for many
++    # sizes, which would end the curve one rank short.
++    indices = {min(total - 1, int(10 ** (last * step / (RANK_PLOT_POINTS - 1))) - 1)
++               for step in range(RANK_PLOT_POINTS - 1)}
++    indices.add(total - 1)
++    indices = sorted(indices)
+     return [index + 1 for index in indices], [ranked_reads[index] for index in indices]
+ 
+ 
+@@ -336,7 +357,7 @@ def _groups_section(summary: RunSummary) -> str:
+             name = feature.capitalize()
+             rows.append(("%s: groups with counts" % name, _format_number(stats.get("groups"))))
+             rows.append(("%s: reads in groups" % name, _format_number(stats.get("reads"))))
+-            rows.append(("%s: share of input reads" % name,
++            rows.append(("%s: %s" % (name, _share_label(summary)),
+                          _format_percent(stats.get("share_of_reads"))))
+             rows.append(("%s: median reads per group" % name,
+                          _format_number(stats.get("median_reads_per_group"))))
+diff --git a/isoquant_lib/report/run_summary.py b/isoquant_lib/report/run_summary.py
+index 23b9fefa..614ee610 100644
+--- a/isoquant_lib/report/run_summary.py
++++ b/isoquant_lib/report/run_summary.py
+@@ -37,6 +37,11 @@
+ # this many the per-group maps are dropped and the groups are only counted.
+ MAX_GROUPED_SCAN_GROUPS = 1000000
+ 
++# Keys of the UMI filtering stats file (UMIFilter in barcode_calling/umi_filtering.py):
++# the reads that survived deduplication, and the reads that entered it.
++UMI_SAVED_READS = "Total reads saved"
++UMI_DEDUPLICATED_READS = "Assigned to any gene and barcoded"
++
+ # Feature whose per-group depth curve the report plots. The ranked list is one float
+ # per group, so it is only built for that one.
+ RANK_PLOT_FEATURE = "gene"
+@@ -91,11 +96,16 @@ class RunSummary:
+     """Collects the QC numbers of a single experiment (sample)."""
+ 
+     def __init__(self, sample_name: str, isoquant_version: str = "", command_line: str = "",
+-                 mode: str = ""):
++                 mode: str = "", molecules_split: bool = False, umi_deduplicated: bool = False):
+         self.sample_name = sample_name
+         self.isoquant_version = isoquant_version
+         self.command_line = command_line
+         self.mode = mode
++        # With --split_molecules reads are split into cDNA molecules before mapping, so
++        # alignment counts are molecules, not sequenced reads.
++        self.molecules_split = molecules_split
++        # In UMI modes the counts are built from the reads that survived deduplication.
++        self.umi_deduplicated = umi_deduplicated
+ 
+         self.alignment: Dict[str, int] = {}
+         # False when part of the input was not processed, which makes primary and
+@@ -337,6 +347,22 @@ def mapping_rate(self) -> Optional[float]:
+     def barcode_rate(self) -> Optional[float]:
+         return _rate(self.barcodes.get("Barcode detected", 0), self.barcodes.get("Total reads", 0))
+ 
++    @property
++    def umi_deduplicated_reads(self) -> Optional[int]:
++        """Reads that entered UMI deduplication: assigned to a gene and barcoded.
++        "Total assignments processed" also holds unbarcoded reads, which are never
++        deduplicated and must not be counted as duplicates."""
++        return self.umi_filtering.get(UMI_DEDUPLICATED_READS)
++
++    @property
++    def umi_duplication_rate(self) -> Optional[float]:
++        """Share of the deduplicated reads that were removed as PCR/RT duplicates."""
++        saved = self.umi_filtering.get(UMI_SAVED_READS)
++        deduplicated = self.umi_deduplicated_reads
++        if saved is None or not deduplicated:
++            return None
++        return _rate(deduplicated - saved, deduplicated)
++
+     def assignment_rollup(self) -> Dict[str, int]:
+         """Headline assignment categories on top of the per-type counts."""
+         return dict(self.assignment_buckets)
+@@ -365,6 +391,8 @@ def to_dict(self) -> Dict[str, object]:
+             "isoquant_version": self.isoquant_version,
+             "mode": self.mode,
+             "command_line": self.command_line,
++            "molecules_split": self.molecules_split,
++            "umi_deduplicated": self.umi_deduplicated,
+         }
+         if self.alignment:
+             alignment = dict(self.alignment)
+@@ -396,11 +424,9 @@ def to_dict(self) -> Dict[str, object]:
+             summary["barcodes"] = barcodes
+         if self.umi_filtering:
+             umi = {"by_stage": dict(self.umi_filtering), "edit_distance": self.umi_edit_distance}
+-            saved = self.umi_filtering.get("Total reads saved")
+-            processed = self.umi_filtering.get("Total assignments processed")
+-            if saved is not None and processed:
+-                umi["molecules"] = saved
+-                umi["duplication_rate"] = _rate(processed - saved, processed)
++            if self.umi_duplication_rate is not None:
++                umi["molecules"] = self.umi_filtering[UMI_SAVED_READS]
++                umi["duplication_rate"] = self.umi_duplication_rate
+             summary["umi_filtering"] = umi
+         if self.groups:
+             summary["groups"] = {strategy: self.group_rollup(strategy) for strategy in self.groups}
+diff --git a/isoquant_lib/visualizer/post_process.py b/isoquant_lib/visualizer/post_process.py
+index 1fcc8aa2..97e170b2 100644
+--- a/isoquant_lib/visualizer/post_process.py
++++ b/isoquant_lib/visualizer/post_process.py
+@@ -316,7 +316,8 @@ def _is_merged_output(self, stem: str) -> bool:
+         """True when a file with this stem is the merged output of the experiment rather
+         than one of the per-chromosome intermediates (SAMPLE_chr1.read_info.tsv,
+         SAMPLE_chr1.gene_grouped_barcode_counts.linear.tsv), which live in the same
+-        directory and are kept by --keep_tmp or left behind by a crashed run.
++        directory until merged: merging removes them, so they are only left behind by
++        a run that crashed or was interrupted before the merge.
+         With an unknown sample prefix every file is accepted, as before."""
+         return not self.sample_prefix or stem == self.sample_prefix
+ 
+diff --git a/isoquant_tests/test_run_summary.py b/isoquant_tests/test_run_summary.py
+index 169e168a..64ec9972 100644
+--- a/isoquant_tests/test_run_summary.py
++++ b/isoquant_tests/test_run_summary.py
+@@ -177,7 +177,9 @@ def test_umi_duplication_rate(self, tmp_path):
+         umi = _summary(tmp_path).to_dict()["umi_filtering"]
+         assert umi["edit_distance"] == 4
+         assert umi["molecules"] == 60
+-        assert umi["duplication_rate"] == 0.6
++        # 60 survivors out of the 120 barcoded assigned reads that were deduplicated;
++        # the 30 unbarcoded reads in "Total assignments processed" are not duplicates.
++        assert umi["duplication_rate"] == 0.5
+ 
+     def test_ranked_depths_are_kept_for_the_plotted_feature_only(self, tmp_path):
+         # One float per group, and only the gene curve is ever drawn.
+@@ -273,6 +275,20 @@ def test_headline_metrics_are_shown(self, tmp_path):
+         assert "Barcode calling" in page
+         assert "UMI deduplication (edit distance 4)" in page
+ 
++    def test_labels_follow_split_molecules_and_umi_deduplication(self, tmp_path):
++        # Split reads are mapped as molecules, and UMI-mode counts only hold the reads
++        # that survived deduplication: the labels must not call either of them reads.
++        summary = RunSummary("S", molecules_split=True, umi_deduplicated=True)
++        summary.set_alignment_stats(_enum_stats(primary=190, unaligned=10),
++                                    covers_all_reads=False)
++        summary.collect_output_files(_populated_sample(tmp_path))
++        page = self._render(tmp_path, summary)
++        assert "Molecules on processed references" in page
++        assert "Mapping rate (processed references)" in page
++        assert "counted reads (after UMI deduplication)" in page
++        assert "share of molecules on processed references" in page
++        assert "Input reads" not in page
++
+     def test_group_tiles_name_their_strategy(self, tmp_path):
+         # With --read_group file_name barcode the number could be either; reading a
+         # file_name group count as "barcodes with counts" is off by orders of magnitude.
+@@ -307,6 +323,14 @@ def test_rank_curve_is_sampled_for_large_runs(self, tmp_path):
+         assert (ranks[0], ranks[-1]) == (1, 100000)
+         assert depths[0] == 100000.0
+ 
++    def test_rank_curve_always_ends_at_the_last_group(self):
++        # 10 ** log10(n) rounds below n for many sizes (401 among them), which used to
++        # end the curve one rank short.
++        for total in range(RANK_PLOT_POINTS + 1, 5000):
++            ranks, _ = _rank_plot_points([1.0] * total)
++            assert ranks[0] == 1 and ranks[-1] == total, total
++            assert len(ranks) <= RANK_PLOT_POINTS
++
+     def test_sections_are_skipped_when_empty(self, tmp_path):
+         summary = RunSummary("S", isoquant_version="4.0.0")
+         summary.set_alignment_stats(_enum_stats(primary=10, unaligned=0))
+diff --git a/isoquant_tests/test_visualizer_inputs.py b/isoquant_tests/test_visualizer_inputs.py
+index 951cea69..c7551c11 100644
+--- a/isoquant_tests/test_visualizer_inputs.py
++++ b/isoquant_tests/test_visualizer_inputs.py
+@@ -99,7 +99,7 @@ def test_ignores_other_per_read_files(self, tmp_path):
+         assert config.read_assignments is None
+ 
+     def test_per_chromosome_files_are_not_used(self, tmp_path):
+-        # --keep_tmp (or a crashed run) leaves SAMPLE_chr1.read_info.tsv next to the
++        # A run that crashed before merging leaves SAMPLE_chr1.read_info.tsv next to the
+         # merged file; counting one chromosome only would go unnoticed.
+         out_dir, sample_dir = _make_output(tmp_path, [PREFIX + "_chr1.read_info.tsv",
+                                                       PREFIX + ".read_info.tsv"])
+diff --git a/isoquant_visualize.py b/isoquant_visualize.py
+index c5701d7c..995d35af 100755
+--- a/isoquant_visualize.py
++++ b/isoquant_visualize.py
+@@ -3,6 +3,7 @@
+ from isoquant_lib.visualizer.post_process import OutputConfig, DictionaryBuilder
+ from isoquant_lib.visualizer.plot_output import PlotOutput
+ import argparse
++import sys
+ from isoquant_lib.visualizer.process_dict import simplify_and_sum_transcripts
+ from isoquant_lib.visualizer.gene_model import rank_and_visualize_genes
+ 
+@@ -42,9 +43,10 @@ def parse_arguments():
+     parser.add_argument(
+         "--read_group_strategy",
+         type=str,
+-        help="Grouping strategy (--read_group value, e.g. file_name or barcode) whose grouped "
+-        "counts are visualized. Defaults to the first --read_group value of the original run "
+-        "that has grouped counts in the output directory.",
++        help="Grouping strategy whose grouped counts are visualized, named as in the grouped "
++        "counts file names (e.g. file_name, barcode, tag_CB, file0_col1). Defaults to the first "
++        "strategy given with --read_group in the original run that has grouped counts, "
++        "otherwise the alphabetically first one found.",
+         default=None,
+     )
+     parser.add_argument(
+@@ -77,13 +79,18 @@ def parse_arguments():
+ 
+ def main():
+     args = parse_arguments()
+-    output = OutputConfig(
+-        args.output_directory,
+-        use_counts=args.counts,
+-        ref_only=args.ref_only,
+-        gtf=args.gtf,
+-        read_group_strategy=args.read_group_strategy,
+-    )
++    try:
++        output = OutputConfig(
++            args.output_directory,
++            use_counts=args.counts,
++            ref_only=args.ref_only,
++            gtf=args.gtf,
++            read_group_strategy=args.read_group_strategy,
++        )
++    except (ValueError, FileNotFoundError) as e:
++        # Wrong output directory, missing GTF or unknown --read_group_strategy:
++        # a usage problem, reported without a traceback.
++        sys.exit("Error: %s" % e)
+     dictionary_builder = DictionaryBuilder(output)
+     gene_list = dictionary_builder.read_gene_list(args.gene_list)
+     update_names = not all(gene.startswith("ENS") for gene in gene_list)

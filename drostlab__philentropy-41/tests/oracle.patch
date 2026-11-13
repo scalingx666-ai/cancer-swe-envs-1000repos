@@ -1,0 +1,20 @@
+diff --git a/inst/CITATION b/inst/CITATION
+index 8aea837..4da5e76 100644
+--- a/inst/CITATION
++++ b/inst/CITATION
+@@ -2,7 +2,7 @@ citHeader("To cite philentropy in publications please use:")
+ 
+ bibentry(bibtype = "Article",
+   title        = "Philentropy: Information Theory and Distance Quantification with R",
+-  author       = "Drost HG",
++  author       = person("HG", "Drost"),
+   journal      = "Journal of Open Source Software",
+   year         = "2018",
+   volume       = "3",
+@@ -15,4 +15,4 @@ bibentry(bibtype = "Article",
+   " Philentropy: Information Theory and Distance Quantification with R.",
+   " Journal of Open Source Software (2018).",
+   "doi:10.21105/joss.00765")
+-)
+\ No newline at end of file
++)

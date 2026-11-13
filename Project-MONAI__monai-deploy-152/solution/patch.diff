@@ -1,0 +1,358 @@
+diff --git a/deploy/monai-deploy-express/.env b/deploy/monai-deploy-express/.env
+index 5b080ad..19dd3e6 100644
+--- a/deploy/monai-deploy-express/.env
++++ b/deploy/monai-deploy-express/.env
+@@ -1,12 +1,12 @@
+ # Container Images
+-INFORMATICS_GATEWAY_IMAGE=ghcr.io/project-monai/monai-deploy-informatics-gateway:0.4.1
++INFORMATICS_GATEWAY_IMAGE=ghcr.io/project-monai/monai-deploy-informatics-gateway:0.5.0
+ INFORMATICS_GATEWAY_CONFIG_IMAGE=dwdraju/alpine-curl-jq:latest
+-WORKFLOW_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-workflow-manager:2023.5.0-beta.238
+-TASK_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-task-manager:2023.5.0-beta.238 
++WORKFLOW_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-workflow-manager:0.2.0
++TASK_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-task-manager:0.2.0
+ 
+-MINIO_IMAGE=minio/minio:RELEASE.2023-10-16T04-13-43Z
+-MONGODB_IMAGE=mongo:5.0.12
+-ORTHANC_IMAGE=osimis/orthanc:23.9.2-full
++MINIO_IMAGE=minio/minio:RELEASE.2024-06-11T03-13-30Z
++MONGODB_IMAGE=mongo:5.0.25
++ORTHANC_IMAGE=orthancteam/orthanc:24.6.1-full
+ RABBITMQ_IMAGE=rabbitmq:3.12.7-management
+ 
+ ELK_VERSION=8.7.0
+@@ -96,9 +96,9 @@ KIBANA_IP=172.29.0.103
+ KIBANA_CFG_IP=172.29.0.104
+ 
+ # Host Data Volume Paths
+-INFORMATICS_GATEWAY_PAYLOADS=.md/mdig/payloads/
+-INFORMATICS_GATEWAY_DATABASE=.md/mdig/database/
+-TASK_MANAGER_DATA=$PWD/.md/mdtm/
++INFORMATICS_GATEWAY_PAYLOADS=${PWD}/.md/mdig/payloads/
++INFORMATICS_GATEWAY_DATABASE=${PWD}/.md/mdig/database/
++TASK_MANAGER_DATA=${PWD}/.md/mdtm/
+ MONAI_DEPLOY_PLUGINS=plug-ins/ # disabled by default
+ 
+ MINIO_DATA=.md/minio/data/
+diff --git a/deploy/monai-deploy-express/configs/informatics-gateway.json b/deploy/monai-deploy-express/configs/informatics-gateway.json
+index dd80d8f..a97098e 100644
+--- a/deploy/monai-deploy-express/configs/informatics-gateway.json
++++ b/deploy/monai-deploy-express/configs/informatics-gateway.json
+@@ -5,12 +5,22 @@
+   "ConnectionStrings": {
+     "Type": "mongodb",
+     "InformaticsGatewayDatabase": "mongodb://root:rootpassword@mongodb:27017",
+-    "DatabaseName": "InformaticsGateway"
++    "DatabaseOptions": {
++      "DatabaseName": "InformaticsGateway",
++      "retries": {
++        "delays": [
++          "750",
++          "1201",
++          "2500"
++        ]
++      }
++    }
+   },
+   "InformaticsGateway": {
+     "dicom": {
+       "scp": {
+         "port": 104,
++        "externalAppPort": 105,
+         "logDimseDatasets": false,
+         "rejectUnknownSources": false
+       },
+@@ -36,11 +46,17 @@
+         "password": "admin",
+         "virtualHost": "monaideploy",
+         "exchange": "monaideploy",
+-        "exportRequestQueue": "export_tasks",
+         "deadLetterExchange": "monaideploy-dead-letter",
+         "deliveryLimit": 3,
+-        "requeueDelay": 30
++        "requeueDelay": 3,
++        "prefetchCount": "5"
++      },
++      "topics": {
++        "externalAppRequest": "md.externalapp.request",
++        "exportHl7": "md.export.hl7",
++        "exportHl7Complete": "md.export.hl7complete"
+       }
++
+     },
+     "storage": {
+       "localTemporaryStoragePath": "/payloads",
+@@ -49,16 +65,15 @@
+       "storageRootPath": "/payloads",
+       "temporaryBucketName": "monaideploy",
+       "serviceAssemblyName": "Monai.Deploy.Storage.MinIO.MinIoStorageService, Monai.Deploy.Storage.MinIO",
+-      "watermarkPercent": 75,
++      "watermarkPercent": 95,
+       "reserveSpaceGB": 5,
+-      "concurrentUploads": 4,
+       "settings": {
+         "endpoint": "minio:9000",
+         "accessKey": "minioadmin",
+         "accessToken": "minioadmin",
+         "securedConnection": false,
+         "region": "local",
+-        "executableLocation": "mc",
++        "executableLocation": "/bin/mc",
+         "serviceName": "MinIO",
+         "createBuckets": "monaideploy"
+       }
+@@ -68,23 +83,27 @@
+       "maximumNumberOfConnections": 10,
+       "clientTimeout": 60000,
+       "sendAck": true
+-    }
+-  },
+-  "Kestrel": {
+-    "EndPoints": {
+-      "Http": {
+-        "Url": "http://+:5000"
++    },
++    "dicomWeb": {
++      "plugins": []
++    },
++
++    "Kestrel": {
++      "EndPoints": {
++        "Http": {
++          "Url": "http://+:5000"
++        }
+       }
++    },
++    "AllowedHosts": "*",
++    "Cli": {
++      "Runner": "Docker",
++      "HostDataStorageMount": "~/.mig/data",
++      "HostPlugInsStorageMount": "~/.mig/plug-ins",
++      "HostDatabaseStorageMount": "~/.mig/database",
++      "HostLogsStorageMount": "~/.mig/logs",
++      "InformaticsGatewayServerEndpoint": "http://localhost:5000",
++      "DockerImagePrefix": "ghcr.io/project-monai/monai-deploy-informatics-gateway"
+     }
+-  },
+-  "AllowedHosts": "*",
+-  "Cli": {
+-    "Runner": "Docker",
+-    "HostDataStorageMount": "~/.mig/data",
+-    "HostPlugInsStorageMount": "~/.mig/plug-ins",
+-    "HostDatabaseStorageMount": "~/.mig/database",
+-    "HostLogsStorageMount": "~/.mig/logs",
+-    "InformaticsGatewayServerEndpoint": "http://localhost:5000",
+-    "DockerImagePrefix": "ghcr.io/project-monai/monai-deploy-informatics-gateway"
+   }
+-}
++}
+\ No newline at end of file
+diff --git a/deploy/monai-deploy-express/configs/task-manager.json b/deploy/monai-deploy-express/configs/task-manager.json
+index 3a35f56..cddc884 100644
+--- a/deploy/monai-deploy-express/configs/task-manager.json
++++ b/deploy/monai-deploy-express/configs/task-manager.json
+@@ -18,7 +18,7 @@
+         "docker": "Monai.Deploy.WorkflowManager.TaskManager.Docker.DockerPlugin, Monai.Deploy.WorkflowManager.TaskManager.Docker"
+       },
+       "meta-data": {
+-      },
++      }
+     },
+     "messaging": {
+       "retries": {
+@@ -28,7 +28,8 @@
+         "workflowRequest": "md.workflow.request",
+         "exportComplete": "md.export.complete",
+         "exportRequestPrefix": "md.export.request",
+-        "taskCallback": "md.tasks.callback"
++        "taskCallback": "md.tasks.callback",
++        "exportHl7": "md.export.hl7"
+       },
+       "dicomAgents": {
+         "dicomWebAgentName": "monaidicomweb",
+@@ -42,7 +43,7 @@
+         "virtualHost": "monaideploy",
+         "exchange": "monaideploy",
+         "deadLetterExchange": "deadLetterExchange",
+-        "deliveryLimit": "5",
++        "deliveryLimit": "3",
+         "requeueDelay": "0"
+       },
+       "subscriberServiceAssemblyName": "Monai.Deploy.Messaging.RabbitMQ.RabbitMQMessageSubscriberService, Monai.Deploy.Messaging.RabbitMQ",
+@@ -55,7 +56,8 @@
+         "deadLetterExchange": "monaideploy-dead-letter",
+         "exportRequestQueue": "export_tasks",
+         "deliveryLimit": 3,
+-        "requeueDelay": 30
++        "requeueDelay": 3,
++        "prefetchCount": 5
+       }
+     },
+     "storage": {
+@@ -72,51 +74,15 @@
+       }
+     }
+   },
+-   "Logging": {
+-    "LogLevel": {
+-      "Default": "Information",
+-      "System": "Warning",
+-      "Microsoft": "Warning",
+-      "Microsoft.EntityFrameworkCore": "Warning",
+-      "Microsoft.Hosting.Lifetime": "Information",
+-      "Microsoft.AspNetCore.Mvc.Infrastructure.ControllerActionInvoker": "Error",
+-      "Monai": "Debug"
+-    },
+-    "Console": {
+-      "FormatterOptions": {
+-        "ColorBehavior": "Enabled",
+-        "IncludeScopes": true,
+-        "SingleLine": false,
+-        "TimestampFormat": " HH:mm:ss ",
+-        "UseUtcTimestamp": true
++  "Kestrel": {
++    "EndPoints": {
++      "Http": {
++        "Url": "http://+:5002"
+       }
+-    }
+-  },
+-  "Serilog": {
+-    "Enrich": [ "FromLogContext", "WithMachineName", "WithThreadId" ],
+-    "Properties": {
+-      "enviroment": "Production",
+-      "serviceName": "MTM"
+     },
+-    "WriteTo": [
+-      {
+-        "Name": "File",
+-        "Args": {
+-          "path": "logs/MTM-.log",
+-          "rollingInterval": "Day",
+-          "rollOnFileSizeLimit": true,
+-          "fileSizeLimitBytes": "10485760",
+-          "retainedFileCountLimit": 30,
+-          "formatter": "Serilog.Formatting.Json.JsonFormatter, Serilog"
+-        }
+-      },
+-      {
+-        "Name": "Http",
+-        "Args": {
+-          "requestUri": "http://logstash:50000",
+-          "queueLimitBytes": null
+-        }
+-      }
+-    ]
+-  }
+-}
++    "LogHttpRequestQuery": false,
++    "LogHttpRequestBody": false,
++    "LogHttpResponseBody": true
++  },
++  "AllowedHosts": "*"
++}
+\ No newline at end of file
+diff --git a/deploy/monai-deploy-express/configs/workflow-manager.json b/deploy/monai-deploy-express/configs/workflow-manager.json
+index 112de1a..766cf0d 100644
+--- a/deploy/monai-deploy-express/configs/workflow-manager.json
++++ b/deploy/monai-deploy-express/configs/workflow-manager.json
+@@ -14,6 +14,9 @@
+     "TaskManager": {
+       "concurrency": 1,
+       "taskTimeoutMinutes": 60,
++      "perTaskTypeTimeoutMinutes": {
++        "aide_clinical_review": 5760
++      },
+       "plug-ins": {
+         "docker": "Monai.Deploy.WorkflowManager.TaskManager.Docker.DockerPlugin, Monai.Deploy.WorkflowManager.TaskManager.Docker"
+       },
+@@ -28,7 +31,10 @@
+         "workflowRequest": "md.workflow.request",
+         "exportComplete": "md.export.complete",
+         "exportRequestPrefix": "md.export.request",
+-        "callbackRequest": "md.tasks.callback"
++        "callbackRequest": "md.tasks.callback",
++        "aideClinicalReviewRequest": "aide.clinical_review.request",
++        "exportHl7": "md.export.hl7",
++        "exportHl7Complete": "md.export.hl7complete"
+       },
+       "dicomAgents": {
+         "dicomWebAgentName": "monaidicomweb",
+@@ -42,7 +48,7 @@
+         "virtualHost": "monaideploy",
+         "exchange": "monaideploy",
+         "deadLetterExchange": "deadLetterExchange",
+-        "deliveryLimit": "5",
++        "deliveryLimit": "3",
+         "requeueDelay": "0"
+       },
+       "subscriberServiceAssemblyName": "Monai.Deploy.Messaging.RabbitMQ.RabbitMQMessageSubscriberService, Monai.Deploy.Messaging.RabbitMQ",
+@@ -55,7 +61,8 @@
+         "deadLetterExchange": "monaideploy-dead-letter",
+         "exportRequestQueue": "export_tasks",
+         "deliveryLimit": 3,
+-        "requeueDelay": 30
++        "requeueDelay": 3,
++        "prefetchCount": "5"
+       }
+     },
+     "storage": {
+@@ -72,7 +79,8 @@
+       }
+     },
+     "dicomTagsDisallowed": "PatientName,PatientID,IssuerOfPatientID,TypeOfPatientID,IssuerOfPatientIDQualifiersSequence,SourcePatientGroupIdentificationSequence,GroupOfPatientsIdentificationSequence,SubjectRelativePositionInImage,PatientBirthDate,PatientBirthTime,PatientBirthDateInAlternativeCalendar,PatientDeathDateInAlternativeCalendar,PatientAlternativeCalendar,PatientSex,PatientInsurancePlanCodeSequence,PatientPrimaryLanguageCodeSequence,PatientPrimaryLanguageModifierCodeSequence,QualityControlSubject,QualityControlSubjectTypeCodeSequence,StrainDescription,StrainNomenclature,StrainStockNumber,StrainSourceRegistryCodeSequence,StrainStockSequence,StrainSource,StrainAdditionalInformation,StrainCodeSequence,GeneticModificationsSequence,GeneticModificationsDescription,GeneticModificationsNomenclature,GeneticModificationsCodeSequence,OtherPatientIDsRETIRED,OtherPatientNames,OtherPatientIDsSequence,PatientBirthName,PatientAge,PatientSize,PatientSizeCodeSequence,PatientBodyMassIndex,MeasuredAPDimension,MeasuredLateralDimension,PatientWeight,PatientAddress,InsurancePlanIdentificationRETIRED,PatientMotherBirthName,MilitaryRank,BranchOfService,MedicalRecordLocatorRETIRED,ReferencedPatientPhotoSequence,MedicalAlerts,Allergies,CountryOfResidence,RegionOfResidence,PatientTelephoneNumbers,PatientTelecomInformation,EthnicGroup,Occupation,SmokingStatus,AdditionalPatientHistory,PregnancyStatus,LastMenstrualDate,PatientReligiousPreference,PatientSpeciesDescription,PatientSpeciesCodeSequence,PatientSexNeutered,AnatomicalOrientationType,PatientBreedDescription,PatientBreedCodeSequence,BreedRegistrationSequence,BreedRegistrationNumber,BreedRegistryCodeSequence,ResponsiblePerson,ResponsiblePersonRole,ResponsibleOrganization,PatientComments,ExaminedBodyThickness",
+-    "migExternalAppPlugins": [ "Monai.Deploy.InformaticsGateway.PlugIns.RemoteAppExecution.DicomDeidentifier, Monai.Deploy.InformaticsGateway.PlugIns.RemoteAppExecution, Version=0.0.0.0" ]
++    "migExternalAppPlugins": [ "Monai.Deploy.InformaticsGateway.PlugIns.RemoteAppExecution.DicomDeidentifier, Monai.Deploy.InformaticsGateway.PlugIns.RemoteAppExecution, Version=0.0.0.0" ],
++    "dataRetentionDays": 10 // note. -1 = never delete
+   },
+   "InformaticsGateway": {
+     "apiHost": "http://informatics-gateway:5000",
+@@ -90,4 +98,4 @@
+     "LogHttpResponseBody": true
+   },
+   "AllowedHosts": "*"
+-}
++}
+\ No newline at end of file
+diff --git a/deploy/monai-deploy-express/docker-compose.yml b/deploy/monai-deploy-express/docker-compose.yml
+index fc88dff..a84a385 100644
+--- a/deploy/monai-deploy-express/docker-compose.yml
++++ b/deploy/monai-deploy-express/docker-compose.yml
+@@ -12,8 +12,6 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-version: "3.9"
+-
+ services:
+   minio:
+     image: $MINIO_IMAGE
+@@ -112,6 +110,7 @@ services:
+     image: $INFORMATICS_GATEWAY_IMAGE
+     hostname: $INFORMATICS_GATEWAY_HOSTNAME
+     container_name: $INFORMATICS_GATEWAY_CONTAINERNAME
++    user: root:root
+     volumes:
+       - ./configs/informatics-gateway.json:/opt/monai/ig/appsettings.json
+       - ./configs/nlog.config:/opt/monai/ig/nlog.config
+diff --git a/deploy/monai-deploy-express/init.sh b/deploy/monai-deploy-express/init.sh
+index afff762..a6e3be6 100755
+--- a/deploy/monai-deploy-express/init.sh
++++ b/deploy/monai-deploy-express/init.sh
+@@ -17,7 +17,7 @@ RUNDIR=$PWD/.md
+ 
+ echo "Initializing directories..."
+ [ -d $RUNDIR ] && echo "Removing existin $RUNDIR" && sudo rm -r $RUNDIR
+-mkdir -p $RUNDIR/esdata/ && echo "Created $RUNDIR/"
++mkdir -p $RUNDIR/esdata/ && echo "Created $RUNDIR/esdata/"
+ mkdir -p $RUNDIR/minio/ && echo "Created $RUNDIR/minio/"
+ mkdir -p $RUNDIR/rabbitmq/ && echo "Created $RUNDIR/rabbitmq/"
+ mkdir -p $RUNDIR/orthanc/ && echo "Created $RUNDIR/orthanc/"
+@@ -25,6 +25,6 @@ mkdir -p $RUNDIR/mongodb/ && echo "Created $RUNDIR/mongodb/"
+ mkdir -p $RUNDIR/mdwm/ && echo "Created $RUNDIR/mdwm/"
+ mkdir -p $RUNDIR/mdtm/ && echo "Created $RUNDIR/mdtm/"
+ mkdir -p $RUNDIR/mdig/ && echo "Created $RUNDIR/mdig/"
+-sudo chown $(id -u):$(id -g) -R $RUNDIR/esdata && echo "Permission updated"
++sudo chown $(id -u):$(id -g) -R $RUNDIR/ && echo "Permission updated"
+ echo "Directories setup"
+ echo "Ready to run docker compose up"

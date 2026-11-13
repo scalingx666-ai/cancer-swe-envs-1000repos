@@ -1,0 +1,338 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d35d627..8ac1885 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ ## [Unreleased]
+ 
++## [1.6.0] - 2026-11-11
++
++### Added
++- Add the SigProfilerMatrixGenerator Workbench, a local web app for generating mutational
++  matrices without writing code. Start it with `SigProfilerMatrixGenerator web`,
++  `sigprofilermatrixgenerator-web`, or the double-click launchers (`launch_web.command` on
++  macOS, `launch_web.bat` on Windows, `launch_web.sh` on Linux); the first launch sets up its
++  own environment. It reads a folder of VCF, MAF or simple text calls before anything runs,
++  warns when the calls name a different genome from the one chosen, installs reference
++  genomes, keeps runs from mixing in one output folder, follows each run and counts the
++  mutations it skipped by reason, and charts every matrix sample by sample beside the PDF
++  plots and matrix files. It listens only on this computer and protects every change with a
++  per-launch token. See the Graphical Interface page of the documentation.
++- Add double-click uninstallers (`uninstall_web.command` on macOS, `uninstall_web.bat` on
++  Windows, `uninstall_web.sh` on Linux) that remove the Workbench's environment and run
++  records but never matrices. Reference genomes installed in the repository folder are
++  removed only if the user agrees, since command-line runs use them too.
++- Add the `web` CLI subcommand, the `sigprofilermatrixgenerator-web` console script, and the
++  `web-tests` extra for the Workbench's browser tests.
++
++### Changed
++- The Workbench launcher installs its dependencies with [uv](https://docs.astral.sh/uv/) when
++  it can: the `uv` on PATH, or uv added to the Workbench's own environment. On a Mac this
++  cut a reinstall from 27 s to 4 s. It falls back to pip if uv cannot be added or cannot
++  install; set `SPMG_WEB_INSTALLER=pip` to always use pip.
++
++## [1.5.1] - 2026-11-10
++
++### Fixed
++- MAF insertions are anchored correctly. `convertMAF` shifted every indel's
++  `Start_Position` left by one, which is right for deletions but not for insertions, whose
++  MAF position is already the base before the inserted sequence; most homopolymer insertion
++  counts collapsed to 0 (for example `1:Ins:T:0` instead of `1:Ins:T:5`) (#264).
++
++## [1.5.0] - 2026-11-06
++
+ ### Added
+ - Add optional Koh ID89 and ID476 count matrices through `indel_contexts` and
+   `--indel_contexts`, retaining the existing ID83 classifier and outputs.
+@@ -19,11 +55,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+   builder, independent source-level validation, and explicit downstream limits.
+ - Correct the CHM13 exome opportunity coordinate conversion without changing
+   historical coordinate handling for other references.
+-- Register `mm39_Legacy` with the original mm39 archive checksums and
+-  opportunity tables for reproducibility.
+ - Added support for the T2T-CHM13v2.0 human reference genome (CHM13-T2T), nuclear chromosomes only (1–22, X, Y). Network installation becomes available when the corrected archive described under **Reference Data** is published to the AlexandrovLab FTP.
+ - Added `scripts/build_refseq_references.py`, the developer tool that derives both the CHM13-T2T exome interval list and its per-chromosome transcript files from a pinned NCBI RefSeq annotation release, so the shipped files can be regenerated and audited rather than only described. Replaces `scripts/build_exome_interval_list.py`, whose behaviour is now the `exome-list` subcommand.
+ - Added an exome interval list for CHM13-T2T, so `exome=True` is supported alongside WGS. It is annotation-derived (union of all CDS features in NCBI RefSeq annotation release `GCF_009914755.1-RS_2025_08`, merged; 213,010 intervals over 36.4 Mb) rather than a capture-kit definition, so CHM13-T2T exome matrices are not directly comparable to GRCh38 exome matrices. See `docs/Currently-Supported-Genomes.md` for the full derivation.
++
++### Changed
++- Regenerated the CHM13-T2T transcript files, and with them the whole TSB reference payload, against NCBI RefSeq annotation release `GCF_009914755.1-RS_2025_08`. The previous files came from an earlier release that was never recorded, so neither they nor the TSB files derived from them could be reproduced from any pinned source. All 24 per-chromosome checksums in `CHECKSUMS` change as a result. Note that RS_2025_08 annotates 4,993 transcripts on chrY against 882 before, almost all Gnomon-predicted lncRNA models in the Yq12 satellite region newly resolved by T2T, so transcriptional strand assignments on chrY shift substantially.
++- `exome=True` now fails immediately with an actionable message naming the missing interval list and the genomes that do support exome downsampling, instead of raising a bare `FileNotFoundError` after every chromosome has already been parsed.
++- Exome interval list paths are resolved through `ReferenceDir.get_exome_dir()` / `get_exome_interval_list()` rather than being assembled by hand in several places.
++
++### Fixed
++- Use explicit positional indexing in the optional TSB statistical test so
++  `tsb_stat=True` works with pandas 3.
++- Report SBS384 and SBS24 enrichment from their own context counts, including
++  significant-results output, rather than incorrectly reusing SBS6144 ratios.
++- Preserve SV32 clustering assignments with pandas Copy-on-Write, including
++  hotspot metadata and merged regions; add clustered/nonclustered regressions.
++- Generate matrices from a fresh input snapshot on every run so reusing an
++  output directory does not silently reuse a previous cohort or removed files.
++
++### Reference Data
++- `CHM13-T2T.tar.gz` must be published before CHM13-T2T network installation
++  can succeed. The original August archive linked in issue #251 predates the
++  transcription-strand fixes; the latest PR updates the chromosome checksums.
++  Our independently rebuilt replacement archive has SHA-256
++  `e8d0309879486beefb83d730c00b8cf8733aa7cd1716f694855817e69943f6a3`;
++  source hashes and the reproducible build command are documented in
++  `docs/Currently-Supported-Genomes.md`.
++
++## [1.4.0] - 2026-10-02
++
++### Added
++- Register `mm39_Legacy` with the original mm39 archive checksums and
++  opportunity tables for reproducibility.
+ - Register `GRCh38_Legacy` with the chromosome checksums and context tables from
+   the previously distributed GRCh38 reference so historical results remain
+   reproducible.
+@@ -46,9 +110,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+   Existing mm39 installations must be reinstalled after upgrading. Raw
+   sequence-only mutation counts retain the same DNA, but opportunity-based
+   normalization can change because historical context tables had drifted.
+-- Regenerated the CHM13-T2T transcript files, and with them the whole TSB reference payload, against NCBI RefSeq annotation release `GCF_009914755.1-RS_2025_08`. The previous files came from an earlier release that was never recorded, so neither they nor the TSB files derived from them could be reproduced from any pinned source. All 24 per-chromosome checksums in `CHECKSUMS` change as a result. Note that RS_2025_08 annotates 4,993 transcripts on chrY against 882 before, almost all Gnomon-predicted lncRNA models in the Yq12 satellite region newly resolved by T2T, so transcriptional strand assignments on chrY shift substantially.
+-- `exome=True` now fails immediately with an actionable message naming the missing interval list and the genomes that do support exome downsampling, instead of raising a bare `FileNotFoundError` after every chromosome has already been parsed.
+-- Exome interval list paths are resolved through `ReferenceDir.get_exome_dir()` / `get_exome_interval_list()` rather than being assembled by hand in several places.
+ - Promote the corrected transcription-strand reference to the default `GRCh38`
+   identity, including validated strand-aware whole-genome and exome context-count
+   and distribution tables. Existing installations of the former `GRCh38`
+@@ -69,14 +130,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+   their default identities; retain their existing DNA sequences.
+ 
+ ### Fixed
+-- Use explicit positional indexing in the optional TSB statistical test so
+-  `tsb_stat=True` works with pandas 3.
+-- Report SBS384 and SBS24 enrichment from their own context counts, including
+-  significant-results output, rather than incorrectly reusing SBS6144 ratios.
+-- Preserve SV32 clustering assignments with pandas Copy-on-Write, including
+-  hotspot metadata and merged regions; add clustered/nonclustered regressions.
+-- Generate matrices from a fresh input snapshot on every run so reusing an
+-  output directory does not silently reuse a previous cohort or removed files.
+ - Allow rn7 and rn7_Legacy whole-exome and BED matrix generation through the
+   chromosome-order lookups used by those workflows.
+ - Rebuild SBS context-distribution tables from the shared five-base opportunity
+@@ -124,13 +177,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+   of the untouched historical archive named `mm9_Legacy.tar.gz`. Older
+   MatrixGenerator releases cannot verify the corrected archive under the
+   original name and should upgrade before reinstalling.
+-- `CHM13-T2T.tar.gz` must be published before CHM13-T2T network installation
+-  can succeed. The original August archive linked in issue #251 predates the
+-  transcription-strand fixes; the latest PR updates the chromosome checksums.
+-  Our independently rebuilt replacement archive has SHA-256
+-  `e8d0309879486beefb83d730c00b8cf8733aa7cd1716f694855817e69943f6a3`;
+-  source hashes and the reproducible build command are documented in
+-  `docs/Currently-Supported-Genomes.md`.
+ 
+ ## [1.3.6] - 2025-10-28
+ 
+diff --git a/README.md b/README.md
+index 9c0a960..494335b 100755
+--- a/README.md
++++ b/README.md
+@@ -154,8 +154,9 @@ launcher in its folder:
+ 
+ - The only requirement is **Python 3.9 or newer** ([python.org](https://www.python.org/downloads/)).
+ - The first start creates a private Python environment, `.venv-dashboard`, inside this folder and
+-  installs SigProfilerMatrixGenerator into it. This takes a few minutes and happens once. Nothing is
+-  installed anywhere else on the computer.
++  installs SigProfilerMatrixGenerator into it with [uv](https://docs.astral.sh/uv/) (or pip, if uv
++  cannot be used). This takes a minute or two and happens once. Nothing is installed anywhere else
++  on the computer.
+ - The Workbench then opens in your browser. **Quit**, in its top bar, stops it.
+ - macOS may say it cannot verify the file the first time: right-click it and choose **Open**. On
+   Windows, if SmartScreen appears, click **More info**, then **Run anyway**.
+diff --git a/SigProfilerMatrixGenerator/web/launcher.py b/SigProfilerMatrixGenerator/web/launcher.py
+index d561d71..74cd621 100644
+--- a/SigProfilerMatrixGenerator/web/launcher.py
++++ b/SigProfilerMatrixGenerator/web/launcher.py
+@@ -21,6 +21,7 @@
+ import hashlib
+ import json
+ import os
++import shutil
+ import signal
+ import subprocess
+ import sys
+@@ -66,17 +67,47 @@ def _fingerprint_path() -> Path:
+     return Path(sys.prefix) / ".fingerprint"
+ 
+ 
++def _uv_command() -> list[str] | None:
++    """How to run uv for this environment, adding uv to it if needed.
++
++    uv downloads and installs in parallel and keeps a shared cache, so it is
++    much faster than pip. None means use pip: SPMG_WEB_INSTALLER=pip was set,
++    or uv could not be added.
++    """
++    if os.environ.get("SPMG_WEB_INSTALLER", "").strip().lower() == "pip":
++        return None
++    found = shutil.which("uv")
++    if found:
++        return [found]
++    added = subprocess.run(
++        [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "uv"],
++        check=False,
++    )
++    return [sys.executable, "-m", "uv"] if added.returncode == 0 else None
++
++
+ def ensure_dependencies(repo_root: Path, force: bool = False) -> None:
+     fingerprint_path = _fingerprint_path()
+-    if needs_install(repo_root, fingerprint_path, force):
+-        print("Installing dashboard dependencies...", flush=True)
++    if not needs_install(repo_root, fingerprint_path, force):
++        print("Dependencies already installed; skipping install.", flush=True)
++        return
++    print("Installing the Workbench's dependencies (the first time takes a few minutes)...", flush=True)
++    uv = _uv_command()
++    installed = False
++    if uv is not None:
++        result = subprocess.run(
++            [*uv, "pip", "install", "--python", sys.executable, "-e", str(repo_root)],
++            check=False,
++        )
++        installed = result.returncode == 0
++        if not installed:
++            print("uv could not install the dependencies; trying pip instead.", flush=True)
++    if not installed:
+         subprocess.run(
+             [sys.executable, "-m", "pip", "install", "--quiet", "-e", str(repo_root)],
+             check=True,
+         )
+-        fingerprint_path.write_text(compute_fingerprint(repo_root), encoding="utf-8")
+-    else:
+-        print("Dependencies already installed; skipping install.", flush=True)
++    fingerprint_path.write_text(compute_fingerprint(repo_root), encoding="utf-8")
+ 
+ 
+ def _state_dir() -> Path:
+diff --git a/docs/Web-App.md b/docs/Web-App.md
+index 0bde3fd..f5b2016 100644
+--- a/docs/Web-App.md
++++ b/docs/Web-App.md
+@@ -120,11 +120,21 @@ starting a second.
+ | Run records: each run's settings, log and result | `~/.cache/sigprofilermatrixgenerator` (macOS, Linux), `%LOCALAPPDATA%\SigProfilerMatrixGenerator` (Windows) | yes |
+ | Reference genomes installed through the Workbench | `SigProfilerMatrixGenerator/references/chromosomes/tsb`, inside the SigProfilerMatrixGenerator folder (inside the installed package when started with pip), unless you set a **Genome install folder** | only if you agree, since runs from Python or the command line in this folder use them too |
+ | Your matrices | each run's output folder | no |
++| Downloaded packages, kept so later installs are quicker | uv's cache: `~/.cache/uv` (macOS, Linux), `%LOCALAPPDATA%\uv\cache` (Windows); or pip's cache if pip was used | no: `uv cache clean` (or `pip cache purge`) empties it |
+ 
+ Nothing else is installed: no system files, services or registry entries. The
+ launcher reinstalls into its environment only when `setup.py` or
+ `pyproject.toml` changes, for example after updating the repository.
+ 
++The launcher installs with [uv](https://docs.astral.sh/uv/), which downloads
++and installs packages in parallel and is much quicker than pip: on a laptop, a
++reinstall from its cache takes seconds instead of half a minute. It uses the
++`uv` already on your PATH if there is one; otherwise it first adds uv to the
++Workbench's own environment. If uv cannot be added or cannot install, the
++launcher says so and uses pip instead. To always use pip, for example behind a
++network that only allows pip's configured package mirror, set the environment
++variable `SPMG_WEB_INSTALLER=pip`.
++
+ ### Launch options
+ 
+ | Option | Meaning |
+diff --git a/tests/web/test_launcher.py b/tests/web/test_launcher.py
+index 6591225..740cf8b 100644
+--- a/tests/web/test_launcher.py
++++ b/tests/web/test_launcher.py
+@@ -202,3 +202,98 @@ def test_second_launch_refuses_to_start_a_duplicate(tmp_path):
+         if first.poll() is None:
+             first.kill()
+             first.wait(timeout=5)
++
++
++# ------------------------------------------------------- installing with uv
++
++
++class _Runs:
++    """Records install commands instead of running them; fails the ones asked."""
++
++    def __init__(self, fail=()):
++        self.commands, self.fail = [], fail
++
++    def __call__(self, command, check=False):
++        self.commands.append(command)
++        failed = any(word in command for word in self.fail)
++        if failed and check:
++            raise subprocess.CalledProcessError(1, command)
++        return subprocess.CompletedProcess(command, 1 if failed else 0)
++
++
++@pytest.fixture
++def install_env(tmp_path, monkeypatch):
++    repo = tmp_path / "repo"
++    repo.mkdir()
++    (repo / "setup.py").write_text("x")
++    fingerprint = tmp_path / ".fingerprint"
++    monkeypatch.setattr(launcher, "_fingerprint_path", lambda: fingerprint)
++    monkeypatch.delenv("SPMG_WEB_INSTALLER", raising=False)
++    return repo, fingerprint
++
++
++def _install(monkeypatch, repo, runs, uv_on_path=None):
++    monkeypatch.setattr(launcher.subprocess, "run", runs)
++    monkeypatch.setattr(launcher.shutil, "which", lambda name: uv_on_path if name == "uv" else None)
++    launcher.ensure_dependencies(repo, force=True)
++
++
++def test_installs_with_the_uv_already_on_path(install_env, monkeypatch):
++    repo, fingerprint = install_env
++    runs = _Runs()
++    _install(monkeypatch, repo, runs, uv_on_path="/opt/bin/uv")
++    assert runs.commands == [["/opt/bin/uv", "pip", "install", "--python", sys.executable, "-e", str(repo)]]
++    assert fingerprint.read_text() == launcher.compute_fingerprint(repo)
++
++
++def test_adds_uv_to_the_environment_when_it_is_not_on_path(install_env, monkeypatch):
++    repo, _ = install_env
++    runs = _Runs()
++    _install(monkeypatch, repo, runs)
++    add_uv, install = runs.commands
++    assert add_uv[:4] == [sys.executable, "-m", "pip", "install"] and add_uv[-1] == "uv"
++    assert install == [sys.executable, "-m", "uv", "pip", "install", "--python", sys.executable, "-e", str(repo)]
++
++
++def test_falls_back_to_pip_when_uv_cannot_be_added(install_env, monkeypatch):
++    repo, fingerprint = install_env
++    runs = _Runs(fail=("uv",))
++    _install(monkeypatch, repo, runs)
++    assert runs.commands[-1] == [sys.executable, "-m", "pip", "install", "--quiet", "-e", str(repo)]
++    assert fingerprint.is_file()
++
++
++def test_falls_back_to_pip_when_uv_cannot_install(install_env, monkeypatch, capsys):
++    repo, fingerprint = install_env
++    runs = _Runs(fail=("--python",))
++    _install(monkeypatch, repo, runs, uv_on_path="/opt/bin/uv")
++    assert [c[0] for c in runs.commands] == ["/opt/bin/uv", sys.executable]
++    assert runs.commands[-1][1:4] == ["-m", "pip", "install"]
++    assert "trying pip instead" in capsys.readouterr().out
++    assert fingerprint.is_file()
++
++
++def test_spmg_web_installer_pip_skips_uv(install_env, monkeypatch):
++    repo, _ = install_env
++    monkeypatch.setenv("SPMG_WEB_INSTALLER", "pip")
++    runs = _Runs()
++    _install(monkeypatch, repo, runs, uv_on_path="/opt/bin/uv")
++    assert runs.commands == [[sys.executable, "-m", "pip", "install", "--quiet", "-e", str(repo)]]
++
++
++def test_a_failed_install_leaves_no_fingerprint(install_env, monkeypatch):
++    repo, fingerprint = install_env
++    runs = _Runs(fail=("-e",))
++    with pytest.raises(subprocess.CalledProcessError):
++        _install(monkeypatch, repo, runs, uv_on_path="/opt/bin/uv")
++    assert not fingerprint.exists()
++
++
++def test_no_install_when_the_fingerprint_matches(install_env, monkeypatch, capsys):
++    repo, fingerprint = install_env
++    fingerprint.write_text(launcher.compute_fingerprint(repo))
++    runs = _Runs()
++    monkeypatch.setattr(launcher.subprocess, "run", runs)
++    launcher.ensure_dependencies(repo)
++    assert runs.commands == []
++    assert "skipping install" in capsys.readouterr().out

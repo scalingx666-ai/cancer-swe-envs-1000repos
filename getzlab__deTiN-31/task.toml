@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/getzlab__deTiN-31"
+description = "fix uninitialized variable bug when using only ssnvs"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "deTiN",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "getzlab/deTiN"
+ref = "0f8fb0977a1c16037dafd0dfa7b56813b6798ee5"
+reference = "https://github.com/getzlab/deTiN/pull/31"
+source_access = "auto"
+built_at = "2026-11-13T15:45:05.225695+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b5d222369294d4d096b6a97f7652ea13cea13518ffeede7e2010ee80e9fc2367"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-11-12T16:41:46Z"
+diff_format = "unified"
+context_files = [
+    "deTiN/deTiN.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 3
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

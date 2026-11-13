@@ -1,0 +1,77 @@
+version = "1.0"
+
+[task]
+name = "default/kevinkawchak__LLMs-Pharmaceutical-3"
+description = "Add GitHub standards, CI pipeline, and restructure documentation (v4.…"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "LLMs-Pharmaceutical",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kevinkawchak/LLMs-Pharmaceutical"
+ref = "c9c5129c5373856c5170e69e616a886c624e2e7b"
+reference = "https://github.com/kevinkawchak/LLMs-Pharmaceutical/pull/3"
+source_access = "auto"
+built_at = "2026-11-13T16:37:22.502421+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:55f528b7c68b0e9d72fa9fc9b06e0ba23559f50220d2bdf01497e838bb119b80"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-15T19:48:27Z"
+diff_format = "unified"
+context_files = [
+    ".github/ISSUE_TEMPLATE/bug_report.md",
+    ".github/ISSUE_TEMPLATE/feature_request.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "CHANGELOG.md",
+    "CITATION.cff",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "Code/README.md",
+    "R&D/README.md",
+    "README.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "V4.2.0_RELEASE.md",
+    "ruff.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 932
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

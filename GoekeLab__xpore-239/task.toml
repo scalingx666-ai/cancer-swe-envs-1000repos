@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/GoekeLab__xpore-239"
+description = "Installation & Docs Updates"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "xpore",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "GoekeLab/xpore"
+ref = "bcc12a57458fe2f8dc77a07923aedad81a1f3b19"
+reference = "https://github.com/GoekeLab/xpore/pull/239"
+source_access = "auto"
+built_at = "2026-11-13T16:14:03.024391+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:545e2a40be1aeb275653a8e132b73c6266efda7f39db8c6ee0d4353226bc0c87"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-04T06:43:28Z"
+diff_format = "unified"
+context_files = [
+    ".gitattributes",
+    ".readthedocs.yaml",
+    "docs/source/installation.rst",
+    "pyproject.toml",
+    "setup.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 121
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

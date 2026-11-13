@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/tanghaibao__goatools-359"
+description = "Fail clearly when study/population IDs don't match the annotations"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "goatools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tanghaibao/goatools"
+ref = "0f4999cec94be85fa9150820e04ba0d1d9879f7c"
+reference = "https://github.com/tanghaibao/goatools/pull/359"
+source_access = "auto"
+built_at = "2026-11-13T15:49:03.446359+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:84de7ab8dc6386340e66e659a0c52b9ecf9f9354b4096efa9404756ecf19fdc1"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T01:08:17Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "goatools/anno/genetogo_reader.py",
+    "goatools/cli/find_enrichment.py",
+    "makefile",
+    "tests/test_id_mismatch_errors.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 85
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

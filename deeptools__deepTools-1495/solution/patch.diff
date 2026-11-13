@@ -1,0 +1,168 @@
+diff --git a/.github/workflows/test_docs.yml b/.github/workflows/test_docs.yml
+index 3ac546b111..f8203946e7 100644
+--- a/.github/workflows/test_docs.yml
++++ b/.github/workflows/test_docs.yml
+@@ -12,7 +12,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
++            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+               with:
+                   environments: default
+             - name: build docs
+diff --git a/.github/workflows/test_essenv.yml b/.github/workflows/test_essenv.yml
+index d7b76e8913..f79bd43654 100644
+--- a/.github/workflows/test_essenv.yml
++++ b/.github/workflows/test_essenv.yml
+@@ -12,7 +12,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
++            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+               with:
+                   environments: ess
+             - name: ess.py --dry-run
+diff --git a/.github/workflows/test_pytest.yml b/.github/workflows/test_pytest.yml
+index 169948cecd..f262d7f48a 100644
+--- a/.github/workflows/test_pytest.yml
++++ b/.github/workflows/test_pytest.yml
+@@ -12,7 +12,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: "3.x"
+             - name: Check version sync
+@@ -24,7 +24,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: "3.x"
+             - name: Check galaxy wrapper arguments
+@@ -39,7 +39,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
++            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+               with:
+                   environments: ${{ matrix.pixi-env }}
+             - name: build deeptools
+@@ -60,7 +60,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
++            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+               with:
+                   environments: ${{ matrix.pixi-env }}
+             - name: build deeptools
+diff --git a/.github/workflows/test_ruff.yml b/.github/workflows/test_ruff.yml
+index 1c55975250..bc113e05eb 100644
+--- a/.github/workflows/test_ruff.yml
++++ b/.github/workflows/test_ruff.yml
+@@ -12,7 +12,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
++            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+               with:
+                   environments: default
+             - name: ruff check
+diff --git a/.github/workflows/wheels-preview.yml b/.github/workflows/wheels-preview.yml
+index a60ed3f14a..0cde2a656c 100644
+--- a/.github/workflows/wheels-preview.yml
++++ b/.github/workflows/wheels-preview.yml
+@@ -23,7 +23,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: 3.x
+             - name: Set preview version
+@@ -80,7 +80,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: 3.x
+             - name: Set preview version
+@@ -128,7 +128,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: 3.x
+             - name: Set preview version
+@@ -162,7 +162,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: 3.x
+             - name: Set preview version
+@@ -201,7 +201,7 @@ jobs:
+                   path: dist
+                   merge-multiple: true
+             - name: Publish to TestPyPI
+-              uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
++              uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+               with:
+                   repository-url: https://test.pypi.org/legacy/
+                   password: ${{ secrets.TESTPYPI_API_TOKEN }}
+diff --git a/.github/workflows/wheels.yml b/.github/workflows/wheels.yml
+index 703759163a..4fe1d4f526 100644
+--- a/.github/workflows/wheels.yml
++++ b/.github/workflows/wheels.yml
+@@ -22,7 +22,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: 3.x
+             - name: Build wheels
+@@ -80,7 +80,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: 3.x
+             - name: Build wheels
+@@ -115,7 +115,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
++            - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+               with:
+                   python-version: 3.x
+             - name: Build wheels
+@@ -167,7 +167,7 @@ jobs:
+                   subject-path: "dist/*"
+             - name: Publish to PyPI
+               if: ${{ startsWith(github.ref, 'refs/tags/') }}
+-              uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
++              uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+               with:
+                   password: ${{ secrets.PYPI_API_TOKEN }}
+                   packages-dir: dist

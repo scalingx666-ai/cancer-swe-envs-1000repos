@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/aidenlab__juicer-396"
+description = "Deduplication script fix & optimization for encode"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "juicer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "aidenlab/juicer"
+ref = "50d557f1d4725a475071fce5975839602bd311e5"
+reference = "https://github.com/aidenlab/juicer/pull/396"
+source_access = "auto"
+built_at = "2026-11-13T15:54:06.240207+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:87e060faeffcc24d5a211901c0d2dee567c62f0cc14691995b9d871c481e88d2"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-15T15:15:57Z"
+diff_format = "unified"
+context_files = [
+    "CPU/common/dups_sam.awk",
+    "PBS/scripts/dups_sam.awk",
+    "PBS_without_launch/scripts/dups_sam.awk",
+    "SLURM/scripts/dups_sam.awk",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1692
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

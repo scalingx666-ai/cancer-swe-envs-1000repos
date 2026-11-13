@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/biocore__tcga-2"
+description = "Biom t"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "tcga",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "biocore/tcga"
+ref = "fc0c9e80a74604707d5c071eb50edec44941e798"
+reference = "https://github.com/biocore/tcga/pull/2"
+source_access = "auto"
+built_at = "2026-11-13T16:37:18.510796+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:21619399dfa5ee9a123b16f9178d3b236a48ca288dba4d55aa9a0c3c0ceeb3d6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2016-09-08T04:38:02Z"
+diff_format = "unified"
+context_files = [
+    "LICENSE",
+    "README.md",
+    "docker/docker-parse-kraken-to-biom/Dockerfile",
+    "docker/docker-parse-kraken-to-biom/parse_kraken_to_biom.py",
+    "docker/docker-parse-kraken-to-biom/requirements.txt",
+    "docker/docker-parse-kraken-to-biom/test_parse_kraken_to_biom.py",
+    "python_scripts/parse_kraken_to_biom.py",
+    "python_scripts/tests/test_parse_kraken_to_biom.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 896
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

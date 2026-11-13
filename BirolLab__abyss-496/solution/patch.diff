@@ -1,0 +1,274 @@
+diff --git a/COPYRIGHT b/COPYRIGHT
+index eb341149..15857b85 100644
+--- a/COPYRIGHT
++++ b/COPYRIGHT
+@@ -1,7 +1,7 @@
+ Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+ Upstream-Name: ABySS
+ Upstream-Contact: Shaun Jackman <sjackman@gmail.com>
+-Source: https://github.com/bcgsc/abyss
++Source: https://github.com/BirolLab/abyss
+ 
+ License: GPL-3
+  This program is free software: you can redistribute it and/or modify
+diff --git a/README.md b/README.md
+index 16fe9485..16d581c4 100644
+--- a/README.md
++++ b/README.md
+@@ -1,7 +1,7 @@
+-[![Release](https://img.shields.io/github/release/bcgsc/abyss.svg)](https://github.com/bcgsc/abyss/releases)
+-[![Downloads](https://img.shields.io/github/downloads/bcgsc/abyss/total?logo=github)](https://github.com/bcgsc/abyss/releases/download/2.3.10/abyss-2.3.10.tar.gz)
++[![Release](https://img.shields.io/github/release/BirolLab/abyss.svg)](https://github.com/BirolLab/abyss/releases)
++[![Downloads](https://img.shields.io/github/downloads/BirolLab/abyss/total?logo=github)](https://github.com/BirolLab/abyss/releases/download/2.3.10/abyss-2.3.10.tar.gz)
+ [![Conda](https://img.shields.io/conda/dn/bioconda/abyss?label=Conda)](https://anaconda.org/bioconda/abyss)
+-[![Issues](https://img.shields.io/github/issues/bcgsc/abyss.svg)](https://github.com/bcgsc/abyss/issues)
++[![Issues](https://img.shields.io/github/issues/BirolLab/abyss.svg)](https://github.com/BirolLab/abyss/issues)
+ 
+ ABySS
+ ================================================================================
+@@ -77,8 +77,8 @@ Dependencies
+ 
+ ## Dependencies for linked reads
+ 
+-- [ARCS](https://github.com/bcgsc/arcs) for scaffolding.
+-- [Tigmint](https://github.com/bcgsc/tigmint) for correcting assembly errors.
++- [ARCS](https://github.com/BirolLab/arcs) for scaffolding.
++- [Tigmint](https://github.com/BirolLab/tigmint) for correcting assembly errors.
+ 
+ These can be installed through Conda:
+ 
+@@ -120,7 +120,7 @@ The following libraries are required:
+ * [Boost](http://www.boost.org/)
+ * [Open MPI](http://www.open-mpi.org)
+ * [sparsehash](https://code.google.com/p/sparsehash/)
+-* [btllib](https://github.com/bcgsc/btllib)
++* [btllib](https://github.com/BirolLab/btllib)
+ 
+ Conda:
+ 
+@@ -325,7 +325,7 @@ contribute towards the consensus sequence.
+ 
+ ## Scaffolding with linked reads
+ 
+-ABySS can scaffold using linked reads from 10x Genomics Chromium. The barcodes must first be extracted from the read sequences and added to the `BX:Z` tag of the FASTQ header, typically using the `longranger basic` command of [Long Ranger](https://support.10xgenomics.com/genome-exome/software/overview/welcome) or [EMA preproc](https://github.com/arshajii/ema#readme). The linked reads are used to correct assembly errors, which requires that [Tigmint](https://github.com/bcgsc/tigmint). The linked reads are also used for scaffolding, which requires [ARCS](https://github.com/bcgsc/arcs). See [Dependencies](#dependencies) for installation instructions.
++ABySS can scaffold using linked reads from 10x Genomics Chromium. The barcodes must first be extracted from the read sequences and added to the `BX:Z` tag of the FASTQ header, typically using the `longranger basic` command of [Long Ranger](https://support.10xgenomics.com/genome-exome/software/overview/welcome) or [EMA preproc](https://github.com/arshajii/ema#readme). The linked reads are used to correct assembly errors, which requires that [Tigmint](https://github.com/BirolLab/tigmint). The linked reads are also used for scaffolding, which requires [ARCS](https://github.com/BirolLab/arcs). See [Dependencies](#dependencies) for installation instructions.
+ 
+ ABySS can combine paired-end, mate-pair, and linked-read libraries. The `pe` and `lr` libraries will be used to build the de Bruijn graph. The `mp` libraries will be used for paired-end/mate-pair scaffolding. The `lr` libraries will be used for misassembly correction using Tigmint and scaffolding using ARCS.
+ 
+@@ -517,7 +517,7 @@ ABySS programs
+  * `abyss-todot`: convert graph formats and merge graphs
+  * `abyss-rresolver`: resolve repeats using short reads
+ 
+-This [flowchart](https://github.com/bcgsc/abyss/blob/master/doc/flowchart.pdf) shows the ABySS assembly pipeline and its intermediate files.
++This [flowchart](https://github.com/BirolLab/abyss/blob/master/doc/flowchart.pdf) shows the ABySS assembly pipeline and its intermediate files.
+ 
+ Export to SQLite Database
+ ================================================================================
+@@ -600,7 +600,7 @@ Nielsen, Cydney B., Shaun D. Jackman, Inanc Birol, and Steven JM Jones (2009).
+ Support
+ ================================================================================
+ 
+-[Create a new issue on GitHub.](https://github.com/bcgsc/abyss/issues)
++[Create a new issue on GitHub.](https://github.com/BirolLab/abyss/issues)
+ 
+ [Ask a question on Biostars.](https://www.biostars.org/tag/abyss/)
+ 
+@@ -620,4 +620,4 @@ Authors
+ 
+ Supervised by [**Dr. Inanc Birol**](http://www.bcgsc.ca/faculty/inanc-birol).
+ 
+-Copyright 2016-present Canada's Michael Smith Genome Sciences Centre
++Copyright 2016-present BC Cancer Research Institute
+diff --git a/azure-pipelines.yml b/azure-pipelines.yml
+index ca70fb83..4db464fb 100644
+--- a/azure-pipelines.yml
++++ b/azure-pipelines.yml
+@@ -1,33 +1,4 @@
+ jobs:  
+-- job: mac_latest_gcc
+-  pool:
+-    vmImage: macOS-latest
+-  steps:
+-  - script: |
+-      find /usr/local/bin -lname '*/Library/Frameworks/Python.framework/*' -delete  # Trying solution from https://github.com/mesonbuild/meson/blob/master/.github/workflows/macos.yml#L87-L92
+-      sudo rm -rf /Library/Frameworks/Python.framework/
+-      brew install --force python3 node@18 && brew unlink python3 node@18 && brew unlink python3 node@18 && brew link --overwrite python3 node@18
+-      find /usr/local/Cellar/python* -name EXTERNALLY-MANAGED -print0 | xargs -0 rm -vf
+-      brew update
+-      brew install automake boost openmpi google-sparsehash make pandoc ghc gcc@14 llvm
+-    displayName: Install common
+-  - script: |
+-      wget https://github.com/bcgsc/btllib/releases/download/v1.5.0/btllib-1.5.0.tar.gz
+-      export CC=gcc-14
+-      export CXX=g++-14
+-      tar xzf btllib-1.5.0.tar.gz
+-      cd btllib-1.5.0
+-      ./compile
+-    displayName: Install btllib
+-  - script: |
+-      ./autogen.sh
+-      export CC=gcc-14
+-      export CXX=g++-14
+-      export DISTCHECK_CONFIGURE_FLAGS="CC=gcc-14 CXX=g++-14 --with-boost=/usr/local/opt/boost --with-sparsehash=/usr/local/opt/google-sparsehash --with-mpi=/usr/local/opt/openmpi --with-btllib=/Users/runner/work/1/s/btllib-1.5.0/install"
+-      ./configure CC=gcc-14 CXX=g++-14 --with-boost=/usr/local/opt/boost --with-sparsehash=/usr/local/opt/google-sparsehash --with-mpi=/usr/local/opt/openmpi --with-btllib=/Users/runner/work/1/s/btllib-1.5.0/install
+-      make -j12 distcheck AM_CXXFLAGS=-Wno-error=dangling-reference
+-    displayName: Compiling ABySS with gcc-14
+-
+ - job:
+   displayName: mac_latest-compilers-clang
+   pool:
+@@ -84,90 +55,6 @@ jobs:
+       make -j12 distcheck AM_CXXFLAGS=-Wno-error=unused-but-set-variable
+     displayName: Compiling ABySS with clang 16
+ 
+-- job:
+-  displayName: mac_clang15
+-  pool:
+-    vmImage: 'macOS-latest'
+-  steps:
+-  - script: |
+-      mkdir -p ~/miniforge3
+-      curl -L https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh  -o ~/miniforge3/miniforge.sh
+-      bash ~/miniforge3/miniforge.sh -b -u -p ~/miniforge3
+-      rm -rf  ~/miniforge3/miniforge.sh
+-      ~/miniforge3/bin/conda init bash
+-      ~/miniforge3/bin/conda init zsh
+-      export CONDA=$(realpath ~/miniforge3/bin)
+-      echo "##vso[task.prependpath]$CONDA"
+-    displayName: Install conda
+-  - script: conda create --yes --quiet --name abyss_CI
+-    displayName: Create Anaconda environment
+-  - script: |
+-      source activate abyss_CI
+-      mamba install --yes -c conda-forge -c bioconda compilers=1.6.0 make boost-cpp sparsehash openmpi automake perl pandoc btllib 'llvm-openmp<17.0.0' 'libcxx<17.0.0'
+-    displayName: Install dependencies
+-  - script: |
+-      source activate abyss_CI
+-      ./autogen.sh
+-      ./configure
+-      make -j12 distcheck AM_CXXFLAGS=-Wno-error=unused-but-set-variable
+-    displayName: Compiling ABySS with clang 15
+-
+-- job:
+-  displayName: mac_clang14
+-  pool:
+-    vmImage: 'macOS-latest'
+-  steps:
+-  - script: |
+-      mkdir -p ~/miniforge3
+-      curl -L https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh  -o ~/miniforge3/miniforge.sh
+-      bash ~/miniforge3/miniforge.sh -b -u -p ~/miniforge3
+-      rm -rf  ~/miniforge3/miniforge.sh
+-      ~/miniforge3/bin/conda init bash
+-      ~/miniforge3/bin/conda init zsh
+-      export CONDA=$(realpath ~/miniforge3/bin)
+-      echo "##vso[task.prependpath]$CONDA"
+-    displayName: Install conda
+-  - script: conda create --yes --quiet --name abyss_CI
+-    displayName: Create Anaconda environment
+-  - script: |
+-      source activate abyss_CI
+-      mamba install --yes -c conda-forge -c bioconda compilers=1.5.2 make boost-cpp sparsehash openmpi automake perl pandoc btllib 'llvm-openmp<17.0.0' 'libcxx<17.0.0'
+-    displayName: Install dependencies
+-  - script: |
+-      source activate abyss_CI
+-      ./autogen.sh
+-      ./configure
+-      make -j12 distcheck
+-    displayName: Compiling ABySS with clang 14
+-
+-- job:
+-  displayName: mac_clang13
+-  pool:
+-    vmImage: 'macOS-latest'
+-  steps:
+-  - script: |
+-      mkdir -p ~/miniforge3
+-      curl -L https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh  -o ~/miniforge3/miniforge.sh
+-      bash ~/miniforge3/miniforge.sh -b -u -p ~/miniforge3
+-      rm -rf  ~/miniforge3/miniforge.sh
+-      ~/miniforge3/bin/conda init bash
+-      ~/miniforge3/bin/conda init zsh
+-      export CONDA=$(realpath ~/miniforge3/bin)
+-      echo "##vso[task.prependpath]$CONDA"
+-    displayName: Install conda
+-  - script: conda create --yes --quiet --name abyss_CI
+-    displayName: Create Anaconda environment
+-  - script: |
+-      source activate abyss_CI
+-      mamba install --yes -c conda-forge -c bioconda compilers=1.4.2 make boost-cpp sparsehash openmpi automake perl btllib pandoc 'llvm-openmp<17.0.0' 'libcxx<17.0.0'
+-    displayName: Install dependencies
+-  - script: |
+-      source activate abyss_CI
+-      ./autogen.sh
+-      ./configure
+-      make -j12 distcheck
+-    displayName: Compiling ABySS with clang 13
+-
+ - job: linux_gcc12
+   pool:
+     vmImage: ubuntu-latest
+@@ -229,7 +116,7 @@ jobs:
+ 
+ - job: linux_gcc10
+   pool:
+-    vmImage: ubuntu-20.04
++    vmImage: ubuntu-latest
+   steps:
+   - script: |
+       sudo apt-get update -qq
+@@ -255,15 +142,7 @@ jobs:
+       ./configure CC=gcc-10 CXX=g++-10 --with-mpi=/usr/lib/openmpi --with-btllib=/home/vsts/work/1/s/btllib-1.7.2/install
+       make -j12 distcheck
+     displayName: Compiling ABySS with gcc-10
+-  - script: |
+-      curl https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+-      sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main"
+-      sudo apt-get update
+-      sudo apt-get install -y --no-install-recommends clang-format-8
+-      sudo ln -sf clang-format-8 /usr/bin/clang-format
+-    displayName: Install clang-format
+-  - script: make clang-format
+-    displayName: Run clang-format
++
+ 
+ - job: linux_gcc9
+   pool:
+@@ -343,7 +222,7 @@ jobs:
+   - script: |
+       source activate abyss_CI
+       conda install --yes -c conda-forge mamba python=3.9
+-      mamba install --yes -c conda-forge -c bioconda compilers make boost-cpp sparsehash openmpi util-linux perl btllib pandoc
++      mamba install --yes -c conda-forge -c bioconda compilers make boost-cpp sparsehash openmpi util-linux perl btllib pandoc clang-format
+     displayName: Install dependencies
+   - script: |
+       source activate abyss_CI
+@@ -351,3 +230,5 @@ jobs:
+       ./configure
+       make -j12 distcheck AM_CXXFLAGS=-Wall CXXFLAGS='-pthread'
+     displayName: Compiling ABySS with gcc
++  - script: make clang-format
++    displayName: Run clang-format
+diff --git a/bin/abyss-nompi b/bin/abyss-nompi
+index d8d79099..a2f8af98 100755
+--- a/bin/abyss-nompi
++++ b/bin/abyss-nompi
+@@ -2,5 +2,5 @@
+ 
+ echo >&2 "error: ABySS was not configured with support for MPI. For details"
+ echo >&2 "       on compiling ABySS with MPI suppor see:"
+-echo >&2 "       https://github.com/bcgsc/abyss#compiling-abyss-from-source"
++echo >&2 "       https://github.com/BirolLab/abyss#compiling-abyss-from-source"
+ exit 1
+diff --git a/configure.ac b/configure.ac
+index ed57ae74..634b0c7f 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1,6 +1,6 @@
+ AC_PREREQ(2.62)
+ AC_INIT(ABySS, 2.3.10, abyss-users@bcgsc.ca, abyss,
+-		http://www.bcgsc.ca/platform/bioinfo/software/abyss)
++		https://github.com/BirolLab/abyss)
+ 
+ AC_CONFIG_MACRO_DIR([m4])
+ m4_include(m4/m4_ax_pthread.m4)

@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/nickjcroucher__gubbins-436"
+description = "Addition of veryfasttree and fixes to installation"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "gubbins",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nickjcroucher/gubbins"
+ref = "9ba46de38e3ca88bfa992863e4bd39ed14f179ac"
+reference = "https://github.com/nickjcroucher/gubbins/pull/436"
+source_access = "auto"
+built_at = "2026-11-13T16:08:45.570368+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e8708169a912f63e493f736f1e33b2b54101f9bc6a00bb2348504c03125ccc1b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-08-22T17:12:17Z"
+diff_format = "unified"
+context_files = [
+    "VERSION",
+    "environment.yml",
+    "python/gubbins/PreProcessFasta.py",
+    "python/gubbins/common.py",
+    "python/gubbins/run_gubbins.py",
+    "python/gubbins/tests/test_alignment_python_methods.py",
+    "python/gubbins/tests/test_dependencies.py",
+    "python/gubbins/tests/test_tree_methods.py",
+    "python/gubbins/tests/test_utils.py",
+    "python/gubbins/treebuilders.py",
+    "python/setup.py",
+    "src/gubbins.c",
+    "src/gubbins.h",
+    "src/main.c",
+    "tests/check_gubbins.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 724
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

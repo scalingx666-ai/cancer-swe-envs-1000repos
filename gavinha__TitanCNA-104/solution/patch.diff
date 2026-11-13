@@ -1,0 +1,152 @@
+diff --git a/scripts/R_scripts/titanCNA.R b/scripts/R_scripts/titanCNA.R
+index 1d94bce..0cffd7c 100755
+--- a/scripts/R_scripts/titanCNA.R
++++ b/scripts/R_scripts/titanCNA.R
+@@ -100,7 +100,9 @@ option_list <- list(
+ 	make_option(c("--plotYlim"), type = "character", default = "c(-2,4)",
+             help = "The Y-axis limits to use for plotting log ratio coverage results. [Default: %default]"),
+ 	make_option(c("--verbose"), type = "logical", default = FALSE,
+-            help = "Be verbose; TRUE or FALSE [Default: %default]")
++            help = "Be verbose; TRUE or FALSE [Default: %default]"),
++	make_option(c("--plotCorrectedCN"), type = "logical", default = TRUE,
++            help = "CN plots will use corrected copy number ; TRUE or FALSE [Default: %default]")
+ )
+ 
+ parseobj <- OptionParser(option_list=option_list, usage = "usage: Rscript %prog [options]")
+@@ -152,6 +154,7 @@ outigv <- opt$outIGV
+ outplot <- opt$outPlotDir
+ plotYlim <- eval(parse(text = opt$plotYlim))
+ verbose <- opt$verbose
++plotCorrectedCN <- opt$plotCorrectedCN
+ 
+ ## check arguments ##
+ if (!normEstMeth %in% c("map", "fixed")){
+@@ -311,7 +314,7 @@ for (chr in unique(results$Chr)){
+ 	}
+ 	plotCNlogRByChr(results, chr, segs = segs, ploidy=ploidy,
+                         normal = norm, geneAnnot=NULL,  cex.axis=1.5,
+-                        ylim=plotYlim, cex=0.5, xlab="", main=paste("Chr ",chr,sep=""))
++                        ylim=plotYlim, cex=0.5, xlab="", main=paste("Chr ",chr,sep=""), plotCorrectedCN = plotCorrectedCN)
+ 	plotAllelicRatio(results, chr, geneAnnot=NULL, spacing=4, cex.axis=1.5,
+                         ylim=c(0,1), xlab="", cex=0.5, main=paste("Chr ",chr,sep=""))
+ 	plotClonalFrequency(results, chr, normal=norm, geneAnnot=NULL, spacing=4,
+@@ -346,8 +349,8 @@ outFile <- paste0(outplot, "/", id, "_cluster", numClustersStr, "_CNA.pdf")
+ #png(outFile,width=1000,height=300)
+ pdf(outFile,width=20,height=6)
+ plotCNlogRByChr(dataIn=results, chr=chrs, segs = segs, ploidy=ploidy,
+-                normal = norm, geneAnnot=NULL, spacing=4, main=id, xlab="",
+-                ylim=plotYlim, cex=0.5, cex.axis=1.5, cex.lab=1.5, cex.main=1.5)
++                normal = norm, geneAnnot=NULL, spacing=4, main=paste0(id, sprintf(" (purity=%.2f, ploidy=%.2f)", 1-norm, ploidy)), xlab="",
++                ylim=plotYlim, cex=0.5, cex.axis=1.5, cex.lab=1.5, cex.main=1.5, plotCorrectedCN = plotCorrectedCN)
+ dev.off()
+ 
+ outFile <- paste0(outplot, "/", id, "_cluster", numClustersStr, "_CNASEG.pdf")
+diff --git a/scripts/code/countPysam.py b/scripts/code/countPysam.py
+new file mode 100644
+index 0000000..6c9a911
+--- /dev/null
++++ b/scripts/code/countPysam.py
+@@ -0,0 +1,102 @@
++# requires python3
++# requires pysam-0.11.2.1
++import sys
++import pysam
++
++chromToUse = sys.argv[1]  # 0 for all chromosomes
++norm_hetpsns = sys.argv[2]
++bam_file = sys.argv[3]
++#ref_file = sys.argv[4]
++base_quality = int(sys.argv[4])
++map_quality = int(sys.argv[5])
++vcf_quality = int(sys.argv[6])
++positions = {}
++
++#  add (position,depth) from the normal hetpositions input file to a dictionary of lists
++#    indexed by chromosome
++for line in open(norm_hetpsns):
++    if not line.strip().startswith("#"):
++        chrom = line.split()[0]
++        if chrom == chromToUse or chromToUse == 0:
++            position = int(line.strip().split()[1])
++            ref_base = line.strip().split()[3]
++            nref_base = line.strip().split()[4]
++            qual = line.strip().split()[5]
++            depth = line.split()[7].split(';')[0].replace('DP=', '')
++            position_data = position, depth, ref_base, nref_base, qual
++            if chrom not in positions:
++                positions[chrom] = []
++            positions[chrom].append(position_data)
++
++sample = pysam.AlignmentFile(bam_file)
++#reference = pysam.FastaFile(ref_file)
++## print header ##
++print("Chr\tPosition\tRef\tRefCount\tNref\tNrefCount\tNormQuality")
++
++for chrom in positions:
++    # Build SNP lookup dictionary, filtering by vcf_quality
++    snp_lookup = {}
++    for position_data in positions[chrom]:
++        pos_1based = int(position_data[0])
++        ref_base   = position_data[2]
++        nref_base  = position_data[3]
++        qual       = float(position_data[4])
++        if qual >= vcf_quality:
++            snp_lookup[pos_1based] = (ref_base, nref_base, qual)
++
++    # Skip chromosome if no positions pass quality filter
++    if not snp_lookup:
++        continue
++
++    # Create set for O(1) membership checks and find bounds
++    snp_positions = set(snp_lookup.keys())
++    min_pos = min(snp_positions)
++    max_pos = max(snp_positions)
++
++    # Collect pileup data for all SNP positions with coverage
++    # Key: position (1-based), Value: list of bases passing quality filters
++    pileup_data = {}
++
++    # Single pileup call per chromosome spanning all SNPs
++    for pileupcolumn in sample.pileup(
++        reference=chrom,
++        start=min_pos - 1,  # Convert 1-based to 0-based (pysam is 0-based)
++        end=max_pos,        # Half-open interval: covers up to max_pos (1-based)
++        truncate=False,
++        stepper="samtools"
++    ):
++        # Convert pysam 0-based position back to VCF 1-based
++        vcf_pos = pileupcolumn.pos + 1
++
++        # Skip positions that are not in our SNP set
++        if vcf_pos not in snp_positions:
++            continue
++
++        # Process reads at this SNP position
++        bases = []
++        for r in pileupcolumn.pileups:
++            if not r.is_del and not r.is_refskip:
++                base  = r.alignment.query_sequence[r.query_position]
++                mapq  = r.alignment.mapping_quality
++                baseq = r.alignment.query_qualities[r.query_position]
++                if mapq >= map_quality and baseq >= base_quality:
++                    bases.append(base)
++
++        pileup_data[vcf_pos] = bases
++
++    # Iterate through SNP positions in original order and print output
++    # Positions failing vcf_quality are skipped; zero-coverage positions are still written
++    for position_data in positions[chrom]:
++        position  = int(position_data[0])
++        ref_base  = position_data[2]
++        nref_base = position_data[3]
++        qual      = float(position_data[4])
++
++        if qual >= vcf_quality:
++            bases     = pileup_data.get(position, [])
++            ref_count = bases.count(ref_base)
++            alt_count = len(bases) - ref_count
++
++            result = (f"{chrom}\t{position}\t{ref_base}\t{ref_count}"
++                      f"\t{nref_base}\t{alt_count}\t{qual}")
++            print(result)
+\ No newline at end of file

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/YuLab-SMU__tigeR-42"
+description = "Fix bug when used with ggplot2 v4."
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "tigeR",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "YuLab-SMU/tigeR"
+ref = "7e97549c7481787e32e3ec6fb2f0c8f78d9c8ba0"
+reference = "https://github.com/YuLab-SMU/tigeR/pull/42"
+source_access = "auto"
+built_at = "2026-11-13T15:40:41.914823+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:90311d3458db97f53457ed1352d16750f48216eb42e86d7266fed75884c28045"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-01-21T01:28:16Z"
+diff_format = "unified"
+context_files = [
+    "R/browse_biomk.R",
+    "R/surv_biomk.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 646
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

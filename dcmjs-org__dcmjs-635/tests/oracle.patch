@@ -1,0 +1,189 @@
+diff --git a/docs/specs/naturalized-dataset.md b/docs/specs/naturalized-dataset.md
+index 067b561d..30d7f106 100644
+--- a/docs/specs/naturalized-dataset.md
++++ b/docs/specs/naturalized-dataset.md
+@@ -286,8 +286,8 @@ A private value is a list (NAT-U-VAL-4). An assigned PN string converts:
+ - **NAT-U-RT-6.** A block with no free `xx` in its group is skipped with a
+   warning.
+ - **NAT-U-RT-7.** A `null` entry in a value list is an empty value, as in
+-  DICOM JSON (for example an empty DS that a reader gives as
+-  `Value: [null]`). Denaturalize keeps it. Every writer (the naturalized
++  DICOM JSON (for example the DS `1\\2`, which a reader gives as
++  `Value: [1, null, 2]`). Denaturalize keeps it. Every writer (the naturalized
+   form, a DICOM JSON dict, the event stream) writes it by its VR:
+   - a string VR: an empty value, never the text `null`;
+   - PN: an empty name that keeps its position (`[null, "C^D"]` writes
+@@ -371,6 +371,11 @@ no dictionary VM is a list.
+     the sequence, binary and simple value rules, for both producers and
+     `setAttribute`. The listener keeps its own scalar rule only for the
+     cardinality-violation policy.
++  - `ValueRepresentation.read` gives no value for a zero-length string
++    element, not one empty value (`[""]`). So every Part 10 reader gives
++    `Value: []`, the event stream sends no `value()` call, and both
++    producers give `null` or `[]` (NAT-U-VAL-1, NAT-U-VAL-2). An empty value
++    in a longer list (`\ab\\c` gives `["", "ab", "", "c"]`) stays.
+   - Both producers look up a tag with the `dictionary` proxy, which gives
+     `registerTag()` entries and the repeating groups (50xx, 60xx).
+   - `setVr`, `setAttribute` and `setPersonName` in
+diff --git a/packages/core/src/ValueRepresentation.js b/packages/core/src/ValueRepresentation.js
+index eda44645..c528ba11 100644
+--- a/packages/core/src/ValueRepresentation.js
++++ b/packages/core/src/ValueRepresentation.js
+@@ -76,6 +76,10 @@ class ValueRepresentation {
+         return this._isBinary;
+     }
+ 
++    isString() {
++        return false;
++    }
++
+     allowMultiple() {
+         return this._allowMultiple;
+     }
+@@ -168,6 +172,10 @@ class ValueRepresentation {
+     }
+ 
+     read(stream, length, syntax, readOptions = { forceStoreRaw: false }) {
++        // a zero-length string element has no value, not one empty value
++        if (length === 0 && this.isString()) {
++            return { rawValue: [], value: [] };
++        }
+         if (this.fixed && this.maxLength) {
+             if (!length)
+                 return {
+@@ -375,6 +383,10 @@ class AsciiStringRepresentation extends ValueRepresentation {
+         super(type);
+     }
+ 
++    isString() {
++        return true;
++    }
++
+     readBytes(stream, length) {
+         return stream.readAsciiString(length);
+     }
+@@ -391,6 +403,10 @@ class EncodedStringRepresentation extends ValueRepresentation {
+         super(type);
+     }
+ 
++    isString() {
++        return true;
++    }
++
+     readBytes(stream, length) {
+         return stream.readEncodedString(length);
+     }
+diff --git a/test/core/naturalizeDataset.test.js b/test/core/naturalizeDataset.test.js
+index 3126b6dc..99bb1587 100644
+--- a/test/core/naturalizeDataset.test.js
++++ b/test/core/naturalizeDataset.test.js
+@@ -52,7 +52,7 @@ describe("core naturalizeDataset (1.0 rules)", () => {
+         expect(addAccessors(two)).toBe(two);
+     });
+     test("an empty DS value (Value [null]) survives denaturalize", () => {
+-        // a reader gives an empty DS of VM 1-n as Value: [null]
++        // DICOM JSON can give an empty DS of VM 1-n as Value: [null]
+         const ds = DicomMetaDictionary.naturalizeDataset({
+             "00282112": { vr: "DS", Value: [null] },
+             "00181310": { vr: "US", Value: [0, 256, 256, 0] }
+diff --git a/test/core/nullEntries.test.js b/test/core/nullEntries.test.js
+index f4db8bb9..c9cd9258 100644
+--- a/test/core/nullEntries.test.js
++++ b/test/core/nullEntries.test.js
+@@ -59,7 +59,8 @@ describe("null entries in a value list", () => {
+             // the empty name keeps its position in the written text; the
+             // reader's PN string parse then drops empty names
+             expect(back["00101001"]._rawValue).toBe("\\C^D");
+-            expect(back["00282112"].Value).toEqual([null]);
++            // [null] is written with zero length, which reads back as no value
++            expect(back["00282112"].Value).toEqual([]);
+             expect(back["00181310"].Value).toEqual([0, 3]);
+         }
+         expect(warn.mock.calls.flat().join(" ")).toMatch(
+diff --git a/test/eventStream/emptyString.test.js b/test/eventStream/emptyString.test.js
+new file mode 100644
+index 00000000..d1853a5b
+--- /dev/null
++++ b/test/eventStream/emptyString.test.js
+@@ -0,0 +1,50 @@
++import dcmjs from "../../src/index.js";
++import { NaturalizedListener } from "../../src/eventStream/NaturalizedListener";
++import { fromPart10 } from "../../src/eventStream/fromPart10";
++
++const { DicomDict, DicomMessage, DicomMetaDictionary } = dcmjs.data;
++
++/** Part 10 bytes with zero-length string elements and one list with empty values. */
++function part10(syntax) {
++    const dict = new DicomDict({ "00020010": { vr: "UI", Value: [syntax] } });
++    dict.dict = {
++        "00080061": { vr: "CS", Value: [] }, // ModalitiesInStudy, VM 1-n
++        "00100020": { vr: "LO", Value: [] }, // PatientID, VM 1
++        "00104000": { vr: "LT", Value: [] }, // PatientComments, LT
++        "00101000": { vr: "LO", Value: ["", "ab", "", "c"] } // OtherPatientIDs: \ab\\c
++    };
++    return dict.write();
++}
++
++const expected = {
++    ModalitiesInStudy: [],
++    PatientID: null,
++    PatientComments: null,
++    OtherPatientIDs: ["", "ab", "", "c"]
++};
++
++describe("a zero-length string element has no value (NAT-U-VAL-1, -2)", () => {
++    test.each(["1.2.840.10008.1.2", "1.2.840.10008.1.2.1"])(
++        "the readers give no value, and both producers agree, %s",
++        async syntax => {
++            const read = DicomMessage.readFile(part10(syntax));
++            expect(read.dict["00080061"].Value).toEqual([]);
++            expect(read.dict["00104000"].Value).toEqual([]);
++            expect(read.dict["00101000"].Value).toEqual(["", "ab", "", "c"]);
++            expect(
++                DicomMetaDictionary.naturalizeDataset(read.dict)
++            ).toMatchObject(expected);
++
++            const listener = new NaturalizedListener();
++            const values = [];
++            const value = listener.value.bind(listener);
++            listener.value = (v, opts) => {
++                values.push(v);
++                return value(v, opts);
++            };
++            await fromPart10(part10(syntax), listener);
++            expect(listener.result).toMatchObject(expected);
++            expect(values.filter(v => v === "")).toHaveLength(2);
++        }
++    );
++});
+diff --git a/test/lossless-read-write.test.js b/test/lossless-read-write.test.js
+index e00d070c..909ded67 100644
+--- a/test/lossless-read-write.test.js
++++ b/test/lossless-read-write.test.js
+@@ -1071,7 +1071,7 @@ describe("lossless-read-write", () => {
+                 _rawValue: [
+                     "    This is a detailed explanation that can span multiple lines and paragraphs in the DICOM dataset.  "
+                 ], // leading spaces significant, trailing spaces allowed
+-                Value: [""]
++                Value: [] // zero length: the reader gives no value
+             }
+             // TODO: VR currently unimplemented
+             // {
+@@ -1233,7 +1233,7 @@ describe("lossless-read-write", () => {
+         );
+ 
+         // confirm starting dataset contains empty tag value for referring physician person name
+-        expect(origDicomDict.dict["00080090"]._rawValue).toEqual("");
++        expect(origDicomDict.dict["00080090"]._rawValue).toEqual([]);
+         expect(origNaturalizedDataset.ReferringPhysicianName).toBeNull(); // VM 1, empty
+ 
+         // re-encode the unnaturalized object
+@@ -1247,7 +1247,7 @@ describe("lossless-read-write", () => {
+         );
+ 
+         // confirm output referring physician name remains the same
+-        expect(newDicomDict.dict["00080090"]._rawValue).toEqual("");
++        expect(newDicomDict.dict["00080090"]._rawValue).toEqual([]);
+         expect(newNaturalizedDataset.ReferringPhysicianName).toBeNull();
+ 
+         // confirm no other changes to the rest of the file

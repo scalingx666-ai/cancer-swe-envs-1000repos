@@ -1,0 +1,1111 @@
+diff --git a/app/electron/ipc/oauth-helpers.js b/app/electron/ipc/oauth-helpers.js
+index 42ff281..d3239ff 100644
+--- a/app/electron/ipc/oauth-helpers.js
++++ b/app/electron/ipc/oauth-helpers.js
+@@ -1,3 +1,18 @@
++// The sign-in currently waiting for the browser callback, if any. Closing the
++// sign-in dialog or starting a new sign-in cancels it, so an abandoned attempt
++// neither keeps its loopback port nor reports a timeout minutes later.
++let activeSignIn = null;
++
++/**
++ * Cancel the sign-in that is waiting for the browser, if there is one.
++ * @returns {boolean} whether a sign-in was cancelled
++ */
++function cancelGoogleOAuth() {
++  if (!activeSignIn) return false;
++  activeSignIn.cancel();
++  return true;
++}
++
+ /**
+  * Google OAuth 2.0 PKCE-based authentication helper
+  * Implements secretless PKCE flow for desktop applications
+@@ -5,8 +20,12 @@
+  * @param {Object} params
+  * @param {string} params.clientId - Google OAuth Client ID (UWP/Desktop app type)
+  * @param {Function} params.openExternal - Function to open URL in system browser (shell.openExternal)
+- * @returns {Promise<{success: boolean, tokens?: Object, error?: string}>}
++ * @returns {Promise<{success: boolean, tokens?: Object, error?: string, cancelled?: boolean, timedOut?: boolean}>}
++ *   `cancelled`: the attempt was abandoned (dialog closed / newer sign-in);
++ *   `timedOut`: the user did not finish in the browser within 5 minutes.
+  */
++const CANCELLED = Symbol('oauth-cancelled');
++
+ async function performGoogleOAuth({ clientId, openExternal }) {
+   const { generatePKCEPair } = require('../oauth/pkce');
+   const { createCallbackServer } = require('../oauth/server');
+@@ -15,6 +34,12 @@ async function performGoogleOAuth({ clientId, openExternal }) {
+   const { URLSearchParams } = require('url');
+   
+   let callbackServer = null;
++  // A newer sign-in replaces any attempt still waiting for the browser.
++  cancelGoogleOAuth();
++  let cancel;
++  const cancelled = new Promise((resolve) => { cancel = () => resolve(CANCELLED); });
++  const mySignIn = { cancel: () => { mySignIn.cancelled = true; cancel(); } };
++  activeSignIn = mySignIn;
+   
+   try {
+     console.log('[OAuth] Starting PKCE OAuth flow in system browser...');
+@@ -37,6 +62,7 @@ async function performGoogleOAuth({ clientId, openExternal }) {
+     // For Desktop apps, Google expects callback at root path (no subpath)
+     // Use '127.0.0.1' as per Google's Desktop app documentation
+     callbackServer = await createCallbackServer(42813, '/');
++    if (mySignIn.cancelled) return { success: false, cancelled: true };
+     const redirectUri = `http://127.0.0.1:${callbackServer.port}`;
+     
+     // Step 4: Build authorization URL
+@@ -64,7 +90,22 @@ async function performGoogleOAuth({ clientId, openExternal }) {
+     
+     // Step 6: Wait for authorization code
+     console.log('[OAuth] Waiting for authorization callback...');
+-    const { code: authorizationCode, state: returnedState } = await callbackServer.getAuthorizationCode(300000); // 5 min timeout
++    let callback;
++    try {
++      // 5 min timeout; a cancel (dialog closed / newer sign-in) ends the wait early.
++      callback = await Promise.race([callbackServer.getAuthorizationCode(300000), cancelled]);
++    } catch (waitError) {
++      if (/OAuth timeout/.test(waitError?.message || '')) {
++        console.log('[OAuth] Sign-in timed out waiting for the browser');
++        return { success: false, timedOut: true, error: 'Google sign-in timed out' };
++      }
++      throw waitError;
++    }
++    if (callback === CANCELLED) {
++      console.log('[OAuth] Sign-in cancelled before the browser callback');
++      return { success: false, cancelled: true };
++    }
++    const { code: authorizationCode, state: returnedState } = callback;
+     
+     // Step 7: Verify state parameter (CSRF protection)
+     if (returnedState !== state) {
+@@ -163,6 +204,7 @@ async function performGoogleOAuth({ clientId, openExternal }) {
+       error: error.message || 'Failed to authenticate with Google'
+     };
+   } finally {
++    if (activeSignIn === mySignIn) activeSignIn = null;
+     // Close the callback server after the code exchange completes, rather
+     // than from the HTTP callback itself.
+     if (callbackServer && callbackServer.server) {
+@@ -287,6 +329,7 @@ async function refreshGoogleToken({ refreshToken, clientId }) {
+ 
+ module.exports = {
+   performGoogleOAuth,
++  cancelGoogleOAuth,
+   refreshGoogleToken
+ };
+ 
+diff --git a/app/electron/main.js b/app/electron/main.js
+index 661379e..07f37f9 100644
+--- a/app/electron/main.js
++++ b/app/electron/main.js
+@@ -9,7 +9,7 @@ const net = require('net');
+ const { downloadFile, extractAndPersist } = require('./ipc/tasknode-helpers');
+ const { getServiceRoot } = require('./ipc/service-root');
+ const { setupProtocolHandlers, registerProtocolClient } = require('./ipc/protocol-helpers');
+-const { performGoogleOAuth, refreshGoogleToken } = require('./ipc/oauth-helpers');
++const { performGoogleOAuth, cancelGoogleOAuth, refreshGoogleToken } = require('./ipc/oauth-helpers');
+ 
+ let mainWindow;
+ let splashWindow;
+@@ -713,6 +713,9 @@ ipcMain.handle('google-oauth', async (event, { clientId }) => {
+   });
+ });
+ 
++// Cancel a Google sign-in still waiting for the browser (sign-in dialog closed)
++ipcMain.handle('google-oauth-cancel', () => cancelGoogleOAuth());
++
+ // Refresh Google OAuth token using refresh_token
+ ipcMain.handle('google-refresh-token', async (event, { refreshToken, clientId }) => {
+   return await refreshGoogleToken({
+diff --git a/app/electron/main_electron.js b/app/electron/main_electron.js
+index 0cc9d88..3d513d7 100644
+--- a/app/electron/main_electron.js
++++ b/app/electron/main_electron.js
+@@ -6,7 +6,7 @@ const os = require('os');
+ const http = require('http');
+ const net = require('net');
+ const { setupProtocolHandlers, registerProtocolClient } = require('./ipc/protocol-helpers');
+-const { performGoogleOAuth, refreshGoogleToken } = require('./ipc/oauth-helpers');
++const { performGoogleOAuth, cancelGoogleOAuth, refreshGoogleToken } = require('./ipc/oauth-helpers');
+ // const ProjectBehaviorRecording = require('./services/recording/projectBehaviorRecording');
+ 
+ let mainWindow;
+@@ -454,6 +454,9 @@ ipcMain.handle('google-oauth', async (event, { clientId }) => {
+   });
+ });
+ 
++// Cancel a Google sign-in still waiting for the browser (sign-in dialog closed)
++ipcMain.handle('google-oauth-cancel', () => cancelGoogleOAuth());
++
+ // Refresh Google OAuth token using refresh_token
+ ipcMain.handle('google-refresh-token', async (event, { refreshToken, clientId }) => {
+   return await refreshGoogleToken({
+diff --git a/app/electron/preload.js b/app/electron/preload.js
+index 5d6b774..62fabab 100644
+--- a/app/electron/preload.js
++++ b/app/electron/preload.js
+@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('electron', {
+   writeFile: (options) => ipcRenderer.invoke('write-file', options),
+   // OAuth methods
+   googleOAuth: (credentials) => ipcRenderer.invoke('google-oauth', credentials),
++  cancelGoogleOAuth: () => ipcRenderer.invoke('google-oauth-cancel'),
+   googleRefreshToken: (params) => ipcRenderer.invoke('google-refresh-token', params),
+   // Refresh token storage methods
+   saveRefreshToken: (params) => ipcRenderer.invoke('save-refresh-token', params),
+diff --git a/app/render/components/auth/GlobalSignupModal/GlobalSignupModal.tsx b/app/render/components/auth/GlobalSignupModal/GlobalSignupModal.tsx
+index 508c463..fe86bb7 100644
+--- a/app/render/components/auth/GlobalSignupModal/GlobalSignupModal.tsx
++++ b/app/render/components/auth/GlobalSignupModal/GlobalSignupModal.tsx
+@@ -254,6 +254,10 @@ const GlobalSignupModal = ({
+   // Reset states when modal closes
+   useEffect(() => {
+     if (!isSignupModalOpen) {
++      // Stop a Google sign-in still waiting for the browser, so it does not
++      // time out (and report an error) minutes after the dialog was closed.
++      // No-op after a successful sign-in: that attempt has already finished.
++      Promise.resolve(window.electron?.cancelGoogleOAuth?.()).catch(() => {});
+       setIsGooglePending(false);
+       setIsUPennPending(false);
+       setIsEmailPending(false);
+diff --git a/app/render/components/dashboard/LocalFileManager.tsx b/app/render/components/dashboard/LocalFileManager.tsx
+index ec20fe6..92f55e6 100644
+--- a/app/render/components/dashboard/LocalFileManager.tsx
++++ b/app/render/components/dashboard/LocalFileManager.tsx
+@@ -372,7 +372,7 @@ const LocalFileManager = () => {
+         fileSize: uploadData.fileSize ?? null,
+         mpp: uploadData.slideInfo.mpp ?? null,
+         magnification: uploadData.slideInfo.magnification ?? null,
+-        imageType: uploadData.slideInfo.imageType || (uploadData.slideInfo.fileFormat === 'qptiff' && uploadData.slideInfo.totalChannels && uploadData.slideInfo.totalChannels > 3) ? 'Multiplex Immunofluorescent' : 'Brightfield H&E'
++        imageType: uploadData.slideInfo.imageType || ((uploadData.slideInfo.fileFormat === 'qptiff' && uploadData.slideInfo.totalChannels && uploadData.slideInfo.totalChannels > 3) ? 'Multiplex Immunofluorescent' : 'Brightfield H&E')
+       }));
+       if (uploadData.slideInfo.totalChannels) {
+         dispatch(setTotalChannels(uploadData.slideInfo.totalChannels));
+diff --git a/app/render/components/dashboard/WebFileManager.tsx b/app/render/components/dashboard/WebFileManager.tsx
+index 1826758..4034fc8 100644
+--- a/app/render/components/dashboard/WebFileManager.tsx
++++ b/app/render/components/dashboard/WebFileManager.tsx
+@@ -78,6 +78,7 @@ import {
+   getConfig,
+   copyFileToPersonal,
+   copyFolderToPersonal,
++  isTaskStatusUnknown,
+ } from '@/services/fileManager.service';
+ import {
+   listChunkUploadResumeHints,
+@@ -1452,7 +1453,7 @@ const WebFileManager = ({ initialPath: initialPathProp }: WebFileManagerProps =
+         fileSize: uploadData.fileSize ?? null,
+         mpp: uploadData.slideInfo.mpp ?? null,
+         magnification: uploadData.slideInfo.magnification ?? null,
+-        imageType: uploadData.slideInfo.imageType || (uploadData.slideInfo.fileFormat === 'qptiff' && uploadData.slideInfo.totalChannels && uploadData.slideInfo.totalChannels > 3) ? 'Multiplex Immunofluorescent' : 'Brightfield H&E'
++        imageType: uploadData.slideInfo.imageType || ((uploadData.slideInfo.fileFormat === 'qptiff' && uploadData.slideInfo.totalChannels && uploadData.slideInfo.totalChannels > 3) ? 'Multiplex Immunofluorescent' : 'Brightfield H&E')
+       }));
+       if (uploadData.slideInfo.totalChannels) {
+         dispatch(setTotalChannels(uploadData.slideInfo.totalChannels));
+@@ -2517,6 +2518,17 @@ const WebFileManager = ({ initialPath: initialPathProp }: WebFileManagerProps =
+         );
+         exitMultiSelectMode();
+     } catch(err: any) {
++        if (isTaskStatusUnknown(err)) {
++          // Lost track of the task, not a failure: show the folder as it is now.
++          await fetchFiles(currentDirectoryRef.current);
++          triggerStorageRefresh();
++          toast.info('Deletion may have finished', {
++            id: key,
++            description: 'Lost track of the task. The folder has been refreshed; check what is left.',
++            duration: 6000,
++          });
++          return;
++        }
+         if (err.status === 404) await fetchFiles(currentDirectoryRef.current);
+         const message = getErrorMessage(err, 'Failed to delete item');
+         if (err.status === 409) {
+@@ -2802,8 +2814,8 @@ const WebFileManager = ({ initialPath: initialPathProp }: WebFileManagerProps =
+     const conversionJob = isH5File ? conversionJobs[item.path] : null;
+     const isConverting = conversionJob && (conversionJob.status === 'pending' || conversionJob.status === 'running');
+     const handleCompress = async (overwrite: boolean = false) => {
++      const key = `cmp_${Math.random().toString(36).slice(2)}`;
+       try {
+-        const key = `cmp_${Math.random().toString(36).slice(2)}`;
+         const statusMessages: Record<string, string> = {
+           'pending': 'Starting compression...',
+           'processing': 'Compressing...',
+@@ -2843,15 +2855,25 @@ const WebFileManager = ({ initialPath: initialPathProp }: WebFileManagerProps =
+         await fetchFiles(currentDirectory);
+         toast.success('Compressed to zip', { id: key, duration: 2000 });
+       } catch (e: any) {
+-        toast.error(getErrorMessage(e, 'Compression failed'));
++        if (isTaskStatusUnknown(e)) {
++          await fetchFiles(currentDirectory);
++          toast.info('Compression may have finished', {
++            id: key,
++            description: 'Lost track of the task. The folder has been refreshed; check for the zip.',
++            duration: 6000,
++          });
++          return;
++        }
++        // Same id as the loading toast, so the spinner is replaced, not left behind.
++        toast.error(getErrorMessage(e, 'Compression failed'), { id: key, duration: 4000 });
+       }
+     };
+     const handleExtract = async (overwrite: boolean = false) => {
+       if (denyWriteToast('extract this archive', itemAccessPath)) {
+         return;
+       }
++      const key = `ext_${Math.random().toString(36).slice(2)}`;
+       try {
+-        const key = `ext_${Math.random().toString(36).slice(2)}`;
+         const statusMessages: Record<string, string> = {
+           'pending': 'Starting extraction...',
+           'processing': 'Extracting...',
+@@ -2889,7 +2911,17 @@ const WebFileManager = ({ initialPath: initialPathProp }: WebFileManagerProps =
+         await fetchFiles(currentDirectory);
+         toast.success('Extraction completed', { id: key, duration: 2000 });
+       } catch (e: any) {
+-        toast.error(getErrorMessage(e, 'Extraction failed'));
++        if (isTaskStatusUnknown(e)) {
++          await fetchFiles(currentDirectory);
++          toast.info('Extraction may have finished', {
++            id: key,
++            description: 'Lost track of the task. The folder has been refreshed; check the extracted files.',
++            duration: 6000,
++          });
++          return;
++        }
++        // Same id as the loading toast, so the spinner is replaced, not left behind.
++        toast.error(getErrorMessage(e, 'Extraction failed'), { id: key, duration: 4000 });
+       }
+     };
+     return (
+diff --git a/app/render/components/imageViewer/review/CandidateGallery.tsx b/app/render/components/imageViewer/review/CandidateGallery.tsx
+index 4edfcf5..283775b 100644
+--- a/app/render/components/imageViewer/review/CandidateGallery.tsx
++++ b/app/render/components/imageViewer/review/CandidateGallery.tsx
+@@ -76,19 +76,39 @@ const CandidateGallery: React.FC<CandidateGalleryProps> = ({
+   const totalPages = Math.ceil(total / pageSize);
+   
+ 
++  // N opens the class picker on the target tile; the nonce lets repeated
++  // presses re-open it after the user closed it.
++  const [keyboardPicker, setKeyboardPicker] = useState<{ cellId: string; nonce: number } | null>(null);
++
+   // Keyboard shortcuts for Y/N labeling
+   const handleKeyDown = useCallback((event: KeyboardEvent) => {
+     if (writeDisabled || safeCandidates.length === 0 || loading) return;
+-
+-    // Find the first unlabeled candidate
+-    const unlabeledCandidate = safeCandidates.find(c => c.label === undefined);
++    // Keys typed into a text field (page number, class name, search) are text,
++    // not Y/N shortcuts.
++    // Radios / checkboxes (e.g. the class list just clicked) keep the shortcuts.
++    const target = event.target as HTMLElement | null;
++    const isTextInput = target instanceof HTMLInputElement
++      && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/i.test(target.type);
++    if (target && (target.isContentEditable || isTextInput || /^(TEXTAREA|SELECT)$/.test(target.tagName))) return;
++    if (event.ctrlKey || event.metaKey || event.altKey) return;
++
++    // First visible candidate still awaiting a decision. One staged for
++    // reclassification (No → class) already has one, and the panel refuses
++    // Yes on it, so targeting it would make Y a no-op forever.
++    const unlabeledCandidate = safeCandidates
++      .slice(0, 12)
++      .find(c => c.label === undefined && !pendingReclassifications.has(c.cell_id));
+     if (!unlabeledCandidate) return;
+ 
+-    if (!savedMode && event.key.toLowerCase() === 'y') {
++    const key = event.key.toLowerCase();
++    if (!savedMode && key === 'y') {
+       event.preventDefault();
+       onLabelCandidate(unlabeledCandidate.cell_id, 1);
++    } else if (!savedMode && key === 'n') {
++      event.preventDefault();
++      setKeyboardPicker(prev => ({ cellId: unlabeledCandidate.cell_id, nonce: (prev?.nonce ?? 0) + 1 }));
+     }
+-  }, [safeCandidates, loading, onLabelCandidate, savedMode, writeDisabled]);
++  }, [safeCandidates, loading, onLabelCandidate, savedMode, writeDisabled, pendingReclassifications]);
+ 
+   useEffect(() => {
+     document.addEventListener('keydown', handleKeyDown);
+@@ -217,6 +237,7 @@ const CandidateGallery: React.FC<CandidateGalleryProps> = ({
+                 pendingReclassification={pendingReclassifications.get(candidate.cell_id)}
+                 onPendingReclassification={onPendingReclassification}
+                 onCancelPendingReclassification={onCancelPendingReclassification}
++                openPickerNonce={keyboardPicker?.cellId === candidate.cell_id ? keyboardPicker.nonce : undefined}
+                 writeDisabled={writeDisabled}
+                 writeDisabledTitle={writeDisabledTitle}
+               />
+@@ -314,6 +335,8 @@ interface CandidateTileProps {
+   onCancelPendingReclassification?: (cellId: string) => void;
+   writeDisabled?: boolean;
+   writeDisabledTitle?: string;
++  // Changes each time the N shortcut targets this tile: opens the class picker.
++  openPickerNonce?: number;
+ }
+ 
+ const CandidateTile: React.FC<CandidateTileProps> = ({
+@@ -334,6 +357,7 @@ const CandidateTile: React.FC<CandidateTileProps> = ({
+   onCancelPendingReclassification,
+   writeDisabled = false,
+   writeDisabledTitle,
++  openPickerNonce,
+ }) => {
+   const { cell_id, prob, crop, label } = candidate;
+   const { image, bbox, bounds, contour } = crop;
+@@ -448,6 +472,20 @@ const CandidateTile: React.FC<CandidateTileProps> = ({
+     }
+   };
+ 
++  // N shortcut: open the class picker, same as clicking this tile's No button.
++  // Only a nonce that changes while this tile is mounted counts: a tile that
++  // remounts (refetch skeleton, page change) with an old nonce must not pop
++  // the picker open by itself.
++  const handledPickerNonceRef = useRef(openPickerNonce);
++  useEffect(() => {
++    if (openPickerNonce === handledPickerNonceRef.current) return;
++    handledPickerNonceRef.current = openPickerNonce;
++    if (openPickerNonce === undefined || writeDisabled || label !== undefined || pendingReclassification) return;
++    updateDropdownPosition();
++    setShowDropdown(true);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [openPickerNonce]);
++
+   // No longer need click outside handler - dropdown only closes via close button
+ 
+   // Calculate red box position based on contour (like nuclei.io-main implementation)
+diff --git a/app/render/components/imageViewer/review/CellReviewModal.tsx b/app/render/components/imageViewer/review/CellReviewModal.tsx
+index 843d2e9..22c4d51 100644
+--- a/app/render/components/imageViewer/review/CellReviewModal.tsx
++++ b/app/render/components/imageViewer/review/CellReviewModal.tsx
+@@ -100,13 +100,19 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+   const [pendingReclassificationsCount, setPendingReclassificationsCount] = useState(0);
+   const activeLearningPanelRef = useRef<ActiveLearningPanelRef>(null);
+   const viewSizeDebounceRef = useRef<NodeJS.Timeout | null>(null);
++  // Latest cell_review_tile request. Replies to older requests (a previously
++  // clicked cell, an earlier zoom, a closed modal) are dropped so they cannot
++  // replace what the user is looking at now.
++  const tileRequestSeqRef = useRef(0);
+ 
+   // Reset review state whenever the modal closes (covers X / overlay / Close
+   // button / parent-controlled close).
+   useEffect(() => {
+     if (!open) {
++      tileRequestSeqRef.current += 1;
+       setReviewData(null);
+-      setShowContour(false);
++      // Back to the initial default (on), so every open starts the same way.
++      setShowContour(true);
+       setReviewError(null);
+       setIsLoadingReview(false);
+       setIsResizingView(false);
+@@ -152,6 +158,7 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+     const currentPatchSize = customPatchSize || calculatePatchSizeFromZoom(currentZoom);
+ 
+     setIsLoadingReview(true);
++    const seq = ++tileRequestSeqRef.current;
+ 
+     try {
+       // Call backend API to get cell patch with variable size
+@@ -169,6 +176,7 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+         body: JSON.stringify(requestPayload),
+         returnAxiosFormat: true,
+       });
++      if (seq !== tileRequestSeqRef.current) return;
+ 
+ 
+       // Handle API response format (cell patch data)
+@@ -228,6 +236,7 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+       setIsLoadingReview(false);
+ 
+     } catch (error: any) {
++      if (seq !== tileRequestSeqRef.current) return;
+       setReviewError(getErrorMessage(error, 'Failed to fetch and position cell'));
+       setIsLoadingReview(false);
+     }
+@@ -287,6 +296,7 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+     if (!cell) return;
+ 
+     const currentMagnification = magnification ?? 40;
++    const seq = ++tileRequestSeqRef.current;
+ 
+     try {
+       // Validate cell data before making request
+@@ -320,9 +330,24 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+         body: JSON.stringify(requestPayload),
+         returnAxiosFormat: true,
+       });
+-
++      if (seq !== tileRequestSeqRef.current) return;
++      // This request shares the tile sequence with fetchAndPositionCell and can
++      // supersede it (e.g. "Show contour" toggled while a cell tile loads), so
++      // it also ends the loading state and re-points the slider cache at
++      // this cell.
++      setIsLoadingReview(false);
+ 
+       const d = response.data as Record<string, any>;
++      const tileBody = d?.image != null ? d : d?.data;
++      if (tileBody?.image) {
++        setCachedCellData({
++          slide: cell.slideId,
++          cellId: cell.cellId,
++          centroid: cell.centroid,
++          contour: tileBody.contour,
++          bounds: tileBody.bounds,
++        });
++      }
+ 
+       // Classification fields may sit on unwrapped body or under .data
+       let cellClassificationData: any = null;
+@@ -366,14 +391,32 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+       }
+ 
+     } catch (error: any) {
++      if (seq !== tileRequestSeqRef.current) return;
+       setContourData(null);
++      setIsLoadingReview(false);
++    }
++  };
++
++  // Every way of closing (Close button, Esc, X, click outside) saves the
++  // staged Yes/No actions, so labels are never dropped. No "save changes?"
++  // prompt. The save runs in the background so a slow or hung request never
++  // keeps the dialog open; the panel reports its own failures with a toast.
++  // A read-only slide can't be saved, so closing just closes it (Update is
++  // disabled there too).
++  const closeWithSave = () => {
++    const panel = activeLearningPanelRef.current;
++    if (pathWritable && panel && panel.getPendingReclassificationsCount() > 0) {
++      panel.submitPendingReclassifications().catch((error: unknown) => {
++        toast.error('Save failed', { description: getErrorMessage(error, 'Network error') });
++      });
+     }
++    onClose();
+   };
+ 
+   return (
+     <Dialog
+       open={open}
+-      onOpenChange={(o) => { if (!o) onClose(); }}
++      onOpenChange={(o) => { if (!o) closeWithSave(); }}
+     >
+       <DialogContent className="max-w-[1200px] w-full max-h-[90vh] overflow-hidden flex flex-col">
+         <DialogHeader>
+@@ -484,7 +527,7 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+                     </Button>
+                   </div>
+                 </div>
+-              ) : !reviewState?.selectedClass ? (
++              ) : !(reviewState?.className || reviewState?.selectedClass) ? (
+                 <div style={{
+                   position: 'absolute',
+                   top: 0,
+@@ -730,23 +773,7 @@ export const CellReviewModal: React.FC<CellReviewModalProps> = ({
+         </Button>
+         <Button
+           variant="secondary"
+-          onClick={async () => {
+-            // Auto-save all reclassifications before closing
+-            try {
+-              // Submit pending batch reclassifications first
+-              if (activeLearningPanelRef.current) {
+-                const pendingCount = activeLearningPanelRef.current.getPendingReclassificationsCount();
+-                if (pendingCount > 0) {
+-                  await activeLearningPanelRef.current.submitPendingReclassifications();
+-                }
+-              }
+-
+-            } catch (error) {
+-              // Silent failure, don't disturb user
+-            }
+-
+-            onClose();
+-          }}
++          onClick={closeWithSave}
+         >
+           Close
+         </Button>
+diff --git a/app/render/components/imageViewer/review/PatchReviewDialog.tsx b/app/render/components/imageViewer/review/PatchReviewDialog.tsx
+index 9ed782a..74ed87a 100644
+--- a/app/render/components/imageViewer/review/PatchReviewDialog.tsx
++++ b/app/render/components/imageViewer/review/PatchReviewDialog.tsx
+@@ -90,10 +90,24 @@ export const PatchReviewDialog: React.FC<PatchReviewDialogProps> = ({
+     setSelectedPatchPreview(null);
+   };
+ 
++  // Every way of closing (Close button, Esc, X, click outside) saves the
++  // staged YES/NO labels, as the cell review does. The save runs in the
++  // background so a slow request never keeps the dialog open; a read-only
++  // slide can't be saved, so closing just closes it.
++  const closeWithSave = () => {
++    const panel = patchReviewPanelRef.current;
++    if (pathWritable && panel && panel.getPendingReclassificationsCount() > 0) {
++      panel.submitPendingReclassifications().catch((error: unknown) => {
++        toast.error('Save failed', { description: getErrorMessage(error, 'Network error') });
++      });
++    }
++    handleClose();
++  };
++
+   return (
+     <Dialog
+       open={open}
+-      onOpenChange={(o) => { if (!o) handleClose(); }}
++      onOpenChange={(o) => { if (!o) closeWithSave(); }}
+     >
+       <DialogContent className="max-w-[1200px] w-full max-h-[90vh] overflow-hidden flex flex-col">
+         <DialogHeader>
+@@ -237,18 +251,7 @@ export const PatchReviewDialog: React.FC<PatchReviewDialogProps> = ({
+           </Button>
+           <Button
+             variant="secondary"
+-            onClick={async () => {
+-              // Auto-save staged labels before closing, like the cell modal.
+-              try {
+-                if (patchReviewPanelRef.current
+-                    && patchReviewPanelRef.current.getPendingReclassificationsCount() > 0) {
+-                  await patchReviewPanelRef.current.submitPendingReclassifications();
+-                }
+-              } catch {
+-                /* closing — don't block on a save error */
+-              }
+-              handleClose();
+-            }}
++            onClick={closeWithSave}
+           >
+             Close
+           </Button>
+diff --git a/app/render/components/imageViewer/review/ReviewPanel.tsx b/app/render/components/imageViewer/review/ReviewPanel.tsx
+index 5df0013..00b6301 100644
+--- a/app/render/components/imageViewer/review/ReviewPanel.tsx
++++ b/app/render/components/imageViewer/review/ReviewPanel.tsx
+@@ -218,7 +218,12 @@ export const ActiveLearningPanel = React.forwardRef<ActiveLearningPanelRef, Acti
+   // Batch processing: commit all staged review actions on Save —
+   //   • "Yes" confirmations + "No" reclassifications → one save_annotation/batch call
+   //   • Saved-view removals → delete each from user_annotation
+-  const submitPendingReclassifications = useCallback(async (): Promise<ReviewSaveResult | null> => {
++  const submitPendingReclassifications = useCallback(async (
++    // Class the staged "Yes" confirmations were made for. Defaults to the
++    // current review class; the class-switch auto-save passes the previous one
++    // because reviewState.className has already moved to the new class.
++    confirmedClassName?: string,
++  ): Promise<ReviewSaveResult | null> => {
+     if (!activeInstanceId || !currentPath) return null;
+     if (!reviewState.slideId) return null;
+     if (!assertWritable("submit review changes")) {
+@@ -315,14 +320,15 @@ export const ActiveLearningPanel = React.forwardRef<ActiveLearningPanelRef, Acti
+ 
+       // Bump nuclei class counts for everything committed (cell only — patch
+       // counts are maintained server-side in patch_class_counts):
+-      //   "Yes" confirmations → the current review class
++      //   "Yes" confirmations → the class they were made for (confirmedClassName)
+       //   "No" reclassifications → their chosen target class
+       // A caller-scoped class list (patch panels) must not mutate the shared
+       // cell-class Redux list.
+       if (!isPatch && !reviewClassesProp) {
+         const classChangeCounts = new Map<string, number>();
+-        if (reviewState.className && confirmedCells.size > 0) {
+-          classChangeCounts.set(reviewState.className, confirmedCells.size);
++        const yesClassName = confirmedClassName ?? reviewState.className;
++        if (yesClassName && confirmedCells.size > 0) {
++          classChangeCounts.set(yesClassName, confirmedCells.size);
+         }
+         reclassEntries.forEach(([, newClass]) => {
+           classChangeCounts.set(newClass, (classChangeCounts.get(newClass) || 0) + 1);
+@@ -402,18 +408,31 @@ export const ActiveLearningPanel = React.forwardRef<ActiveLearningPanelRef, Acti
+       setPendingReclassifications(new Map());
+       // Clear confirmed cells
+       setConfirmedCells(new Set());
++      // Staged removals hold the old slide's cell ids — keeping them would
++      // delete those ids from the new slide on the next save.
++      setPendingRemovals(new Set());
++      setReviewMode("review");
+     }
+   }, [currentPath, reviewState.slideId, dispatch]);
+   
+-  // Batch processing: Submit pending reclassifications when switching classes
++  // Batch processing: submit pending reclassifications once when the class
++  // changes. Keyed on the class name alone: depending on the submit callback
++  // re-ran this after every save (each save clears the pending sets, which
++  // recreates the callback) and re-posted save_annotation/batch in a loop.
++  const submitPendingRef = useRef(submitPendingReclassifications);
++  useEffect(() => {
++    submitPendingRef.current = submitPendingReclassifications;
++  }, [submitPendingReclassifications]);
++  const prevReviewClassRef = useRef(reviewState.className);
+   useEffect(() => {
+-    if (reviewState.className !== currentHistogramClass && currentHistogramClass !== null) {
+-      // Class has been switched, submit pending reclassifications
+-      submitPendingReclassifications();
++    const prev = prevReviewClassRef.current;
++    prevReviewClassRef.current = reviewState.className;
++    if (prev && prev !== reviewState.className) {
++      void submitPendingRef.current(prev);
+       // Clear confirmed cells (because switched to new class)
+       setConfirmedCells(new Set());
+     }
+-  }, [reviewState.className, currentHistogramClass, submitPendingReclassifications]);
++  }, [reviewState.className]);
+ 
+   // Get target class from Redux state (set by ClassificationPanel)
+   const targetClass = useMemo(() => {
+@@ -722,9 +741,20 @@ export const ActiveLearningPanel = React.forwardRef<ActiveLearningPanelRef, Acti
+     }
+   };
+ 
++  // One auto-clear timer at a time: an older click's timer must not clear a
++  // newer selection early.
++  const selectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
++  useEffect(() => () => {
++    if (selectionTimerRef.current) clearTimeout(selectionTimerRef.current);
++  }, []);
++
+   //Handle candidate click
+   const handleCandidateClick = useCallback((clickedCandidate: any) => {
+-    
++    if (selectionTimerRef.current) {
++      clearTimeout(selectionTimerRef.current);
++      selectionTimerRef.current = null;
++    }
++
+     // Toggle selection - if clicking the same candidate, deselect it
+     // This prevents the "sticking" behavior mentioned in requirements
+     if (selectedCandidate?.cell_id === clickedCandidate.cell_id) {
+@@ -736,7 +766,8 @@ export const ActiveLearningPanel = React.forwardRef<ActiveLearningPanelRef, Acti
+     setSelectedCandidate(clickedCandidate);
+     
+     // Auto-clear selection after 3 seconds to prevent sticking
+-    setTimeout(() => {
++    selectionTimerRef.current = setTimeout(() => {
++      selectionTimerRef.current = null;
+       setSelectedCandidate(null);
+     }, 3000);
+     
+@@ -878,7 +909,10 @@ export const ActiveLearningPanel = React.forwardRef<ActiveLearningPanelRef, Acti
+                 }
+                 loading={reviewMode === 'saved'
+                   ? (reviewState?.loading || false)
+-                  : (reviewState?.loading || thresholdLoading || (currentHistogramClass !== reviewState.className))}
++                  // A failed first load never sets currentHistogramClass; don't let the class
++                  // mismatch keep the skeleton up over the error + Retry (N-04).
++                  : (reviewState?.loading || thresholdLoading ||
++                     (!reviewState?.error && currentHistogramClass !== reviewState.className))}
+                 error={reviewState?.error || null}
+                 total={
+                   reviewMode === 'saved'
+diff --git a/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx b/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
+index 0feecd0..fe36cca 100644
+--- a/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
+@@ -754,7 +754,7 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+           <div className="flex items-center gap-2">
+             <Avatar className="w-6 h-6 bg-muted">
+               <AvatarImage
+-                src="/brand/TissueLab_logo.png"
++                src="/brand/agent_avatar.png"
+                 alt="TissueLab Bot"
+                 className="object-contain"
+               />
+@@ -807,9 +807,6 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+                 const isWorkflowCard = message.type === "workflow-card" && isWorkflowPayload(message.content as ChatMessagePayload)
+                 const isAnnotationContext = message.type === "annotation-context" && isAnnotationContextPayload(message.content as ChatMessagePayload)
+                 const rawMsg = payloadToString(message.content as ChatMessagePayload)
+-                const codeMatch = rawMsg.match(/```(\w+)?[\r\n]+([\s\S]*?)```/)
+-                const lang = codeMatch ? (codeMatch[1] || 'python').toLowerCase() : ''
+-                const codeBody = codeMatch ? (codeMatch[2] || '') : ''
+                 return (
+                 <div key={message.id} className="space-y-2">
+               <div
+@@ -822,7 +819,7 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+                       <div className="w-8 h-8 shrink-0">
+                         <Avatar className="w-8 h-8 bg-muted">
+                           <AvatarImage
+-                            src="/brand/TissueLab_logo.png"
++                            src="/brand/agent_avatar.png"
+                             alt="TissueLab Bot"
+                             className="object-contain"
+                           />
+@@ -1010,13 +1007,6 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+                       <div className={`break-words whitespace-pre-wrap text-sm leading-5 ${message.sender === 'user' ? 'text-primary-foreground' : 'text-foreground'} w-full overflow-hidden`}>
+                         {(() => {
+                           if (!rawMsg) return null;
+-                          const fenced = rawMsg.match(/```(\w+)?[\r\n]+([\s\S]*?)```/)
+-                          if (fenced) {
+-                            const before = rawMsg.slice(0, fenced.index || 0).trim();
+-                            return before ? (
+-                              <div className="whitespace-pre-wrap break-words overflow-hidden">{before}</div>
+-                            ) : null;
+-                          }
+                           // Highlight file paths like /Users/.../file.zarr or C:\\...\\file.zarr as inline code
+                           const PATH_REGEX = /(\/[^\s)]+\.zarr|[A-Za-z]:\\[^\s)]+\.zarr)/g
+                           const PATH_EXACT = /^(\/[^^\s)]+\.zarr|[A-Za-z]:\\[^\s)]+\.zarr)$/
+@@ -1052,7 +1042,8 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+                                 : <span key={`t${idx}`}>{renderInlineCodes(tok)}</span>
+                             )
+                           }
+-                          const lines = rawMsg.split('\n');
++                          const renderMarkdown = (text: string, keyPrefix: string) => {
++                          const lines = text.split('\n');
+                           const elements: React.ReactNode[] = [];
+                           let currentBullets: string[] = [];
+ 
+@@ -1105,43 +1096,34 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+                             }
+                           });
+                           flushBullets(true);
+-                          return <div>{elements}</div>
++                          return <div key={keyPrefix}>{elements}</div>
++                          };
++
++                          // Render every fenced code block in place, with the text
++                          // between and after them (not just the first block).
++                          const FENCE = /```(\w+)?[\r\n]+([\s\S]*?)```/g;
++                          const segments: React.ReactNode[] = [];
++                          let last = 0;
++                          for (const m of rawMsg.matchAll(FENCE)) {
++                            const start = m.index ?? 0;
++                            const text = rawMsg.slice(last, start);
++                            if (text.trim()) segments.push(renderMarkdown(text, `t${start}`));
++                            segments.push(
++                              <div key={`c${start}`} className="my-2 min-w-0 whitespace-normal">
++                                <CodePreview code={m[2] || ''} language={(m[1] || 'python').toLowerCase()} />
++                              </div>
++                            );
++                            last = start + m[0].length;
++                          }
++                          const tail = rawMsg.slice(last);
++                          if (tail.trim()) segments.push(renderMarkdown(tail, `t${last}`));
++                          return <div>{segments}</div>
+                         })()}
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               </div>
+-              {codeMatch && (
+-                <div className={cn("flex relative", message.sender === "user" ? "justify-end" : "justify-start")}> 
+-                  <div className={cn("flex gap-2 max-w-[85%] min-w-0", message.sender === "user" ? "flex-row-reverse" : "flex-row")}> 
+-                    <div className="h-full flex items-start">
+-                      {message.sender === "bot" ? (
+-                        <div className="w-8 h-8 shrink-0">
+-                          <Avatar className="w-8 h-8 bg-muted">
+-                            <AvatarImage
+-                              src="/brand/TissueLab_logo.png"
+-                              alt="TissueLab Bot"
+-                              className="object-contain"
+-                            />
+-                            <AvatarFallback className="bg-foreground text-background">TL</AvatarFallback>
+-                          </Avatar>
+-                        </div>
+-                      ) : (
+-                        <div className="w-8 h-8 shrink-0">
+-                          <Avatar className="w-8 h-8">
+-                            <AvatarImage src={avatarPreview} alt={preferredName || userInfo?.email || 'User'} className="object-cover"/>
+-                            <AvatarFallback>{(preferredName || userInfo?.email || 'U').charAt(0).toUpperCase()}</AvatarFallback>
+-                          </Avatar>
+-                        </div>
+-                      )}
+-                    </div>
+-                    <div className="flex-1 min-w-0">
+-                      <CodePreview code={codeBody} language={lang} />
+-                    </div>
+-                  </div>
+-                </div>
+-              )}
+               </div>
+               )
+             })
+diff --git a/app/render/components/imageViewer/sidebar/agent/chat/LoadingMessage.tsx b/app/render/components/imageViewer/sidebar/agent/chat/LoadingMessage.tsx
+index 49d6cad..9430464 100644
+--- a/app/render/components/imageViewer/sidebar/agent/chat/LoadingMessage.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/chat/LoadingMessage.tsx
+@@ -7,7 +7,7 @@ export function LoadingMessage() {
+             <div className="w-8 h-8 shrink-0">
+                 <Avatar className="w-8 h-8 bg-muted">
+                     <AvatarImage
+-                        src="/brand/TissueLab_logo.png"
++                        src="/brand/agent_avatar.png"
+                         alt="TissueLab Bot"
+                         className="object-contain p-1"
+                     />
+diff --git a/app/render/components/imageViewer/sidebar/agent/chat/ReasoningWidget.tsx b/app/render/components/imageViewer/sidebar/agent/chat/ReasoningWidget.tsx
+index b1edde5..3808bbc 100644
+--- a/app/render/components/imageViewer/sidebar/agent/chat/ReasoningWidget.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/chat/ReasoningWidget.tsx
+@@ -19,7 +19,7 @@ export const ReasoningWidget: React.FC<ReasoningWidgetProps> = ({ stages, agentN
+           <div className="w-4 h-4 shrink-0">
+             <Avatar className="w-4 h-4 bg-muted">
+               <AvatarImage
+-                src="/brand/TissueLab_logo.png"
++                src="/brand/agent_avatar.png"
+                 alt="TissueLab Bot"
+                 className="object-contain"
+               />
+diff --git a/app/render/components/imageViewer/sidebar/agent/workflow/ContentRenderer.tsx b/app/render/components/imageViewer/sidebar/agent/workflow/ContentRenderer.tsx
+index b44d655..2fd8a14 100644
+--- a/app/render/components/imageViewer/sidebar/agent/workflow/ContentRenderer.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/workflow/ContentRenderer.tsx
+@@ -114,15 +114,11 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ item, onChange
+ 
+   useEffect(() => {
+     const handleKeyDown = (event: KeyboardEvent) => {
++      // Keep Space away from the viewer's shortcuts while typing, but let the
++      // browser insert it: it goes at the caret (not appended at the end) and
++      // a read-only field stays unchanged.
+       if (isTyping && event.key === " ") {
+         event.stopPropagation();
+-        event.preventDefault();
+-
+-        setInputValue((prev) => {
+-          const newValue = prev + " ";
+-          onChange(newValue);
+-          return newValue;
+-        });
+       }
+     };
+ 
+@@ -130,7 +126,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ item, onChange
+     return () => {
+       document.removeEventListener("keydown", handleKeyDown, true);
+     };
+-  }, [isTyping, onChange]);
++  }, [isTyping]);
+ 
+   // Prefer an explicit static label when the panel sets one (e.g. patch-embedding
+   // params); otherwise fall back to the live key. Fields whose key the user can
+diff --git a/app/render/components/imageViewer/sidebar/agent/workflow/CustomPromptField.tsx b/app/render/components/imageViewer/sidebar/agent/workflow/CustomPromptField.tsx
+index b4aaa3c..d912093 100644
+--- a/app/render/components/imageViewer/sidebar/agent/workflow/CustomPromptField.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/workflow/CustomPromptField.tsx
+@@ -10,15 +10,11 @@ export const CustomPromptField: React.FC<CustomPromptFieldProps> = ({ value, onC
+ 
+   useEffect(() => {
+     const handleKeyDown = (event: KeyboardEvent) => {
++      // Keep Space away from the viewer's shortcuts while typing, but let the
++      // browser insert it: it goes at the caret (not appended at the end) and
++      // a read-only field stays unchanged.
+       if (isTyping && event.key === " ") {
+         event.stopPropagation();
+-        event.preventDefault();
+-
+-        setInputValue((prev) => {
+-          const newValue = prev + " ";
+-          onChange(newValue);
+-          return newValue;
+-        });
+       }
+     };
+ 
+@@ -26,7 +22,7 @@ export const CustomPromptField: React.FC<CustomPromptFieldProps> = ({ value, onC
+     return () => {
+       document.removeEventListener("keydown", handleKeyDown, true);
+     };
+-  }, [isTyping, onChange]);
++  }, [isTyping]);
+ 
+   return (
+     <div className="space-y-1.5">
+diff --git a/app/render/components/imageViewer/sidebar/agent/workflow/card/Patch-ClassRow.tsx b/app/render/components/imageViewer/sidebar/agent/workflow/card/Patch-ClassRow.tsx
+index 00d37d4..36335a2 100644
+--- a/app/render/components/imageViewer/sidebar/agent/workflow/card/Patch-ClassRow.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/workflow/card/Patch-ClassRow.tsx
+@@ -81,7 +81,15 @@ export const PatchClassRow: React.FC<PatchClassRowProps> = ({
+   }, [menuOpen]);
+ 
+   return (
+-    <div className="flex items-center justify-between py-2 pt-3 border-b border-border/20 last:border-b-0 text-sm">
++    <div
++      className={`flex items-center justify-between py-2 pt-3 border-b border-border/20 last:border-b-0 text-sm cursor-pointer rounded-sm px-1 -mx-1 ${isSelected ? 'bg-muted' : 'hover:bg-muted/50'}`}
++      // Selecting a row picks the class that Review opens. Clicks on the
++      // row's own controls (colour, menu, OvR buttons) keep their own action.
++      onClick={(e) => {
++        if ((e.target as HTMLElement).closest('button, input, a, [role="menu"], [role="menuitem"]')) return;
++        onSelect(index);
++      }}
++    >
+       {/* Left side: name, color */}
+       <div className="flex items-center gap-2 min-w-0">
+         <span className="truncate font-medium" title={name}>
+diff --git a/app/render/components/imageViewer/sidebar/settings/SidebarViewerSetting.tsx b/app/render/components/imageViewer/sidebar/settings/SidebarViewerSetting.tsx
+index d7b6a64..dae2aa8 100644
+--- a/app/render/components/imageViewer/sidebar/settings/SidebarViewerSetting.tsx
++++ b/app/render/components/imageViewer/sidebar/settings/SidebarViewerSetting.tsx
+@@ -329,14 +329,16 @@ const ShortcutsCard: React.FC = () => {
+                     </div>
+                 )}
+                 <div className="space-y-0">
+-                    <Row label="Toggle Nuclei Annotations" actionKey={'toggleNuclei'} value={bindings.toggleNuclei} onChange={(k) => updateShortcut('toggleNuclei', k)} />
+-                    <Row label="Toggle Patch Annotations" actionKey={'togglePatches'} value={bindings.togglePatches} onChange={(k) => updateShortcut('togglePatches', k)} />
+-                    <Row label="Toggle Tissue Overlay" actionKey={'toggleMask'} value={bindings.toggleMask} onChange={(k) => updateShortcut('toggleMask', k)} />
++                    {/* Same left-to-right order as the viewer toolbar. */}
+                     <Row label="Tool: Move" actionKey={'tool.move'} value={bindings['tool.move']} onChange={(k) => updateShortcut('tool.move', k)} />
+-                    <Row label="Tool: Polygon" actionKey={'tool.polygon'} value={bindings['tool.polygon']} onChange={(k) => updateShortcut('tool.polygon', k)} />
++                    <Row label="Tool: Lasso" actionKey={'tool.lasso'} value={bindings['tool.lasso']} onChange={(k) => updateShortcut('tool.lasso', k)} />
+                     <Row label="Tool: Rectangle" actionKey={'tool.rectangle'} value={bindings['tool.rectangle']} onChange={(k) => updateShortcut('tool.rectangle', k)} />
++                    <Row label="Tool: Polygon" actionKey={'tool.polygon'} value={bindings['tool.polygon']} onChange={(k) => updateShortcut('tool.polygon', k)} />
+                     <Row label="Tool: Ruler" actionKey={'tool.line'} value={bindings['tool.line']} onChange={(k) => updateShortcut('tool.line', k)} />
+                     <Row label="Tool: Filter" actionKey={'tool.filter'} value={bindings['tool.filter']} onChange={(k) => updateShortcut('tool.filter', k)} />
++                    <Row label="Toggle Nuclei Annotations" actionKey={'toggleNuclei'} value={bindings.toggleNuclei} onChange={(k) => updateShortcut('toggleNuclei', k)} />
++                    <Row label="Toggle Patch Annotations" actionKey={'togglePatches'} value={bindings.togglePatches} onChange={(k) => updateShortcut('togglePatches', k)} />
++                    <Row label="Toggle Tissue Overlay" actionKey={'toggleMask'} value={bindings.toggleMask} onChange={(k) => updateShortcut('toggleMask', k)} />
+                 </div>
+             </CardContent>
+         </Card>
+diff --git a/app/render/hooks/auth/useGlobalSignup.ts b/app/render/hooks/auth/useGlobalSignup.ts
+index 325bb52..5a70357 100644
+--- a/app/render/hooks/auth/useGlobalSignup.ts
++++ b/app/render/hooks/auth/useGlobalSignup.ts
+@@ -204,6 +204,13 @@ const useGlobalSignup = ({
+         
+         // Pass client ID to main process (secretless PKCE)
+         const result = await window.electron.googleOAuth({ clientId });
++        // Abandoned (dialog closed or a newer sign-in started): nothing to report.
++        if (result?.cancelled) return;
++        // Not finished in the browser in time — not an error, just let them retry.
++        if (result?.timedOut) {
++          toast.info('Google sign-in timed out. Click "Continue with Google" to try again.');
++          return;
++        }
+         
+         if (!result.success || !result.tokens) {
+           throw new Error(result.error || 'OAuth failed - no tokens received');
+diff --git a/app/render/hooks/viewer/useShortcuts.ts b/app/render/hooks/viewer/useShortcuts.ts
+index 09a483c..b5f3c77 100644
+--- a/app/render/hooks/viewer/useShortcuts.ts
++++ b/app/render/hooks/viewer/useShortcuts.ts
+@@ -33,16 +33,18 @@ export const useShortcuts = () => {
+     if (loaded) dispatch(setAllShortcuts({ ...DEFAULT_SHORTCUTS, ...loaded }))
+   }, [dispatch])
+ 
+-  useEffect(() => {
+-    saveToLocalStorage(bindings)
+-  }, [bindings])
+-
++  // Save only on an explicit change. Saving whenever `bindings` changed wrote
++  // the not-yet-loaded defaults on mount; with several consumers mounting
++  // together (toolbar, keyboard handler, settings), the next one then loaded
++  // those defaults and the user's custom shortcuts were lost on reload.
+   const updateShortcut = useCallback((action: ShortcutActionKey, key: string) => {
+     dispatch(setShortcut({ action: action, key }))
+-  }, [dispatch])
++    saveToLocalStorage({ ...bindings, [action]: key })
++  }, [dispatch, bindings])
+ 
+   const reset = useCallback(() => {
+     dispatch(resetShortcuts())
++    saveToLocalStorage({ ...DEFAULT_SHORTCUTS })
+   }, [dispatch])
+ 
+   const isConflict = (key: string, self?: ShortcutActionKey) => {
+diff --git a/app/render/pages/community.tsx b/app/render/pages/community.tsx
+index 41ab02a..4abd7c3 100644
+--- a/app/render/pages/community.tsx
++++ b/app/render/pages/community.tsx
+@@ -913,18 +913,20 @@ export default function Community() {
+ 
+   const handleDeleteClassifier = async (classifierId: string) => {
+     try {
++      // Community (cloud) classifiers: only drop the card once the server has
++      // deleted it (404 = already gone counts). On failure keep the card, so
++      // the user doesn't believe it is gone while it is still public.
+       if (classifierId.startsWith('uploaded-')) {
+         try {
+           const deleteResponse = await classifiersService.deleteClassifier(classifierId)
+-
+-          if (deleteResponse.success) {
+-            setFirebaseClassifiers(prev => prev.filter(c => c.id !== classifierId))
+-          } else {
+-            toast.warning('Firebase deletion completed but may not have been successful.')
++          if (!deleteResponse?.success) {
++            toast.error('Failed to delete classifier', { description: deleteResponse?.message || 'The server did not confirm the deletion.' })
++            return
+           }
+         } catch (error) {
+-          console.error('Firebase delete error:', error)
+-          toast.warning(getErrorMessage(error, 'Firebase deletion failed'))
++          console.error('Community classifier delete error:', error)
++          toast.error('Failed to delete classifier', { description: getErrorMessage(error, 'Network error') })
++          return
+         }
+       }
+ 
+diff --git a/app/render/public/brand/agent_avatar.png b/app/render/public/brand/agent_avatar.png
+new file mode 100644
+index 0000000..c58a4fc
+Binary files /dev/null and b/app/render/public/brand/agent_avatar.png differ
+diff --git a/app/render/services/classifier/community.ts b/app/render/services/classifier/community.ts
+index b331975..e93ed76 100644
+--- a/app/render/services/classifier/community.ts
++++ b/app/render/services/classifier/community.ts
+@@ -97,7 +97,9 @@ export class ClassifiersService {
+       });
+       return result;
+     } catch (error) {
+-      const status = (error as any)?.status;
++      // A transport 404 sets `status`; Ctrl's RESOURCE_NOT_FOUND arrives as an
++      // envelope (HTTP 200, code 404), which apiFetch throws with `code`.
++      const status = (error as any)?.status ?? (error as any)?.code;
+       // If classifier is already deleted (404), treat as success
+       if (status === 404) {
+         console.warn(`Classifier ${classifierId} not found - may have been deleted or does not exist`);
+diff --git a/app/render/services/fileManager.service.ts b/app/render/services/fileManager.service.ts
+index 8693213..0dc3fb2 100644
+--- a/app/render/services/fileManager.service.ts
++++ b/app/render/services/fileManager.service.ts
+@@ -880,6 +880,15 @@ export const moveFiles = async (items: string[], newPath: string) => {
+     return handleResponse(response as Response);
+ }; 
+ 
++/**
++ * The task's record is gone (the service drops finished tasks), so whether it
++ * succeeded is unknown. Callers refresh and tell the user to check the result
++ * instead of reporting a failure.
++ */
++export const TASK_STATUS_UNKNOWN = 'TASK_STATUS_UNKNOWN';
++export const isTaskStatusUnknown = (e: unknown): boolean =>
++    (e as { code?: unknown } | null)?.code === TASK_STATUS_UNKNOWN;
++
+ // Subscribe to task status updates via Server-Sent Events (SSE)
+ export const subscribeTaskStatus = async (
+     taskId: string,
+@@ -911,7 +920,14 @@ export const subscribeTaskStatus = async (
+                 return { done: true, error: data.error || 'Task failed' };
+             }
+             return { done: false };
+-        } catch {
++        } catch (e: any) {
++            // The service answers an unknown/reaped task with HTTP 200 + {code: 404}
++            // (an error envelope, thrown with .code), and a bare HTTP 404 (proxy,
++            // unknown route) is thrown with .status. Either way the task record is
++            // gone: stop here instead of polling until the 5-minute timeout.
++            if (e?.code === 404 || e?.status === 404) {
++                return { done: true, missing: true, error: 'Task not found or already finished' };
++            }
+             return { done: false };
+         }
+     };
+@@ -1036,7 +1052,9 @@ export const subscribeTaskStatus = async (
+             const polled = await pollOnce();
+             if (polled.done) {
+                 if (polled.missing) {
+-                    throw new Error(polled.error || 'Task not found or already finished');
++                    throw Object.assign(new Error(polled.error || 'Task not found or already finished'), {
++                        code: TASK_STATUS_UNKNOWN,
++                    });
+                 }
+                 if (polled.error) throw new Error(polled.error);
+                 return polled.result;
+diff --git a/app/render/types/electron.d.ts b/app/render/types/electron.d.ts
+index 6b9afec..1dbc586 100644
+--- a/app/render/types/electron.d.ts
++++ b/app/render/types/electron.d.ts
+@@ -24,7 +24,10 @@ declare global {
+           expires_in?: number;
+         };
+         error?: string;
++        cancelled?: boolean;
++        timedOut?: boolean;
+       }>;
++      cancelGoogleOAuth?: () => Promise<boolean>;
+       googleRefreshToken: (params: { refreshToken: string; clientId: string }) => Promise<{
+         success: boolean;
+         tokens?: {

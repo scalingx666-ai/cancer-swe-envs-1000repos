@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/sigven__cpsr-76"
+description = "Fix devtools check"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "cpsr",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "sigven/cpsr"
+ref = "fcbd05f890ec181d569b3336a91a3e0a9b49f90d"
+reference = "https://github.com/sigven/cpsr/pull/76"
+source_access = "auto"
+built_at = "2026-11-13T15:39:23.905023+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:24457e321aa87cea38e8cd7a0c3feef6623b2b53cb3d7166b9441c7d9d42e13f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-20T07:51:57Z"
+diff_format = "unified"
+context_files = [
+    ".Rbuildignore",
+    "DESCRIPTION",
+    "Makefile",
+    "NAMESPACE",
+    "R/classification.R",
+    "R/main.R",
+    "R/reactable.R",
+    "air.toml",
+    "man/assign_PP2_evidence.Rd",
+    "man/assign_acmg_consensus.Rd",
+    "man/curated_transcripts.Rd",
+    "man/render_actble_bm_table.Rd",
+    "man/rt_cell_classification_rank.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 179
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

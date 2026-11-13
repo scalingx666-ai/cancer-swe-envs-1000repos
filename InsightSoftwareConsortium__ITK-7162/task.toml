@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/InsightSoftwareConsortium__ITK-7162"
+description = "ENH: Print data ID and full precision on mesh test data mismatch"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "ITK",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "InsightSoftwareConsortium/ITK"
+ref = "b621f7c0068fc0dae71ef9c2999b4ee4259965dd"
+reference = "https://github.com/InsightSoftwareConsortium/ITK/pull/7162"
+source_access = "auto"
+built_at = "2026-11-13T15:46:15.253115+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f901f10fad89613470c0c4185e509f04f53557aae330f47d7908870e76d9697e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T14:04:10Z"
+diff_format = "unified"
+context_files = [
+    "Modules/IO/MeshBase/include/itkMeshFileTestHelper.h",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 7
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

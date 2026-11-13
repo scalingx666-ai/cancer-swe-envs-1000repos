@@ -1,0 +1,1676 @@
+diff --git a/packages/core/src/RenderingEngine/BaseRenderingEngine.ts b/packages/core/src/RenderingEngine/BaseRenderingEngine.ts
+index 7d477facee..02adbdd0a7 100644
+--- a/packages/core/src/RenderingEngine/BaseRenderingEngine.ts
++++ b/packages/core/src/RenderingEngine/BaseRenderingEngine.ts
+@@ -9,6 +9,7 @@ import viewportTypeUsesCustomRenderingPipeline, {
+   viewportUsesCustomRenderingPipeline,
+ } from './helpers/viewportTypeUsesCustomRenderingPipeline';
+ import getOrCreateCanvas from './helpers/getOrCreateCanvas';
++import { skippedDrawSince } from './helpers/actorsWaitingForStorage';
+ import {
+   setElementTouchActionNone,
+   restoreElementTouchAction,
+@@ -701,6 +702,30 @@ abstract class BaseRenderingEngine {
+     });
+   }
+ 
++  /**
++   * Whether the render of this viewport that started at `renderStart`
++   * (`performance.now()`) drew no actor, because every actor waits for its
++   * texture storage (see `actorsWaitingForStorage`). The engine then fires no
++   * `IMAGE_RENDERED` and no fidelity event for that empty frame. When any actor
++   * drew, for example a small PET over a waiting CT, the engine fires the
++   * events, so the annotations follow the camera of the frame that shows.
++   */
++  protected _waitsForStorage(
++    viewport: IViewport,
++    renderStart: number
++  ): boolean {
++    const actors = viewport.getActors?.();
++
++    // A CPU viewport does not return an array.
++    return (
++      Array.isArray(actors) &&
++      actors.length > 0 &&
++      actors.every(
++        (entry) => entry?.actor && skippedDrawSince(entry.actor, renderStart)
++      )
++    );
++  }
++
+   private _setViewportsToBeRenderedNextFrame(viewportIds: string[]) {
+     // Add the viewports to the set of flagged viewports
+     viewportIds.forEach((viewportId) => {
+diff --git a/packages/core/src/RenderingEngine/BaseVolumeViewport.ts b/packages/core/src/RenderingEngine/BaseVolumeViewport.ts
+index 9de5711cb1..3d6d49fded 100644
+--- a/packages/core/src/RenderingEngine/BaseVolumeViewport.ts
++++ b/packages/core/src/RenderingEngine/BaseVolumeViewport.ts
+@@ -130,6 +130,8 @@ abstract class BaseVolumeViewport extends Viewport {
+   private _fidelityRecordListenersAttached = false;
+   /** Set on ELEMENT_DISABLED of this element; the listeners never return. */
+   private _fidelityRecordsDisposed = false;
++  /** The pending animation frame of a coalesced fidelity notification. */
++  private _fidelityNotifyFrame = 0;
+ 
+   public canReportFidelity(): boolean {
+     return true;
+@@ -146,6 +148,13 @@ abstract class BaseVolumeViewport extends Viewport {
+    * listeners are removed on ELEMENT_DISABLED of this element, so
+    * a disabled viewport does not stay in memory. `_reset` fires that event
+    * without `isDisabled`, so a disposed flag stops a later attach.
++   *
++   * A streaming load fires `IMAGE_VOLUME_MODIFIED` once for each image, and
++   * each state computation reads the quality record of the volume. The
++   * notification of that event therefore runs at most once for each animation
++   * frame, after the last event of the frame, so no update is lost.
++   * `IMAGE_VOLUME_LOADING_COMPLETED` notifies at once, and a render notifies
++   * through the rendering engine, so a user interaction is not delayed.
+    */
+   private ensureFidelityRecordInvalidation(): void {
+     if (
+@@ -157,6 +166,11 @@ abstract class BaseVolumeViewport extends Viewport {
+     }
+     this._fidelityRecordListenersAttached = true;
+ 
++    const cancelFrame = () => {
++      cancelAnimationFrame(this._fidelityNotifyFrame);
++      this._fidelityNotifyFrame = 0;
++    };
++
+     const invalidate = (evt: Event) => {
+       const { volumeId } = (evt as CustomEvent<{ volumeId?: string }>).detail;
+       if (volumeId) {
+@@ -165,7 +179,17 @@ abstract class BaseVolumeViewport extends Viewport {
+         this._fidelityRecords.clear();
+       }
+       // A volume event can change the state with no render after it.
+-      this.notifyFidelityStateChanged();
++      if (evt.type !== Events.IMAGE_VOLUME_MODIFIED) {
++        cancelFrame();
++        this.notifyFidelityStateChanged();
++      } else if (!this._fidelityNotifyFrame) {
++        this._fidelityNotifyFrame = requestAnimationFrame(() => {
++          this._fidelityNotifyFrame = 0;
++          if (!this._fidelityRecordsDisposed && !this.isDisabled) {
++            this.notifyFidelityStateChanged();
++          }
++        });
++      }
+     };
+ 
+     const cleanUp = (evt: Event) => {
+@@ -183,6 +207,7 @@ abstract class BaseVolumeViewport extends Viewport {
+         invalidate
+       );
+       eventTarget.removeEventListener(Events.ELEMENT_DISABLED, cleanUp);
++      cancelFrame();
+       this._fidelityRecords.clear();
+       this._fidelityRecordsDisposed = true;
+     };
+diff --git a/packages/core/src/RenderingEngine/ContextPoolRenderingEngine.ts b/packages/core/src/RenderingEngine/ContextPoolRenderingEngine.ts
+index d9f219f6e1..1ec7328dc1 100644
+--- a/packages/core/src/RenderingEngine/ContextPoolRenderingEngine.ts
++++ b/packages/core/src/RenderingEngine/ContextPoolRenderingEngine.ts
+@@ -350,6 +350,8 @@ class ContextPoolRenderingEngine extends BaseRenderingEngine {
+       return;
+     }
+ 
++    const renderStart = performance.now();
++
+     // Render all viewports synchronously
+     const eventDetails = viewportsToRender.map((viewport) => {
+       const eventDetail = this.renderViewportUsingCustomOrVtkPipeline(viewport);
+@@ -361,16 +363,22 @@ class ContextPoolRenderingEngine extends BaseRenderingEngine {
+     this._animationFrameSet = false;
+     this._animationFrameHandle = null;
+ 
++    const waiting = viewportsToRender.map((vp) =>
++      this._waitsForStorage(vp, renderStart)
++    );
++
+     // Trigger all events after rendering is complete
+-    eventDetails.forEach((eventDetail) => {
+-      if (eventDetail?.element) {
++    eventDetails.forEach((eventDetail, index) => {
++      if (eventDetail?.element && !waiting[index]) {
+         triggerEvent(eventDetail.element, Events.IMAGE_RENDERED, eventDetail);
+       }
+     });
+ 
+     // Fidelity event after IMAGE_RENDERED so consumers can query the frame
+     // that was just drawn.
+-    this._notifyFidelityOfRenderedViewports(viewportsToRender);
++    this._notifyFidelityOfRenderedViewports(
++      viewportsToRender.filter((_vp, index) => !waiting[index])
++    );
+   };
+ 
+   private renderViewportUsingCustomOrVtkPipeline(
+diff --git a/packages/core/src/RenderingEngine/TiledRenderingEngine.ts b/packages/core/src/RenderingEngine/TiledRenderingEngine.ts
+index c996c49e31..5ce3b1e671 100644
+--- a/packages/core/src/RenderingEngine/TiledRenderingEngine.ts
++++ b/packages/core/src/RenderingEngine/TiledRenderingEngine.ts
+@@ -365,6 +365,7 @@ class TiledRenderingEngine extends BaseRenderingEngine {
+    */
+   protected _renderFlaggedViewports = () => {
+     this._throwIfDestroyed();
++    const renderStart = performance.now();
+ 
+     if (this.offscreenMultiRenderWindow) {
+       this.performVtkDrawCall();
+@@ -379,8 +380,11 @@ class TiledRenderingEngine extends BaseRenderingEngine {
+       if (this._needsRender.has(viewport.id)) {
+         const eventDetail =
+           this.renderViewportUsingCustomOrVtkPipeline(viewport);
+-        eventDetailArray.push(eventDetail);
+-        renderedViewports.push(viewport);
++
++        if (!this._waitsForStorage(viewport, renderStart)) {
++          eventDetailArray.push(eventDetail);
++          renderedViewports.push(viewport);
++        }
+         viewport.setRendered();
+ 
+         // This viewport has been rendered, we can remove it from the set
+diff --git a/packages/core/src/RenderingEngine/helpers/actorsWaitingForStorage.ts b/packages/core/src/RenderingEngine/helpers/actorsWaitingForStorage.ts
+new file mode 100644
+index 0000000000..31369c8fc4
+--- /dev/null
++++ b/packages/core/src/RenderingEngine/helpers/actorsWaitingForStorage.ts
+@@ -0,0 +1,23 @@
++/**
++ * The time of the last skipped draw of each actor, because the browser still
++ * clears the new storage of its texture (see `isInitializing` of
++ * `vtkStreamingOpenGLTexture`). The streaming mappers record the skip, and
++ * remove the record when they draw the actor. A rendering engine fires no
++ * `IMAGE_RENDERED` for a viewport with an actor that skipped its draw in the
++ * render that just ran. The texture renders the viewport again when the storage
++ * is ready, and that render fires the event, so a listener never sees the empty
++ * frame.
++ *
++ * The record holds the skip itself, not the state of the fence, so a fence that
++ * signals between the skipped draw and the event check cannot let the empty
++ * frame through. The time limits the record to one render, so an actor that
++ * stops rendering cannot hold back the events of its viewport.
++ */
++const actorsWaitingForStorage = new WeakMap<object, number>();
++
++/** Whether this actor skipped its draw at or after `since` (`performance.now()`). */
++export function skippedDrawSince(actor: object, since: number): boolean {
++  return (actorsWaitingForStorage.get(actor) ?? -Infinity) >= since;
++}
++
++export default actorsWaitingForStorage;
+diff --git a/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLImageResliceMapper.js b/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLImageResliceMapper.js
+index 84066aeece..608e573aa7 100644
+--- a/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLImageResliceMapper.js
++++ b/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLImageResliceMapper.js
+@@ -10,6 +10,7 @@ import {
+ import vtkOpenGLTexture from '@kitware/vtk.js/Rendering/OpenGL/Texture';
+ import { getCanUseNorm16Texture } from '../../init';
+ import takeBoundScalarTexture from './takeBoundScalarTexture';
++import actorsWaitingForStorage from '../helpers/actorsWaitingForStorage';
+ 
+ const { vtkErrorMacro } = macro;
+ 
+@@ -119,7 +120,15 @@ function vtkStreamingOpenGLImageResliceMapper(publicAPI, model) {
+ 
+     publicAPI.updateResliceGeometry();
+     publicAPI.renderPieceStart(ren, actor);
+-    publicAPI.renderPieceDraw(ren, actor);
++
++    // A draw that samples storage that the browser still clears would block.
++    if (model.scalarTextures?.some((texture) => texture?.isInitializing?.())) {
++      actorsWaitingForStorage.set(actor, performance.now());
++    } else {
++      actorsWaitingForStorage.delete(actor);
++      publicAPI.renderPieceDraw(ren, actor);
++    }
++
+     publicAPI.renderPieceFinish(ren, actor);
+     publicAPI.invokeEvent({ type: 'EndEvent' });
+   };
+diff --git a/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLTexture.js b/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLTexture.js
+index 0e227b7ebc..4264cee9bb 100644
+--- a/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLTexture.js
++++ b/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLTexture.js
+@@ -14,6 +14,23 @@ import { getConfiguration } from '../../init';
+ const DEFAULT_MAX_SLICES_PER_RENDER = 16;
+ const DEFAULT_MAX_MILLISECONDS_PER_RENDER = 8;
+ 
++/**
++ * The smallest allocation that waits on a storage fence. A 256^3 int16
++ * texture (32 MB) clears in about 30 ms, and the blocking clear that the fence
++ * avoids is the one of about 1 GB, so a smaller texture keeps the direct path.
++ */
++const INIT_FENCE_MIN_BYTES = 256 * 1024 * 1024;
++
++/**
++ * The longest wait on a storage fence. A clear of about 1 GB takes 150-300 ms
++ * on an integrated GPU, so 3 s is ten times that. After it the texture stops
++ * the wait and takes the blocking path, so a fence that never signals cannot
++ * leave the volume undrawn.
++ */
++const INIT_FENCE_DEADLINE_MS = 3000;
++
++const INIT_FENCE_POLL_MS = 16;
++
+ /**
+  * The work that one render does to fill a reduced texture. See
+  * `rendering.reducedTextureFill` in `Cornerstone3DConfig`.
+@@ -107,12 +124,162 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+     const created = superCreate3DFromRaw(options);
+ 
+     if (created && !options.data) {
++      // New storage reads 0, so a slice with no data needs no upload until a
++      // slice with data was written there.
++      model.writtenSlices = new Uint8Array(options.depth);
++      startStorageInit(options.dataType, options.numComps);
+       publicAPI.markAllFramesUpdated();
+     }
+ 
+     return created;
+   };
+ 
++  /**
++   * Starts the zero-initialisation of new storage, and does not wait for it.
++   *
++   * A browser allocates `texStorage3D` storage lazily and clears the whole
++   * level at its first use. For a large volume the clear takes seconds of GPU
++   * time, and an upload or a draw that samples the texture then blocks the main
++   * thread until the clear ends. A 1x1x1 upload starts the clear now, and a
++   * fence tells when it ends. Until then the texture skips its uploads and the
++   * mappers skip the draw of the actor (see {@link isInitializing}).
++   *
++   * Without WebGL2 fences, or for an allocation below
++   * `INIT_FENCE_MIN_BYTES`, the texture keeps the blocking behaviour. The wait
++   * ends after `INIT_FENCE_DEADLINE_MS` at the latest.
++   */
++  function startStorageInit(dataType, numComps) {
++    releaseInitFence();
++
++    const gl = model.context;
++
++    if (
++      typeof gl?.fenceSync !== 'function' ||
++      !(model.allocatedGPUMemoryInBytes >= INIT_FENCE_MIN_BYTES)
++    ) {
++      return;
++    }
++
++    let pixData;
++
++    try {
++      const Constructor = getConstructorFromType(dataType, false);
++      [pixData] = publicAPI.updateArrayDataTypeForGL(dataType, [
++        new Constructor(numComps || 1),
++      ]);
++    } catch {
++      return;
++    }
++
++    model._openGLRenderWindow.activateTexture(publicAPI);
++    publicAPI.bind();
++    gl.texSubImage3D(
++      model.target,
++      0,
++      0,
++      0,
++      0,
++      1,
++      1,
++      1,
++      model.format,
++      model.openGLDataType,
++      pixData
++    );
++    publicAPI.deactivate();
++
++    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
++
++    if (!sync) {
++      return;
++    }
++
++    const fence = {
++      gl,
++      sync,
++      deadline: performance.now() + INIT_FENCE_DEADLINE_MS,
++    };
++
++    model.initFence = fence;
++    gl.flush();
++    model.initFenceTimer = setTimeout(
++      () => pollInitFence(fence),
++      INIT_FENCE_POLL_MS
++    );
++  }
++
++  /**
++   * Deletes the fence. `keepPoll` leaves a pending poll to run, so that a
++   * fence that a render saw end still marks the texture modified and renders
++   * the volume, because that render skipped the uploads.
++   */
++  function releaseInitFence(keepPoll = false) {
++    const fence = model.initFence;
++
++    if (!keepPoll) {
++      clearTimeout(model.initFenceTimer);
++      model.initFenceTimer = null;
++    }
++    model.initFence = null;
++
++    if (fence && !fence.gl.isContextLost()) {
++      fence.gl.deleteSync(fence.sync);
++    }
++  }
++
++  /**
++   * Polls the fence of {@link startStorageInit} from a timer, never with a
++   * blocking wait, and renders the viewports of the volume when it signals.
++   * A poll of a deleted texture or of a replaced fence does nothing.
++   */
++  function pollInitFence(fence) {
++    if (model.deleted || (model.initFence && model.initFence !== fence)) {
++      return;
++    }
++
++    if (publicAPI.isInitializing()) {
++      model.initFenceTimer = setTimeout(
++        () => pollInitFence(fence),
++        INIT_FENCE_POLL_MS
++      );
++      return;
++    }
++
++    publicAPI.modified();
++
++    if (model.volumeId) {
++      autoLoad(model.volumeId);
++    }
++  }
++
++  /**
++   * Whether the browser still clears the storage of this allocation. A mapper
++   * must not draw an actor that samples this texture while this is true: the
++   * draw would wait for the clear, and a readback of the context then blocks
++   * the main thread. A lost context, and the deadline, count as done.
++   */
++  publicAPI.isInitializing = () => {
++    const fence = model.initFence;
++
++    if (!fence) {
++      return false;
++    }
++
++    const { gl, sync, deadline } = fence;
++
++    if (
++      !gl.isContextLost() &&
++      performance.now() < deadline &&
++      gl.getSyncParameter(sync, gl.SYNC_STATUS) !== gl.SIGNALED
++    ) {
++      return true;
++    }
++
++    releaseInitFence(true);
++
++    return false;
++  };
++
+   const superReleaseGraphicsResources = publicAPI.releaseGraphicsResources;
+ 
+   /**
+@@ -124,11 +291,19 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+   publicAPI.releaseGraphicsResources = (rwin) => {
+     const window = model._openGLRenderWindow;
+ 
++    releaseInitFence();
+     superReleaseGraphicsResources(
+       rwin ?? (window?.isDeleted?.() ? undefined : window)
+     );
+   };
+ 
++  const superDelete = publicAPI.delete;
++
++  publicAPI.delete = () => {
++    releaseInitFence();
++    superDelete();
++  };
++
+   const superUpdate = publicAPI.updateVolumeInfoForGL;
+ 
+   publicAPI.updateVolumeInfoForGL = (dataType, numComps) => {
+@@ -152,7 +327,8 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+ 
+     const volume = cache.getVolume(volumeId);
+ 
+-    if (!volume) {
++    // The slices stay marked, and the fence poll renders again.
++    if (!volume || publicAPI.isInitializing()) {
+       return;
+     }
+ 
+@@ -440,6 +616,12 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+     }, 0);
+   }
+ 
++  function markWritten(slice) {
++    if (model.writtenSlices) {
++      model.writtenSlices[slice] = 1;
++    }
++  }
++
+   /**
+    * Fills a texture whose grid is not the grid of the volume.
+    *
+@@ -452,9 +634,10 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+    * region. The upload stays partial: the function uploads the slices that a
+    * delivery marked, and it leaves the others.
+    *
+-   * A slice whose data has not arrived uploads the cleared slab, which costs
+-   * nothing to compute. The volume marks that slice again when its frames
+-   * arrive. A fill of every slice of a new texture from the data would stall
++   * A slice whose data has not arrived uploads nothing while the storage of
++   * this allocation still reads 0, and it costs no budget. A slice that held
++   * data before, such as after the volume reset its composite, uploads the
++   * cleared slab. The volume marks that slice again when its frames arrive. A fill of every slice of a new texture from the data would stall
+    * the first render: a volume of 512 x 512 x 1232 took about 17 seconds.
+    */
+   function updateTextureFromComposite(volume) {
+@@ -547,6 +730,11 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+         data = slab.getScalarData();
+       }
+ 
++      if (!hasData && model.writtenSlices && !model.writtenSlices[slice]) {
++        model.updatedFrames[slice] = null;
++        continue;
++      }
++
+       if (volume.dataType !== data.constructor.name) {
+         data = convertDataType(data, volume.dataType);
+       }
+@@ -573,6 +761,7 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+ 
+       publicAPI.deactivate();
+       model.updatedFrames[slice] = null;
++      markWritten(slice);
+       slicesHandled++;
+ 
+       // A slice with no data uploads zeros, which costs almost nothing, so
+@@ -729,6 +918,9 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+       const image = cache.getImage(imageId);
+ 
+       let data;
++      if (!image && model.writtenSlices && !model.writtenSlices[i]) {
++        continue;
++      }
+       if (!image) {
+         // if there is no data we should set zero
+         constructor = getConstructorFromType(volume.dataType, true);
+@@ -772,7 +964,7 @@ function vtkStreamingOpenGLTexture(publicAPI, model) {
+ 
+       // Unbind the texture
+       publicAPI.deactivate();
+-      // Reset the updated flag
++      markWritten(i);
+     }
+ 
+     if (model.generateMipmap) {
+diff --git a/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLVolumeMapper.js b/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLVolumeMapper.js
+index 061a1eb8c7..a2985a01c4 100644
+--- a/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLVolumeMapper.js
++++ b/packages/core/src/RenderingEngine/vtkClasses/vtkStreamingOpenGLVolumeMapper.js
+@@ -11,6 +11,7 @@ import { getCanUseNorm16Texture } from '../../init';
+ import cache from '../../cache/cache';
+ import canUseFloatOpacityTexture from './canUseFloatOpacityTexture';
+ import takeBoundScalarTexture from './takeBoundScalarTexture';
++import actorsWaitingForStorage from '../helpers/actorsWaitingForStorage';
+ import { coreLog } from '../../utilities/logger';
+ import { volumeTextureBytes } from '../../utilities/getBufferConfiguration';
+ import { voxelGridWithinLimits } from '../../utilities/voxelGrid';
+@@ -200,7 +201,15 @@ function vtkStreamingOpenGLVolumeMapper(publicAPI, model) {
+     }
+ 
+     publicAPI.renderPieceStart(ren, actor);
+-    publicAPI.renderPieceDraw(ren, actor);
++
++    // A draw that samples storage that the browser still clears would block.
++    if (model.scalarTextures.some((texture) => texture?.isInitializing?.())) {
++      actorsWaitingForStorage.set(actor, performance.now());
++    } else {
++      actorsWaitingForStorage.delete(actor);
++      publicAPI.renderPieceDraw(ren, actor);
++    }
++
+     publicAPI.renderPieceFinish(ren, actor);
+   };
+ 
+diff --git a/packages/core/src/utilities/CompositeVoxelManager.ts b/packages/core/src/utilities/CompositeVoxelManager.ts
+index 19156f94dc..0b2197d19a 100644
+--- a/packages/core/src/utilities/CompositeVoxelManager.ts
++++ b/packages/core/src/utilities/CompositeVoxelManager.ts
+@@ -349,6 +349,310 @@ function coverageOfRegion(
+   return coverage;
+ }
+ 
++/** One maximal k range of equal best quality. */
++type QualityRun = { start: number; end: number; quality: number };
++
++/**
++ * The deliveries of one record that share one i, j footprint, kept up to date
++ * delivery by delivery. `starts` and `ends` are the sorted k bounds, which
++ * count the deliveries that meet a k range. `runs` are the disjoint k ranges
++ * of the best quality, sorted, and `undefined` after a removal until the next
++ * query builds them again.
++ */
++type FootprintCoverage = {
++  i: [number, number];
++  j: [number, number];
++  members: Set<DeliveredRegion>;
++  starts: number[];
++  ends: number[];
++  length: number;
++  runs: QualityRun[];
++};
++
++/** The coverage of one record, by the key of the i, j footprint. */
++type IncrementalCoverage = Map<string, FootprintCoverage>;
++
++/** The number of values of a sorted array that are below `value`. */
++function countBelow(sorted: number[], value: number): number {
++  let low = 0;
++  let high = sorted.length;
++
++  while (low < high) {
++    const middle = (low + high) >> 1;
++
++    if (sorted[middle] < value) {
++      low = middle + 1;
++    } else {
++      high = middle;
++    }
++  }
++
++  return low;
++}
++
++/** The index of the first run whose end is at or after `k`. */
++function firstRunEndingAtOrAfter(runs: QualityRun[], k: number): number {
++  let low = 0;
++  let high = runs.length;
++
++  while (low < high) {
++    const middle = (low + high) >> 1;
++
++    if (runs[middle].end < k) {
++      low = middle + 1;
++    } else {
++      high = middle;
++    }
++  }
++
++  return low;
++}
++
++/**
++ * Raises the best quality of `[start, end]` to at least `quality`. The runs
++ * stay disjoint and sorted, and two adjacent runs of one quality merge. Only
++ * the runs that meet or touch the range change.
++ */
++function addRun(
++  runs: QualityRun[],
++  start: number,
++  end: number,
++  quality: number
++): void {
++  if (!(quality > 0)) {
++    // `coverageOfRegion` marks no cell with such a quality.
++    return;
++  }
++
++  const first = firstRunEndingAtOrAfter(runs, start - 1);
++  let last = first;
++  const pieces: QualityRun[] = [];
++  let cursor = start;
++  const push = (from: number, to: number, value: number) => {
++    const previous = pieces[pieces.length - 1];
++
++    if (previous && previous.end + 1 === from && previous.quality === value) {
++      previous.end = to;
++    } else {
++      pieces.push({ start: from, end: to, quality: value });
++    }
++  };
++
++  for (; last < runs.length && runs[last].start <= end + 1; last++) {
++    const run = runs[last];
++
++    if (run.start < start) {
++      push(run.start, Math.min(run.end, start - 1), run.quality);
++    }
++
++    const from = Math.max(run.start, start);
++    const to = Math.min(run.end, end);
++
++    if (from <= to) {
++      if (cursor < from) {
++        push(cursor, from - 1, quality);
++      }
++
++      push(from, to, Math.max(run.quality, quality));
++      cursor = to + 1;
++    }
++
++    if (run.end > end) {
++      if (cursor <= end) {
++        push(cursor, end, quality);
++        cursor = end + 1;
++      }
++
++      push(Math.max(run.start, end + 1), run.end, run.quality);
++    }
++  }
++
++  if (cursor <= end) {
++    push(cursor, end, quality);
++  }
++
++  runs.splice(first, last - first, ...pieces);
++}
++
++function footprintKey(bounds: BoundsIJK): string {
++  return `${bounds[0][0]},${bounds[0][1]},${bounds[1][0]},${bounds[1][1]}`;
++}
++
++function addToCoverage(
++  coverage: IncrementalCoverage,
++  delivery: DeliveredRegion
++): void {
++  const { bounds } = delivery;
++  const key = footprintKey(bounds);
++  let footprint = coverage.get(key);
++
++  if (!footprint) {
++    footprint = {
++      i: [bounds[0][0], bounds[0][1]],
++      j: [bounds[1][0], bounds[1][1]],
++      members: new Set(),
++      starts: [],
++      ends: [],
++      length: 0,
++      runs: [],
++    };
++    coverage.set(key, footprint);
++  }
++
++  const [start, end] = bounds[2];
++
++  footprint.members.add(delivery);
++  footprint.starts.splice(countBelow(footprint.starts, start), 0, start);
++  footprint.ends.splice(countBelow(footprint.ends, end), 0, end);
++  footprint.length += Math.max(0, end - start + 1);
++
++  if (footprint.runs) {
++    addRun(footprint.runs, start, end, delivery.quality);
++  }
++}
++
++function removeFromCoverage(
++  coverage: IncrementalCoverage,
++  delivery: DeliveredRegion
++): void {
++  const key = footprintKey(delivery.bounds);
++  const footprint = coverage.get(key);
++
++  if (!footprint?.members.delete(delivery)) {
++    return;
++  }
++
++  if (!footprint.members.size) {
++    coverage.delete(key);
++
++    return;
++  }
++
++  const [start, end] = delivery.bounds[2];
++
++  footprint.starts.splice(countBelow(footprint.starts, start), 1);
++  footprint.ends.splice(countBelow(footprint.ends, end), 1);
++  footprint.length -= Math.max(0, end - start + 1);
++  footprint.runs = undefined;
++}
++
++/** Records a raise of the quality of a delivery that the coverage holds. */
++function raiseInCoverage(
++  coverage: IncrementalCoverage,
++  delivery: DeliveredRegion
++): void {
++  const runs = coverage.get(footprintKey(delivery.bounds))?.runs;
++
++  if (runs) {
++    addRun(
++      runs,
++      delivery.bounds[2][0],
++      delivery.bounds[2][1],
++      delivery.quality
++    );
++  }
++}
++
++/**
++ * Gives the same result as `coverageOfRegion` from a coverage that the record
++ * keeps up to date, at a cost that grows with the number of runs inside the
++ * region and not with the number of deliveries.
++ *
++ * The deliveries of one footprint cut the i and j axes into the same cells, so
++ * the cells of `coverageOfRegion` reduce to the runs of k. Each clipped
++ * delivery then spans one cell on i and j, and at most one cell for each of
++ * its k slices, which bounds the work of the exact count.
++ *
++ * @returns `undefined` when the deliveries have more than one footprint, or
++ * when `coverageOfRegion` could give an estimate; the caller then uses
++ * `coverageOfRegion`.
++ */
++function coverageFromIncremental(
++  coverage: IncrementalCoverage,
++  region: BoundsIJK
++): Coverage {
++  const result: Coverage = {
++    covered: 0,
++    lowest: undefined,
++    highest: undefined,
++    deliveries: 0,
++    exact: true,
++  };
++
++  if (coverage.size === 0 || volumeOfBounds(region) === 0) {
++    return result;
++  }
++
++  if (coverage.size > 1) {
++    return undefined;
++  }
++
++  const footprint = coverage.values().next().value as FootprintCoverage;
++  const width =
++    Math.min(footprint.i[1], region[0][1]) -
++    Math.max(footprint.i[0], region[0][0]) +
++    1;
++  const height =
++    Math.min(footprint.j[1], region[1][1]) -
++    Math.max(footprint.j[0], region[1][0]) +
++    1;
++
++  if (width <= 0 || height <= 0) {
++    return result;
++  }
++
++  const [kStart, kEnd] = region[2];
++  const met =
++    countBelow(footprint.starts, kEnd + 1) - countBelow(footprint.ends, kStart);
++
++  if (met <= 0) {
++    return result;
++  }
++
++  // At most 3 cells on i and j, and 2 edges in k for each delivery.
++  const cells = 9 * (2 * met + 1);
++
++  if (
++    cells > MAX_COVERAGE_CELLS ||
++    Math.min(footprint.length, met * cells) > MAX_COVERAGE_WORK
++  ) {
++    return undefined;
++  }
++
++  if (!footprint.runs) {
++    footprint.runs = [];
++
++    for (const delivery of footprint.members) {
++      addRun(
++        footprint.runs,
++        delivery.bounds[2][0],
++        delivery.bounds[2][1],
++        delivery.quality
++      );
++    }
++  }
++
++  const { runs } = footprint;
++  let slices = 0;
++
++  for (
++    let index = firstRunEndingAtOrAfter(runs, kStart);
++    index < runs.length && runs[index].start <= kEnd;
++    index++
++  ) {
++    const { start, end, quality } = runs[index];
++
++    slices += Math.min(end, kEnd) - Math.max(start, kStart) + 1;
++    result.lowest = Math.min(result.lowest ?? quality, quality);
++    result.highest = Math.max(result.highest ?? quality, quality);
++  }
++
++  result.covered = slices * width * height;
++  result.deliveries = met;
++
++  return result;
++}
++
+ /**
+  * Derives the comparable summary of a record, and gives the record back.
+  *
+@@ -392,12 +696,54 @@ function withinCeiling(grid: VoxelGrid, ceiling: Point3): boolean {
+  * `byBounds` answers "did this exact region arrive before". `bySlice` holds the
+  * deliveries that touch one k slice, and containment needs an overlap in k, so
+  * a delivery compares itself against the deliveries of its own k slices alone.
++ *
++ * `coverage` answers the quality of a region without a scan of the record (see
++ * `coverageFromIncremental`). `mapped` holds the same coverage for the
++ * deliveries mapped into a derived grid, by the pair of grids, and each copy
++ * of a delivery by its original.
+  */
+ type DeliveryIndex = {
+   byBounds: Map<string, DeliveredRegion>;
+   bySlice: Map<number, Set<DeliveredRegion>>;
++  coverage: IncrementalCoverage;
++  mapped: Map<string, MappedCoverage>;
++};
++
++type MappedCoverage = {
++  source: VoxelGrid;
++  target: VoxelGrid;
++  coverage: IncrementalCoverage;
++  copies: Map<DeliveredRegion, DeliveredRegion>;
+ };
+ 
++/** Bounds the number of derived grids that one record keeps a coverage for. */
++const MAX_MAPPED_COVERAGES = 8;
++
++/** The exact geometry of a grid, as a key. */
++function exactGridKey(grid: VoxelGrid): string {
++  return [grid.dimensions, grid.spacing, grid.origin, grid.direction]
++    .map((values) => Array.from(values).join(','))
++    .join('|');
++}
++
++function mappedCopy(
++  mapped: MappedCoverage,
++  delivery: DeliveredRegion
++): DeliveredRegion {
++  const copy = {
++    bounds: mapBoundsBetweenGrids(
++      mapped.source,
++      mapped.target,
++      delivery.bounds
++    ),
++    quality: delivery.quality,
++  };
++
++  mapped.copies.set(delivery, copy);
++
++  return copy;
++}
++
+ /** The key of one region. `sameBounds` compares the same six whole numbers. */
+ function boundsKey(bounds: BoundsIJK): string {
+   return `${bounds[0][0]},${bounds[0][1]},${bounds[1][0]},${bounds[1][1]},${bounds[2][0]},${bounds[2][1]}`;
+@@ -419,6 +765,12 @@ function addToDeliveryIndex(
+ 
+     bucket.add(delivery);
+   }
++
++  addToCoverage(index.coverage, delivery);
++
++  for (const mapped of index.mapped.values()) {
++    addToCoverage(mapped.coverage, mappedCopy(mapped, delivery));
++  }
+ }
+ 
+ function removeFromDeliveryIndex(
+@@ -430,12 +782,67 @@ function removeFromDeliveryIndex(
+   for (let k = delivery.bounds[2][0]; k <= delivery.bounds[2][1]; k++) {
+     index.bySlice.get(k)?.delete(delivery);
+   }
++
++  removeFromCoverage(index.coverage, delivery);
++
++  for (const mapped of index.mapped.values()) {
++    removeFromCoverage(mapped.coverage, mapped.copies.get(delivery));
++    mapped.copies.delete(delivery);
++  }
++}
++
++/** Records the raise of the quality of a delivery that the index holds. */
++function raiseInDeliveryIndex(
++  index: DeliveryIndex,
++  delivery: DeliveredRegion
++): void {
++  raiseInCoverage(index.coverage, delivery);
++
++  for (const mapped of index.mapped.values()) {
++    const copy = mapped.copies.get(delivery);
++
++    copy.quality = delivery.quality;
++    raiseInCoverage(mapped.coverage, copy);
++  }
++}
++
++/**
++ * The coverage of the deliveries of the index mapped from `source` into
++ * `target`, which the index builds at the first query and then keeps up to
++ * date.
++ */
++function mappedCoverageOf(
++  index: DeliveryIndex,
++  delivered: DeliveredRegion[],
++  source: VoxelGrid,
++  target: VoxelGrid
++): IncrementalCoverage {
++  const key = `${exactGridKey(source)}>${exactGridKey(target)}`;
++  let mapped = index.mapped.get(key);
++
++  if (!mapped) {
++    if (index.mapped.size >= MAX_MAPPED_COVERAGES) {
++      index.mapped.clear();
++    }
++
++    mapped = { source, target, coverage: new Map(), copies: new Map() };
++
++    for (const delivery of delivered) {
++      addToCoverage(mapped.coverage, mappedCopy(mapped, delivery));
++    }
++
++    index.mapped.set(key, mapped);
++  }
++
++  return mapped.coverage;
+ }
+ 
+ function buildDeliveryIndex(delivered: DeliveredRegion[]): DeliveryIndex {
+   const index: DeliveryIndex = {
+     byBounds: new Map(),
+     bySlice: new Map(),
++    coverage: new Map(),
++    mapped: new Map(),
+   };
+ 
+   for (const delivery of delivered) {
+@@ -484,6 +891,9 @@ function boxReductionOf(statistic: VoxelStatistic): VoxelReduction {
+   );
+ }
+ 
++/** @internal The full recomputation, which the tests compare against. */
++export { coverageOfRegion };
++
+ export default class CompositeVoxelManager<T> implements IVoxelManager<T> {
+   private readonly representations: VoxelRepresentation<T>[] = [];
+   private readonly primaryRepresentation: VoxelRepresentation<T>;
+@@ -832,6 +1242,7 @@ export default class CompositeVoxelManager<T> implements IVoxelManager<T> {
+       }
+ 
+       existing.quality = quality;
++      raiseInDeliveryIndex(index, existing);
+ 
+       return true;
+     }
+@@ -915,6 +1326,24 @@ export default class CompositeVoxelManager<T> implements IVoxelManager<T> {
+     return index;
+   }
+ 
++  /**
++   * `coverageOfRegion` of a record, from the coverage that the index of the
++   * record keeps up to date when the deliveries allow it.
++   */
++  private coverageOf(
++    delivered: DeliveredRegion[],
++    region: BoundsIJK
++  ): Coverage {
++    return (
++      (delivered &&
++        coverageFromIncremental(
++          this.deliveryIndexOf(delivered).coverage,
++          region
++        )) ??
++      coverageOfRegion(delivered, region)
++    );
++  }
++
+   /**
+    * The absolute record of what one representation holds for a region.
+    *
+@@ -961,7 +1390,7 @@ export default class CompositeVoxelManager<T> implements IVoxelManager<T> {
+       return withStatus(this.qualityOfDerived(representation, target, record));
+     }
+ 
+-    const coverage = coverageOfRegion(representation.delivered, target);
++    const coverage = this.coverageOf(representation.delivered, target);
+     let { covered } = coverage;
+ 
+     record.deliveries = coverage.deliveries;
+@@ -1076,7 +1505,7 @@ export default class CompositeVoxelManager<T> implements IVoxelManager<T> {
+       boundsOfGrid(grid)
+     );
+     const sourceVoxels = volumeOfBounds(sourceBounds);
+-    const coverage = coverageOfRegion(delivered, sourceBounds);
++    const coverage = this.coverageOf(delivered, sourceBounds);
+ 
+     record.deliveries = coverage.deliveries;
+     record.lowest = coverage.lowest;
+@@ -1098,17 +1527,28 @@ export default class CompositeVoxelManager<T> implements IVoxelManager<T> {
+     }
+ 
+     // The deliveries of the source, mapped onto the boxes that they meet.
+-    const boxes = coverageOfRegion(
+-      (delivered ?? []).map((delivery) => ({
+-        bounds: mapBoundsBetweenGrids(
+-          grid,
+-          representation.grid,
+-          delivery.bounds
+-        ),
+-        quality: delivery.quality,
+-      })),
+-      target
+-    );
++    const boxes =
++      (delivered &&
++        coverageFromIncremental(
++          mappedCoverageOf(
++            this.deliveryIndexOf(delivered),
++            delivered,
++            grid,
++            representation.grid
++          ),
++          target
++        )) ??
++      coverageOfRegion(
++        (delivered ?? []).map((delivery) => ({
++          bounds: mapBoundsBetweenGrids(
++            grid,
++            representation.grid,
++            delivery.bounds
++          ),
++          quality: delivery.quality,
++        })),
++        target
++      );
+ 
+     record.missing = record.voxels - boxes.covered;
+     record.exact = record.exact && boxes.exact;
+diff --git a/packages/core/test/fidelityIndicatorAttach.jest.js b/packages/core/test/fidelityIndicatorAttach.jest.js
+index 9ef5bba4f9..ec6aa1e45c 100644
+--- a/packages/core/test/fidelityIndicatorAttach.jest.js
++++ b/packages/core/test/fidelityIndicatorAttach.jest.js
+@@ -583,6 +583,69 @@ describe('fidelityIndicator attach gates', () => {
+       expect(states).toEqual(['loading', 'done']);
+       disable(element);
+     });
++
++    // The API must do this: a burst of image arrivals reads the record once
++    // for each animation frame, and the last state still reaches the consumer.
++    it('coalesces a burst of IMAGE_VOLUME_MODIFIED into one notification', () => {
++      jest.useFakeTimers();
++      const element = document.createElement('div');
++
++      try {
++        const voxelGrid = {
++          dimensions: [8, 8, 8],
++          spacing: [1, 1, 1],
++          origin: [0, 0, 0],
++          direction: [1, 0, 0, 0, 1, 0, 0, 0, 1],
++        };
++        let missing = 50;
++        const loadStatus = { loading: true };
++        const getGridQuality = jest.fn(() => ({
++          grid: voxelGrid,
++          status: ImageQualityStatus.FULL_RESOLUTION,
++          lowest: ImageQualityStatus.FULL_RESOLUTION,
++          highest: ImageQualityStatus.FULL_RESOLUTION,
++          missing,
++          voxels: 512,
++          exact: true,
++          source: 'directLoad',
++          reduction: VoxelReductions.None,
++          deliveries: 1,
++        }));
++        jest
++          .spyOn(cache, 'getVolume')
++          .mockReturnValue({ voxelGrid, loadStatus, getGridQuality });
++        const viewport = Object.assign(volumeViewport(element), {
++          renderingEngineId: 're-1',
++          getActors: () => [{ uid: 'vol', actor: {} }],
++          getCamera: () => undefined,
++        });
++        const states = [];
++        element.addEventListener(Events.VIEWPORT_FIDELITY_CHANGED, (evt) =>
++          states.push(evt.detail.state.shownState)
++        );
++
++        viewport.notifyFidelityStateChanged();
++        getGridQuality.mockClear();
++
++        while (missing > 0) {
++          missing--;
++          loadStatus.loading = missing > 0;
++          eventTarget.dispatchEvent(
++            new CustomEvent(Events.IMAGE_VOLUME_MODIFIED, {
++              detail: { volumeId: 'vol' },
++            })
++          );
++        }
++        expect(getGridQuality).not.toHaveBeenCalled();
++
++        jest.advanceTimersByTime(20);
++        expect(getGridQuality).toHaveBeenCalledTimes(1);
++        expect(states.at(-1)).toBe('done');
++      } finally {
++        disable(element);
++        jest.useRealTimers();
++      }
++    });
+   });
+ 
+   describe('generic viewports', () => {
+diff --git a/packages/core/test/renderingEngineFidelityNotify.jest.js b/packages/core/test/renderingEngineFidelityNotify.jest.js
+index 44e6fd177e..76b0c0f22e 100644
+--- a/packages/core/test/renderingEngineFidelityNotify.jest.js
++++ b/packages/core/test/renderingEngineFidelityNotify.jest.js
+@@ -3,6 +3,7 @@ import BaseRenderingEngine from '../src/RenderingEngine/BaseRenderingEngine';
+ import Viewport from '../src/RenderingEngine/Viewport';
+ import GenericViewport from '../src/RenderingEngine/GenericViewport/GenericViewport';
+ import Events from '../src/enums/Events';
++import actorsWaitingForStorage from '../src/RenderingEngine/helpers/actorsWaitingForStorage';
+ 
+ function viewportStub(id) {
+   return { id, notifyFidelityStateChanged: jest.fn() };
+@@ -77,3 +78,30 @@ describe('rendering engine fidelity notification (FIDELITY-EVENT-2)', () => {
+     expect(events).toEqual([]);
+   });
+ });
++
++describe('rendering engine and a draw that waits for texture storage', () => {
++  const waits = (actors, renderStart) =>
++    BaseRenderingEngine.prototype._waitsForStorage.call(
++      {},
++      { getActors: () => actors.map((actor) => ({ actor })) },
++      renderStart
++    );
++
++  it('withholds the events only when no actor of the render drew', () => {
++    const ct = {};
++    const pet = {};
++    const renderStart = performance.now();
++
++    actorsWaitingForStorage.set(ct, performance.now());
++    expect(waits([ct], renderStart)).toBe(true);
++    // A PET that drew over a waiting CT keeps IMAGE_RENDERED for the annotations.
++    expect(waits([ct, pet], renderStart)).toBe(false);
++  });
++
++  it('ignores a skip from an earlier render', () => {
++    const ct = {};
++
++    actorsWaitingForStorage.set(ct, performance.now() - 100);
++    expect(waits([ct], performance.now())).toBe(false);
++  });
++});
+diff --git a/packages/core/test/utilities/CompositeVoxelManager.jest.js b/packages/core/test/utilities/CompositeVoxelManager.jest.js
+index db13d17ffa..d379d800dd 100644
+--- a/packages/core/test/utilities/CompositeVoxelManager.jest.js
++++ b/packages/core/test/utilities/CompositeVoxelManager.jest.js
+@@ -1,5 +1,5 @@
+ import { describe, it, expect, beforeEach } from '@jest/globals';
+-import CompositeVoxelManager from '../../src/utilities/CompositeVoxelManager';
++import CompositeVoxelManager, * as CompositeVoxelManagerModule from '../../src/utilities/CompositeVoxelManager';
+ import VoxelManager from '../../src/utilities/VoxelManager';
+ import * as voxelGrid from '../../src/utilities/voxelGrid';
+ import {
+@@ -1051,3 +1051,171 @@ describe('CompositeVoxelManager.getGridQuality', () => {
+     expect(composite.getRepresentations().length).toBe(1);
+   });
+ });
++
++describe('the incremental coverage of the deliveries', () => {
++  // A seeded generator, so a failure repeats.
++  function random(seed) {
++    let state = seed;
++    return () => {
++      state = (state * 1664525 + 1013904223) % 4294967296;
++      return state / 4294967296;
++    };
++  }
++
++  function coarseInterleaved(depth) {
++    const order = [];
++    const seen = new Set();
++    for (let step = 64; step >= 1; step = Math.floor(step / 2)) {
++      for (let k = 0; k < depth; k += step) {
++        if (!seen.has(k)) {
++          seen.add(k);
++          order.push(k);
++        }
++      }
++    }
++    return order;
++  }
++
++  function shuffled(depth, next) {
++    const order = [...Array(depth).keys()];
++    for (let index = order.length - 1; index > 0; index--) {
++      const other = Math.floor(next() * (index + 1));
++      [order[index], order[other]] = [order[other], order[index]];
++    }
++    return order;
++  }
++
++  /** The record of the full recomputation, as `getRegionQuality` built it. */
++  function expectedRecord(composite, grid, derivedGrid, region) {
++    const { delivered } = composite.getRepresentations()[0];
++    const { coverageOfRegion } = CompositeVoxelManagerModule;
++
++    if (!derivedGrid) {
++      const coverage = coverageOfRegion(delivered, region);
++      return {
++        deliveries: coverage.deliveries,
++        lowest: coverage.lowest,
++        highest: coverage.highest,
++        exact: coverage.exact,
++        missing: voxelGrid.volumeOfBounds(region) - coverage.covered,
++      };
++    }
++
++    const sourceBounds = voxelGrid.intersectBounds(
++      voxelGrid.mapBoundsBetweenGrids(derivedGrid, grid, region),
++      voxelGrid.boundsOfGrid(grid)
++    );
++    const coverage = coverageOfRegion(delivered, sourceBounds);
++    const boxes = coverageOfRegion(
++      delivered.map((delivery) => ({
++        bounds: voxelGrid.mapBoundsBetweenGrids(
++          grid,
++          derivedGrid,
++          delivery.bounds
++        ),
++        quality: delivery.quality,
++      })),
++      region
++    );
++    return {
++      deliveries: coverage.deliveries,
++      lowest: coverage.lowest,
++      highest: coverage.highest,
++      exact: coverage.exact && boxes.exact,
++      missing: voxelGrid.volumeOfBounds(region) - boxes.covered,
++    };
++  }
++
++  function recordFields(record) {
++    const { deliveries, lowest, highest, exact, missing } = record;
++    return { deliveries, lowest, highest, exact, missing };
++  }
++
++  const qualities = [
++    ImageQualityStatus.SUBRESOLUTION,
++    ImageQualityStatus.LOSSY,
++    ImageQualityStatus.FULL_RESOLUTION,
++  ];
++
++  // The API must do this: the incremental coverage gives the record of the
++  // full recomputation after every delivery, in every delivery order.
++  it.each([
++    ['coarse interleaved', 1],
++    ['shuffled with duplicates and slabs', 2],
++    ['shuffled with partial footprints', 3],
++  ])('matches the full recomputation, %s', (order, seed) => {
++    const next = random(seed);
++    const depth = 150;
++    const grid = makeGrid([4, 4, depth]);
++    const composite = new CompositeVoxelManager({
++      primary: makeFilled(grid.dimensions, 0),
++      grid,
++      delivered: [],
++    });
++    const representation = composite.getRepresentations()[0];
++    const derivedGrids = [
++      deriveBoxAverageGrid(grid, { factors: [2, 2, 2] }),
++      deriveBoxAverageGrid(grid, { factors: [1, 1, 3] }),
++    ];
++    const frames =
++      seed === 1 ? coarseInterleaved(depth) : shuffled(depth, next);
++    const steps = [];
++
++    for (const k of frames) {
++      steps.push({ bounds: boundsOfFrame(grid, k), quality: qualities[2] });
++      if (seed === 1) {
++        continue;
++      }
++      const roll = next();
++      const quality = qualities[Math.floor(next() * 3)];
++      if (roll < 0.2) {
++        steps.push({ bounds: boundsOfFrame(grid, k), quality });
++      } else if (roll < 0.3) {
++        const end = Math.min(depth - 1, k + Math.floor(next() * 5));
++        steps.push({
++          bounds: [
++            [0, 3],
++            [0, 3],
++            [k, end],
++          ],
++          quality,
++        });
++      } else if (seed === 3 && roll < 0.4) {
++        steps.push({
++          bounds: [
++            [0, 1],
++            [1, 3],
++            [k, k],
++          ],
++          quality,
++        });
++      }
++    }
++
++    for (const step of steps) {
++      composite.setDeliveredQuality(representation, step.bounds, step.quality);
++      const k0 = Math.floor(next() * depth);
++      const regions = [
++        voxelGrid.boundsOfGrid(grid),
++        [
++          [1, 2],
++          [0, 3],
++          [k0, Math.min(depth - 1, k0 + 20)],
++        ],
++      ];
++
++      for (const region of regions) {
++        expect(
++          recordFields(composite.getRegionQuality(representation, region))
++        ).toEqual(expectedRecord(composite, grid, undefined, region));
++      }
++
++      for (const derivedGrid of derivedGrids) {
++        const region = voxelGrid.boundsOfGrid(derivedGrid);
++        expect(recordFields(composite.getGridQuality(derivedGrid))).toEqual(
++          expectedRecord(composite, grid, derivedGrid, region)
++        );
++      }
++    }
++  });
++});
+diff --git a/packages/core/test/vtkStreamingOpenGLTexture.jest.js b/packages/core/test/vtkStreamingOpenGLTexture.jest.js
+index 4b3808e6f9..39fff9c53c 100644
+--- a/packages/core/test/vtkStreamingOpenGLTexture.jest.js
++++ b/packages/core/test/vtkStreamingOpenGLTexture.jest.js
+@@ -6,6 +6,32 @@ const mockVolumes = new Map();
+ jest.mock('../src/init', () => ({
+   getConfiguration: () => mockConfig,
+ }));
++jest.mock('../src/utilities/autoLoad', () => ({
++  __esModule: true,
++  default: jest.fn(),
++}));
++// The real allocation needs a full GL context. This stands in for the
++// superclass call alone, with the size that vtk.js records.
++jest.mock('@kitware/vtk.js/Rendering/OpenGL/Texture', () => {
++  const actual = jest.requireActual(
++    '@kitware/vtk.js/Rendering/OpenGL/Texture'
++  ).default;
++
++  return {
++    __esModule: true,
++    default: {
++      ...actual,
++      extend: (publicAPI, model, initialValues) => {
++        actual.extend(publicAPI, model, initialValues);
++        publicAPI.create3DFromRaw = ({ width, height, depth, numComps }) => {
++          model.allocatedGPUMemoryInBytes =
++            width * height * depth * numComps * 4;
++          return true;
++        };
++      },
++    },
++  };
++});
+ jest.mock('../src/cache/cache', () => ({
+   __esModule: true,
+   default: {
+@@ -15,6 +41,7 @@ jest.mock('../src/cache/cache', () => ({
+ }));
+ 
+ import { extend } from '../src/RenderingEngine/vtkClasses/vtkStreamingOpenGLTexture';
++import autoLoad from '../src/utilities/autoLoad';
+ 
+ const depth = 8;
+ const frameLength = 4 * 4;
+@@ -41,7 +68,7 @@ function loadedVolume() {
+ }
+ 
+ /** A reduced texture of a mounted volume, with every slice waiting. */
+-function reducedTexture() {
++function reducedTexture(volume = loadedVolume()) {
+   const publicAPI = {};
+   const model = {};
+   const gl = { texSubImage3D: jest.fn() };
+@@ -57,7 +84,7 @@ function reducedTexture() {
+     updateArrayDataTypeForGL: (_type, data) => data,
+   });
+ 
+-  mockVolumes.set('vol', loadedVolume());
++  mockVolumes.set('vol', volume);
+   publicAPI.setVolumeId('vol');
+   publicAPI.setGrid({
+     origin: [0, 0, 0],
+@@ -69,7 +96,17 @@ function reducedTexture() {
+ 
+   const uploadedSlices = () => gl.texSubImage3D.mock.calls.map((c) => c[4]);
+ 
+-  return { texture: publicAPI, uploadedSlices };
++  return { texture: publicAPI, model, uploadedSlices };
++}
++
++/** A volume whose frames have not arrived, so no slice holds data. */
++function emptyVolume() {
++  const volume = loadedVolume();
++
++  volume.compositeVoxelManager.getRepresentation = () => undefined;
++  volume.dimensions = [8, 8, depth];
++
++  return volume;
+ }
+ 
+ describe('vtkStreamingOpenGLTexture budgeted fill of a reduced texture', () => {
+@@ -131,4 +168,125 @@ describe('vtkStreamingOpenGLTexture budgeted fill of a reduced texture', () => {
+ 
+     expect(getRepresentation).toHaveBeenCalledWith(expect.anything(), 'max');
+   });
++
++  // The API must do this: fresh storage reads 0, so an empty slice uploads
++  // nothing and costs no budget, but a slice that held data still clears.
++  it('skips the zero upload of a slice that new storage never received', () => {
++    const volume = emptyVolume();
++    const { texture, model, uploadedSlices } = reducedTexture(volume);
++    // What create3DFromRaw does for an allocation with `data: null`.
++    model.writtenSlices = new Uint8Array(depth);
++
++    texture.update3DFromRaw();
++
++    expect(uploadedSlices()).toEqual([]);
++    expect(texture.isFillPending()).toBe(false);
++
++    model.writtenSlices[3] = 1;
++    texture.markAllFramesUpdated();
++    texture.update3DFromRaw();
++
++    expect(uploadedSlices()).toEqual([3]);
++  });
++});
++
++describe('vtkStreamingOpenGLTexture storage fence', () => {
++  let gl;
++
++  /** A texture allocated with `data: null`, of 1 GB or of 4 MB. */
++  function allocated(large) {
++    const { texture, model, uploadedSlices } = reducedTexture();
++
++    gl = Object.assign(model.context, {
++      SYNC_GPU_COMMANDS_COMPLETE: 1,
++      SYNC_STATUS: 2,
++      SIGNALED: 3,
++      fenceSync: jest.fn(() => ({})),
++      getSyncParameter: jest.fn(() => 0),
++      deleteSync: jest.fn(),
++      flush: jest.fn(),
++      isContextLost: () => false,
++    });
++    texture.create3DFromRaw({
++      width: 512,
++      height: 512,
++      depth: large ? 1024 : 4,
++      numComps: 1,
++      dataType: 'Float32Array',
++      data: null,
++    });
++    jest.spyOn(texture, 'modified');
++
++    return { texture, uploadedSlices };
++  }
++
++  beforeEach(() => {
++    jest.useFakeTimers();
++    autoLoad.mockClear();
++  });
++
++  afterEach(() => {
++    jest.useRealTimers();
++  });
++
++  // The API must do this: a large allocation starts the clear, waits for the
++  // fence with no upload, and renders the volume once the fence signals.
++  it('waits on the fence of a large allocation, then renders the volume', () => {
++    const { texture, uploadedSlices } = allocated(true);
++
++    expect(gl.texSubImage3D.mock.calls[0].slice(5, 8)).toEqual([1, 1, 1]);
++    expect(texture.isInitializing()).toBe(true);
++    gl.texSubImage3D.mockClear();
++    texture.update3DFromRaw();
++    expect(uploadedSlices()).toEqual([]);
++
++    jest.advanceTimersByTime(32);
++    expect(texture.modified).not.toHaveBeenCalled();
++
++    // A render that sees the signal first still gets the poll's render.
++    gl.getSyncParameter.mockReturnValue(gl.SIGNALED);
++    expect(texture.isInitializing()).toBe(false);
++    jest.advanceTimersByTime(16);
++
++    expect(gl.deleteSync).toHaveBeenCalledTimes(1);
++    expect(texture.modified).toHaveBeenCalledTimes(1);
++    expect(autoLoad).toHaveBeenCalledWith('vol');
++    expect(jest.getTimerCount()).toBe(0);
++  });
++
++  // The user experience must have this: a small volume draws on its first
++  // render, as before the fence.
++  it('creates no fence for a small allocation', () => {
++    const { texture } = allocated(false);
++
++    expect(gl.fenceSync).not.toHaveBeenCalled();
++    expect(gl.texSubImage3D).not.toHaveBeenCalled();
++    expect(texture.isInitializing()).toBe(false);
++  });
++
++  // The user experience must have this: a fence that never signals cannot
++  // leave the volume undrawn.
++  it('ends the wait at the deadline', () => {
++    const { texture } = allocated(true);
++
++    jest.advanceTimersByTime(3100);
++
++    expect(texture.isInitializing()).toBe(false);
++    expect(gl.deleteSync).toHaveBeenCalledTimes(1);
++    expect(autoLoad).toHaveBeenCalledWith('vol');
++  });
++
++  // The API must do this: the poll does not outlive the texture.
++  it('cancels the poll when the texture is deleted', () => {
++    const { texture } = allocated(true);
++    const modified = texture.modified;
++
++    texture.delete();
++    jest.advanceTimersByTime(100);
++
++    expect(jest.getTimerCount()).toBe(0);
++    expect(gl.getSyncParameter).not.toHaveBeenCalled();
++    expect(modified).not.toHaveBeenCalled();
++    expect(autoLoad).not.toHaveBeenCalled();
++  });
+ });
+diff --git a/packages/docs/docs/migration-guides/5x/1-migration-notes.md b/packages/docs/docs/migration-guides/5x/1-migration-notes.md
+index d46eb34dff..d2a9589176 100644
+--- a/packages/docs/docs/migration-guides/5x/1-migration-notes.md
++++ b/packages/docs/docs/migration-guides/5x/1-migration-notes.md
+@@ -697,6 +697,33 @@ differently, and the 5.x code to use.
+     cache.removeVolumeLoadObject(volumeId);
+     ```
+ 
++12. **A streaming load fires fewer `VIEWPORT_FIDELITY_CHANGED` events.** Default
++    settings, after 5.17.0. A volume viewport sends the fidelity state for
++    `Events.IMAGE_VOLUME_MODIFIED` at most once in each animation frame, and not
++    once for each image. The last state is the same. A render, and
++    `Events.IMAGE_VOLUME_LOADING_COMPLETED`, still send the state at once. In a
++    hidden tab, the browser does not run animation frames, so the state of a
++    load comes at the end of the load, or when the tab shows again. An
++    application that counts the events during a load must read the state, not
++    count the events.
++
++13. **A large volume can show a blank first frame.** Default settings, after
++    5.17.0, with WebGL2, for a volume texture of 256 MB or more. The browser
++    clears new texture storage before its first use. For a large texture, that
++    clear took seconds and stopped the page. The texture now waits for the
++    clear and does not stop the page. The viewport then draws nothing for about
++    0.3 s (at most 3 s). For a frame in which no actor of the viewport drew, the
++    engine fires no `Events.IMAGE_RENDERED` and no
++    `Events.VIEWPORT_FIDELITY_CHANGED`. The first `IMAGE_RENDERED` comes with
++    the first frame that shows the volume. A viewport with another actor that
++    drew, for example a small PET over a large CT, fires the event as before.
++    A smaller volume behaves as in 5.17.0.
++
++    ```js
++    // Code that captures the first frame needs no change: wait for the event.
++    element.addEventListener(Events.IMAGE_RENDERED, capture, { once: true });
++    ```
++
+ ## Locked segments stop the brush, and do not cause an overlap
+ 
+ ### What Changed
+diff --git a/packages/docs/docs/specs/core/viewport-fidelity.md b/packages/docs/docs/specs/core/viewport-fidelity.md
+index 239fb5a2e5..39c19e5970 100644
+--- a/packages/docs/docs/specs/core/viewport-fidelity.md
++++ b/packages/docs/docs/specs/core/viewport-fidelity.md
+@@ -323,8 +323,11 @@ states map to the states of this specification: transiently lossy is
+   view is lossy, so an ordinary load fires no event on each frame. The key
+   does not hold the display spacing. Thus a zoom, a pan or a resize that keeps
+   the verdict fires no event. A zoom that changes a box-average verdict fires the event. The event
+-  has no debounce, so an interactive reduction reaches the consumer on the
+-  first frame (FIDELITY-STATE-4).
++  of a render has no debounce, so an interactive reduction reaches the consumer
++  on the first frame (FIDELITY-STATE-4). The event of a volume load comes at
++  most once in each frame, and the last state of the load always comes
++  (FIDELITY-EVENT-7). A frame that shows nothing, because no actor drew, fires
++  no event. The first frame that shows the volume fires the event.
+ - **FIDELITY-EVENT-5** A consumer can also read the state when it asks, with
+   `viewport.getFidelityState()`. It needs no event and no user interface. A test
+   and a measurement harness read the state this way. The state holds
+@@ -341,7 +344,10 @@ states map to the states of this specification: transiently lossy is
+     itself and marked it with `markRendered()`. The CPU paths do that.
+   - A volume viewport also calls it on `IMAGE_VOLUME_MODIFIED` and
+     `IMAGE_VOLUME_LOADING_COMPLETED`, because no render can follow such an
+-    event. A generic render path requests a render on each volume event.
++    event. The call for `IMAGE_VOLUME_MODIFIED` runs at most once for each
++    animation frame, after the last event of that frame, because a streaming
++    load fires the event once for each image. A generic render path requests
++    a render on each volume event.
+   - The `Viewport` class and the `GenericViewport` class use one shared
+     helper, `helpers/fidelityIndicator/notifyFidelityStateChanged.ts`. The
+     helper obeys `suppressEvents`.

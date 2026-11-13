@@ -1,0 +1,1239 @@
+diff --git a/.claude/workflows.md b/.claude/workflows.md
+index c6fbe64a..c387d44a 100644
+--- a/.claude/workflows.md
++++ b/.claude/workflows.md
+@@ -24,7 +24,8 @@ GUI dialog for free. Do it TDD.
+      (see the reflection table in `CLAUDE.md`). `Fraction`, `PositiveInt`, `Color`, `ColorMap`,
+      `ColumnName(s)`, `Literal[...]`, `Optional[...]`, etc.
+    - A reST docstring: one-line summary, `:param x:` / `:type x:` for **every** parameter
+-     (these become GUI help), and a runnable `:Examples:` block.
++     (these become GUI help), and a runnable `:Examples:` block. The `check-gui-docstrings`
++     pre-commit hook rejects a GUI parameter whose help text the parser can't find.
+    - **Reasonable defaults** for every parameter — a non-expert should get a sensible result.
+    - Follow the tab heuristic if you want a specific GUI tab: name it `*normalize*` / `*filter*`
+      / `*split*`, or add it to the relevant `SUMMARY_FUNCS`/`CLUSTERING_FUNCS`/`GENERAL_FUNCS`
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 00000000..c49f64c0
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,48 @@
++# Line endings: the repository stores text files with LF, and they are checked out with LF on
++# every platform, regardless of the clone's `core.autocrlf` setting (Git for Windows defaults it to
++# `true` system-wide, which used to give CRLF working copies that the `mixed-line-ending --fix=lf`
++# pre-commit hook then kept "fixing" even though the committed content was already LF).
++# `text=auto` lets Git leave files it detects as binary alone; the explicit entries below don't
++# rely on that detection. (`.bat` files stay LF too: CRLF here would fight the
++# `mixed-line-ending --fix=lf` hook, and cmd.exe runs the repo's simple Sphinx make.bat files fine.)
++#
++# Existing clones keep their old (CRLF) working copies until files are re-checked out. On a clean
++# tree (commit or set aside your work first) refresh them with:
++#     git rm -r --cached -q . && git reset --hard
++# or simply re-clone. (`git add --renormalize .` is a no-op: the committed content is already LF.)
++* text=auto eol=lf
++
++# Byte-exact content: never convert line endings (see the matching `exclude` in .pre-commit-config.yaml).
++#   - test fixtures and "truth" files that tests compare verbatim;
++#   - R script templates echoed verbatim into generated scripts, compared against truth files;
++#   - vendored third-party report assets.
++tests/test_files/** -text
++rnalysis/data_files/r_templates/** -text
++rnalysis/data_files/report_templates/** -text
++
++# Binaries
++*.png binary
++*.jpg binary
++*.jpeg binary
++*.gif binary
++*.webp binary
++*.ico binary
++*.icns binary
++*.pdf binary
++*.zip binary
++*.gz binary
++*.bam binary
++*.bai binary
++*.bt2 binary
++*.idx binary
++*.rnal binary
++*.parquet binary
++*.xlsx binary
++*.doctree binary
++*.inv binary
++*.pickle binary
++*.woff binary
++*.woff2 binary
++*.ttf binary
++*.eot binary
++*.mp4 binary
+diff --git a/.github/workflows/pre-commit.yml b/.github/workflows/pre-commit.yml
+index c6a202f9..7e4ce543 100644
+--- a/.github/workflows/pre-commit.yml
++++ b/.github/workflows/pre-commit.yml
+@@ -2,14 +2,26 @@ name: Pre-commit
+ 
+ # Runs the hooks defined in .pre-commit-config.yaml (Ruff format + import sort, end-of-file
+ # fixer, trailing whitespace, LF line-ending enforcement, YAML/TOML checks, merge-conflict
+-# markers, large-file check -- see that file for the authoritative, up-to-date hook list) against
+-# only the files a PR actually touches -- NOT the whole repository. The tree has not had its
+-# one-time reformat sweep yet (see the comments atop .pre-commit-config.yaml / ruff.toml), so a
+-# `--all-files` gate would fail on every PR until that sweep lands. `--from-ref`/`--to-ref` scopes
+-# the run to the PR's diff, matching what `pre-commit install` already does locally on
+-# `git commit` (hooks run only on the files that commit touches).
++# markers, large-file check, GUI docstring help text -- see that file for the authoritative,
++# up-to-date hook list) against only the files that changed -- NOT the whole repository. A
++# `--all-files` run is reserved for a deliberate, one-off sweep (see the comments atop
++# .pre-commit-config.yaml). `--from-ref`/`--to-ref` scope the run, matching what
++# `pre-commit install` already does locally (hooks run only on the files a commit touches, and on
++# `git push` only on the files changed since the remote branch).
++#
++# Triggers:
++#   - pull_request: the files the PR changed (PR base..PR head).
++#   - push to development/master: the files the pushed commits changed (event.before..sha). This
++#     catches content that reached those branches without going through a PR check (a direct
++#     maintainer push, e.g. a release commit, or a PR merged before its check finished). A brand-new
++#     branch push (all-zeros `before`) or a force-push whose previous tip is no longer fetchable
++#     falls back to checking just the pushed tip commit (its diff against its first parent).
+ on:
+     pull_request:
++    push:
++        branches:
++            - development
++            - master
+ 
+ permissions:
+     contents: read
+@@ -21,8 +33,8 @@ jobs:
+             -   name: Get repository
+                 uses: actions/checkout@v7
+                 with:
+-                    # Full history is needed so both the PR's base and head commits are present
+-                    # locally for the --from-ref/--to-ref diff below.
++                    # Full history is needed so both ends of the --from-ref/--to-ref diff below are
++                    # present locally.
+                     fetch-depth: 0
+                     # docs/build/ is ~600 MB of committed, generated Sphinx output that no hook
+                     # needs to see; excluding it from the sparse checkout speeds this up.
+@@ -30,11 +42,43 @@ jobs:
+                         /*
+                         !/docs/build
+                     sparse-checkout-cone-mode: false
++            -   name: Determine the range of changes to check
++                id: range
++                env:
++                    EVENT_NAME: ${{ github.event_name }}
++                    PR_BASE: ${{ github.event.pull_request.base.sha }}
++                    PR_HEAD: ${{ github.event.pull_request.head.sha }}
++                    PUSH_BEFORE: ${{ github.event.before }}
++                    PUSH_AFTER: ${{ github.sha }}
++                run: |
++                    if [ "$EVENT_NAME" = "pull_request" ]; then
++                        from_ref="$PR_BASE"
++                        to_ref="$PR_HEAD"
++                    else
++                        to_ref="$PUSH_AFTER"
++                        from_ref="$PUSH_BEFORE"
++                        if [ -n "$from_ref" ] && [ "$from_ref" != "0000000000000000000000000000000000000000" ] \
++                            && ! git cat-file -e "${from_ref}^{commit}" 2>/dev/null; then
++                            # force-push: the old tip is not in the fetched history; try fetching it by SHA
++                            # (no --depth, so the fetched commit keeps its real ancestry for
++                            # pre-commit's three-dot from_ref...to_ref diff)
++                            git fetch --no-tags origin "$from_ref" || true
++                        fi
++                        if [ -z "$from_ref" ] || [ "$from_ref" = "0000000000000000000000000000000000000000" ] \
++                            || ! git cat-file -e "${from_ref}^{commit}" 2>/dev/null; then
++                            # new branch / unreachable old tip: check just the pushed tip commit
++                            # (pre-commit needs a commit here, so a parentless root commit checks nothing)
++                            from_ref="$(git rev-parse --verify --quiet "${to_ref}^" || echo "$to_ref")"
++                        fi
++                    fi
++                    echo "Checking files changed in ${from_ref}...${to_ref}"
++                    echo "from_ref=${from_ref}" >> "$GITHUB_OUTPUT"
++                    echo "to_ref=${to_ref}" >> "$GITHUB_OUTPUT"
+             -   name: Set up Python
+                 uses: actions/setup-python@v7
+                 with:
+                     python-version: '3.13'
+-            -   name: Run pre-commit on the PR's changed files
++            -   name: Run pre-commit on the changed files
+                 uses: pre-commit/action@v3.0.1
+                 with:
+-                    extra_args: --from-ref ${{ github.event.pull_request.base.sha }} --to-ref ${{ github.event.pull_request.head.sha }}
++                    extra_args: --from-ref ${{ steps.range.outputs.from_ref }} --to-ref ${{ steps.range.outputs.to_ref }}
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 21502df9..0849a29f 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -3,13 +3,22 @@
+ #
+ #     pre-commit install
+ #
+-# After that the hooks run automatically on `git commit`, but ONLY on the files that commit
+-# touches. A repo-wide `ruff format` / `ruff check --fix` sweep has already been applied once
++# Thanks to `default_install_hook_types` below, that installs BOTH git hooks:
++#   - pre-commit: on `git commit`, runs every hook on ONLY the files that commit touches;
++#   - pre-push:   on `git push`, runs every hook again on the files changed between the remote
++#     branch and what you are pushing (the working-tree copies of those files) -- a safety net for
++#     commits made before the hook was installed, or from another tool/worktree. A fixer hook
++#     (whitespace, EOF, line endings, Ruff) that changes a file there aborts the push: commit its
++#     fixes and push again.
++# Clones set up before pre-push was added: run `pre-commit install` once more to add it.
++#
++# A repo-wide `ruff format` / `ruff check --fix` sweep has already been applied once
+ # (see the "Repo-wide Ruff format + import-sort sweep" commit); going forward these hooks keep
+ # the tree in that state incrementally. To run everything by hand: `pre-commit run -a`.
+ #
+-# CI (.github/workflows/pre-commit.yml) runs these same hooks on every pull request, scoped to
+-# just the files the PR changed (`pre-commit run --from-ref <base> --to-ref <head>`), not
++# CI (.github/workflows/pre-commit.yml) runs these same hooks on every pull request and on every
++# push to `development`/`master`, scoped to just the files the PR (or the pushed range of commits)
++# changed (`pre-commit run --from-ref <base> --to-ref <head>`), not
+ # `--all-files` — a full-repo run is for a deliberate, one-off sweep only (see above), not routine
+ # PR checks.
+ #
+@@ -29,6 +38,8 @@
+ #     minified JS/CSS) — not ours to reformat.
+ exclude: '^(docs/build/|docs/source/rnalysis\..*\.rst$|tests/test_files/|rnalysis/data_files/r_templates/|rnalysis/data_files/report_templates/)'
+ 
++default_install_hook_types: [pre-commit, pre-push]
++
+ default_language_version:
+   python: python3
+ 
+@@ -53,3 +64,16 @@ repos:
+         args: [--fix]
+       # Formatter — Black-compatible, configured in ruff.toml (line-length 120, single quotes).
+       - id: ruff-format
++
++  - repo: local
++    hooks:
++      # Every parameter the GUI renders for a public filtering/enrichment/fastq function must have
++      # ":param name: ..." help text that the GUI's own docstring parser can read (see CLAUDE.md,
++      # "the API<->GUI reflection contract"; what is checked, and the known approximations of a
++      # static check, are documented atop packaging/check_gui_docstrings.py). Stdlib-only: the
++      # script never imports rnalysis, so the hook needs none of RNAlysis's dependencies.
++      - id: check-gui-docstrings
++        name: check GUI help text in public API docstrings
++        entry: python packaging/check_gui_docstrings.py
++        language: python
++        files: ^(rnalysis/(filtering|enrichment|fastq)\.py|rnalysis/utils/docstring_parsing\.py|packaging/check_gui_docstrings\.py)$
+diff --git a/AGENTS.md b/AGENTS.md
+index c2654d7d..5414e901 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -41,7 +41,9 @@ Qt code for it. What drives that rendering:
+   types live in `rnalysis/utils/param_typing.py`. **Choosing the right annotation is how you
+   design the GUI.**
+ - **Docstrings are load-bearing help text.** The reST `:param x: ...` lines become the
+-  per-parameter tooltips; keep that format.
++  per-parameter tooltips; keep that format. The `check-gui-docstrings` pre-commit hook fails a
++  commit that leaves a GUI parameter without parseable help text (run `pre-commit install` once:
++  it installs both the pre-commit and pre-push hooks).
+ - **`@readable_name('…')`** sets the human-readable button/window label.
+ 
+ **Consequence:** renaming a public method, changing its signature, or loosening a type
+diff --git a/CLAUDE.md b/CLAUDE.md
+index a358147c..454a1397 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -186,7 +186,11 @@ CI (`.github/workflows/build_ci.yml`) runs on every PR across
+   (DESeq2, limma, Rsubread) often fails on write permissions to the R library. Error paths in
+   `installs.py` already surface this — preserve those messages.
+ - **Docstrings are load-bearing** (they become GUI help). Keep the `:param name: ...` /
+-  `:type name: ...` reST format when editing public functions.
++  `:type name: ...` reST format when editing public functions. The `check-gui-docstrings`
++  pre-commit hook (`packaging/check_gui_docstrings.py`) fails a commit to `filtering.py`/
++  `enrichment.py`/`fastq.py` that leaves a GUI parameter without parseable help text (missing or
++  typo'd `:param`, a `param x:` without its colon, no blank line before the `:param` block). Its
++  `KNOWN_ISSUES` baseline lists older gaps: fix one, then delete its entry.
+ - **`docs/source/rnalysis.*.rst` are generated** by `sphinx-apidoc`. Don't hand-edit them.
+ 
+ ---
+@@ -196,9 +200,10 @@ CI (`.github/workflows/build_ci.yml`) runs on every PR across
+ - 4-space indent, LF, UTF-8, trailing whitespace trimmed, final newline (`.editorconfig`).
+ - **Formatting/imports:** Ruff is configured (`ruff.toml`) and wired into pre-commit
+   (`.pre-commit-config.yaml`) — `ruff format` (line-length 120, single quotes) plus import
+-  sorting. Enable it once with `pre-commit install`. The tree is **not fully reformatted yet**
+-  (a single sweep is planned for the next `development`→`master` merge), so until then match the
+-  style of the file you're editing and don't mass-reformat unrelated lines.
++  sorting. Enable it once with `pre-commit install` (installs both the pre-commit and the pre-push
++  git hook; CI runs the same hooks on PRs and on pushes to `development`/`master`). The one-time
++  repo-wide sweep has been applied (PR #299); the hooks keep the files you touch formatted, so
++  don't mass-reformat unrelated lines.
+ - Prefer **Polars** for tabular work (the codebase migrated off Pandas in 4.0). Lazy evaluation
+   is currently underused and welcome where it helps (see roadmap in context.md).
+ - Give public API parameters **precise `param_typing` annotations** — that's how you design the
+diff --git a/CONTRIBUTING.rst b/CONTRIBUTING.rst
+index 6ec75dc0..4f6d0cac 100644
+--- a/CONTRIBUTING.rst
++++ b/CONTRIBUTING.rst
+@@ -100,7 +100,7 @@ Ready to contribute? Here's how to set up `rnalysis` for local development.
+     $ source venv/bin/activate    # on Windows: venv\Scripts\activate
+     $ pip install -e .[all]
+     $ pip install -r requirements_dev.txt
+-    $ pre-commit install    # enable the auto-formatting git hooks (Ruff); recommended
++    $ pre-commit install    # enable the git hooks (Ruff formatting, GUI help-text checks) on commit and push; recommended
+ 
+ 4. Create a branch for local development, based on the ``development`` branch
+    (``development`` is the integration branch; ``master`` only receives ``development``
+@@ -142,9 +142,10 @@ Before you submit a pull request, check that it meets these guidelines:
+    request; make sure all jobs pass. Coverage is reported at
+    https://coveralls.io/github/GuyTeichman/RNAlysis.
+ 5. The files your pull request touches must pass the pre-commit hooks (Ruff formatting/import
+-   sorting, end-of-file/whitespace fixups, YAML/TOML validity). GitHub Actions checks this
+-   automatically, scoped to just the files the PR changed. Installing the git hook with
+-   ``pre-commit install`` (see "Get Started!" above) catches this before you push.
++   sorting, end-of-file/whitespace fixups, YAML/TOML validity, GUI help text in docstrings).
++   GitHub Actions checks this automatically, scoped to just the files the PR changed. Installing
++   the git hooks with ``pre-commit install`` (see "Get Started!" above) catches this on commit,
++   and again (on your working-tree copies of the changed files) before you push.
+ 
+ Tips
+ ----
+diff --git a/packaging/check_gui_docstrings.py b/packaging/check_gui_docstrings.py
+new file mode 100644
+index 00000000..b316966f
+--- /dev/null
++++ b/packaging/check_gui_docstrings.py
+@@ -0,0 +1,348 @@
++"""
++Pre-commit hook (``check-gui-docstrings``): every parameter the GUI renders must have help text.
++
++The GUI is generated from the public API by reflection, and each parameter's help text/tooltip comes from its
++``:param name: ...`` docstring line, parsed by ``rnalysis/utils/docstring_parsing.py`` (see CLAUDE.md, "the API<->GUI
++reflection contract"). A typo in that line silently leaves the parameter with no help in the GUI. This hook catches
++that at commit time, for ``rnalysis/filtering.py``, ``rnalysis/enrichment.py`` and ``rnalysis/fastq.py``, by checking
++each GUI-exposed function for:
++
++- ``missing-help``: a signature parameter (other than self/cls/*args/**kwargs) whose parsed help text is missing/empty;
++- ``unknown-param``: a ``:param name:`` line naming a parameter that is not in the signature (usually a typo);
++- ``malformed-field``: a line that looks like a ``:param`` field but does not parse as one (e.g. ``param x:``);
++- ``no-blank-line``: a ``:param`` field inside the description paragraph (no blank line before the ``:param`` block),
++  which the parser swallows into the description;
++- ``no-docstring``: a ``@readable_name``-decorated function with parameters but no docstring at all.
++
++pre-commit runs this in an isolated environment without RNAlysis's dependencies (polars, numpy, PyQt6...), so it
++never imports the ``rnalysis`` package: modules are read with ``ast``, and the shared, stdlib-only parser is loaded
++by file path. Being static, the check approximates what the GUI does at runtime:
++
++- GUI-exposed functions mirror ``tests/test_parsing.py::_gui_exposed_functions``: public methods of ``Filter`` /
++  ``FeatureSet`` and their subclasses (``gui.TabPage.get_all_actions``), and public module-level functions of
++  ``fastq`` and ``enrichment``. ``EXCLUDED_FUNCS`` are still checked (a stricter superset; they are public API whose
++  docstrings also feed the API docs). Properties are skipped (``get_all_actions`` only keeps callables).
++- For methods, parameters in ``GUI_HIDDEN_METHOD_PARAMS`` are skipped: the tab pages never render them
++  (``gui.FuncTypeStack.EXCLUDED_PARAMS``). Module-level functions are rendered by ``FuncExternalWindow`` subclasses,
++  most of which render every parameter, so only ``GUI_HIDDEN_FUNCTION_PARAMS`` is skipped for them. Other
++  per-window exclusions are not mirrored; a parameter they hide but that lacks help text is listed in
++  ``KNOWN_ISSUES`` instead.
++- Inherited docstrings (``inspect.getdoc``) are resolved through base classes defined in the same file. A method
++  with no docstring whose class derives from a class defined elsewhere (other than a builtin such as ``set``, which
++  is checked directly) is skipped when that base may define the method, since its docstring may be inherited from
++  there.
++- ``no-docstring`` is only reported for ``@readable_name``-decorated functions. The GUI also shows undecorated
++  public methods under their function name; an undocumented one is not reported.
++- ``KNOWN_ISSUES`` is a baseline of problems that predate this hook. They are tolerated, but an entry that no longer
++  occurs is reported, so the baseline can only shrink.
++
++Usage: ``python packaging/check_gui_docstrings.py [FILE ...]`` (pre-commit passes the changed files). If this script
++or the shared parser is among them, all checked modules are checked.
++"""
++
++import ast
++import builtins
++import importlib.util
++import re
++import sys
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++PARSER_PATH = 'rnalysis/utils/docstring_parsing.py'
++SCRIPT_PATH = 'packaging/check_gui_docstrings.py'
++
++# module path -> (check public module-level functions?, root classes whose public methods (and subclasses') are checked)
++CHECKED_MODULES: Dict[str, Tuple[bool, Tuple[str, ...]]] = {
++    'rnalysis/filtering.py': (False, ('Filter',)),
++    'rnalysis/enrichment.py': (True, ('FeatureSet',)),
++    'rnalysis/fastq.py': (True, ()),
++}
++
++# parameters the GUI never renders for Filter/FeatureSet methods (see gui.FuncTypeStack.EXCLUDED_PARAMS)
++GUI_HIDDEN_METHOD_PARAMS = frozenset({'self', 'cls', 'backend', 'gui_mode', 'legacy_args', 'function_kwargs'})
++# ... and for module-level fastq/enrichment functions (excluded by every FuncExternalWindow that could show it)
++GUI_HIDDEN_FUNCTION_PARAMS = frozenset({'legacy_args'})
++
++MISSING = 'missing-help'
++UNKNOWN = 'unknown-param'
++MALFORMED = 'malformed-field'
++NO_BLANK_LINE = 'no-blank-line'
++NO_DOCSTRING = 'no-docstring'
++
++MESSAGES = {
++    MISSING: 'has no help text in the docstring (add a ":param {param}: ..." line)',
++    UNKNOWN: 'is documented with ":param {param}:" but is not in the signature (typo?)',
++    MALFORMED: 'has a malformed ":param" line that the GUI cannot parse (expected ":param {param}: ...")',
++    NO_BLANK_LINE: 'docstring has no blank line between the description and the ":param" block, so the GUI shows no '
++    'parameter help',
++    NO_DOCSTRING: 'is shown in the GUI but has no docstring, so its parameters have no help text',
++}
++
++# Problems that predate this hook: (module, qualname, param, kind). Fix them and delete the entry.
++KNOWN_ISSUES: Set[Tuple[str, str, Optional[str], str]] = {
++    ('rnalysis/enrichment.py', 'FeatureSet.biotypes_from_gtf', 'long_format', UNKNOWN),
++    ('rnalysis/enrichment.py', 'FeatureSet.go_enrichment', 'biotype', UNKNOWN),
++    ('rnalysis/enrichment.py', 'FeatureSet.go_enrichment', 'biotype_ref_path', UNKNOWN),
++    ('rnalysis/enrichment.py', 'FeatureSet.go_enrichment', 'random_seed', MISSING),
++    ('rnalysis/enrichment.py', 'FeatureSet.kegg_enrichment', 'random_seed', MISSING),
++    ('rnalysis/enrichment.py', 'FeatureSet.map_orthologs_phylomedb', 'consistency_score_threshold', MISSING),
++    ('rnalysis/enrichment.py', 'FeatureSet.translate_gene_ids', 'inplace', MISSING),
++    ('rnalysis/enrichment.py', 'FeatureSet.user_defined_enrichment', 'biotype', UNKNOWN),
++    ('rnalysis/enrichment.py', 'FeatureSet.user_defined_enrichment', 'biotype_ref_path', UNKNOWN),
++    ('rnalysis/enrichment.py', 'FeatureSet.user_defined_enrichment', 'random_seed', MISSING),
++    ('rnalysis/fastq.py', 'create_bam_index', None, NO_DOCSTRING),
++    ('rnalysis/fastq.py', 'fastq_to_sam_paired', 'input_folder', UNKNOWN),
++    ('rnalysis/fastq.py', 'fastq_to_sam_paired', 'output_format', MISSING),
++    ('rnalysis/fastq.py', 'fastq_to_sam_paired', 'quality_score_type', MISSING),
++    ('rnalysis/fastq.py', 'fastq_to_sam_paired', 'r1_files', MISSING),
++    ('rnalysis/fastq.py', 'fastq_to_sam_paired', 'r2_files', MISSING),
++    ('rnalysis/fastq.py', 'fastq_to_sam_single', 'output_format', MISSING),
++    ('rnalysis/fastq.py', 'fastq_to_sam_single', 'quality_score_type', MISSING),
++    ('rnalysis/fastq.py', 'kallisto_quantify_paired_end', 'learn_bias', UNKNOWN),
++    ('rnalysis/fastq.py', 'kallisto_quantify_paired_end', 'seek_fusion_genes', UNKNOWN),
++    ('rnalysis/fastq.py', 'kallisto_quantify_single_end', 'learn_bias', UNKNOWN),
++    ('rnalysis/fastq.py', 'kallisto_quantify_single_end', 'seek_fusion_genes', UNKNOWN),
++    ('rnalysis/fastq.py', 'sam_to_fastq_paired', 're_reverse_reads', MISSING),
++    ('rnalysis/fastq.py', 'sam_to_fastq_paired', 'return_new_filenames', MISSING),
++    ('rnalysis/fastq.py', 'trim_adapters_paired_end', 'return_new_filenames', MISSING),
++    ('rnalysis/fastq.py', 'validate_sam', 'new_sample_names', UNKNOWN),
++    ('rnalysis/filtering.py', 'CountFilter.differential_expression_deseq2', 'cooks_cutoff', MISSING),
++    ('rnalysis/filtering.py', 'CountFilter.differential_expression_deseq2', 'scaling_factors', MISSING),
++    ('rnalysis/filtering.py', 'CountFilter.differential_expression_deseq2_simplified', 'return_log', MISSING),
++    ('rnalysis/filtering.py', 'CountFilter.differential_expression_limma_voom_simplified', 'return_log', MISSING),
++    ('rnalysis/filtering.py', 'Filter.concatenate', None, NO_DOCSTRING),
++    ('rnalysis/filtering.py', 'Filter.histogram', None, NO_DOCSTRING),
++    ('rnalysis/filtering.py', 'Filter.map_orthologs_phylomedb', 'consistency_score_threshold', MISSING),
++    ('rnalysis/filtering.py', 'Filter.split_by_percentile', 'interpolate', MISSING),
++    ('rnalysis/filtering.py', 'FoldChangeFilter.randomization_test', 'random_seed', MISSING),
++}
++
++_STRICT_PARAM = re.compile(r'^[ \t]*:param ([a-zA-Z_0-9]+):', re.MULTILINE)
++_PARAM_LIKE = re.compile(r'^[ \t]*(?::param\b|param\s+\w+\s*:)')
++_PARAM_LIKE_NAME = re.compile(r'param\s+(\w+)')
++_FIELD_HEAD = re.compile(r'^[ \t]*:param\s+([^:]*?)\s*:')
++
++
++def _load_parser():
++    # loaded by path, so that rnalysis/__init__.py (which imports the heavy dependencies) is never executed
++    spec = importlib.util.spec_from_file_location('rnalysis_docstring_parsing', REPO_ROOT / PARSER_PATH)
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++parse_docstring = _load_parser().parse_docstring
++
++
++@dataclass(frozen=True)
++class Problem:
++    path: str
++    line: int
++    qualname: str
++    param: Optional[str]
++    kind: str
++
++    def key(self) -> Tuple[str, str, Optional[str], str]:
++        return self.path, self.qualname, self.param, self.kind
++
++    def __str__(self) -> str:
++        subject = f'parameter {self.param!r}' if self.param is not None else 'function'
++        return f'{self.path}:{self.line}: {self.qualname}: {subject} {MESSAGES[self.kind].format(param=self.param)}'
++
++
++def _decorator_names(func: ast.AST) -> Set[str]:
++    names = set()
++    for dec in func.decorator_list:
++        node = dec.func if isinstance(dec, ast.Call) else dec
++        if isinstance(node, ast.Attribute):
++            names.add(node.attr)
++        elif isinstance(node, ast.Name):
++            names.add(node.id)
++    return names
++
++
++def _is_function(node: ast.AST) -> bool:
++    return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
++
++
++def _signature_params(func: ast.FunctionDef, is_method: bool) -> Tuple[List[str], Set[str]]:
++    """Return the parameters to check, and every name in the signature (including self, *args and **kwargs)."""
++    args = func.args
++    named = [arg.arg for arg in args.posonlyargs + args.args + args.kwonlyargs]
++    if is_method and 'staticmethod' not in _decorator_names(func) and named:
++        named = named[1:]  # self / cls
++    all_names = set(named) | {arg.arg for arg in (args.vararg, args.kwarg) if arg is not None}
++    hidden = GUI_HIDDEN_METHOD_PARAMS if is_method else GUI_HIDDEN_FUNCTION_PARAMS
++    return [name for name in named if name not in hidden], all_names
++
++
++def _find_line(lines: Sequence[str], func: ast.FunctionDef, pattern: str) -> int:
++    for lineno in range(func.lineno, (func.end_lineno or func.lineno) + 1):
++        if re.search(pattern, lines[lineno - 1]):
++            return lineno
++    return func.lineno
++
++
++class _ClassIndex:
++    def __init__(self, tree: ast.Module):
++        self.classes: Dict[str, ast.ClassDef] = {
++            node.name: node for node in tree.body if isinstance(node, ast.ClassDef)
++        }
++
++    def _bases(self, cls: ast.ClassDef) -> List[ast.expr]:
++        return [base for base in cls.bases if not (isinstance(base, ast.Name) and base.id == 'object')]
++
++    def local_base(self, base: ast.expr) -> Optional[ast.ClassDef]:
++        return self.classes.get(base.id) if isinstance(base, ast.Name) else None
++
++    def mro(self, cls: ast.ClassDef) -> Tuple[List[ast.ClassDef], List[ast.expr]]:
++        """Same-file ancestors (depth-first, including cls), and the bases defined elsewhere."""
++        order, external, stack = [], [], [cls]
++        while stack:
++            current = stack.pop(0)
++            if current in order:
++                continue
++            order.append(current)
++            for base in self._bases(current):
++                local = self.local_base(base)
++                if local is None:
++                    external.append(base)
++                else:
++                    stack.append(local)
++        return order, external
++
++    def is_gui_class(self, cls: ast.ClassDef, roots: Iterable[str]) -> bool:
++        return any(ancestor.name in roots for ancestor in self.mro(cls)[0])
++
++    def inherited_docstring(self, cls: ast.ClassDef, name: str) -> Tuple[Optional[str], bool]:
++        """
++        Mimic inspect.getdoc(): the first docstring of method `name` along the same-file MRO. Also return whether a
++        base defined elsewhere may define `name` (and so supply a docstring this static check cannot see):
++        builtin bases (e.g. `set`) are checked directly, any other external base is assumed to.
++        """
++        order, external = self.mro(cls)
++        for ancestor in order:
++            for node in ancestor.body:
++                if _is_function(node) and node.name == name:
++                    doc = ast.get_docstring(node)
++                    if doc is not None:
++                        return doc, False
++        may_inherit = False
++        for base in external:
++            builtin = getattr(builtins, base.id, None) if isinstance(base, ast.Name) else None
++            if not isinstance(builtin, type) or hasattr(builtin, name):
++                may_inherit = True
++        return None, may_inherit
++
++
++def _check_function(
++    func: ast.FunctionDef, qualname: str, doc: Optional[str], is_method: bool, path: str, lines: Sequence[str]
++) -> List[Problem]:
++    params, all_names = _signature_params(func, is_method)
++    if doc is None:
++        if params and 'readable_name' in _decorator_names(func):
++            return [Problem(path, func.lineno, qualname, None, NO_DOCSTRING)]
++        return []
++
++    problems = []
++    desc, parsed = parse_docstring(doc)
++    if _STRICT_PARAM.search(desc):
++        return [Problem(path, _find_line(lines, func, r':param '), qualname, None, NO_BLANK_LINE)]
++
++    for line in doc.splitlines():
++        collapsed = re.sub(' +', ' ', line)
++        if _PARAM_LIKE.match(collapsed) and not _STRICT_PARAM.match(collapsed):
++            head = _FIELD_HEAD.match(collapsed)
++            if head:  # ':param int x: ...' / ':param x : ...' -> the name is the last word before the colon
++                words = re.findall(r'\w+', head.group(1))
++                name = words[-1] if words else None
++            else:
++                match = _PARAM_LIKE_NAME.search(collapsed)
++                name = match.group(1) if match else None
++                if not collapsed.lstrip().startswith(':') and name not in all_names:
++                    continue  # a prose line such as 'param values: ...', not a broken field
++            problems.append(Problem(path, _find_line(lines, func, re.escape(line.strip())), qualname, name, MALFORMED))
++    malformed = {problem.param for problem in problems}
++
++    for name in params:
++        if not parsed.get(name, '').strip() and name not in malformed:
++            line = _find_line(lines, func, rf':param {name}:|\b{name}\b')
++            problems.append(Problem(path, line, qualname, name, MISSING))
++
++    for name in _STRICT_PARAM.findall(doc):
++        if name not in all_names:
++            problems.append(Problem(path, _find_line(lines, func, rf':param {name}:'), qualname, name, UNKNOWN))
++    return problems
++
++
++def check_source(source: str, path: str, module_functions: bool, root_classes: Sequence[str]) -> List[Problem]:
++    """Check the GUI-exposed functions of one module's source code."""
++    tree = ast.parse(source)
++    lines = source.splitlines()
++    index = _ClassIndex(tree)
++    problems = []
++    for node in tree.body:
++        if module_functions and _is_function(node) and not node.name.startswith('_'):
++            problems.extend(_check_function(node, node.name, ast.get_docstring(node), False, path, lines))
++        elif (
++            isinstance(node, ast.ClassDef) and not node.name.startswith('_') and index.is_gui_class(node, root_classes)
++        ):
++            for method in node.body:
++                if not _is_function(method) or method.name.startswith('_'):
++                    continue
++                if _decorator_names(method) & {'property', 'setter', 'getter', 'deleter', 'cached_property'}:
++                    continue
++                doc = ast.get_docstring(method)
++                if doc is None:
++                    doc, may_inherit = index.inherited_docstring(node, method.name)
++                    if doc is None and may_inherit:
++                        continue  # the docstring may be inherited from a class the static check cannot see
++                qualname = f'{node.name}.{method.name}'
++                problems.extend(_check_function(method, qualname, doc, True, path, lines))
++    return problems
++
++
++def check_file(path: str) -> List[Problem]:
++    module_functions, root_classes = CHECKED_MODULES[path]
++    source = (REPO_ROOT / path).read_text(encoding='utf-8')
++    return check_source(source, path, module_functions, root_classes)
++
++
++def _normalize(filename: str) -> str:
++    path = Path(filename)
++    if path.is_absolute():
++        try:
++            path = path.resolve().relative_to(REPO_ROOT)
++        except ValueError:
++            pass
++    return path.as_posix()
++
++
++def main(argv: Sequence[str]) -> int:
++    changed = {_normalize(filename) for filename in argv}
++    if changed & {PARSER_PATH, SCRIPT_PATH}:
++        to_check = sorted(CHECKED_MODULES)
++    else:
++        to_check = sorted(changed & set(CHECKED_MODULES))
++
++    failures = []
++    for path in to_check:
++        problems = check_file(path)
++        found = {problem.key() for problem in problems}
++        failures.extend(str(problem) for problem in problems if problem.key() not in KNOWN_ISSUES)
++        for stale in sorted(key for key in KNOWN_ISSUES if key[0] == path and key not in found):
++            failures.append(
++                f'{path}: {stale[1]}: {stale[2]!r} ({stale[3]}) is fixed - remove it from KNOWN_ISSUES in {SCRIPT_PATH}'
++            )
++
++    if failures:
++        print('GUI help-text problems (see the check-gui-docstrings hook in .pre-commit-config.yaml):')
++        print('\n'.join(failures))
++        return 1
++    return 0
++
++
++if __name__ == '__main__':
++    sys.exit(main(sys.argv[1:]))
+diff --git a/rnalysis/utils/docstring_parsing.py b/rnalysis/utils/docstring_parsing.py
+new file mode 100644
+index 00000000..8bdd52c5
+--- /dev/null
++++ b/rnalysis/utils/docstring_parsing.py
+@@ -0,0 +1,30 @@
++"""
++Dependency-free docstring parsing shared by the GUI and the developer tooling.
++
++This module must only import from the Python standard library: the ``check-gui-docstrings`` pre-commit hook
++(``packaging/check_gui_docstrings.py``) loads it by file path, in an environment where none of RNAlysis's
++dependencies (polars, numpy, PyQt6, ...) are installed and where importing the ``rnalysis`` package is impossible.
++``rnalysis.utils.parsing.parse_docstring`` delegates here, so the GUI and the hook share one parser.
++"""
++
++import re
++from typing import Dict, Tuple
++
++# a parameter's description is any text (non-greedy) up to the next reST field line (':type x:', ':return:',
++# ':Examples:', etc.), the end of its paragraph, or the end of the docstring.
++# Field lines may be indented by stray whitespace (a common docstring typo), so that is tolerated too.
++_PARAM_PATTERN = re.compile(r'^[ \t]*:param ([a-zA-Z_0-9]+):([\s\S]*?)(?=^[ \t]*:.*:|\n\n|\Z)', re.MULTILINE)
++
++
++def parse_docstring(docstring: str) -> Tuple[str, Dict[str, str]]:
++    """
++    Parse a given docstring (str) to retrieve the description text, as well as a dictionary of parameter descriptions.
++
++    :param docstring: the docstring to be parsed
++    :type docstring: str
++    :return: a string matching the description, and a dictionary containing the parameter descriptions
++    """
++    docstring = re.sub(' +', ' ', docstring)
++    desc, _, params_str = docstring.partition('\n\n')
++    params = {match.group(1): match.group(2).replace('. ', '. \n') for match in _PARAM_PATTERN.finditer(params_str)}
++    return desc, params
+diff --git a/rnalysis/utils/parsing.py b/rnalysis/utils/parsing.py
+index 2c796c3b..d7da4e24 100644
+--- a/rnalysis/utils/parsing.py
++++ b/rnalysis/utils/parsing.py
+@@ -16,7 +16,7 @@
+ import polars as pl
+ 
+ from rnalysis.exceptions import InternalError
+-from rnalysis.utils import validation
++from rnalysis.utils import docstring_parsing, validation
+ 
+ # pandas is only needed by the single upsetplot helper below, but costs ~0.3s to import, so it is
+ # loaded lazily (SPEC 1 / https://scientific-python.org/specs/spec-0001/). Nothing may touch an
+@@ -340,16 +340,9 @@ def parse_docstring(docstring: str) -> Tuple[str, Dict[str, str]]:
+     :type docstring: str
+     :return: a string matching the description, and a dictionary containing the parameter descriptions
+     """
+-    docstring = re.sub(' +', ' ', docstring)
+-    desc, _, params_str = docstring.partition('\n\n')
+-    # a parameter's description is any text (non-greedy) up to the next reST field line (':type x:', ':return:', \
+-    # ':Examples:', etc.), the end of its paragraph, or the end of the docstring.
+-    # Field lines may be indented by stray whitespace (a common docstring typo), so that is tolerated too.
+-    params_matches = re.finditer(
+-        r'^[ \t]*:param ([a-zA-Z_0-9]+):([\s\S]*?)(?=^[ \t]*:.*:|\n\n|\Z)', params_str, re.MULTILINE
+-    )
+-    params = {match.group(1): match.group(2).replace('. ', '. \n') for match in params_matches}
+-    return desc, params
++    # the implementation lives in the dependency-free docstring_parsing module, so the check-gui-docstrings
++    # pre-commit hook (which cannot import rnalysis) shares the exact parser the GUI uses.
++    return docstring_parsing.parse_docstring(docstring)
+ 
+ 
+ def generate_upset_series(objs: dict):
+diff --git a/tests/test_check_gui_docstrings.py b/tests/test_check_gui_docstrings.py
+new file mode 100644
+index 00000000..c9b3359d
+--- /dev/null
++++ b/tests/test_check_gui_docstrings.py
+@@ -0,0 +1,438 @@
++"""Tests for ``packaging/check_gui_docstrings.py``, the ``check-gui-docstrings`` pre-commit hook.
++
++The hook statically (via ``ast``) checks that every parameter the GUI renders for a public API function has
++help text, as parsed by the same parser the GUI uses (``rnalysis/utils/docstring_parsing.py``).
++It runs in pre-commit's isolated environment, where RNAlysis's dependencies are not installed, so it must
++never import the ``rnalysis`` package. ``packaging/`` is not an importable package, so the script is loaded
++from its file path (see ``tests/test_bench_equal.py``).
++"""
++
++import importlib.util
++import subprocess
++import sys
++import textwrap
++from pathlib import Path
++
++import pytest
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++SCRIPT_PATH = REPO_ROOT / 'packaging' / 'check_gui_docstrings.py'
++PARSER_PATH = REPO_ROOT / 'rnalysis' / 'utils' / 'docstring_parsing.py'
++
++
++def _load(name, path):
++    spec = importlib.util.spec_from_file_location(name, path)
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[spec.name] = module
++    spec.loader.exec_module(module)
++    return module
++
++
++@pytest.fixture(scope='module')
++def hook():
++    return _load('rnalysis_check_gui_docstrings', SCRIPT_PATH)
++
++
++def _check(hook, source, module_functions=True, root_classes=('Filter',), path='rnalysis/example.py'):
++    return hook.check_source(textwrap.dedent(source), path, module_functions, root_classes)
++
++
++def _kinds(problems):
++    return sorted((p.qualname, p.param, p.kind) for p in problems)
++
++
++GOOD_FUNC = '''
++def good(a: int, b: str = 'x', *args, **kwargs):
++    """
++    Description.
++
++    :param a: the first parameter; it has {special} characters.
++    :type a: int
++    :param b: the second parameter
++    :type b: str
++    :return: nothing
++    """
++'''
++
++
++def test_good_function_passes(hook):
++    assert _check(hook, GOOD_FUNC) == []
++
++
++def test_missing_param_help(hook):
++    src = '''
++    def func(a: int, b: int):
++        """
++        Description.
++
++        :param a: documented
++        :type a: int
++        :return: nothing
++        """
++    '''
++    assert _kinds(_check(hook, src)) == [('func', 'b', hook.MISSING)]
++
++
++def test_empty_param_help(hook):
++    src = '''
++    def func(a: int):
++        """
++        Description.
++
++        :param a:
++        :type a: int
++        """
++    '''
++    assert _kinds(_check(hook, src)) == [('func', 'a', hook.MISSING)]
++
++
++def test_unknown_param_typo(hook):
++    src = '''
++    def func(organism: str):
++        """
++        Description.
++
++        :param organsim: the organism
++        :type organism: str
++        """
++    '''
++    assert _kinds(_check(hook, src)) == [('func', 'organism', hook.MISSING), ('func', 'organsim', hook.UNKNOWN)]
++
++
++def test_documented_varargs_are_not_typos(hook):
++    src = '''
++    def func(*others, **function_kwargs):
++        """
++        Description.
++
++        :param others: other objects
++        :param function_kwargs: keyword arguments
++        """
++    '''
++    assert _check(hook, src) == []
++
++
++@pytest.mark.parametrize('bad_line', ['param a: no leading colon', ':param a no trailing colon', ':param a : spaced'])
++def test_malformed_param_field(hook, bad_line):
++    src = f'''
++    def func(a: int):
++        """
++        Description.
++
++        {bad_line}
++        :type a: int
++        """
++    '''
++    kinds = _kinds(_check(hook, src))
++    assert ('func', 'a', hook.MALFORMED) in kinds
++
++
++def test_missing_blank_line_before_params(hook):
++    src = '''
++    def func(a: int, b: int):
++        """
++        Description directly followed by params.
++        :param a: first
++        :param b: second
++        """
++    '''
++    # one clear problem for the function, instead of one "missing help" per swallowed parameter
++    assert _kinds(_check(hook, src)) == [('func', None, hook.NO_BLANK_LINE)]
++
++
++def test_private_and_ignored_names_are_skipped(hook):
++    src = '''
++    def _private(a):
++        """Description.
++
++        """
++
++    class Filter:
++        def _private_method(self, a):
++            """Description."""
++
++        def method(self, a, gui_mode: bool = False, legacy_args: bool = False):
++            """
++            Description.
++
++            :param a: documented
++            """
++
++        @classmethod
++        def build(cls, a):
++            """
++            Description.
++
++            :param a: documented
++            """
++
++        @staticmethod
++        def static(a):
++            """
++            Description.
++
++            :param a: documented
++            """
++
++        @property
++        def prop(self):
++            return 1
++    '''
++    assert _check(hook, src) == []
++
++
++def test_staticmethod_first_param_is_checked(hook):
++    src = '''
++    class Filter:
++        @staticmethod
++        def static(a):
++            """
++            Description.
++
++            :return: nothing
++            """
++    '''
++    assert _kinds(_check(hook, src)) == [('Filter.static', 'a', hook.MISSING)]
++
++
++def test_only_gui_classes_are_checked(hook):
++    src = '''
++    class Filter:
++        def method(self, a):
++            """
++            Description.
++
++            :return: nothing
++            """
++
++    class CountFilter(Filter):
++        def other(self, b):
++            """
++            Description.
++
++            :return: nothing
++            """
++
++    class Pipeline:
++        def add(self, c):
++            """
++            Description.
++
++            :return: nothing
++            """
++    '''
++    assert _kinds(_check(hook, src)) == [('CountFilter.other', 'b', hook.MISSING), ('Filter.method', 'a', hook.MISSING)]
++
++
++def test_module_functions_can_be_skipped(hook):
++    src = '''
++    def func(a):
++        """
++        Description.
++
++        :return: nothing
++        """
++    '''
++    assert _check(hook, src, module_functions=False) == []
++
++
++def test_inherited_docstring_is_used(hook):
++    src = '''
++    class Filter:
++        def method(self, a):
++            """
++            Description.
++
++            :param a: documented in the base class
++            """
++
++    class CountFilter(Filter):
++        def method(self, a):
++            return 1
++
++        def method_with_new_param(self, a, b):
++            return 1
++    '''
++    # CountFilter.method inherits Filter.method's docstring (as inspect.getdoc() would);
++    # method_with_new_param has no docstring anywhere and no readable_name, so it is skipped
++    assert _check(hook, src) == []
++
++
++def test_inherited_docstring_missing_new_param(hook):
++    src = '''
++    class Filter:
++        def method(self, a):
++            """
++            Description.
++
++            :param a: documented in the base class
++            """
++
++    class CountFilter(Filter):
++        def method(self, a, b):
++            return 1
++    '''
++    assert _kinds(_check(hook, src)) == [('CountFilter.method', 'b', hook.MISSING)]
++
++
++def test_gui_function_without_docstring(hook):
++    src = """
++    class Filter:
++        @readable_name('Do something')
++        def method(self, a):
++            return 1
++
++        @readable_name('No parameters, no help needed')
++        def method_no_params(self):
++            return 1
++    """
++    assert _kinds(_check(hook, src)) == [('Filter.method', None, hook.NO_DOCSTRING)]
++
++
++def test_docstring_possibly_inherited_from_another_module_is_skipped(hook):
++    src = """
++    class Filter(generic.GenericBase):
++        @readable_name('Do something')
++        def method(self, a):
++            return 1
++    """
++    # inspect.getdoc() may find a docstring in generic.GenericBase, which the static check cannot see
++    assert _check(hook, src) == []
++
++
++def test_builtin_base_does_not_hide_undocumented_gui_method(hook):
++    src = """
++    class FeatureSet(set):
++        @readable_name('Do something')
++        def new_method(self, a: int = 1):
++            pass
++
++        def update(self, other):
++            pass
++    """
++    # `set` has no `new_method`, so nothing can be inherited; `set.update` may supply a docstring
++    assert _kinds(_check(hook, src, root_classes=('FeatureSet',))) == [
++        ('FeatureSet.new_method', None, hook.NO_DOCSTRING)
++    ]
++
++
++def test_module_functions_only_hide_legacy_args(hook):
++    src = '''
++    def func(gui_mode: bool = False, legacy_args: bool = False):
++        """
++        Description.
++
++        :return: nothing
++        """
++    '''
++    # FuncExternalWindow renders gui_mode for a module-level function; only tab-page methods hide it
++    assert _kinds(_check(hook, src)) == [('func', 'gui_mode', hook.MISSING)]
++
++
++def test_prose_line_starting_with_param_is_not_malformed(hook):
++    src = '''
++    def func(a: int):
++        """
++        Description.
++
++        :param a: the first parameter. Its
++        param values: are listed elsewhere
++        """
++    '''
++    assert _check(hook, src) == []
++
++
++def test_typed_param_field_names_the_right_param(hook):
++    src = '''
++    def func(x: int):
++        """
++        Description.
++
++        :param int x: help
++        """
++    '''
++    assert _kinds(_check(hook, src)) == [('func', 'x', hook.MALFORMED)]
++
++
++def test_problem_message_is_informative(hook):
++    src = '''
++    def first():
++        pass
++
++
++    def func(a: int, b: int):
++        """
++        Description.
++
++        :param a: documented
++        :param bb: typo
++        """
++    '''
++    problems = _check(hook, src)
++    messages = {p.param: str(p) for p in problems}
++    assert messages['b'].startswith("rnalysis/example.py:6: func: parameter 'b'")
++    assert messages['bb'].startswith("rnalysis/example.py:11: func: parameter 'bb'")
++
++
++def test_main_ignores_unrelated_files(hook, capsys):
++    assert hook.main(['README.rst', 'rnalysis/utils/io.py']) == 0
++
++
++def test_main_current_tree_passes(hook, capsys):
++    assert hook.main(sorted(hook.CHECKED_MODULES)) == 0, capsys.readouterr().out
++
++
++def test_main_checks_everything_when_the_hook_changes(hook, capsys, monkeypatch):
++    checked = []
++    monkeypatch.setattr(hook, 'KNOWN_ISSUES', set())
++    monkeypatch.setattr(hook, 'check_file', lambda path: checked.append(path) or [])
++    assert hook.main(['packaging/check_gui_docstrings.py']) == 0
++    assert sorted(checked) == sorted(hook.CHECKED_MODULES)
++
++
++def test_main_reports_failures(hook, capsys, monkeypatch):
++    problem = hook.Problem('rnalysis/fastq.py', 3, 'func', 'a', hook.MISSING)
++    monkeypatch.setattr(hook, 'check_file', lambda path: [problem] if path == 'rnalysis/fastq.py' else [])
++    assert hook.main(['rnalysis/fastq.py']) == 1
++    assert "rnalysis/fastq.py:3: func: parameter 'a'" in capsys.readouterr().out
++
++
++def test_known_issues_are_tolerated_and_stale_ones_reported(hook, capsys, monkeypatch):
++    known = hook.Problem('rnalysis/fastq.py', 3, 'func', 'a', hook.MISSING)
++    monkeypatch.setattr(hook, 'KNOWN_ISSUES', {known.key(), ('rnalysis/fastq.py', 'gone', 'b', hook.MISSING)})
++    monkeypatch.setattr(hook, 'check_file', lambda path: [known] if path == 'rnalysis/fastq.py' else [])
++    assert hook.main(['rnalysis/fastq.py']) == 1
++    out = capsys.readouterr().out
++    assert "parameter 'a'" not in out
++    assert 'gone' in out and 'KNOWN_ISSUES' in out
++
++
++def test_known_issues_all_exist(hook):
++    # every baseline entry must point at a module the hook checks
++    assert {key[0] for key in hook.KNOWN_ISSUES} <= set(hook.CHECKED_MODULES)
++
++
++def test_hook_runs_without_rnalysis_dependencies(tmp_path):
++    # pre-commit runs the hook in an isolated venv with no polars/numpy/PyQt: '-S' drops site-packages,
++    # and running from a foreign cwd means `import rnalysis` cannot find the checkout either
++    proc = subprocess.run(
++        [sys.executable, '-S', str(SCRIPT_PATH), 'rnalysis/filtering.py'],
++        cwd=REPO_ROOT,
++        capture_output=True,
++        text=True,
++    )
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++
++
++def test_docstring_parsing_is_stdlib_only():
++    code = (
++        'import importlib.util, sys\n'
++        f'spec = importlib.util.spec_from_file_location("dp", r"{PARSER_PATH}")\n'
++        'module = importlib.util.module_from_spec(spec)\n'
++        'spec.loader.exec_module(module)\n'
++        'assert not any(m.split(".")[0] in {"rnalysis", "polars", "numpy", "pandas"} for m in sys.modules)\n'
++        'print(module.parse_docstring("Desc.\\n\\n:param a: text\\n:type a: int"))\n'
++    )
++    proc = subprocess.run([sys.executable, '-S', '-c', code], capture_output=True, text=True)
++    assert proc.returncode == 0, proc.stderr
++    assert proc.stdout.strip() == "('Desc.', {'a': ' text\\n'})"
+diff --git a/tests/test_gitattributes.py b/tests/test_gitattributes.py
+new file mode 100644
+index 00000000..22b0418e
+--- /dev/null
++++ b/tests/test_gitattributes.py
+@@ -0,0 +1,57 @@
++"""Guards for ``.gitattributes``: LF text everywhere, and no line-ending conversion of byte-exact content.
++
++Without these attributes a clone with ``core.autocrlf=true`` (Git for Windows' system default) gets CRLF working
++copies, which the ``mixed-line-ending --fix=lf`` pre-commit hook then keeps "fixing", and tests may read fixtures
++with different bytes than CI does.
++"""
++
++import shutil
++import subprocess
++from pathlib import Path
++
++import pytest
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++
++pytestmark = pytest.mark.skipif(
++    shutil.which('git') is None or not (REPO_ROOT / '.git').exists(), reason='requires a git checkout'
++)
++
++
++def _attrs(path: str) -> dict:
++    out = subprocess.run(
++        ['git', 'check-attr', 'text', 'eol', 'binary', '--', path],
++        cwd=REPO_ROOT,
++        capture_output=True,
++        text=True,
++        check=True,
++    ).stdout
++    return {line.split(': ')[1]: line.split(': ')[2] for line in out.splitlines()}
++
++
++@pytest.mark.parametrize(
++    'path', ['rnalysis/filtering.py', 'README.rst', '.pre-commit-config.yaml', 'docs/source/a.rst', 'make.bat']
++)
++def test_text_files_are_lf(path):
++    # make.bat included: a CRLF rule would fight the `mixed-line-ending --fix=lf` pre-commit hook
++    attrs = _attrs(path)
++    assert attrs['text'] == 'auto'
++    assert attrs['eol'] == 'lf'
++
++
++@pytest.mark.parametrize(
++    'path',
++    [
++        'tests/test_files/counted.csv',
++        'tests/test_files/deseq2_tests/case1/expected_deseq_script_1.R',
++        'rnalysis/data_files/r_templates/logging.R',
++        'rnalysis/data_files/report_templates/vis-network.min.js',
++    ],
++)
++def test_byte_exact_content_is_not_converted(path):
++    assert _attrs(path)['text'] == 'unset'
++
++
++@pytest.mark.parametrize('path', ['docs/source/logo.png', 'tests/test_files/test_session.rnal', 'x/y.fastq.gz'])
++def test_binaries_are_binary(path):
++    assert _attrs(path)['binary'] == 'set'
+diff --git a/tests/test_parsing.py b/tests/test_parsing.py
+index a90ac6c9..f0f94c42 100644
+--- a/tests/test_parsing.py
++++ b/tests/test_parsing.py
+@@ -915,3 +915,12 @@ def test_parse_docstring_covers_every_gui_param():
+             if not params.get(name, '').strip():
+                 missing.append(f'{qualname}: {name}')
+     assert not missing, f'{len(missing)} parameters have no help text:\n' + '\n'.join(missing)
++
++
++def test_parse_docstring_shares_the_dependency_free_parser():
++    # the check-gui-docstrings pre-commit hook uses docstring_parsing directly, so it must agree with the GUI's parser
++    from rnalysis.utils import docstring_parsing
++
++    for qualname, func in _gui_exposed_functions().items():
++        raw = _raw_docstring(func)
++        assert parse_docstring(raw) == docstring_parsing.parse_docstring(raw), qualname

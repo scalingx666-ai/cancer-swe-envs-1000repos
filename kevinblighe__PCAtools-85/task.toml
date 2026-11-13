@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/kevinblighe__PCAtools-85"
+description = "Allow users to supply a custom set of features as LoadingsNames to display on biplot"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "PCAtools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kevinblighe/PCAtools"
+ref = "50f240ba76fe07e2a546998e76dc8aa1c3570693"
+reference = "https://github.com/kevinblighe/PCAtools/pull/85"
+source_access = "auto"
+built_at = "2026-11-13T15:31:47.192463+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3582c31fc717414e795b2b590f501d3e3cd7f2d95a38e873476693890886cfe7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-12-02T23:42:47Z"
+diff_format = "unified"
+context_files = [
+    "R/biplot.R",
+    "man/biplot.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 25
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

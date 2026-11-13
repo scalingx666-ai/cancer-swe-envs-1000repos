@@ -1,0 +1,41 @@
+diff --git a/script/run.assembly.realign.sh b/script/run.assembly.realign.sh
+index d36dd61..a885de5 100644
+--- a/script/run.assembly.realign.sh
++++ b/script/run.assembly.realign.sh
+@@ -44,8 +44,8 @@ if [ ! -f "$outdir/prefix2.mag.gz" ]
+ then
+ 	echo "$pos assemble fail"
+ else
+-        zless $outdir/prefix2.mag.gz|awk '{if(NR%4==1) {printf(">%s\n",substr($0,2));} else if(NR%4==2) print;}'  > $outdir/prefix2.mag.fa
+-        zless $outdir/prefix2.mag.gz|awk '{if(NR%4==1) {printf(">%s\n",substr($0,2));} else if(NR%4==2) print;}' | while read L; do  echo $L|awk '{print $1"_r"}' >>$outdir/prefix2.mag.fa; read L; echo "$L" | rev | tr "ATGC" "TACG" >>$outdir/prefix2.mag.fa; done
++        zcat $outdir/prefix2.mag.gz|awk '{if(NR%4==1) {printf(">%s\n",substr($0,2));} else if(NR%4==2) print;}'  > $outdir/prefix2.mag.fa
++        zcat $outdir/prefix2.mag.gz|awk '{if(NR%4==1) {printf(">%s\n",substr($0,2));} else if(NR%4==2) print;}' | while read L; do  echo $L|awk '{print $1"_r"}' >>$outdir/prefix2.mag.fa; read L; echo "$L" | rev | tr "ATGC" "TACG" >>$outdir/prefix2.mag.fa; done
+ 
+         blastn -num_threads $thread -query $outdir/prefix2.mag.fa -out $outdir/prefix2.mag.blast -db $ref -outfmt 6 -strand plus  -penalty -1 -reward 1 -gapopen 4 -gapextend 1 
+         less $outdir/prefix2.mag.blast |cut -f 1|sort|uniq > $outdir/id.list
+diff --git a/script/whole/SpecHLA.sh b/script/whole/SpecHLA.sh
+index 44eb323..6a72ac1 100644
+--- a/script/whole/SpecHLA.sh
++++ b/script/whole/SpecHLA.sh
+@@ -246,7 +246,7 @@ freebayes -a -f $hlaref -p 3 $outdir/$sample.realign.sort.bam > $outdir/$sample.
+ rm -rf $outdir/$sample.realign.vcf.gz 
+ bgzip -f $outdir/$sample.realign.vcf
+ tabix -f $outdir/$sample.realign.vcf.gz
+-zless $outdir/$sample.realign.vcf.gz |grep "#" > $outdir/$sample.realign.filter.vcf
++zcat $outdir/$sample.realign.vcf.gz |grep "#" > $outdir/$sample.realign.filter.vcf
+ echo BAM and VCF are ready.
+ if [ $focus_exon_flag == 1 ];then #exon
+     bcftools filter -R $dir/exon_extent.bed $outdir/$sample.realign.vcf.gz |grep -v "#" >> $outdir/$sample.realign.filter.vcf || true
+diff --git a/script/whole/test_SpecHLA.sh b/script/whole/test_SpecHLA.sh
+index a65dc1a..04d051b 100644
+--- a/script/whole/test_SpecHLA.sh
++++ b/script/whole/test_SpecHLA.sh
+@@ -238,7 +238,7 @@ freebayes -a -f $hlaref -p 3 $outdir/$sample.realign.sort.bam > $outdir/$sample.
+ rm -rf $outdir/$sample.realign.vcf.gz 
+ bgzip -f $outdir/$sample.realign.vcf
+ tabix -f $outdir/$sample.realign.vcf.gz
+-zless $outdir/$sample.realign.vcf.gz |grep "#" > $outdir/$sample.realign.filter.vcf
++zcat $outdir/$sample.realign.vcf.gz |grep "#" > $outdir/$sample.realign.filter.vcf
+ echo BAM and VCF are ready.
+ if [ $focus_exon_flag == 1 ];then #exon
+     bcftools filter -R $dir/exon_extent.bed $outdir/$sample.realign.vcf.gz |grep -v "#" >> $outdir/$sample.realign.filter.vcf || true

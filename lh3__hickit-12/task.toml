@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/lh3__hickit-12"
+description = "--all-close-leg to remove all close-legged contacts regardless of str…"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "hickit",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lh3/hickit"
+ref = "3ae28b66c6dcba972e2be83a1e0fb4688dc507fc"
+reference = "https://github.com/lh3/hickit/pull/12"
+source_access = "auto"
+built_at = "2026-11-13T16:23:07.246397+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:99829dd5ab0f5a57fa5ea671a55a7671fbd278785d0483e2ee9905a8ec919ac1"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-10-05T00:34:37Z"
+diff_format = "unified"
+context_files = [
+    "hickit.h",
+    "main.c",
+    "pair.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 20
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

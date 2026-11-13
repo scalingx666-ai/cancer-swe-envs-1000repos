@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/hall-lab__svtyper-82"
+description = "Stub in code for toggling use of 95 pct confidence interval"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "svtyper",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "hall-lab/svtyper"
+ref = "19aa65fa22800692ddde50cacfee00bbd6394099"
+reference = "https://github.com/hall-lab/svtyper/pull/82"
+source_access = "auto"
+built_at = "2026-11-13T16:20:30.862847+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4dd6951c3f5c9a16690e0fea938e0a662abc364413fedae5f6ee92fe0b02ca54"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-09-13T14:38:35Z"
+diff_format = "unified"
+context_files = [
+    "svtyper/classic.py",
+    "svtyper/parsers.py",
+    "svtyper/singlesample.py",
+    "svtyper/version.py",
+    "tests/test_singlesample.py",
+    "tests/test_svtyper.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 69
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,448 @@
+diff --git a/R/GDC-defunct.R b/R/GDC-defunct.R
+new file mode 100644
+index 0000000..4200d26
+--- /dev/null
++++ b/R/GDC-defunct.R
+@@ -0,0 +1,42 @@
++#' @name GDC-defunct
++#'
++#' @title Defunct functionality in the `GenomicDataCommons` package
++#'
++#' @aliases legacy legacy.GDCQuery
++#' 
++#' @description
++#' The `legacy` endpoint was removed after the GDC API release version
++#' `v3.28.0`. This means that legacy data is no longer available via the
++#' GDC API. The `legacy` features in the `GenomicDataCommons` package are
++#' defunct.
++#' 
++#' @details
++#' This includes the S3 generic and method for setting the legacy parameter
++#' (`legacy` and `legacy.GDCQuery`)
++#' 
++#' @param x the objects on which to set fields
++#'
++#' @param legacy logical(1) DEFUNCT; no longer in use.
++#' 
++#' @return An error. This feature is no longer used.
++#' 
++#' @seealso
++#'   \url{https://docs.gdc.cancer.gov/API/Release_Notes/API_Release_Notes/#v3280}
++#' 
++#' @examples
++#' qcases <- query("cases")
++#' @export
++legacy <- function(x, legacy) {
++    UseMethod('legacy')
++}
++
++#' @describeIn GDC-defunct set legacy field on a GDCQuery object
++#' @export
++legacy.GDCQuery <- function(x, legacy) {
++    if (!missing(legacy))
++        .Defunct(
++            msg = paste0("The 'legacy' argument is defunct.\n",
++            "See help(\"GDC-defunct\")")
++        )
++    return(x)
++}
+diff --git a/R/GDC-deprecated.R b/R/GDC-deprecated.R
+deleted file mode 100644
+index df479d6..0000000
+--- a/R/GDC-deprecated.R
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#' @name GDC-deprecated
+-#'
+-#' @title Deprecated functionality in the `GenomicDataCommons` package
+-#'
+-#' @aliases legacy legacy.GDCQuery
+-#' 
+-#' @description
+-#' The `legacy` endpoint was deprecated as part of the GDC API release version
+-#' `v3.28.0`. This means that legacy data is no longer available via the
+-#' GDC API.
+-#' 
+-#' @details
+-#' This includes the S3 generic and method for setting the legacy parameter
+-#' (`legacy` and `legacy.GDCQuery`)
+-#' 
+-#' @param x the objects on which to set fields
+-#'
+-#' @param legacy logical(1) DEPRECATED; Whether or not to use the GDC legacy
+-#'   archives
+-#' 
+-#' @return A \code{\link{GDCQuery}} object with the \code{legacy}
+-#' member altered.
+-#' 
+-#' @seealso
+-#'   \url{https://docs.gdc.cancer.gov/API/Release_Notes/API_Release_Notes/#v3280}
+-#' 
+-#' @examples
+-#' qcases <- query("cases")
+-#'
+-#' legacy(qcases, legacy = FALSE)
+-#' 
+-#' @export
+-legacy <- function(x, legacy) {
+-    UseMethod('legacy')
+-}
+-
+-#' @describeIn GDC-deprecated set legacy field on a GDCQuery object
+-#' @export
+-legacy.GDCQuery <- function(x, legacy) {
+-    stopifnot(is.logical(legacy), length(legacy) == 1L, !is.na(legacy))
+-    if (legacy)
+-        .Deprecated(
+-            msg = paste0("The 'legacy' argument is deprecated.\n",
+-            "See help(\"GDC-deprecated\")")
+-        )
+-    return(x)
+-}
+diff --git a/R/REST.R b/R/REST.R
+index d9cf764..3ae8931 100644
+--- a/R/REST.R
++++ b/R/REST.R
+@@ -43,14 +43,14 @@
+ #" (internal) GET endpoint / uri
+ #' @importFrom httr GET add_headers stop_for_status
+ .gdc_get <-
+-    function(endpoint, parameters=list(), legacy=FALSE, token=NULL, ..., base=.gdc_base)
++    function(endpoint, parameters=list(), token=NULL, ..., base=.gdc_base, legacy)
+ {
+     stopifnot(is.character(endpoint), length(endpoint) == 1L)
+     uri <- sprintf("%s/%s", base, endpoint)
+-    if(legacy)
+-        .Deprecated(
+-            msg = paste0("The 'legacy' argument is deprecated.\n",
+-            "See help(\"GDC-deprecated\")")
++    if (!missing(legacy))
++        .Defunct(
++            msg = paste0("The 'legacy' argument is defunct.\n",
++            "See help(\"GDC-defunct\")")
+         )
+     uri <- sprintf("%s%s", uri, .parameter_string(parameters))
+     if(getOption('gdc.verbose',FALSE)) {
+@@ -66,14 +66,14 @@
+ #" (internal) POST endpoint / uri
+ #' @importFrom httr POST add_headers write_disk stop_for_status
+ .gdc_post <-
+-    function(endpoint, body, legacy=FALSE, token=NULL, ..., base=.gdc_base)
++    function(endpoint, body, token=NULL, ..., base=.gdc_base, legacy)
+ {
+     stopifnot(is.character(endpoint), length(endpoint) == 1L)
+     uri <- sprintf("%s/%s", base, endpoint)
+-    if (legacy)
+-        .Deprecated(
+-            msg = paste0("The 'legacy' argument is deprecated.\n",
+-            "See help(\"GDC-deprecated\")")
++    if (!missing(legacy))
++        .Defunct(
++            msg = paste0("The 'legacy' argument is defunct.\n",
++            "See help(\"GDC-defunct\")")
+         )
+     if(getOption('gdc.verbose',FALSE)) {
+       message("POST request uri:\n",uri)
+diff --git a/R/fields.R b/R/fields.R
+index 1c620c5..f86ed65 100644
+--- a/R/fields.R
++++ b/R/fields.R
+@@ -136,7 +136,7 @@ grep_fields <- function(entity,pattern,...,value=TRUE) {
+ #' 
+ #' @param entity character(1), a GDC entity ("cases", "files", "annotations", "projects")
+ #' @param field character(1), a field that is present in the entity record
+-#' @param legacy logical(1), DEPRECATED; use the legacy endpoint or not.
++#' @param legacy logical(1), DEFUNCT; no longer in use.
+ #' 
+ #' @return character vector of the top 100 (or fewer) most frequent
+ #'     values for a the given field
+@@ -145,12 +145,12 @@ grep_fields <- function(entity,pattern,...,value=TRUE) {
+ #' available_values('files','cases.project.project_id')[1:5]
+ #' 
+ #' @export
+-available_values <- function(entity,field,legacy=FALSE) {
++available_values <- function(entity,field,legacy) {
+     stopifnot(entity %in% .gdc_entities)
+-    if (legacy)
+-        .Deprecated(
+-            msg = paste0("The 'legacy' argument is deprecated.\n",
+-            "See help(\"GDC-deprecated\")")
++    if (!missing(legacy))
++        .Defunct(
++            msg = paste0("The 'legacy' argument is defunct.\n",
++            "See help(\"GDC-defunct\")")
+         )
+     agg = query(entity) %>% facet(field) %>% aggregations()
+     agg[[field]]$key
+diff --git a/R/gdcdata.R b/R/gdcdata.R
+index 53deed0..9b77a98 100644
+--- a/R/gdcdata.R
++++ b/R/gdcdata.R
+@@ -28,8 +28,7 @@
+ #'     to restricted data. See
+ #'     \url{https://gdc-docs.nci.nih.gov/API/Users_Guide/Authentication_and_Authorization/}.
+ #'
+-#' @param ... further arguments passed to files, particularly useful when
+-#'     requesting \code{legacy=TRUE}
++#' @param ... further arguments passed to files
+ #'
+ #' @seealso \code{\link{manifest}} for downloading large data.
+ #'
+diff --git a/R/manifest.R b/R/manifest.R
+index 7ee8db2..883441a 100644
+--- a/R/manifest.R
++++ b/R/manifest.R
+@@ -67,10 +67,10 @@ manifest.GDCcasesResponse <- function(x,from=0,size=count(x),...) {
+     # remove return_type for now
+     # body[['return_type']]='manifest'
+     legacy = x$legacy
+-    if (legacy)
+-        .Deprecated(
+-            msg = paste0("The 'legacy' argument is deprecated.\n",
+-            "See help(\"GDC-deprecated\")")
++    if (is.logical(legacy))
++        .Defunct(
++            msg = paste0("The 'legacy' argument is defunct.\n",
++            "See help(\"GDC-defunct\")")
+         )
+     tmp <- httr::content(
+         .gdc_post(entity_name(x), body=body, token=NULL, ...),
+diff --git a/R/query.R b/R/query.R
+index f2da84b..39cc14a 100644
+--- a/R/query.R
++++ b/R/query.R
+@@ -14,8 +14,7 @@
+ #' @param facets a character vector of facets for counting common values. 
+ #'     See \code{\link{available_fields}}. In general, one will not specify this parameter
+ #'     but will use \code{\link{facet}} instead.
+-#' @param legacy logical(1) DEPRECATED; whether to use the "legacy" archive or
+-#'   not.
++#' @param legacy logical(1) DEFUNCT; no longer in use.
+ #' @param fields a character vector of fields to return. See \code{\link{available_fields}}.
+ #'     In general, one will not specify fields directly, but instead use \code{\link{select}}
+ #' @param expand a character vector of "expands" to include in returned data. See 
+@@ -41,21 +40,22 @@
+ query = function(entity,
+                  filters=NULL,
+                  facets=NULL,
+-                 legacy = FALSE,
+                  expand = NULL,
+-                 fields=default_fields(entity)) {
++                 fields=default_fields(entity),
++                 ...,
++                 legacy)
++{
+     stopifnot(entity %in% .gdc_entities)
+-    if (legacy) 
+-        .Deprecated(
+-            msg = paste0("The 'legacy' argument is deprecated.\n",
+-            "See help(\"GDC-deprecated\")")
++    if (!missing(legacy))
++        .Defunct(
++            msg = paste0("The 'legacy' argument is defunct.\n",
++            "See help(\"GDC-defunct\")")
+         )
+     ret = structure(
+         list(
+             fields    = fields,
+             filters   = filters,
+             facets    = facets,
+-            legacy    = legacy,
+             expand    = expand),
+         class = c(paste0('gdc_',entity),'GDCQuery','list')
+     )
+diff --git a/R/slicing.R b/R/slicing.R
+index 8e29625..83adc60 100644
+--- a/R/slicing.R
++++ b/R/slicing.R
+@@ -29,8 +29,7 @@
+ #'     \url{https://docs.gdc.cancer.gov/Data/Data_Security/Data_Security/#authentication-tokens}.
+ #'
+ #'
+-#' @param legacy logical(1) DEPRECATED; whether or not to use the "legacy"
+-#'     archive, containing older, non-harmonized data. Slicing of unharmonized
++#' @param legacy logical(1) DEFUNCT; no longer in use. Slicing of unharmonized
+ #'     legacy BAM files is not supported. See
+ #'     \url{https://docs.gdc.cancer.gov/API/Users_Guide/BAM_Slicing/}.
+ #'     
+@@ -82,7 +81,7 @@
+ #' }
+ #' @export
+ slicing <- function(uuid, regions, symbols, destination=file.path(tempdir(), paste0(uuid, '.bam')),
+-                    overwrite=FALSE, progress=interactive(), token=gdc_token(), legacy = FALSE)
++                    overwrite=FALSE, progress=interactive(), token=gdc_token(), legacy)
+ {
+     stopifnot(is.character(uuid), length(uuid) == 1L)
+     stopifnot(missing(regions) || missing(symbols),
+@@ -96,17 +95,17 @@ slicing <- function(uuid, regions, symbols, destination=file.path(tempdir(), pas
+         ## FIXME: validate regions
+         body <- list(regions=regions)
+ 
+-    if (legacy)
+-        .Deprecated(
+-            msg = paste0("The 'legacy' endpoint is deprecated.\n",
+-            "See help(\"GDC-deprecated\")")
++    if (!missing(legacy))
++        .Defunct(
++            msg = paste0("The 'legacy' endpoint is defunct.\n",
++            "See help(\"GDC-defunct\")")
+         )
+     response <- .gdc_post(
+         endpoint=sprintf("slicing/view/%s", uuid),
+         add_headers('Content-type'='application/json'),
+         write_disk(destination, overwrite),
+         if (progress) progress() else NULL,
+-        body=toJSON(body), token=token, legacy = FALSE)
++        body=toJSON(body), token=token)
+     if (progress)
+         cat("\n")
+ 
+diff --git a/man/GDC-deprecated.Rd b/man/GDC-defunct.Rd
+similarity index 59%
+rename from man/GDC-deprecated.Rd
+rename to man/GDC-defunct.Rd
+index 284881c..43091b3 100644
+--- a/man/GDC-deprecated.Rd
++++ b/man/GDC-defunct.Rd
+@@ -1,10 +1,10 @@
+ % Generated by roxygen2: do not edit by hand
+-% Please edit documentation in R/GDC-deprecated.R
+-\name{GDC-deprecated}
+-\alias{GDC-deprecated}
++% Please edit documentation in R/GDC-defunct.R
++\name{GDC-defunct}
++\alias{GDC-defunct}
+ \alias{legacy}
+ \alias{legacy.GDCQuery}
+-\title{Deprecated functionality in the `GenomicDataCommons` package}
++\title{Defunct functionality in the `GenomicDataCommons` package}
+ \usage{
+ legacy(x, legacy)
+ 
+@@ -13,17 +13,16 @@ legacy(x, legacy)
+ \arguments{
+ \item{x}{the objects on which to set fields}
+ 
+-\item{legacy}{logical(1) DEPRECATED; Whether or not to use the GDC legacy
+-archives}
++\item{legacy}{logical(1) DEFUNCT; no longer in use.}
+ }
+ \value{
+-A \code{\link{GDCQuery}} object with the \code{legacy}
+-member altered.
++An error. This feature is no longer used.
+ }
+ \description{
+-The `legacy` endpoint was deprecated as part of the GDC API release version
++The `legacy` endpoint was removed after the GDC API release version
+ `v3.28.0`. This means that legacy data is no longer available via the
+-GDC API.
++GDC API. The `legacy` features in the `GenomicDataCommons` package are
++defunct.
+ }
+ \details{
+ This includes the S3 generic and method for setting the legacy parameter
+@@ -36,9 +35,6 @@ This includes the S3 generic and method for setting the legacy parameter
+ }}
+ \examples{
+ qcases <- query("cases")
+-
+-legacy(qcases, legacy = FALSE)
+-
+ }
+ \seealso{
+ \url{https://docs.gdc.cancer.gov/API/Release_Notes/API_Release_Notes/#v3280}
+diff --git a/man/available_values.Rd b/man/available_values.Rd
+index 1593a24..b6a56dd 100644
+--- a/man/available_values.Rd
++++ b/man/available_values.Rd
+@@ -4,14 +4,14 @@
+ \alias{available_values}
+ \title{Find common values for a GDC field}
+ \usage{
+-available_values(entity, field, legacy = FALSE)
++available_values(entity, field, legacy)
+ }
+ \arguments{
+ \item{entity}{character(1), a GDC entity ("cases", "files", "annotations", "projects")}
+ 
+ \item{field}{character(1), a field that is present in the entity record}
+ 
+-\item{legacy}{logical(1), DEPRECATED; use the legacy endpoint or not.}
++\item{legacy}{logical(1), DEFUNCT; no longer in use.}
+ }
+ \value{
+ character vector of the top 100 (or fewer) most frequent
+diff --git a/man/gdcdata.Rd b/man/gdcdata.Rd
+index 17d200c..df08536 100644
+--- a/man/gdcdata.Rd
++++ b/man/gdcdata.Rd
+@@ -35,8 +35,7 @@ to restricted data. See
+ the gdc-client command line. See \code{\link{gdc_client}} and
+ \code{\link{transfer_help}} for details.}
+ 
+-\item{...}{further arguments passed to files, particularly useful when
+-requesting \code{legacy=TRUE}}
++\item{...}{further arguments passed to files}
+ }
+ \value{
+ a named vector with file uuids as the names and paths as
+diff --git a/man/query.Rd b/man/query.Rd
+index 2383bb2..52b09c3 100644
+--- a/man/query.Rd
++++ b/man/query.Rd
+@@ -18,9 +18,10 @@ query(
+   entity,
+   filters = NULL,
+   facets = NULL,
+-  legacy = FALSE,
+   expand = NULL,
+-  fields = default_fields(entity)
++  fields = default_fields(entity),
++  ...,
++  legacy
+ )
+ 
+ cases(...)
+@@ -51,9 +52,6 @@ to an existing \code{GDCQuery} object using \code{\link{filter}}.}
+ See \code{\link{available_fields}}. In general, one will not specify this parameter
+ but will use \code{\link{facet}} instead.}
+ 
+-\item{legacy}{logical(1) DEPRECATED; whether to use the "legacy" archive or
+-not.}
+-
+ \item{expand}{a character vector of "expands" to include in returned data. See 
+ \code{\link{available_expand}}}
+ 
+@@ -61,6 +59,8 @@ not.}
+ In general, one will not specify fields directly, but instead use \code{\link{select}}}
+ 
+ \item{...}{passed through to \code{\link{query}}}
++
++\item{legacy}{logical(1) DEFUNCT; no longer in use.}
+ }
+ \value{
+ An S3 object, the GDCQuery object. This is a list
+diff --git a/man/slicing.Rd b/man/slicing.Rd
+index 2d3149d..ae0de86 100644
+--- a/man/slicing.Rd
++++ b/man/slicing.Rd
+@@ -12,7 +12,7 @@ slicing(
+   overwrite = FALSE,
+   progress = interactive(),
+   token = gdc_token(),
+-  legacy = FALSE
++  legacy
+ )
+ }
+ \arguments{
+@@ -40,8 +40,7 @@ restricted data. Almost all BAM data is restricted, so a token is
+ usually required. See
+ \url{https://docs.gdc.cancer.gov/Data/Data_Security/Data_Security/#authentication-tokens}.}
+ 
+-\item{legacy}{logical(1) DEPRECATED; whether or not to use the "legacy"
+-archive, containing older, non-harmonized data. Slicing of unharmonized
++\item{legacy}{logical(1) DEFUNCT; no longer in use. Slicing of unharmonized
+ legacy BAM files is not supported. See
+ \url{https://docs.gdc.cancer.gov/API/Users_Guide/BAM_Slicing/}.}
+ }

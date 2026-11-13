@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/mlcommons__GaNDLF-1038"
+description = "Updated docker image recipe for speed"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "GaNDLF",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mlcommons/GaNDLF"
+ref = "a2ab6d05c9dcc3aa12a8e02fd5d488e5ffdbf36e"
+reference = "https://github.com/mlcommons/GaNDLF/pull/1038"
+source_access = "auto"
+built_at = "2026-11-13T16:12:09.260040+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:05197dce024e9eb346b7c0f10a51b186c36e7b19667af2856b6ac2484b6bc036"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-08-15T20:33:06Z"
+diff_format = "unified"
+context_files = [
+    ".spelling/.spelling/excludes.txt",
+    "Dockerfile-CPU",
+    "Dockerfile-CUDA11.8",
+    "Dockerfile-CUDA12.6",
+    "Dockerfile-ROCm",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 42
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

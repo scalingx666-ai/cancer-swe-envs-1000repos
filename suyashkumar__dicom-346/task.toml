@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/suyashkumar__dicom-346"
+description = "Allow unknown specific character set to default to UTF-8 encoding when parsing"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "dicom",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "suyashkumar/dicom"
+ref = "37f0671f9dd1e35369268adf793c060b28f4f04f"
+reference = "https://github.com/suyashkumar/dicom/pull/346"
+source_access = "auto"
+built_at = "2026-11-13T15:48:18.576891+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:99b763b4ae66995b758769b8fb55d14dbbae3105ff9f1631ae2b6ae55de6124d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-02-19T04:46:12Z"
+diff_format = "unified"
+context_files = [
+    "parse.go",
+    "parse_test.go",
+    "pkg/charset/charset.go",
+    "pkg/dicomio/reader.go",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 73
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

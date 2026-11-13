@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/google__deepvariant-1105"
+description = "Add Canola species-specific DeepVariant model blog post"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "deepvariant",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "google/deepvariant"
+ref = "e2c8b982a95780f500324dc7f096379525e57c45"
+reference = "https://github.com/google/deepvariant/pull/1105"
+source_access = "auto"
+built_at = "2026-11-13T15:45:40.989088+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:bee4a128be434f31faed23440bb474962348d62d157195d2bc015f12bbd05dbb"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-30T18:49:48Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "Gemfile",
+    "Gemfile.lock",
+    "_data/authors.yml",
+    "_layouts/post.html",
+    "_posts/2026-09-30-training-species-specific-deepvariant-model-canola.markdown",
+    "assets/images/2026-09-30-canola/figure1-coverage.png",
+    "assets/images/2026-09-30-canola/figure2-zygosity.png",
+    "assets/images/2026-09-30-canola/figure3-confident-regions-size.png",
+    "assets/images/2026-09-30-canola/figure4-confident-variants.png",
+    "assets/images/2026-09-30-canola/figure5-precision-recall.png",
+    "assets/images/2026-09-30-canola/figure6-errors.png",
+    "assets/images/2026-09-30-canola/figure7-genodb.png",
+    "assets/images/2026-09-30-canola/figure8-gluc.png",
+    "assets/images/2026-09-30-canola/thumbnail.png",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 365
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

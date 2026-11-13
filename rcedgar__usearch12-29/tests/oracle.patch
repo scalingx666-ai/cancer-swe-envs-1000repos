@@ -1,0 +1,472 @@
+diff --git a/src/deparser.cpp b/src/deparser.cpp
+index 2aceff4..f5d606c 100644
+--- a/src/deparser.cpp
++++ b/src/deparser.cpp
+@@ -11,6 +11,9 @@
+ #define TRACE			0
+ #define TRACE_ALNS		0
+ 
++// Min targets in search DB to use the parallel scan
++#define MIN_PAR_SCAN_SEQS	256
++
+ void WriteAlnPretty(FILE *f, const byte *A, const byte *B, const char *Path,
+   bool StripTermGaps);
+ void Make3Way(const SeqInfo *SDQ, const SeqInfo *SDA, const SeqInfo *SDB,
+@@ -421,8 +424,19 @@ void DeParser::ParseLo()
+ #endif
+ 	ClearHit();
+ 	unsigned SeqCount = GetSeqCount();
+-
+ 	m_Paths.clear();
++
++	if (m_CP != 0 && m_CP->m_Ready && SeqCount >= MIN_PAR_SCAN_SEQS &&
++	  DeParser::m_fTab == 0 && DeParser::m_fAln == 0)
++		ScanTargetsParallel(m_CP, SeqCount);
++	else
++		ScanTargetsSerial(SeqCount);
++
++	FinishScan();
++	}
++
++void DeParser::ScanTargetsSerial(unsigned SeqCount)
++	{
+ 	m_GA->SetQuery(m_Query);
+ 	double BestAbSkew = -1.0;
+ 	for (unsigned SeqIndex = 0; SeqIndex < SeqCount; ++SeqIndex)
+@@ -508,7 +522,52 @@ void DeParser::ParseLo()
+ 			break;
+ 		}
+ 	m_GA->OnQueryDone(m_Query);
++	}
++
++void DeParser::ScanTargetsParallel(ChimeraPool *CP, unsigned SeqCount)
++	{
++	CP->Scan(m_Query, m_DB);
+ 
++	// Merge chunk results in index order. The same strict comparisons as
++	// the serial scan preserve first-wins tie-breaking, so the merged m_*
++	// state is identical to the serial scan's. Stop after the first chunk
++	// that found an exact match (the serial break point).
++	for (unsigned i = 0; i < CP->m_N; ++i)
++		{
++		const DepScanPart &P = CP->GetPart(i);
++		if (P.DiffsQT != UINT_MAX && P.DiffsQT < m_DiffsQT)
++			{
++			m_Top = P.Top;
++			m_DiffsQT = P.DiffsQT;
++			}
++		if (P.Pos_BestLeft0d != UINT_MAX && P.Pos_BestLeft0d > m_Pos_BestLeft0d)
++			{
++			m_Pos_BestLeft0d = P.Pos_BestLeft0d;
++			m_BestLeft0d = P.BestLeft0d;
++			}
++		if (P.Pos_BestRight0d != UINT_MAX && P.Pos_BestRight0d < m_Pos_BestRight0d)
++			{
++			m_Pos_BestRight0d = P.Pos_BestRight0d;
++			m_BestRight0d = P.BestRight0d;
++			}
++		if (P.Pos_BestLeft1d != UINT_MAX && P.Pos_BestLeft1d > m_Pos_BestLeft1d)
++			{
++			m_Pos_BestLeft1d = P.Pos_BestLeft1d;
++			m_BestLeft1d = P.BestLeft1d;
++			}
++		if (P.Pos_BestRight1d != UINT_MAX && P.Pos_BestRight1d < m_Pos_BestRight1d)
++			{
++			m_Pos_BestRight1d = P.Pos_BestRight1d;
++			m_BestRight1d = P.BestRight1d;
++			}
++		m_Paths.insert(m_Paths.end(), P.Paths.begin(), P.Paths.end());
++		if (P.ExactFound)
++			break;
++		}
++	}
++
++void DeParser::FinishScan()
++	{
+ 	if (m_DiffsQT == 0)
+ 		{
+ #if	TRACE
+@@ -1263,6 +1322,231 @@ void DeParser::AppendInfoStr(string &s) const
+ 
+ 	case DEP_other:
+ 		s += "DEP_error";
+-		break;		
++		break;
++		}
++	}
++
++void DepScanPart::Init()
++	{
++	DiffsQT = UINT_MAX;
++	Top = UINT_MAX;
++	Pos_BestLeft0d = 0;
++	BestLeft0d = UINT_MAX;
++	Pos_BestRight0d = UINT_MAX;
++	BestRight0d = UINT_MAX;
++	Pos_BestLeft1d = 0;
++	BestLeft1d = UINT_MAX;
++	Pos_BestRight1d = UINT_MAX;
++	BestRight1d = UINT_MAX;
++	ExactFound = false;
++	Paths.clear();
++	}
++
++ChimeraPool::ChimeraPool()
++	: m_N(0)
++	, m_Ready(false)
++	, m_Exit(false)
++	, m_JobSeq(0)
++	, m_DoneCount(0)
++	, m_Query(0)
++	, m_DB(0)
++	, m_SelfFlag(false)
++	{
++	}
++
++ChimeraPool::~ChimeraPool()
++	{
++	Free();
++	}
++
++void ChimeraPool::Init(const AlnParams *AP, const AlnHeuristics *AH)
++	{
++	Free();
++	m_N = GetRequestedThreadCount();
++	asserta(m_N > 0);
++	m_Workers.resize(m_N);
++	for (unsigned i = 0; i < m_N; ++i)
++		{
++		Worker &W = m_Workers[i];
++		W.OM = ObjMgr::CreateObjMgr();
++		W.GA = new GlobalAligner;
++		W.GA->Init(AP, AH);
++		W.GA->m_FailIfNoHSPs = false;
++		W.GA->m_FullDPAlways = false;
++		W.DP = new DeParser(W.OM);
++		W.DP->m_GA = W.GA;
++		W.Start = 0;
++		W.End = 0;
++		W.LastJobSeq = 0;
++		W.Part.Init();
++		}
++	m_JobSeq = 0;
++	m_DoneCount = 0;
++	m_Exit = false;
++	for (unsigned i = 0; i < m_N; ++i)
++		{
++		std::thread *t = new std::thread(&ChimeraPool::WorkerLoop, this, i);
++		m_Threads.push_back(t);
++		}
++	m_Ready = true;
++	}
++
++void ChimeraPool::Free()
++	{
++	if (m_N == 0 && m_Threads.empty())
++		return;
++	{
++	std::lock_guard<std::mutex> Lk(m_Mutex);
++	m_Exit = true;
++	}
++	m_CV_Work.notify_all();
++	for (unsigned i = 0; i < m_N; ++i)
++		{
++		m_Threads[i]->join();
++		delete m_Threads[i];
++		}
++	m_Threads.clear();
++	for (unsigned i = 0; i < m_N; ++i)
++		{
++		Worker &W = m_Workers[i];
++		delete W.DP;
++		delete W.GA;
++		ObjMgr::FreeObjMgr(W.OM);
++		}
++	m_Workers.clear();
++	m_N = 0;
++	m_Ready = false;
++	}
++
++bool ChimeraPool::Scan(SeqInfo *Query, SeqDB *DB)
++	{
++	asserta(m_Ready);
++	const unsigned SeqCount = DB->GetSeqCount();
++	{
++	std::lock_guard<std::mutex> Lk(m_Mutex);
++	for (unsigned i = 0; i < m_N; ++i)
++		{
++		Worker &W = m_Workers[i];
++		W.Start = SeqCount*i/m_N;
++		W.End = SeqCount*(i+1)/m_N;
++		W.Part.Init();
++		}
++	m_Query = Query;
++	m_DB = DB;
++	m_SelfFlag = oget_flag(OPT_self);
++	++m_JobSeq;
++	m_DoneCount = 0;
++	}
++	m_CV_Work.notify_all();
++	{
++	std::unique_lock<std::mutex> Lk(m_Mutex);
++	m_CV_Done.wait(Lk, [this]{ return m_DoneCount == m_N; });
++	}
++	return true;
++	}
++
++void ChimeraPool::WorkerLoop(unsigned ThreadIndex)
++	{
++	while (true)
++		{
++		{
++		std::unique_lock<std::mutex> Lk(m_Mutex);
++		m_CV_Work.wait(Lk,
++		  [this, ThreadIndex]{ return m_Exit || m_Workers[ThreadIndex].LastJobSeq != m_JobSeq; });
++		if (m_Exit)
++			return;
++		m_Workers[ThreadIndex].LastJobSeq = m_JobSeq;
++		}
++		WorkerScan(ThreadIndex);
++		{
++		std::lock_guard<std::mutex> Lk(m_Mutex);
++		++m_DoneCount;
++		}
++		m_CV_Done.notify_all();
++		}
++	}
++
++// One worker's chunk of the ParseLo target scan. Mirrors the serial loop
++// body statement-for-statement; only the accumulated state (Part) and the
++// per-thread ObjMgr/GlobalAligner/DeParser differ.
++void ChimeraPool::WorkerScan(unsigned ThreadIndex)
++	{
++	Worker &W = m_Workers[ThreadIndex];
++	DepScanPart &P = W.Part;
++	GlobalAligner *GA = W.GA;
++	DeParser *DP = W.DP;
++	SeqDB *DB = m_DB;
++	const bool SelfFlag = m_SelfFlag;
++
++	// The query must be worker-local: the alignment path refcounts and
++	// allocates through Query.m_Owner (GlobalAlign_AllOpts takes SubPath
++	// from Query.m_Owner; AlignResult::Create/Down Up/Down the query;
++	// Aligner::SetQuery/OnQueryDone Up/Down it). A single query shared by
++	// all workers would be a data race.
++	SeqInfo *QSI = W.OM->GetSeqInfo();
++	QSI->Copy(*m_Query);
++	GA->SetQuery(QSI);
++	for (unsigned SeqIndex = W.Start; SeqIndex < W.End; ++SeqIndex)
++		{
++		SeqInfo *SI = W.OM->GetSeqInfo();
++		DB->GetSI(SeqIndex, *SI);
++		GA->SetTarget(SI);
++		AlignResult *AR = GA->Align();
++		GA->OnTargetDone(SI);
++		asserta(AR != 0);
++		if (SelfFlag && AR->GetDiffCount() == 0)
++			{
++			P.Paths.push_back("");
++			AR->Down();
++			SI->Down();
++			}
++		else
++			{
++			string Path = string(AR->GetPath());
++			P.Paths.push_back(Path);
++			unsigned Diffs;
++			unsigned Pos_Left0d;
++			unsigned Pos_Left1d;
++			unsigned Pos_Right0d;
++			unsigned Pos_Right1d;
++			DP->GetLeftRight(AR, Diffs, Pos_Left0d, Pos_Left1d, Pos_Right0d, Pos_Right1d);
++			if (Diffs != UINT_MAX)
++				{
++				if (Diffs < P.DiffsQT)
++					{
++					P.Top = SeqIndex;
++					P.DiffsQT = Diffs;
++					}
++				}
++			if (Pos_Left0d != UINT_MAX && Pos_Left0d > P.Pos_BestLeft0d)
++				{
++				P.Pos_BestLeft0d = Pos_Left0d;
++				P.BestLeft0d = SeqIndex;
++				}
++			if (Pos_Right0d != UINT_MAX && Pos_Right0d < P.Pos_BestRight0d)
++				{
++				P.Pos_BestRight0d = Pos_Right0d;
++				P.BestRight0d = SeqIndex;
++				}
++			if (Pos_Left1d != UINT_MAX && Pos_Left1d > P.Pos_BestLeft1d)
++				{
++				P.Pos_BestLeft1d = Pos_Left1d;
++				P.BestLeft1d = SeqIndex;
++				}
++			if (Pos_Right1d != UINT_MAX && Pos_Right1d < P.Pos_BestRight1d)
++				{
++				P.Pos_BestRight1d = Pos_Right1d;
++				P.BestRight1d = SeqIndex;
++				}
++			}
++		AR->Down();
++		SI->Down();
++		if (P.DiffsQT == 0)
++			{
++			P.ExactFound = true;
++			break;
++			}
+ 		}
++	GA->OnQueryDone(QSI);
++	QSI->Down();
+ 	}
+diff --git a/src/deparser.h b/src/deparser.h
+index f6acd93..bfa0430 100644
+--- a/src/deparser.h
++++ b/src/deparser.h
+@@ -6,9 +6,91 @@ class SeqDB;
+ class AlignResult;
+ class ObjMgr;
+ class GlobalAligner;
++class AlnParams;
++class AlnHeuristics;
++class DeParser;
+ 
+ #include "seqdb.h"
+ #include "chimehit.h"
++#include <mutex>
++#include <condition_variable>
++
++// Partial results of one chunk of the DeParser::ParseLo target scan.
++// Fields accumulate with the same first-wins tie-breaking as the serial
++// scan, so merging chunks in index order reproduces the serial state
++// exactly.
++struct DepScanPart
++	{
++	unsigned DiffsQT;
++	unsigned Top;
++	unsigned Pos_BestLeft0d;
++	unsigned BestLeft0d;
++	unsigned Pos_BestRight0d;
++	unsigned BestRight0d;
++	unsigned Pos_BestLeft1d;
++	unsigned BestLeft1d;
++	unsigned Pos_BestRight1d;
++	unsigned BestRight1d;
++	bool ExactFound;
++	vector<string> Paths;
++
++	void Init();
++	};
++
++// Pool of persistent worker threads used to parallelize the per-query
++// target scan in the de novo chimera stage (Uchime2DeNovo). Each worker
++// has its own ObjMgr/GlobalAligner/DeParser, so no state is shared
++// between workers. Results are byte-identical to the serial scan.
++class ChimeraPool
++	{
++public:
++	ChimeraPool();
++	~ChimeraPool();
++
++	unsigned m_N;
++	bool m_Ready;
++
++	void Init(const AlnParams *AP, const AlnHeuristics *AH);
++	void Free();
++
++	// Parallel scan of DB for Query; fills worker parts.
++	bool Scan(SeqInfo *Query, SeqDB *DB);
++
++	const DepScanPart &GetPart(unsigned i) const
++		{
++		return m_Workers[i].Part;
++		}
++
++private:
++	struct Worker
++		{
++		ObjMgr *OM;
++		GlobalAligner *GA;
++		DeParser *DP;
++		DepScanPart Part;
++		unsigned Start;
++		unsigned End;
++		unsigned LastJobSeq;
++		};
++
++	std::vector<Worker> m_Workers;
++	std::vector<std::thread *> m_Threads;
++
++	std::mutex m_Mutex;
++	std::condition_variable m_CV_Work;
++	std::condition_variable m_CV_Done;
++	bool m_Exit;
++	unsigned m_JobSeq;
++	unsigned m_DoneCount;
++
++	// Job state, set by Scan() before workers are woken
++	SeqInfo *m_Query;
++	SeqDB *m_DB;
++	bool m_SelfFlag;
++
++	void WorkerLoop(unsigned ThreadIndex);
++	void WorkerScan(unsigned ThreadIndex);
++	};
+ 
+ enum TLR
+ 	{
+@@ -39,6 +121,7 @@ class DeParser
+ 	SeqInfo *m_Query;
+ 	GlobalAligner *m_GA;
+ 	SeqDB *m_DB;
++	ChimeraPool *m_CP;
+ 
+ 	DEP_CLASS m_Class;
+ 
+@@ -85,6 +168,7 @@ class DeParser
+ 		m_Query = 0;
+ 		m_DB = 0;
+ 		m_GA = 0;
++		m_CP = 0;
+ 		m_OM = OM;
+ 		ClearHit();
+ 		}
+@@ -93,6 +177,11 @@ class DeParser
+ 	void ClearHit();
+ 	DEP_CLASS Parse(SeqInfo *Query, SeqDB *DB);
+ 	void ParseLo();
++	// Target-scan pieces of ParseLo; the parallel path fills the same
++	// m_* state as the serial path
++	void ScanTargetsSerial(unsigned SeqCount);
++	void ScanTargetsParallel(ChimeraPool *CP, unsigned SeqCount);
++	void FinishScan();
+ 	void Classify();
+ 	bool IsChimera() const;
+ 	void WriteTabbed(FILE *f) const;
+diff --git a/src/uchime3denovo.cpp b/src/uchime3denovo.cpp
+index 91179bb..133e114 100644
+--- a/src/uchime3denovo.cpp
++++ b/src/uchime3denovo.cpp
+@@ -48,6 +48,12 @@ uint Uchime2DeNovo(const SeqDB &Input, vector<bool> &IsChimeraVec,
+ 	DeParser *DP = new DeParser(OM);
+ 	DP->m_GA = GA;
+ 
++	// Worker pool for the parallel per-query target scan. Honors -threads
++	// (see GetRequestedThreadCount); results are identical to the serial scan.
++	ChimeraPool CP;
++	CP.Init(AP, AH);
++	DP->m_CP = &CP;
++
+ 	double MinAbSkew = 16;
+ 	if (ofilled(OPT_abskew))
+ 		MinAbSkew = oget_flt(OPT_abskew);
+@@ -149,6 +155,9 @@ uint Uchime2DeNovo(const SeqDB &Input, vector<bool> &IsChimeraVec,
+ 		}
+ 	ProgressDoneLoop();
+ 
++	DP->m_CP = 0;
++	CP.Free();
++
+ 	CloseStdioFile(fUCA);
+ 	CloseStdioFile(DeParser::m_fTab);
+ 	CloseStdioFile(DeParser::m_fAln);

@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/arvados__arvados-533"
+description = "532: Fix labels to the copy-to-clipboard buttons."
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "arvados",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "arvados/arvados"
+ref = "7c7af37cd3c7bb14d6cc56c4048cb0623252d79a"
+reference = "https://github.com/arvados/arvados/pull/533"
+source_access = "auto"
+built_at = "2026-11-13T15:55:45.914608+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:27039ef4a5adda6fab7f73683f18491b4c161c7fe8af300300e7b13895b99253"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-21T20:23:05Z"
+diff_format = "unified"
+context_files = [
+    "services/workbench2/cypress/e2e/auth-action.cy.js",
+    "services/workbench2/src/components/details-attribute/details-attribute.tsx",
+    "services/workbench2/src/views-components/token-dialog/token-dialog.cy.js",
+    "services/workbench2/src/views-components/token-dialog/token-dialog.tsx",
+    "services/workbench2/src/views/process-panel/process-cmd-card.tsx",
+    "services/workbench2/src/views/process-panel/process-log-card.tsx",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 18
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

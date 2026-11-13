@@ -1,0 +1,46 @@
+diff --git a/core/src/main/scala/io/projectglow/gff/GffDataSource.scala b/core/src/main/scala/io/projectglow/gff/GffDataSource.scala
+index da7c7489b..884564c1f 100644
+--- a/core/src/main/scala/io/projectglow/gff/GffDataSource.scala
++++ b/core/src/main/scala/io/projectglow/gff/GffDataSource.scala
+@@ -339,12 +339,10 @@ object GffDataSource {
+   }
+ 
+   def filterFastaLines(df: DataFrame): DataFrame = {
++    // Null checks are combined with OR rather than coalesce, which would coerce the mixed-type
++    // columns to a common type and, under ANSI mode, fail casting string columns to double.
+     df.where(
+-      !isnull(
+-        coalesce(
+-          gffBaseSchema.fieldNames.drop(1).map(col(_)): _*
+-        )
+-      )
++      gffBaseSchema.fieldNames.drop(1).map(col(_).isNotNull).reduce(_ || _)
+     )
+   }
+ 
+diff --git a/core/src/test/scala/io/projectglow/gff/GffReaderSuite.scala b/core/src/test/scala/io/projectglow/gff/GffReaderSuite.scala
+index 404b5a21a..e7fee871c 100644
+--- a/core/src/test/scala/io/projectglow/gff/GffReaderSuite.scala
++++ b/core/src/test/scala/io/projectglow/gff/GffReaderSuite.scala
+@@ -314,6 +314,21 @@ class GffReaderSuite extends GlowBaseTest {
+     assert(df.count() == df.rdd.count())
+   }
+ 
++  // Spark 4 enables ANSI mode by default. Filtering fasta lines must not implicitly cast
++  // string columns such as source to the score column's DoubleType.
++  test("Read gff with ANSI mode enabled") {
++    withSparkConf(Map("spark.sql.ansi.enabled" -> "true")) {
++      val df = spark
++        .read
++        .format(sourceName)
++        .load(testGff3)
++      assert(df.count() == 20)
++      assert(df.count() == df.rdd.count())
++      assert(
++        df.where("source = 'RefSeq'").select("type").collect() sameElements Array(Row("region")))
++    }
++  }
++
+   test("Read gff glob") {
+     val df = spark
+       .read

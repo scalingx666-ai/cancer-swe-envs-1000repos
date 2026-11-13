@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/CRI-iAtlas__shiny-iatlas-211"
+description = "added link to ICI data on Synapse"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "shiny-iatlas",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "CRI-iAtlas/shiny-iatlas"
+ref = "9672788b343d6add1102e5f5bda3c9a79bd705b6"
+reference = "https://github.com/CRI-iAtlas/shiny-iatlas/pull/211"
+source_access = "auto"
+built_at = "2026-11-13T15:45:19.660637+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a75bbbbcb26e89cb5268ac1a8e23a1ae9684a7f91651d253099dd4f29433bd0c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-01-26T19:11:16Z"
+diff_format = "unified"
+context_files = [
+    "modules/ioresponseoverviewmodule.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

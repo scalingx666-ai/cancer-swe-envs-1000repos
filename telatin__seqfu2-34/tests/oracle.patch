@@ -1,0 +1,440 @@
+diff --git a/.github/scripts/package-binaries.sh b/.github/scripts/package-binaries.sh
+new file mode 100755
+index 0000000..9879ada
+--- /dev/null
++++ b/.github/scripts/package-binaries.sh
+@@ -0,0 +1,22 @@
++#!/usr/bin/env bash
++# Package bin/ into release assets for one platform:
++#   dist/seqfu-<platform>                    the main binary alone (stable URL)
++#   dist/seqfu-<version>-<platform>.tar.gz   every tool built by `make all`
++set -euo pipefail
++
++PLATFORM="${1:?usage: $0 <platform>}"
++VERSION=$(grep version seqfu.nimble | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+")
++NAME="seqfu-${VERSION}-${PLATFORM}"
++
++rm -rf dist
++mkdir -p "dist/${NAME}/bin"
++cp bin/* "dist/${NAME}/bin/"
++cp LICENSE README.md "dist/${NAME}/"
++chmod 755 "dist/${NAME}"/bin/*
++
++"dist/${NAME}/bin/seqfu" --version
++tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
++
++cp "dist/${NAME}/bin/seqfu" "dist/seqfu-${PLATFORM}"
++rm -rf "dist/${NAME}"
++ls -l dist
+diff --git a/.github/workflows/build-binaries.yml b/.github/workflows/build-binaries.yml
+deleted file mode 100644
+index 2510dcd..0000000
+--- a/.github/workflows/build-binaries.yml
++++ /dev/null
+@@ -1,55 +0,0 @@
+-name: Build binaries (manual)
+-
+-on:
+-  workflow_dispatch:
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  build:
+-    name: Build ${{ matrix.asset_name }}
+-    runs-on: ${{ matrix.runner }}
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        include:
+-          - runner: ubuntu-24.04
+-            asset_name: seqfu-linux-x86_64
+-            linux: true
+-          - runner: ubuntu-24.04-arm
+-            asset_name: seqfu-linux-aarch64
+-            linux: true
+-          - runner: macos-15
+-            asset_name: seqfu-macos-arm64
+-            linux: false
+-
+-    steps:
+-      - name: Checkout
+-        uses: actions/checkout@v4
+-
+-      - name: Set up Nim
+-        uses: jiro4989/setup-nim-action@v2
+-        with:
+-          nim-version: 2.2.x
+-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+-
+-      - name: Install Linux system dependencies
+-        if: matrix.linux
+-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev libpcre3-dev
+-
+-      - name: Build seqfu
+-        run: |
+-          echo "--threads:on" >> nim.cfg
+-          mkdir -p bin dist
+-          make bin/seqfu
+-          ./bin/seqfu --version
+-          cp bin/seqfu "dist/${{ matrix.asset_name }}"
+-          chmod 755 "dist/${{ matrix.asset_name }}"
+-
+-      - name: Upload build artifact
+-        uses: actions/upload-artifact@v4
+-        with:
+-          name: ${{ matrix.asset_name }}
+-          path: dist/${{ matrix.asset_name }}
+-          if-no-files-found: error
+\ No newline at end of file
+diff --git a/.github/workflows/make.yaml b/.github/workflows/make.yaml
+index 49b8990..98d8849 100644
+--- a/.github/workflows/make.yaml
++++ b/.github/workflows/make.yaml
+@@ -35,7 +35,7 @@ jobs:
+           repo-token: ${{ secrets.GITHUB_TOKEN }}
+ 
+       - name: Install dependencies
+-        run: sudo apt install -y zlib1g-dev gcc-${{ matrix.gcc-version }} g++-${{ matrix.gcc-version }} libpcre3-dev
++        run: sudo apt install -y zlib1g-dev gcc-${{ matrix.gcc-version }} g++-${{ matrix.gcc-version }}
+ 
+         # Build and demo overwriting some variables
+       - name: Build
+diff --git a/.github/workflows/release-binaries.yml b/.github/workflows/release-binaries.yml
+index 3d8abaf..d44b61b 100644
+--- a/.github/workflows/release-binaries.yml
++++ b/.github/workflows/release-binaries.yml
+@@ -3,30 +3,90 @@ name: Release binaries
+ on:
+   release:
+     types: [published]
++  # Manual runs build and test, and keep the tarballs as workflow artifacts only
++  workflow_dispatch:
+ 
+ permissions:
+   contents: write
+ 
++env:
++  # Pinned Nim for the Linux containers (official builds are statically linked)
++  NIM_VERSION: 2.2.10
++  NIM_SHA256_linux_x64: 0a3a38752e97e9d44aa479b3a7b37336dfe0176daf22ee5b5218ad0991ecd211
++  NIM_SHA256_linux_arm64: cd86a6e2bcbf029c4870aa51df5c0169345dbf9959889112fd15d403c13ae33a
++
+ jobs:
+-  build:
+-    name: Build ${{ matrix.asset_name }}
++  build-linux:
++    name: Build ${{ matrix.platform }}
+     runs-on: ${{ matrix.runner }}
++    # manylinux_2_28 (glibc 2.28) keeps the binaries runnable on RHEL/Rocky 8,
++    # Ubuntu 20.04, Debian 11 and most HPC systems
++    container: quay.io/pypa/manylinux_2_28_${{ matrix.arch }}
+     strategy:
+       fail-fast: false
+       matrix:
+         include:
+           - runner: ubuntu-24.04
+-            asset_name: seqfu-linux-x86_64
+-            linux: true
++            platform: linux-x86_64
++            arch: x86_64
++            nim_build: linux_x64
+           - runner: ubuntu-24.04-arm
+-            asset_name: seqfu-linux-aarch64
+-            linux: true
++            platform: linux-aarch64
++            arch: aarch64
++            nim_build: linux_arm64
++
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Install build dependencies
++        run: dnf install -y zlib-devel xz which
++
++      - name: Install Nim ${{ env.NIM_VERSION }}
++        env:
++          NIM_SHA256: ${{ env[format('NIM_SHA256_{0}', matrix.nim_build)] }}
++        run: |
++          curl -fsSL "https://nim-lang.org/download/nim-${NIM_VERSION}-${{ matrix.nim_build }}.tar.xz" -o nim.tar.xz
++          echo "${NIM_SHA256}  nim.tar.xz" | sha256sum -c -
++          tar -xJf nim.tar.xz -C /opt
++          echo "/opt/nim-${NIM_VERSION}/bin" >> "$GITHUB_PATH"
++          echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
++          git config --global --add safe.directory "$GITHUB_WORKSPACE"
++
++      - name: Build
++        run: |
++          nim --version
++          make -j"$(nproc)" all
++
++      - name: Test
++        run: bash test/mini.sh
++
++      - name: Package
++        run: bash .github/scripts/package-binaries.sh "${{ matrix.platform }}"
++
++      - name: Upload build artifact
++        uses: actions/upload-artifact@v4
++        with:
++          name: seqfu-${{ matrix.platform }}
++          path: dist/*
++          if-no-files-found: error
++
++  build-macos:
++    name: Build ${{ matrix.platform }}
++    runs-on: ${{ matrix.runner }}
++    strategy:
++      fail-fast: false
++      matrix:
++        include:
+           - runner: macos-15
+-            asset_name: seqfu-macos-arm64
+-            linux: false
++            platform: macos-arm64
++            deployment_target: "11.0"
+           - runner: macos-15-intel
+-            asset_name: seqfu-macos-x86_64
+-            linux: false
++            platform: macos-x86_64
++            deployment_target: "10.13"
++    env:
++      # Without this the binaries require the runner's macOS version (15.0)
++      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+ 
+     steps:
+       - name: Checkout
+@@ -35,33 +95,33 @@ jobs:
+       - name: Set up Nim
+         uses: jiro4989/setup-nim-action@v2
+         with:
+-          nim-version: 2.2.x
++          nim-version: ${{ env.NIM_VERSION }}
+           repo-token: ${{ secrets.GITHUB_TOKEN }}
+ 
+-      - name: Install Linux system dependencies
+-        if: matrix.linux
+-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev libpcre3-dev
+-
+-      - name: Build seqfu
++      - name: Build
+         run: |
+-          echo "--threads:on" >> nim.cfg
+-          mkdir -p bin dist
+-          make bin/seqfu
+-          ./bin/seqfu --version
+-          cp bin/seqfu "dist/${{ matrix.asset_name }}"
+-          chmod 755 "dist/${{ matrix.asset_name }}"
++          nim --version
++          make -j"$(sysctl -n hw.ncpu)" all
++          otool -l bin/seqfu | grep -A3 LC_BUILD_VERSION
++
++      - name: Test
++        run: bash test/mini.sh
++
++      - name: Package
++        run: bash .github/scripts/package-binaries.sh "${{ matrix.platform }}"
+ 
+       - name: Upload build artifact
+         uses: actions/upload-artifact@v4
+         with:
+-          name: ${{ matrix.asset_name }}
+-          path: dist/${{ matrix.asset_name }}
++          name: seqfu-${{ matrix.platform }}
++          path: dist/*
+           if-no-files-found: error
+ 
+   attach:
+     name: Attach binaries to release
++    if: github.event_name == 'release'
+     runs-on: ubuntu-24.04
+-    needs: build
++    needs: [build-linux, build-macos]
+     steps:
+       - name: Download build artifacts
+         uses: actions/download-artifact@v4
+@@ -69,6 +129,10 @@ jobs:
+           path: release-assets
+           merge-multiple: true
+ 
++      - name: Checksums
++        working-directory: release-assets
++        run: sha256sum * | tee SHA256SUMS
++
+       - name: Attach binaries
+         env:
+           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+diff --git a/Makefile b/Makefile
+index 829ddf5..0864765 100644
+--- a/Makefile
++++ b/Makefile
+@@ -6,14 +6,28 @@ BIN=./bin
+ SCRIPTS=./scripts
+ SOURCE=./src
+ DATA=./data
+-CC=gcc
+-CFLAGS=-O3
+-CXX=g++
+-CXXFLAGS=-std=c++11 -O3
++# CC/CXX use make's defaults (cc, g++) unless set in the environment or on the
++# command line, so toolchains such as conda-build are honoured without patching.
++CFLAGS ?= -O3
++CXXFLAGS ?= -std=c++11 -O3
+ LDLIBS=-lz
+ PTHREADLIBS=-pthread
+ VERSION := $(shell grep version seqfu.nimble  | grep  -o "[0-9]\\+\.[0-9]\\+\.[0-9]\\+")
+-NIMPARAM :=  --mm:orc -d:NimblePkgVersion=$(VERSION) -d:release --opt:speed --passC:"-Wno-error=incompatible-pointer-types"
++# LTO=0 disables link-time optimisation (faster builds, or toolchains without LTO).
++# NIMSTRIP=0 keeps symbols (not named STRIP: conda exports STRIP as a tool path).
++# NIMFLAGS appends extra Nim options, e.g.
++#   make NIMFLAGS='--passL:-Wl,-headerpad_max_install_names'
++LTO ?= 1
++NIMSTRIP ?= 1
++NIMFLAGS ?=
++ifeq ($(shell uname -s),Darwin)
++# Apple ld ignores -s (what -d:strip adds); -x drops local symbols instead
++STRIPFLAG := --passL:-Wl,-x
++else
++STRIPFLAG := -d:strip
++endif
++NIMPARAM := --mm:orc -d:NimblePkgVersion=$(VERSION) -d:release --opt:speed --passC:"-Wno-error=incompatible-pointer-types"
++NIMPARAM += $(if $(filter 1,$(LTO)),-d:lto) $(if $(filter 1,$(NIMSTRIP)),$(STRIPFLAG)) $(NIMFLAGS)
+ TARGETS=$(BIN)/seqfu $(BIN)/fu-msa $(BIN)/fu-primers $(BIN)/dadaist2-mergeseqs $(BIN)/fu-shred $(BIN)/fu-multirelabel $(BIN)/fu-index $(BIN)/fu-cov $(BIN)/fu-16Sregion  $(BIN)/fu-nanotags  $(BIN)/fu-orf  $(BIN)/fu-sw  $(BIN)/fu-virfilter  $(BIN)/fu-tabcheck $(BIN)/byteshift $(BIN)/SeqCountHelper $(BIN)/fu-secheck
+ OBSOLETE_TARGETS=$(BIN)/fu-homocomp $(BIN)/fu-readtope
+ PYTARGETS=$(BIN)/fu-split $(BIN)/fu-pecheck
+@@ -25,12 +39,14 @@ remove-obsolete:
+ 
+ sources/: src/sfu.nim
+ 	mkdir -p sources
+-	nim c --cc:$(CC) $(NIMPARAM) --nimcache:sources/ --genScript ./src/sfu.nim
++	nim c --cc:gcc $(NIMPARAM) --nimcache:sources/ --genScript ./src/sfu.nim
+ 	bash test/convert.sh sources/compile_sfu.sh
+ 
+-src/deps.txt:
+-	nimble install -y --depsOnly
+-	touch $@
++# nimble can exit 0 after failing to resolve dependencies: check its output
++src/deps.txt: seqfu.nimble
++	nimble install -y --depsOnly > $@.log 2>&1 || { cat $@.log; rm -f $@.log; exit 1; }
++	@if grep -q "Error:" $@.log; then cat $@.log; rm -f $@.log; exit 1; fi
++	mv $@.log $@
+ 
+ src/sfu.nim: ./src/fast*.nim ./src/filter_*.nim ./src/*utils*.nim src/fu_tabcheck.nim src/fu_orf.nim src/msa.nim src/shred.nim src/lib/msa_reader.nim src/deps.txt seqfu.nimble
+ 	touch $@ 
+@@ -59,43 +75,43 @@ $(BIN)/fu-pecheck: $(SCRIPTS)/fu-pecheck
+ $(BIN)/seqfu: src/sfu.nim
+ 	nim c --threads:on $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-primers: src/fu_primers.nim
++$(BIN)/fu-primers: src/fu_primers.nim src/deps.txt
+ 	nim c --threads:on $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-shred: src/fu_shred.nim
++$(BIN)/fu-shred: src/fu_shred.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-nanotags: src/fu_nanotags.nim
++$(BIN)/fu-nanotags: src/fu_nanotags.nim src/deps.txt
+ 	nim c  --threads:on $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-orf: src/fu_orf.nim
++$(BIN)/fu-orf: src/fu_orf.nim src/deps.txt
+ 	nim c --threads:on $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-sw: src/fu_sw.nim
++$(BIN)/fu-sw: src/fu_sw.nim src/deps.txt
+ 	nim c --threads:on $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-multirelabel: src/fu_multirelabel.nim
++$(BIN)/fu-multirelabel: src/fu_multirelabel.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-index: src/fu_index.nim
++$(BIN)/fu-index: src/fu_index.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-cov: src/fu_cov.nim
++$(BIN)/fu-cov: src/fu_cov.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-msa: src/fu_msa.nim
++$(BIN)/fu-msa: src/fu_msa.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-virfilter: src/fu_virfilter.nim
++$(BIN)/fu-virfilter: src/fu_virfilter.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-tabcheck: src/fu_tabcheck.nim
++$(BIN)/fu-tabcheck: src/fu_tabcheck.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/fu-16Sregion: src/dadaist2_region.nim
++$(BIN)/fu-16Sregion: src/dadaist2_region.nim src/deps.txt
+ 	nim c  --threads:on $(NIMPARAM) --out:$@ $<
+ 
+-$(BIN)/dadaist2-mergeseqs: src/dadaist2_mergeseqs.nim
++$(BIN)/dadaist2-mergeseqs: src/dadaist2_mergeseqs.nim src/deps.txt
+ 	nim c $(NIMPARAM) --out:$@ $<
+ 
+ multiqc: $(BIN)/seqfu
+diff --git a/nim.cfg b/nim.cfg
+index a972d6f..89a3819 100644
+--- a/nim.cfg
++++ b/nim.cfg
+@@ -2,4 +2,9 @@ path = "$projectPath/src/lib/"
+ --path:"./src/lib/"
+ --opt:speed
+ -d:release
++# -d:danger disables runtime checks (bounds, overflow, nil). This is deliberate:
++# it is ~20% faster on per-base commands such as `seqfu rc`, at the cost of
++# undefined behaviour instead of a clean error on internal bugs. Compile with
++# --checks:on to debug. Do not add -march=native here: it gave no measurable
++# gain and makes distributed binaries CPU-specific.
+ -d:danger
+diff --git a/scripts/fu-pecheck b/scripts/fu-pecheck
+index 47b452e..d4c9559 100755
+--- a/scripts/fu-pecheck
++++ b/scripts/fu-pecheck
+@@ -1,5 +1,5 @@
+-#!/usr/bin/env python
+-  
++#!/usr/bin/env python3
++
+ 
+ from __future__ import print_function
+ __VERSION__ = "0.3.0"
+diff --git a/scripts/fu-split b/scripts/fu-split
+index 793a030..f2f7f26 100755
+--- a/scripts/fu-split
++++ b/scripts/fu-split
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env python
++#!/usr/bin/env python3
+ """
+ Split FASTA/FASTQ files into multiple files according to:
+  * Number of desired files,
+diff --git a/seqfu.nimble b/seqfu.nimble
+index 4fdd0b1..3a3cdcf 100644
+--- a/seqfu.nimble
++++ b/seqfu.nimble
+@@ -2,7 +2,7 @@
+ version = "1.30.0"
+ author = "Andrea Telatin"
+ description = "SeqFu command-line tools"
+-license = "MIT"
++license = "GPL-3.0-only"
+ 
+ srcDir = "src"
+ binDir = "bin"
+@@ -20,7 +20,7 @@ requires "malebolgia >= 1.3.2"
+ requires "readfx >= 0.8.0"
+ requires "regex >= 0.23"
+ requires "kexpr >= 0.0.2"
+-requires "tableview >= 0.3.6"
++requires "tableview >= 0.6.0"
+ requires "terminaltables"
+ requires "zip"
+ 

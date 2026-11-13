@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/icbi-lab__luca-6"
+description = "Revision 2"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "luca",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "icbi-lab/luca"
+ref = "0ee3124096ad053537fd8b5c8b4f8894856e0d30"
+reference = "https://github.com/icbi-lab/luca/pull/6"
+source_access = "auto"
+built_at = "2026-11-13T15:37:32.927355+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:468d57fb6109939a4c7fa32e1ec9bfc854483fe5ad4053434929687faa325a5e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-10-19T14:03:27Z"
+diff_format = "unified"
+context_files = [
+    "analyses/90_plots_and_comparisons/92_compare_groups_plots.py",
+    "analyses/90_plots_and_comparisons/93_patient_stratification_figures.py",
+    "analyses/90_plots_and_comparisons/94a_cell_type_markers_core_atlas.py",
+    "analyses/90_plots_and_comparisons/94c_overview_plots_extended_atlas.py",
+    "analyses/90_plots_and_comparisons/94d_cell_type_signatures.py",
+    "analyses/90_plots_and_comparisons/95_compare_platforms.py",
+    "analyses/90_plots_and_comparisons/96a_neutrophils.py",
+    "analyses/90_plots_and_comparisons/96b_neutrophils_velocyto.py",
+    "analyses/90_plots_and_comparisons/97_response_to_icb.Rmd",
+    "conf/downstream_analyses.config",
+    "subworkflows/plots_and_comparisons.nf",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 348
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/hillerlab__TOGA-127"
+description = "Fix ModuleNotFoundError for some scripts in supply/"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "TOGA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "hillerlab/TOGA"
+ref = "ac0578ecaa09052104787dde4f2e3cddbe453f8b"
+reference = "https://github.com/hillerlab/TOGA/pull/127"
+source_access = "auto"
+built_at = "2026-11-13T16:09:52.803672+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:63efe23149b507c2cfa7e06f0dbcd2a6821ddf0c20f64c1b92a2abc76b256fb5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-12-08T15:30:40Z"
+diff_format = "unified"
+context_files = [
+    "supply/mut_index.py",
+    "supply/plot_mutations.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

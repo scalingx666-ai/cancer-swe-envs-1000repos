@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/Bioconductor__GenomicDataCommons-116"
+description = "remove legacy arguments, function, methods and endpoints"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "GenomicDataCommons",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Bioconductor/GenomicDataCommons"
+ref = "47ac7764a099fdcb4266426d827785a4998a44b8"
+reference = "https://github.com/Bioconductor/GenomicDataCommons/pull/116"
+source_access = "auto"
+built_at = "2026-11-13T15:37:38.714755+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:99421cf6c0fadd2e1a1175ddd2639225df6a0c47ada55ad04322d88577e6cea5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-05-06T20:18:50Z"
+diff_format = "unified"
+context_files = [
+    "NAMESPACE",
+    "NEWS.md",
+    "R/GDC-defunct.R",
+    "R/REST.R",
+    "R/fields.R",
+    "R/manifest.R",
+    "R/query.R",
+    "R/slicing.R",
+    "man/GDC-defunct.Rd",
+    "man/available_values.Rd",
+    "man/query.Rd",
+    "man/slicing.Rd",
+    "vignettes/overview.Rmd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 162
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,50 @@
+diff --git a/tests/test_dataloaders.py b/tests/test_dataloaders.py
+index 25851d7..5a4ebbb 100644
+--- a/tests/test_dataloaders.py
++++ b/tests/test_dataloaders.py
+@@ -164,6 +164,21 @@ def test_dataloader_relabelling(create_test_images):
+     xrv.datasets.relabel_dataset(['Mass'], d_nih)
+     
+     assert d_nih[0]['lab'] == d_nih.labels[0]
++
++
++def test_vindr_other_lesion():
++    d_vin = xrv.datasets.VinDr_Dataset(imgpath=".")
++    assert "Other Lesion" in d_vin.pathologies
++    assert "Lesion" not in d_vin.pathologies
++
++    idx = d_vin.pathologies.index("Other Lesion")
++    raw = d_vin.rawcsv
++    expected = raw[raw.class_name == "Other lesion"].image_id.nunique()
++    assert d_vin.labels[:, idx].sum() == expected
++
++    image_id = raw[raw.class_name == "Other lesion"].image_id.iloc[0]
++    masks = d_vin.get_mask_dict(image_id, (1, 4000, 4000))
++    assert idx in masks
+     
+     
+     
+diff --git a/torchxrayvision/datasets.py b/torchxrayvision/datasets.py
+index 1858927..e15823c 100644
+--- a/torchxrayvision/datasets.py
++++ b/torchxrayvision/datasets.py
+@@ -2376,8 +2376,8 @@ class VinDr_Dataset(Dataset):
+     "No finding" class.
+ 
+     **Pathologies (14):** Aortic Enlargement, Atelectasis, Calcification,
+-    Cardiomegaly, Consolidation, Effusion, ILD, Infiltration, Lesion,
+-    Lung Opacity, Nodule/Mass, Pleural Thickening, Pneumothorax, Pulmonary
++    Cardiomegaly, Consolidation, Effusion, ILD, Infiltration, Lung Opacity,
++    Nodule/Mass, Other Lesion, Pleural Thickening, Pneumothorax, Pulmonary
+     Fibrosis.
+ 
+     Per-image bounding-box masks are available via ``pathology_masks=True``.
+@@ -2449,7 +2449,7 @@ def __init__(self,
+                             'Infiltration',
+                             'Lung Opacity',
+                             'Nodule/Mass',
+-                            'Lesion',
++                            'Other Lesion',
+                             'Effusion',
+                             'Pleural_Thickening',
+                             'Pneumothorax',

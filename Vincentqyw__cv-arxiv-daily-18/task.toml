@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/Vincentqyw__cv-arxiv-daily-18"
+description = "Fix: Remove PapersWithCode API & Backfill papers since 2025-07-17"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "cv-arxiv-daily",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Vincentqyw/cv-arxiv-daily"
+ref = "22cfa4ca2d532b19833a5153d0a2df02e067c0fe"
+reference = "https://github.com/Vincentqyw/cv-arxiv-daily/pull/18"
+source_access = "auto"
+built_at = "2026-11-13T15:29:52.358792+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:db974991d5a468996907e9e267bfa4810994f0216fe833652d799047e4b67b7d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-11-26T03:18:54Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "daily_arxiv.py",
+    "docs/cv-arxiv-daily-web.json",
+    "docs/cv-arxiv-daily.json",
+    "docs/index.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 7186
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

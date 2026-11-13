@@ -1,0 +1,328 @@
+diff --git a/compare_vcf.py b/compare_vcf.py
+index 14fd84e4..2bc80ba7 100755
+--- a/compare_vcf.py
++++ b/compare_vcf.py
+@@ -98,10 +98,12 @@ def get_fn(self):
+         return self.fn
+ 
+ class VarSimVCFComparator(VCFComparator):
+-    def __init__(self, prefix, true_vcf, reference, regions, sample, vcfs, exclude_filtered, disallow_partial_fp, match_geno, log_to_file, opts, java = 'java', sv_length = 100):
++    def __init__(self, prefix, true_vcf, reference, regions, sample, vcfs, exclude_filtered, disallow_partial_fp, match_geno, log_to_file, opts, java = 'java', sv_length = 100,
++                 ignore_ins_len = False):
+         VCFComparator.__init__(self, prefix, true_vcf, reference, regions, sample, vcfs, exclude_filtered, match_geno, log_to_file, opts, java)
+         self.disallow_partial_fp = disallow_partial_fp
+         self.sv_length = sv_length
++        self.ignore_ins_len = ignore_ins_len
+     def get_tp_predict(self):
+         '''
+         varsim does not generate TP based off of predictions
+@@ -133,6 +135,8 @@ def run(self):
+             cmd.append('-disallow_partial_fp')
+         if str(self.sv_length):
+             cmd.append('-sv_length {}'.format(self.sv_length))
++        if self.ignore_ins_len:
++            cmd.append('-ignore_ins_len')
+         if self.opts:
+             cmd.append(self.opts)
+         cmd.extend(self.vcfs)
+@@ -485,7 +489,8 @@ def parse_jsons(jsonfile, stats, count_sv = False, count_all = False):
+                         print ("error in {}. No {} field".format(jsonfile, err))
+                         stats[vt][mt] += 0
+ 
+-def summarize_results(prefix, tp, fn, fp, t, var_types, sv_length = 100, regions = None, bed_either = False, java = 'java', bin_breaks = None):
++def summarize_results(prefix, tp, fn, fp, t, var_types, sv_length = 100, regions = None, bed_either = False, java = 'java', bin_breaks = None,
++                      ignore_ins_len = False):
+     '''
+     count variants by type and tabulate
+     :param augmented_tp:
+@@ -505,7 +510,9 @@ def summarize_results(prefix, tp, fn, fp, t, var_types, sv_length = 100, regions
+     if bed_either:
+         cmd = cmd + ['-bed_either']
+     if bin_breaks:
+-            cmd = cmd + ['-bin_breaks', bin_breaks]
++        cmd = cmd + ['-bin_breaks', bin_breaks]
++    if ignore_ins_len:
++        cmd = cmd + ['-ignore_ins_len']
+     utils.run_shell_command(cmd, cmd_stdout=sys.stdout, cmd_stderr=sys.stderr)
+ 
+     tp = prefix + "_tp.vcf"
+@@ -555,6 +562,7 @@ def summarize_results(prefix, tp, fn, fp, t, var_types, sv_length = 100, regions
+     main_parser.add_argument("--disallow_partial_fp", action = 'store_true', help="For a partially-matched false negative variant, output all matching variants as false positive", required = False)
+     main_parser.add_argument("--match_geno", action = 'store_true', help="compare genotype in addition to alleles", required = False)
+     main_parser.add_argument("--sv_length", type = int, help="length cutoff for SV (only effective for counting, not comparison). For comparison, please add -sv_length to --vcfcompare_options.", required = False, default = 100)
++    main_parser.add_argument("--ignore_ins_len", action = 'store_true', help="Ignore length of insertion (treat it as 0 length), otherwise ignore insertions and other SVs without proper SVLEN.", required = False)
+     main_parser.add_argument('--version', action='version', version=utils.get_version())
+     main_parser.add_argument("--log_to_file", metavar="LOGFILE", help="logfile. If not specified, log to stderr", required=False, type=str, default="")
+     main_parser.add_argument("--loglevel", help="Set logging level", choices=["debug", "warn", "info"], default="info")
+diff --git a/src/main/java/com/bina/varsim/tools/VCFstats.java b/src/main/java/com/bina/varsim/tools/VCFstats.java
+index 377c618a..fa66c6e6 100644
+--- a/src/main/java/com/bina/varsim/tools/VCFstats.java
++++ b/src/main/java/com/bina/varsim/tools/VCFstats.java
+@@ -24,6 +24,9 @@ public class VCFstats extends VarSimTool {
+     @Option(name = "-vcf", usage = "VCF file to analyse [Required]", metaVar = "VCF_file", required = true)
+     String vcf_filename;
+ 
++    @Option(name = "-ignore_ins_len", usage = "Ignores insertion length when comparing")
++    boolean ignoreInsertionLength = false;
++
+     public VCFstats(final String command, final String description) {
+         super(command, description);
+     }
+@@ -49,7 +52,7 @@ public void run(String[] args) {
+ 
+         ParentRecord data = new ParentRecord();
+ 
+-        VCFparser parser = new VCFparser(vcf_filename, null, false);
++        VCFparser parser = new VCFparser(vcf_filename, null, false, ignoreInsertionLength);
+ 
+         while (parser.hasMoreInput()) {
+             Variant var = parser.parseLine();
+diff --git a/src/main/java/com/bina/varsim/tools/evaluation/VCFCompareResultsParser.java b/src/main/java/com/bina/varsim/tools/evaluation/VCFCompareResultsParser.java
+index 02f9b20a..8efe5827 100644
+--- a/src/main/java/com/bina/varsim/tools/evaluation/VCFCompareResultsParser.java
++++ b/src/main/java/com/bina/varsim/tools/evaluation/VCFCompareResultsParser.java
+@@ -63,6 +63,9 @@ public class VCFCompareResultsParser extends VarSimTool {
+     @Option(name = "-sv_length", usage = "SV length cutoff", metaVar = "SVLEN", hidden = false)
+     public int SVLEN = Constant.SVLEN;
+ 
++    @Option(name = "-ignore_ins_len", usage = "Ignores insertion length when comparing")
++    boolean ignoreInsertionLength = false;
++
+     @Option(name = "-bed", usage = "BED file to restrict the analysis [Optional]", metaVar = "BED_file")
+     String bedFilename = null;
+ 
+@@ -110,10 +113,10 @@ public void run(String[] args) {
+         log.info("Using " + bedFilename + " to intersect.");
+         BedFile intersector = bedFilename == null ? null : new BedFile(bedFilename, bedEither);
+ 
+-        countVariants(StatsNamespace.TP, tpVcfFilename, outputBlob, intersector);
+-        countVariants(StatsNamespace.FP, fpVcfFilename, outputBlob, intersector);
+-        countVariants(StatsNamespace.FN, fnVcfFilename, outputBlob, intersector);
+-        countVariants(StatsNamespace.T, tVcfFilename, outputBlob, intersector);
++        countVariants(StatsNamespace.TP, tpVcfFilename, outputBlob, intersector, ignoreInsertionLength);
++        countVariants(StatsNamespace.FP, fpVcfFilename, outputBlob, intersector, ignoreInsertionLength);
++        countVariants(StatsNamespace.FN, fnVcfFilename, outputBlob, intersector, ignoreInsertionLength);
++        countVariants(StatsNamespace.T, tVcfFilename, outputBlob, intersector, ignoreInsertionLength);
+ 
+         try(
+                 PrintWriter jsonWriter = JSON_WRITER.getWriter(outPrefix);) {
+@@ -156,8 +159,8 @@ public void run(String[] args) {
+      * @param filename VCF containing variants
+      * @param intersector BED file object
+      */
+-    private void countVariants(final StatsNamespace resultClass, final String filename, outputClass outputBlob, BedFile intersector) {
+-        VCFparser vcfParser = new VCFparser(filename, null, false);
++    private void countVariants(final StatsNamespace resultClass, final String filename, outputClass outputBlob, BedFile intersector, boolean ignoreInsertionLength) {
++        VCFparser vcfParser = new VCFparser(filename, null, false, ignoreInsertionLength);
+         PrintWriter vcfWriter = null;
+         try {
+             if (resultClass == StatsNamespace.TP) {
+diff --git a/src/main/java/com/bina/varsim/tools/evaluation/VCFcompare.java b/src/main/java/com/bina/varsim/tools/evaluation/VCFcompare.java
+index f1b92315..6d833e13 100644
+--- a/src/main/java/com/bina/varsim/tools/evaluation/VCFcompare.java
++++ b/src/main/java/com/bina/varsim/tools/evaluation/VCFcompare.java
+@@ -827,7 +827,7 @@ public void setNumberOfTrueCorrect(EnumStatsRatioCounter<VariantOverallType> num
+         outputBlob.getParams().setTrueVcfFilename(trueVcfFilename);
+         outputBlob.getParams().setWiggle(wiggle);
+ 
+-        VCFparser trueVcfParser = new VCFparser(trueVcfFilename, null, false);
++        VCFparser trueVcfParser = new VCFparser(trueVcfFilename, null, false, ignoreInsertionLength);
+ 
+         // allow duplicates, this is needed because insertions don't actually take up a location
+         chrSearchTree<ValueInterval1D<Variant>> trueVariantIntervalTree = new chrSearchTree<>(true);
+@@ -963,7 +963,7 @@ public void setNumberOfTrueCorrect(EnumStatsRatioCounter<VariantOverallType> num
+         traid2composingVariants.clear();
+ 
+         for (String currentVcfFile : newVcfFilename) {
+-            VCFparser newParser = new VCFparser(currentVcfFile, sampleName, excludeFiltered);
++            VCFparser newParser = new VCFparser(currentVcfFile, sampleName, excludeFiltered, ignoreInsertionLength);
+ 
+             while (newParser.hasMoreInput()) {
+                 Variant variant = newParser.parseLine();
+@@ -1646,7 +1646,7 @@ private void printVCFHeader(PrintWriter tpWriter, PrintWriter unknownTpWriter,Pr
+         ImmutableList<String> predictSampleList = new ImmutableList.Builder<String>().add("predict").build(); //add default sample name
+ 
+         //identity user input sample names in truth and predictions, respectively
+-        VCFparser trueVcfParser = new VCFparser(trueVcfFilename, null, false);
++        VCFparser trueVcfParser = new VCFparser(trueVcfFilename, null, false, ignoreInsertionLength);
+         while (trueVcfParser.hasMoreInput()) {
+             Variant variant = trueVcfParser.parseLine();
+             if (variant != null) {
+@@ -1667,7 +1667,7 @@ private void printVCFHeader(PrintWriter tpWriter, PrintWriter unknownTpWriter,Pr
+         fnWriter.write(generateVCFHeader(reference, truthSampleList));
+         Set<String> predictSampleUniqueNames = new HashSet<>();
+         for (String currentVcfFile : newVcfFilename) {
+-            VCFparser newParser = new VCFparser(currentVcfFile, sampleName, excludeFiltered);
++            VCFparser newParser = new VCFparser(currentVcfFile, sampleName, excludeFiltered, ignoreInsertionLength);
+             while (newParser.hasMoreInput()) {
+                 Variant variant = newParser.parseLine();
+                 if (newParser.getSampleId() != null) {
+diff --git a/src/main/java/com/bina/varsim/types/variant/Variant.java b/src/main/java/com/bina/varsim/types/variant/Variant.java
+index e967b91a..dcbcf0b1 100644
+--- a/src/main/java/com/bina/varsim/types/variant/Variant.java
++++ b/src/main/java/com/bina/varsim/types/variant/Variant.java
+@@ -578,8 +578,13 @@ public SimpleInterval1D getGenotypeUnionVariantInterval() {
+     public boolean isSmallVariant(int genotype, int cutoff, boolean ignoreInsertionLength) {
+         VariantType type = this.getType(genotype);
+         SimpleInterval1D intervalForCompare = this.getVariantInterval(genotype, ignoreInsertionLength);
+-        return ((type ==  VariantType.Insertion || type == VariantType.Deletion || type == VariantType.Complex ) &&
+-                intervalForCompare.right - intervalForCompare.left + 1 < cutoff);
++        if (ignoreInsertionLength) {
++            return ((type == VariantType.Deletion || type == VariantType.Complex) &&
++                    intervalForCompare.right - intervalForCompare.left + 1 < cutoff);
++        } else {
++            return ((type == VariantType.Insertion || type == VariantType.Deletion || type == VariantType.Complex) &&
++                    intervalForCompare.right - intervalForCompare.left + 1 < cutoff);
++        }
+     }
+ 
+     public Genotypes getGenotypes() {
+diff --git a/src/main/java/com/bina/varsim/util/VCFparser.java b/src/main/java/com/bina/varsim/util/VCFparser.java
+index 7b1c55c8..3389de9d 100644
+--- a/src/main/java/com/bina/varsim/util/VCFparser.java
++++ b/src/main/java/com/bina/varsim/util/VCFparser.java
+@@ -38,6 +38,7 @@ public String getSampleId() {
+     private boolean isPassFilterRequired = false;
+     private boolean chromLineSeen = false;
+     private int illegalPhasingWarningCount = 0;
++    private boolean ignoreInsertionLength = false;
+ 
+     public VCFparser() {
+         sampleIndex = 10; // the first sample
+@@ -51,12 +52,17 @@ public VCFparser() {
+      * @param pass     If true, only output pass lines
+      */
+     public VCFparser(String fileName, String id, boolean pass, Random rand) {
+-        this(new File(fileName), id, pass, rand);
++        this(new File(fileName), id, pass, rand, false);
+         log.info("Reading " + fileName);
+     }
+ 
++    public VCFparser(String fileName, String id, boolean pass, Random rand, boolean ignoreInsertionLength) {
++        this(new File(fileName), id, pass, rand, ignoreInsertionLength);
++        log.info("Reading " + fileName);
++    }
+ 
+-    public VCFparser(File file, String id, boolean pass, Random rand) {
++
++    public VCFparser(File file, String id, boolean pass, Random rand, boolean ignoreInsertionLength) {
+         random = rand;
+         try {
+             bufferedReader = new BufferedReader(new InputStreamReader(decompressStream(file)));
+@@ -67,6 +73,7 @@ public VCFparser(File file, String id, boolean pass, Random rand) {
+         }
+         sampleId = id;
+         isPassFilterRequired = pass;
++        this.ignoreInsertionLength = ignoreInsertionLength;
+ 
+         if (StringUtils.isEmpty(sampleId)) {
+             sampleIndex = 10; // the first sample
+@@ -80,12 +87,16 @@ public VCFparser(File file, String id, boolean pass, Random rand) {
+      * @param id       ID of individual, essentially selects a column, null to use first ID column
+      * @param pass     If true, only output pass lines
+      */
++    public VCFparser(String fileName, String id, boolean pass, boolean ignoreInsertionLength) {
++        this(fileName, id, pass, null, ignoreInsertionLength);
++    }
++
+     public VCFparser(String fileName, String id, boolean pass) {
+-        this(fileName, id, pass, null);
++        this(fileName, id, pass, null, false);
+     }
+ 
+     public VCFparser(File file, String id, boolean pass) {
+-        this(file, id, pass, null);
++        this(file, id, pass, null, false);
+     }
+ 
+     /**
+@@ -330,11 +341,33 @@ else if (index == 9) { // Output format
+         CAUTION: we assume symbolic alleles are not mixed
+         with non-symbolic alleles.
+          */
++        Alt[] alts = null;
++        try {
++            alts = string2Alt(ALT);
++        } catch (IllegalArgumentException e) {
++            if (loggingCounter.isCountLeftAndDecrement()) {
++                log.warn("ALT column is malformated: " + e.getMessage());
++            }
++            return null;
++        }
+         if (ALT.indexOf('<') != -1) {
+             String[] alternativeAlleles = StringUtilities.fastSplit(ALT, ",");
+             int[] svlen = info.getValue("SVLEN", int[].class);
+-            if (alternativeAlleles.length != svlen.length) {
+-                throw new IllegalArgumentException("ERROR: number of symbolic alleles is unequal to number of SV lengths.\n" + line);
++            // when number of SVLEN values is not equal to number of alternative alleles
++            // ignore this variant if it is insertion, unless we choose to ignore insertion
++            // lengths.
++            if ((svlen == null) || (alternativeAlleles.length != svlen.length)) {
++                if (ignoreInsertionLength &&
++                    alts[0].getSymbolicAllele() != null &&
++                    alts[0].getSymbolicAllele().getMajor() == Alt.SVType.INS) {
++                    ;
++                } else {
++                    if (loggingCounter.isCountLeftAndDecrement()) {
++                        log.warn("WARNING: number of symbolic alleles is unequal to number of SV lengths.\n" +
++                                line + "\nFor symbolic insertions, can set -ignore_ins_len to ignore SVLEN.");
++                    }
++                    return null;
++                }
+             }
+             for (int i = 0; i < alternativeAlleles.length; i++) {
+                 if (!alternativeAlleles[i].startsWith("<")) {
+@@ -342,15 +375,6 @@ else if (index == 9) { // Output format
+                 }
+             }
+         }
+-        Alt[] alts = null;
+-        try {
+-            alts = string2Alt(ALT);
+-        } catch (IllegalArgumentException e) {
+-            if (loggingCounter.isCountLeftAndDecrement()) {
+-                log.warn("ALT column is malformated: " + e.getMessage());
+-            }
+-            return null;
+-        }
+ 
+       if (alts[0].getSymbolicAllele() != null) {
+           int[] end = info.getValue("END", int[].class);
+@@ -456,6 +480,21 @@ else if (index == 9) { // Output format
+               }
+           } else if (alts[0].getSymbolicAllele().getMajor() == Alt.SVType.INS) {
+               // insertion SV
++              if (ignoreInsertionLength && (svlen == null || alts.length != svlen.length)) {
++                  int[] newSvlen = new int[alts.length];
++                  // try to recycle svlen values if svlen is not empty
++                  // otherwise fill with 1
++                  // because length is ignored, so the exact value to be filled
++                  // shouldn't affect comparison (might still change exact output).
++                  if (svlen == null || svlen.length == 0) {
++                      Arrays.fill(newSvlen, 1);
++                  } else {
++                      for (int i = 0; i < newSvlen.length; i++) {
++                          newSvlen[i] = svlen[i % svlen.length];
++                      }
++                  }
++                  svlen = newSvlen;
++              }
+ 
+               if (svlen.length > 0) {
+                   for (int i = 0; i < svlen.length; i++) {
+diff --git a/src/test/java/com/bina/varsim/util/VCFparserTest.java b/src/test/java/com/bina/varsim/util/VCFparserTest.java
+index fdf7a6ae..4a52c7f1 100644
+--- a/src/test/java/com/bina/varsim/util/VCFparserTest.java
++++ b/src/test/java/com/bina/varsim/util/VCFparserTest.java
+@@ -73,9 +73,9 @@ public void TrimmingTest() throws UnexpectedException {
+         assertTrue(v.getReference().length == 1); //[]
+         assertTrue(v.getAlt(1).length() == 0); //"GT"
+     }
+-    @Test(expected = IllegalArgumentException.class)
++    @Test
+     public void SymbolicAlleleSVLenTest() throws UnexpectedException {
+-        parser.processLine("1	3	.	T	<DUP:TANDEM>	.	PASS	SVTYPE=DUP;SVLEN=4,4	GT:CN	1|2:2|3");
++        assertTrue(parser.processLine("1	3	.	T	<DUP:TANDEM>	.	PASS	SVTYPE=DUP;SVLEN=4,4	GT:CN	1|2:2|3")==null);
+     }
+     @Test(expected = IllegalArgumentException.class)
+     public void SymbolicAlleleMixWithNonSymbolicAlleleTest() throws IOException {

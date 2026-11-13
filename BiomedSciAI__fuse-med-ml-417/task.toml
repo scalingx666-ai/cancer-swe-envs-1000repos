@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/BiomedSciAI__fuse-med-ml-417"
+description = "Add MCP inference workflow example for OAI"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "fuse-med-ml",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "BiomedSciAI/fuse-med-ml"
+ref = "fba129597431d3d69f22aeb75ce505b74820eb12"
+reference = "https://github.com/BiomedSciAI/fuse-med-ml/pull/417"
+source_access = "auto"
+built_at = "2026-11-13T16:16:04.191641+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:55703561c10f4c02c0763f4911b6af5ee126c1d41ba6b081564bdce8e493b588"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-12T10:32:18Z"
+diff_format = "unified"
+context_files = [
+    "fuse_examples/imaging/oai_example/README.md",
+    "fuse_examples/imaging/oai_example/mcp_inference/inference_cli.py",
+    "fuse_examples/imaging/oai_example/mcp_inference/inference_config.yaml",
+    "fuse_examples/imaging/oai_example/mcp_inference/inference_tools.py",
+    "fuse_examples/imaging/oai_example/mcp_inference/inference_utils.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2008
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

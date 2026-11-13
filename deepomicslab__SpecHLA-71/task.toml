@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/deepomicslab__SpecHLA-71"
+description = "Fix source builtin error and document conda wrapper commands"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "SpecHLA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "deepomicslab/SpecHLA"
+ref = "1820c4a58e9cc52e380685e9c54243e3e842dfec"
+reference = "https://github.com/deepomicslab/SpecHLA/pull/71"
+source_access = "auto"
+built_at = "2026-11-13T15:39:36.277507+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:435315c2cd6ed5e47d7361a7b85f98213f5eb8adebb26cfedba51766adb59295"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-13T17:51:36Z"
+diff_format = "unified"
+context_files = [
+    "README.MD",
+    "environment.yml",
+    "recipes/meta.yaml",
+    "script/ScanIndel/run_scanindel_sample.sh",
+    "script/run.assembly.realign.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 55
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

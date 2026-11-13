@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/KatherLab__STAMP-179"
+description = "Modernise the dependency stack and pin it exactly"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "STAMP",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "KatherLab/STAMP"
+ref = "a410d27629156a5696958d81bbbb1b8dcb399e88"
+reference = "https://github.com/KatherLab/STAMP/pull/179"
+source_access = "auto"
+built_at = "2026-11-13T15:36:05.383677+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b873032c7bcfd350fc94922ad1f178fb097b37631836d8762625e09542af065e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-20T14:37:39Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/build.yml",
+    ".python-version",
+    "README.md",
+    "getting-started.md",
+    "pyproject.toml",
+    "scripts/check_dependency_config.py",
+    "scripts/verify_installed_stack.py",
+    "tests/test_dependency_config.py",
+    "uv.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6497
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

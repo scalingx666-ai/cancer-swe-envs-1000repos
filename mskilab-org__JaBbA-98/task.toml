@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/mskilab-org__JaBbA-98"
+description = "Update: Updates README.md with latest Docker image"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "JaBbA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mskilab-org/JaBbA"
+ref = "f0cf34eccff4f495e5f04d21d992c806f946c455"
+reference = "https://github.com/mskilab-org/JaBbA/pull/98"
+source_access = "auto"
+built_at = "2026-11-13T15:40:12.431637+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d1354ad403ed1b99939a56f41030a995ec33f2f7f4391042b8a0232ff0fb53e0"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-11-17T12:35:44Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "README.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 30
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

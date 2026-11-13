@@ -1,0 +1,61 @@
+diff --git a/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx b/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
+index 6b8a671..261fe4d 100644
+--- a/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
+@@ -255,7 +255,13 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+     { text: "Does this CT scan suggest fatty liver?", enableWebSearch: true },
+     { text: "Does this brain image show any evidence of intracerebral hemorrhage?", enableWebSearch: true },
+     { text: "Does this X-ray suggest any Nodule?", enableWebSearch: false },
+-    { text: "Does this time-series 3D cardiac scan indicate myocardial hypertrophy?", enableWebSearch: true }
++    {
++      text: [
++        "Does this time-series 3D cardiac scan indicate myocardial hypertrophy?",
++        "Use the short-axis cine segmentation (LV blood pool, LV myocardium, RV blood pool) to measure the maximal left-ventricular wall thickness at end-diastole, apply the clinical guideline criterion, and report the thickness, the criterion with its source, and your conclusion.",
++      ].join("\n"),
++      enableWebSearch: true,
++    }
+   ];
+   const welcomeTimerRef = useRef<number | null>(null);
+   const thinkingTimerRef = useRef<number | null>(null);
+diff --git a/app/render/constants/modelRegistryFallback.json b/app/render/constants/modelRegistryFallback.json
+index 962d1dc..5d8c2e0 100644
+--- a/app/render/constants/modelRegistryFallback.json
++++ b/app/render/constants/modelRegistryFallback.json
+@@ -195,8 +195,8 @@
+       "icon": "/images/icons/cardiac_mr_segmentation.png",
+       "factory": "TaskSpecific",
+       "source": "builtin",
+-      "inputs": "Cardiac MRI images",
+-      "outputs": "Cardiac structure segmentations (MYO, LV, RV)"
++      "inputs": "Cardiac MRI: a NIfTI volume or a DICOM folder of one series (e.g. the short-axis cine stack); optional view=LVSA|4CH|VLA|LVOT (default LVSA, the short-axis view used for LV mass and wall thickness)",
++      "outputs": "<node>/voxel_mask/<view>: uint8 label map on the input image grid (LVSA: 0 background, 1 LV cavity, 2 myocardium, 3 RV cavity; other views: 0 background, 1 myocardium), with class_names and pixel spacing in the dataset attrs; for a cine DICOM series the first axis is slice-major (attrs n_slices, n_frames, slice_location_mm, trigger_time_ms; voxel_mask/slice_index and frame_index arrays)"
+     },
+     "GPT-4o Agent": {
+       "displayName": "Code Calculation",
+diff --git a/app/service/app/services/prompts/code_system_prompt.txt b/app/service/app/services/prompts/code_system_prompt.txt
+index fc21366..9676ecb 100644
+--- a/app/service/app/services/prompts/code_system_prompt.txt
++++ b/app/service/app/services/prompts/code_system_prompt.txt
+@@ -12,6 +12,7 @@ Analysis results are stored in a Zarr file. The exact structure (groups, arrays,
+ - Spatial calibration: mpp / microns-per-pixel — read from group/array attributes
+ The canonical radiology (CT/MRI) layout, written by organ segmentation nodes such as TotalSegmentator:
+ - Organ masks → group "Tissue-Segmentation": masks/<organ>/mask is a 3D boolean array (NIfTI voxel order), one per organ, plus classes/name and classes/color. Each mask group's attrs carry voxel_count and volume_ml.
++- Cardiac MR segmentation (CardiacMRSegmentation) → group named after the node: `voxel_mask/<view>` is a uint8 label map on the input grid (LVSA: 0 background, 1 LV cavity, 2 myocardium, 3 RV cavity); read `class_names` and the pixel `spacing` (mm) from the dataset attrs. For a cine series the first axis is slice-major (index = slice_index * n_frames + frame_index; attrs n_slices, n_frames, slice_location_mm, trigger_time_ms; `voxel_mask/slice_index` and `voxel_mask/frame_index` give the per-image indices), so reshape to (n_slices, n_frames, rows, cols), pick the end-diastolic frame (largest LV cavity) and measure per slice.
+ - Whole-image classifiers (e.g. chest X-ray models such as Ark+ or CheXzero) → group "Image-Classification" (attrs name the model): `predictions` (sigmoid probabilities) aligned index-by-index with `disease_list`, and `scores_json` (JSON string) with the same values grouped per label set / head. A finding name can occur in more than one head; pick the head that matches the image type and say which one you used. Report the probability and the decision threshold you applied.
+ - Intensities → "Tissue-Segmentation/image": int16 Hounsfield units (HU) on the SAME voxel grid as the masks, so `image[mask]` is the HU values inside an organ. Group attrs carry `affine` and `voxel_spacing_mm` (voxel volume in ml = prod(voxel_spacing_mm) / 1000). Never rescale or re-window these values before thresholding. userData/path holds the source NIfTI/DICOM path; read it only if the zarr has no `image` array.
+ 
+diff --git a/app/service/storage/model_registry_preset.json b/app/service/storage/model_registry_preset.json
+index 17c9095..246a7b3 100644
+--- a/app/service/storage/model_registry_preset.json
++++ b/app/service/storage/model_registry_preset.json
+@@ -264,8 +264,8 @@
+       "version": null,
+       "source": "builtin",
+       "zarr_group": null,
+-      "inputs": "Cardiac MRI images",
+-      "outputs": "Cardiac structure segmentations (MYO, LV, RV)",
++      "inputs": "Cardiac MRI: a NIfTI volume or a DICOM folder of one series (e.g. the short-axis cine stack); optional view=LVSA|4CH|VLA|LVOT (default LVSA, the short-axis view used for LV mass and wall thickness)",
++      "outputs": "<node>/voxel_mask/<view>: uint8 label map on the input image grid (LVSA: 0 background, 1 LV cavity, 2 myocardium, 3 RV cavity; other views: 0 background, 1 myocardium), with class_names and pixel spacing in the dataset attrs; for a cine DICOM series the first axis is slice-major (attrs n_slices, n_frames, slice_location_mm, trigger_time_ms; voxel_mask/slice_index and frame_index arrays)",
+       "modality": "radiology",
+       "supported_structures": [
+         "myocardium",

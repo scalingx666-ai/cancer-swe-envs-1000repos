@@ -1,0 +1,598 @@
+diff --git a/.claude/CLAUDE.md b/.claude/CLAUDE.md
+index 3cc0af5f..bef41ba2 100644
+--- a/.claude/CLAUDE.md
++++ b/.claude/CLAUDE.md
+@@ -259,7 +259,7 @@ IsoQuant can use short Illumina reads (`--illumina_bam`) to correct long-read ex
+ - Tool expects reads to contain polyA tails
+ - Don't trim polyA tails for better transcript model construction
+ - PolyA verification integrated into assignment process
+-- `--polya_trimmed tag:<TAG>|list:<FILE>|flnc:<FILE>` take polyA status from Dorado (`pt` tag) / a read list / `isoseq refine` report (`isoquant_lib/terminal_prediction/external_polya.py`). Sequence detection still runs; **the external source wins on conflicts** (`reconcile_polya`, applied before `PolyAFixer` so contradicted tails do not trim exons). Known side (`TS:A`, else `--stranded forward/reverse` for `tag:`; list col 2; flnc `strand` column) → injected before assignment; unknown side → after, by assigned strand. Only flnc `polyAlen`=0 clears tails. list/flnc tables are split per chromosome like barcode tables.
++- `--polya_trimmed tag:<TAG>|list:<FILE>|flnc:<FILE>` take polyA status from Dorado (`pt` tag) / a read list / `isoseq refine` report (`isoquant_lib/terminal_prediction/external_polya.py`). Sequence detection still runs; **the external source wins on conflicts** (`reconcile_polya`, applied before `PolyAFixer` so contradicted tails do not trim exons). Known side (`TS:A`, else `--stranded forward/reverse` for `tag:`; list col 2; flnc `strand` column) → injected before assignment; unknown side → after, by assigned strand. Only flnc `polyAlen`=0 clears tails. list/flnc tables are split per chromosome like barcode tables. IsoQuant's own minimap2 step keeps read tags **regardless of the option** (`isoquant_lib/utils/read_tags.py`): unaligned BAM → `samtools fastq -T <tags>`, FASTA/FASTQ whose header comments are all SAM tags (first 1000 reads) → `samtools import -T | samtools fastq/fasta -T`, both + minimap2 `-y`; minimap2's own tags (Dorado `ts:i` clashes with minimap2 `ts:A`) and `RG`/`PG` are dropped. `warn_about_missing_polya_tag` (`isoquant.py`) warns when `tag:X` is set but no checked primary alignment carries X.
+ 
+ ## Testing Strategy
+ 
+diff --git a/changelog.md b/changelog.md
+index 0192c7a3..2d71b280 100644
+--- a/changelog.md
++++ b/changelog.md
+@@ -1,17 +1,5 @@
+ # IsoQuant changelog
+ 
+-## IsoQuant 4.0.1, in development
+-
+-- Added per-experiment run summary: `SAMPLE_ID.summary.html` and `SAMPLE_ID.summary_stats.json`
+-(mapping rate, read assignment statistics, barcode detection rate, UMI deduplication and
+-per-barcode statistics), can be disabled with `--no_report`;
+-- Fixed visualization tool not finding the per-read output after it was renamed to
+-`read_info.tsv.gz` in 4.0.0 ([spl-IsoQuant #11](https://github.com/algbio/spl-IsoQuant/issues/11));
+-- Fixed visualization tool not detecting grouped counts, whose names contain the grouping
+-strategy since 4.0.0;
+-- Fixed read classification statistics in the visualization tool when read groups are present;
+-- Alignment statistics are no longer accumulated across experiments in multi-sample runs.
+-
+ ## Isoquant 4.0.0, 25 July 2026
+ 
+ Major update with new functionality and output formats.
+diff --git a/docs/cmd.md b/docs/cmd.md
+index 9faadd66..d292d0ed 100644
+--- a/docs/cmd.md
++++ b/docs/cmd.md
+@@ -99,6 +99,9 @@ Indicate that reads were poly-A trimmed. Possible values are:
+   Use this option at your own risk.
+   - `tag:<TAG>`: read poly-A status from a BAM tag, e.g. `tag:pt` for Dorado (requires basecalling with `--estimate-poly-a`). A tail is considered present when the tag value >= 0.
+   If the read has a `TS:A` tag (transcript strand relative to the read), the tail is placed on the corresponding end. Otherwise internal IsoQuant strand detection is used.
++  The tag must be present in the aligned reads. When IsoQuant aligns the reads itself, tags are kept automatically (see [read tags](input.md#read-tags)); 
++  when providing your own alignments via `--bam`, make sure the aligner copies the tags, e.g. `samtools fastq -T pt,TS calls.bam | minimap2 -ax splice -y ...`.
++  IsoQuant warns if none of the checked alignments carry the tag.
+   - `list:<FILE>`: a file with IDs of reads that have a poly-A tail, one per line (may be gzipped).
+   An optional second column (tab or space separated) with `+` or `-` gives the transcript strand relative to the read, and is treated as `TS:A` above; any other value is ignored.
+   - `flnc:<FILE>`: `flnc.report.csv` produced by `isoseq refine`. Reads with `polyAlen` > 0 have a tail at their 3' end;
+diff --git a/docs/input.md b/docs/input.md
+index 3d60d511..51df4d34 100644
+--- a/docs/input.md
++++ b/docs/input.md
+@@ -43,6 +43,20 @@ A BAM file with Illumina reads can be provided via `--illumina_bam`. It cannot b
+ The option accepts one or multiple bam files separated by space. All files will be combined and used to correct offsets between introns in long and short reads as well as skipped exons.
+ 
+ 
++### Read tags
++
++When IsoQuant aligns the reads itself (`--fastq` or `--unmapped_bam`), it keeps read tags in the resulting BAM file,
++e.g. the poly-A tail length estimated by Dorado (`pt:i`), which can be used later with `--polya_trimmed tag:pt` 
++without realigning the reads. Tags are taken from:
++
++  * unmapped BAM files, e.g. produced by `dorado basecaller`;
++  * FASTA/FASTQ files, in which read headers contain tab-separated SAM tags after the read id 
++  (`@read_id<TAB>pt:i:85<TAB>...`), e.g. produced by `dorado basecaller --emit-fastq` or `samtools fastq -T`.
++  Headers are checked on the first 1000 reads; if any of them has a comment that is not made of SAM tags 
++  (e.g. MinKNOW-style `runid=... read=...`), no tags are kept.
++
++If input data contains minimap2 tags (e.g. `NM`, `ts`) and tags referring to BAM header lines (`RG`, `PG`), those will not be copied to the aligned BAM files to avoid duplications.
++
+ ## Specifying input data via yaml file
+ 
+ To provide all input files in a single description file, you can use a [YAML](https://www.redhat.com/en/topics/automation/what-is-yaml) file via `--yaml` (see description below).
+diff --git a/isoquant.py b/isoquant.py
+index 96c8d821..91b06991 100755
+--- a/isoquant.py
++++ b/isoquant.py
+@@ -73,6 +73,7 @@
+ )
+ from isoquant_lib.barcode_calling.pipeline import call_barcodes
+ from isoquant_lib.utils.file_utils import check_file_exists
++from isoquant_lib.utils.read_tags import count_tagged_alignments
+ from isoquant_lib.common import setup_worker_logging, _get_log_params
+ 
+ 
+@@ -1274,6 +1275,25 @@ def prepare_reference_genome(args):
+         args.reference = gunzipped_reference
+ 
+ 
++def warn_about_missing_polya_tag(args) -> None:
++    """--polya_trimmed tag:X silently falls back to sequence-based detection when the alignments lack the tag."""
++    if args.polya_trimmed != PolyATrimmed.tag or args.input_data.input_type != InputDataType.bam:
++        return
++    tag = args.polya_trimmed_tag
++    for sample in args.input_data.samples:
++        for lib in sample.file_list:
++            for bam_file in lib:
++                tagged, checked = count_tagged_alignments(bam_file, tag)
++                if checked == 0 or tagged > 0:
++                    continue
++                logger.warning("None of the first %d primary alignments in %s carry the %s tag, "
++                               "--polya_trimmed tag:%s will have no effect for this file and polyA tails "
++                               "will be detected from read sequences only" % (checked, bam_file, tag, tag))
++                logger.warning("IsoQuant keeps read tags when aligning an unaligned BAM or FASTQ with SAM tags "
++                               "in read headers (rerun with --clean_start if the alignment is from an earlier run); "
++                               "when aligning yourself, use e.g. samtools fastq -T %s | minimap2 -y" % tag)
++
++
+ def run_pipeline(args):
+     logger.info(" === IsoQuant pipeline started === ")
+     logger.info("Python version: %s" % sys.version)
+@@ -1304,6 +1324,8 @@ def run_pipeline(args):
+         logger.info("Isoform assignment step is skipped because --run-aligner-only option was used")
+         return
+ 
++    warn_about_missing_polya_tag(args)
++
+     # run isoform assignment
+     dataset_processor = DatasetProcessor(args)
+     dataset_processor.process_all_samples(args.input_data)
+diff --git a/isoquant_lib/utils/read_mapper.py b/isoquant_lib/utils/read_mapper.py
+index 4ac2fe51..f954ceae 100644
+--- a/isoquant_lib/utils/read_mapper.py
++++ b/isoquant_lib/utils/read_mapper.py
+@@ -14,11 +14,13 @@
+ import pysam
+ import gzip
+ import sys
++from typing import List, Tuple
+ 
+ from isoquant_lib.common import get_path_to_program
+ from isoquant_lib.utils.error_codes import IsoQuantExitCode
+ from isoquant_lib.gtf2db import convert_db_to_gtf, db2bed
+ from .input_data_storage import SampleData, InputDataType
++from .read_tags import bam_tags_to_keep, fastx_tags_to_keep, is_fasta
+ 
+ logger = logging.getLogger('IsoQuant')
+ 
+@@ -310,6 +312,53 @@ def find_annotation(aligner, args):
+         return os.path.abspath(bed_fname)
+ 
+ 
++PipeStage = Tuple[List[str], str, IsoQuantExitCode]
++
++
++def read_input_stages(reads_path: str, data_type: InputDataType) -> Tuple[str, List[PipeStage], List[str]]:
++    """What minimap2 reads from, the commands feeding it, and the read tags that reach it.
++
++    Tags are kept regardless of --polya_trimmed, so that the alignments can be reused with tag-based
++    options later without realigning.
++    """
++    if data_type == InputDataType.fastq:
++        kept_tags = fastx_tags_to_keep(reads_path)
++        if not kept_tags:
++            return reads_path, [], []
++        tag_list = ",".join(kept_tags)
++        to_reads = 'fasta' if is_fasta(reads_path) else 'fastq'
++        return '-', [(['samtools', 'import', '-T', tag_list, reads_path],
++                      "Samtools import finished with errors!", IsoQuantExitCode.SUBPROCESS_FAILED),
++                     (['samtools', to_reads, '-T', tag_list, '-'],
++                      "Samtools %s finished with errors!" % to_reads, IsoQuantExitCode.SUBPROCESS_FAILED)], kept_tags
++    if data_type == InputDataType.unmapped_bam:
++        kept_tags = bam_tags_to_keep(reads_path)
++        tag_option = ['-T', ",".join(kept_tags)] if kept_tags else []
++        return '-', [(['samtools', 'fastq'] + tag_option + [reads_path],
++                      "BAM to FASTQ conversion finished with errors!", IsoQuantExitCode.SUBPROCESS_FAILED)], kept_tags
++    logger.critical("Data type %s is not compatible with minimap2" % data_type.name)
++    sys.exit(IsoQuantExitCode.INVALID_PARAMETER)
++
++
++def run_piped_commands(stages: List[PipeStage], log_fpath: str) -> None:
++    """Run commands connected by pipes; each stage carries its error message and exit code."""
++    with open(log_fpath, "a") as log_file:
++        processes = []
++        stdin = None
++        for i, (command, _, _) in enumerate(stages):
++            stdout = subprocess.PIPE if i + 1 < len(stages) else None
++            process = subprocess.Popen(command, stdin=stdin, stdout=stdout, stderr=log_file)
++            if stdin is not None:
++                # the child holds its own copy, closing ours lets the upstream process see a closed pipe
++                stdin.close()
++            stdin = process.stdout
++            processes.append(process)
++        for process, (_, message, exit_code) in zip(processes, stages):
++            if process.wait() != 0:
++                logger.critical("%s See %s" % (message, log_fpath))
++                sys.exit(exit_code)
++
++
+ def align_reads(aligner, reads_file, annotation_file, args, label, out_dir, data_type=InputDataType.fastq):
+     reads_path = os.path.abspath(reads_file)
+     fname, ext = os.path.splitext(reads_path.split('/')[-1])
+@@ -360,15 +409,12 @@ def align_reads(aligner, reads_file, annotation_file, args, label, out_dir, data
+             additional_options.append("--junc-bed")
+             additional_options.append(annotation_file)
+ 
+-        if data_type == InputDataType.fastq:
+-            command = [minimap2_path, args.index, reads_path, '-a', '-x', MINIMAP_PRESET[args.data_type],
+-                       '--secondary=yes', '-Y', '--MD', '-t', str(args.threads)] + additional_options
+-        elif data_type == InputDataType.unmapped_bam:
+-            command = [minimap2_path, args.index, '-', '-a', '-x', MINIMAP_PRESET[args.data_type],
+-                       '--secondary=yes', '-Y', '--MD', '-t', str(args.threads)] + additional_options
+-        else:
+-            logger.critical("Data type %s is not compatible with minimap2" % data_type.name)
+-            sys.exit(IsoQuantExitCode.INVALID_PARAMETER)
++        reads_input, read_stages, kept_tags = read_input_stages(reads_path, data_type)
++        if kept_tags:
++            logger.info("Read tags %s will be kept in the alignments" % ", ".join(kept_tags))
++            additional_options.append('-y')
++        command = [minimap2_path, args.index, reads_input, '-a', '-x', MINIMAP_PRESET[args.data_type],
++                   '--secondary=yes', '-Y', '--MD', '-t', str(args.threads)] + additional_options
+ 
+         if args.mapping_options:
+             command += args.mapping_options.split()
+@@ -379,42 +425,11 @@ def align_reads(aligner, reads_file, annotation_file, args, label, out_dir, data
+             minimap_version = version_run.stdout.decode('UTF-8').strip()
+ 
+         logger.info("Running minimap2 version %s (takes a while)" % minimap_version)
+-        if data_type == InputDataType.fastq:
+-            with open(log_fpath, "a") as log_file:
+-                minimap2_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=log_file)
+-                samtools_sort_process = subprocess.Popen(['samtools', 'sort', '-@', str(args.threads), '-o', alignment_bam_path],
+-                                                         stdin=minimap2_process.stdout, stderr=log_file)
+-                minimap2_return_code = minimap2_process.wait()
+-                minimap2_process.stdout.close()
+-                if minimap2_return_code != 0:
+-                    logger.critical("Minimap2 finished with errors! See " + log_fpath)
+-                    sys.exit(IsoQuantExitCode.ALIGNMENT_FAILED)
+-                samtools_return_code = samtools_sort_process.wait()
+-                if samtools_return_code != 0:
+-                    logger.critical("Samtools sort finished with errors! See " + log_fpath)
+-                    sys.exit(IsoQuantExitCode.SAMTOOLS_FAILED)
+-
+-        elif data_type == InputDataType.unmapped_bam:
+-            with open(log_fpath, "a") as log_file:
+-                bam_open_process = subprocess.Popen(['samtools', 'fastq', reads_path], stdout=subprocess.PIPE, stderr=log_file)
+-                minimap2_process = subprocess.Popen(command, stdin=bam_open_process.stdout, stdout=subprocess.PIPE, stderr=log_file)
+-                samtools_sort_process = subprocess.Popen(['samtools', 'sort', '-@', str(args.threads), '-o', alignment_bam_path],
+-                                                         stdin=minimap2_process.stdout, stderr=log_file)
+-
+-                bam_open_return_code = bam_open_process.wait()
+-                bam_open_process.stdout.close()
+-                if bam_open_return_code != 0:
+-                    logger.critical("BAM to FASTQ conversion finished with errors! See " + log_fpath)
+-                    sys.exit(IsoQuantExitCode.SUBPROCESS_FAILED)
+-                minimap2_return_code = minimap2_process.wait()
+-                minimap2_process.stdout.close()
+-                if minimap2_return_code != 0:
+-                    logger.critical("Minimap2 finished with errors! See " + log_fpath)
+-                    sys.exit(IsoQuantExitCode.ALIGNMENT_FAILED)
+-                samtools_return_code = samtools_sort_process.wait()
+-                if samtools_return_code != 0:
+-                    logger.critical("Samtools sort finished with errors! See " + log_fpath)
+-                    sys.exit(IsoQuantExitCode.SAMTOOLS_FAILED)
++        sort_command = ['samtools', 'sort', '-@', str(args.threads), '-o', alignment_bam_path]
++        run_piped_commands(read_stages +
++                           [(command, "Minimap2 finished with errors!", IsoQuantExitCode.ALIGNMENT_FAILED),
++                            (sort_command, "Samtools sort finished with errors!", IsoQuantExitCode.SAMTOOLS_FAILED)],
++                           log_fpath)
+ 
+     else:
+         logger.critical("Aligner " + aligner + " is not supported")
+diff --git a/isoquant_lib/utils/read_tags.py b/isoquant_lib/utils/read_tags.py
+new file mode 100644
+index 00000000..f354aab2
+--- /dev/null
++++ b/isoquant_lib/utils/read_tags.py
+@@ -0,0 +1,139 @@
++############################################################################
++# Copyright (c) 2023-2026 University of Helsinki
++# # All Rights Reserved
++# See file LICENSE for details.
++############################################################################
++
++"""Read tags (e.g. Dorado `pt:i`) that are carried from unaligned reads into IsoQuant's own alignments.
++
++Tags come from an unaligned BAM, or from FASTA/FASTQ headers whose comment consists of SAM tags
++(as written by `dorado basecaller --emit-fastq` or `samtools fastq -T`). Tags minimap2 writes itself
++are dropped to avoid duplicates (Dorado's `ts:i` would clash with minimap2's `ts:A`), as are tags
++that refer to header lines (`RG`, `PG`), since the header of the unaligned file is not carried over.
++"""
++
++import gzip
++import re
++from typing import IO, Iterable, List, Optional, Set, Tuple
++
++import pysam
++
++TAG_SAMPLE_SIZE = 1000
++
++MINIMAP2_TAGS = frozenset(["NM", "MD", "AS", "SA", "ms", "nn", "ts", "tp", "cm", "s1", "s2",
++                           "de", "dv", "rl", "cg", "cs", "ds", "zd"])
++HEADER_BOUND_TAGS = frozenset(["RG", "PG"])
++
++_TAG_VALUE_PATTERNS = {
++    "A": r"[!-~]",
++    "i": r"[-+]?\d+",
++    "f": r"[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?|[-+]?(inf|nan)",
++    "Z": r"[ !-~]*",
++    "H": r"([0-9A-Fa-f][0-9A-Fa-f])*",
++    "B": r"[cCsSiIf](,[-+0-9.eE]+)*",
++}
++_SAM_TAG_RE = re.compile(r"[A-Za-z][A-Za-z0-9]:(?:%s)" %
++                         "|".join("%s:(?:%s)" % (t, p) for t, p in _TAG_VALUE_PATTERNS.items()))
++
++
++def tags_from_comment(comment: str) -> Optional[Set[str]]:
++    """Tag names in a read header comment; None when the comment is not entirely tab-separated SAM tags."""
++    tags = set()
++    if not comment:
++        return tags
++    for field in comment.split("\t"):
++        if not _SAM_TAG_RE.fullmatch(field):
++            return None
++        tags.add(field[:2])
++    return tags
++
++
++def split_header(header_line: str) -> Tuple[str, str]:
++    """Read name and comment of a FASTA/FASTQ header line."""
++    parts = re.split(r"[ \t]", header_line[1:].rstrip("\r\n"), maxsplit=1)
++    return parts[0], parts[1].lstrip(" \t") if len(parts) > 1 else ""
++
++
++def tags_to_keep(tags: Iterable[str]) -> List[str]:
++    return sorted(t for t in tags if t not in MINIMAP2_TAGS and t not in HEADER_BOUND_TAGS)
++
++
++def _open_fastx(path: str) -> IO[str]:
++    with open(path, "rb") as handle:
++        magic = handle.read(2)
++    if magic == b"\x1f\x8b":
++        return gzip.open(path, "rt")
++    return open(path, "r")
++
++
++def _fastx_headers(handle: IO[str], sample_size: int) -> Iterable[str]:
++    """Header lines of the first reads; FASTQ is expected in the usual 4-line layout."""
++    first = handle.readline()
++    if not first:
++        return
++    if first.startswith(">"):
++        yield first
++        count = 1
++        for line in handle:
++            if count >= sample_size:
++                return
++            if line.startswith(">"):
++                yield line
++                count += 1
++    elif first.startswith("@"):
++        yield first
++        for count, line in enumerate(handle, start=1):
++            if count // 4 >= sample_size:
++                return
++            if count % 4 == 0:
++                yield line
++
++
++def is_fasta(path: str) -> bool:
++    with _open_fastx(path) as handle:
++        return handle.read(1) == ">"
++
++
++def fastx_tags_to_keep(path: str, sample_size: int = TAG_SAMPLE_SIZE) -> List[str]:
++    """Tags to carry over from a FASTA/FASTQ file; empty when the first reads have no SAM-tag comments,
++    or when any of them has a comment that is not made of SAM tags."""
++    found: Set[str] = set()
++    with _open_fastx(path) as handle:
++        for header in _fastx_headers(handle, sample_size):
++            tags = tags_from_comment(split_header(header)[1])
++            if tags is None:
++                return []
++            found.update(tags)
++    return tags_to_keep(found)
++
++
++def bam_tags_to_keep(path: str, sample_size: int = TAG_SAMPLE_SIZE) -> List[str]:
++    """Tags to carry over from an unaligned BAM, collected from its first reads."""
++    found: Set[str] = set()
++    # unaligned BAMs have no index, which htslib would report as an error on opening
++    verbosity = pysam.set_verbosity(0)
++    try:
++        with pysam.AlignmentFile(path, "rb", check_sq=False) as bam:
++            for i, read in enumerate(bam):
++                if i >= sample_size:
++                    break
++                found.update(tag for tag, _ in read.get_tags())
++    finally:
++        pysam.set_verbosity(verbosity)
++    return tags_to_keep(found)
++
++
++def count_tagged_alignments(path: str, tag: str, sample_size: int = TAG_SAMPLE_SIZE) -> Tuple[int, int]:
++    """Number of primary mapped alignments among the first sample_size that carry the tag, and how many were checked."""
++    checked = 0
++    tagged = 0
++    with pysam.AlignmentFile(path, "rb") as bam:
++        for alignment in bam.fetch(until_eof=True):
++            if alignment.is_unmapped or alignment.is_secondary or alignment.is_supplementary:
++                continue
++            checked += 1
++            if alignment.has_tag(tag):
++                tagged += 1
++            if checked >= sample_size:
++                break
++    return tagged, checked
+diff --git a/isoquant_tests/test_read_tags.py b/isoquant_tests/test_read_tags.py
+new file mode 100644
+index 00000000..677cefd4
+--- /dev/null
++++ b/isoquant_tests/test_read_tags.py
+@@ -0,0 +1,184 @@
++############################################################################
++# Copyright (c) 2022-2026 University of Helsinki
++# All Rights Reserved
++# See file LICENSE for details.
++############################################################################
++
++import gzip
++
++import pysam
++import pytest
++
++from isoquant_lib.utils.input_data_storage import InputDataType
++from isoquant_lib.utils.read_mapper import read_input_stages
++from isoquant_lib.utils.read_tags import (
++    bam_tags_to_keep,
++    count_tagged_alignments,
++    fastx_tags_to_keep,
++    is_fasta,
++    split_header,
++    tags_from_comment,
++    tags_to_keep,
++)
++
++DORADO_COMMENT = "qs:f:12.5\tdu:f:1.2\tns:i:4000\tts:i:7\tch:i:12\tst:Z:2026-01-01T00:00:00.000+00:00" \
++                 "\tRG:Z:run1_model\tpt:i:85"
++
++
++class TestTagsFromComment:
++    def test_dorado_header(self):
++        assert tags_from_comment(DORADO_COMMENT) == {"qs", "du", "ns", "ts", "ch", "st", "RG", "pt"}
++
++    def test_empty_comment(self):
++        assert tags_from_comment("") == set()
++
++    @pytest.mark.parametrize("comment", [
++        "runid=abc read=12 ch=5 start_time=2026-01-01T00:00:00Z",
++        "1:N:0:ACGT",
++        "pt:i:85 qs:f:12.5",
++        "pt:i:abc",
++        "pt:A:xy",
++        "pt:i:85\tsome text",
++    ])
++    def test_not_sam_tags(self, comment):
++        assert tags_from_comment(comment) is None
++
++    @pytest.mark.parametrize("field", ["pt:i:-1", "qs:f:1e-3", "TS:A:+", "Zz:Z:with space", "hx:H:1AE3",
++                                       "ar:B:c,1,-2", "MM:Z:C+m?,1,2;"])
++    def test_value_types(self, field):
++        assert tags_from_comment(field) == {field[:2]}
++
++
++def test_split_header():
++    assert split_header("@read1\tpt:i:5\n") == ("read1", "pt:i:5")
++    assert split_header(">read1 pt:i:5\tqs:f:1\n") == ("read1", "pt:i:5\tqs:f:1")
++    assert split_header("@read1\n") == ("read1", "")
++
++
++def test_tags_to_keep_drops_minimap2_and_header_tags():
++    assert tags_to_keep({"pt", "TS", "ts", "NM", "RG", "PG", "qs"}) == ["TS", "pt", "qs"]
++
++
++def _write_fastq(path, comments, compress=False):
++    opener = gzip.open if compress else open
++    with opener(path, "wt") as out:
++        for i, comment in enumerate(comments):
++            header = "@read%d" % i + ("\t" + comment if comment else "")
++            out.write("%s\nACGTACGT\n+\nIIIIIIII\n" % header)
++
++
++class TestFastxTags:
++    def test_dorado_fastq(self, tmp_path):
++        path = str(tmp_path / "reads.fq")
++        _write_fastq(path, [DORADO_COMMENT] * 3)
++        assert fastx_tags_to_keep(path) == ["ch", "du", "ns", "pt", "qs", "st"]
++        assert not is_fasta(path)
++
++    def test_gzipped_without_gz_suffix(self, tmp_path):
++        path = str(tmp_path / "reads.fastq")
++        _write_fastq(path, ["pt:i:1"], compress=True)
++        assert fastx_tags_to_keep(path) == ["pt"]
++
++    def test_no_comments(self, tmp_path):
++        path = str(tmp_path / "reads.fq")
++        _write_fastq(path, ["", ""])
++        assert fastx_tags_to_keep(path) == []
++
++    def test_one_invalid_comment_disables_tags(self, tmp_path):
++        path = str(tmp_path / "reads.fq")
++        _write_fastq(path, ["pt:i:1", "runid=abc read=1"])
++        assert fastx_tags_to_keep(path) == []
++
++    def test_only_first_reads_are_checked(self, tmp_path):
++        path = str(tmp_path / "reads.fq")
++        _write_fastq(path, ["pt:i:1", "pt:i:2", "runid=abc"])
++        assert fastx_tags_to_keep(path, sample_size=2) == ["pt"]
++
++    def test_quality_line_starting_with_at(self, tmp_path):
++        path = str(tmp_path / "reads.fq")
++        with open(path, "w") as out:
++            out.write("@read0\tpt:i:1\nACGT\n+\n@III\n@read1\tqs:f:1\nACGT\n+\nIIII\n")
++        assert fastx_tags_to_keep(path) == ["pt", "qs"]
++
++    def test_fasta(self, tmp_path):
++        path = str(tmp_path / "reads.fa")
++        with open(path, "w") as out:
++            out.write(">read0\tpt:i:1\nACGT\nACGT\n>read1\tTS:A:+\nACGT\n")
++        assert fastx_tags_to_keep(path) == ["TS", "pt"]
++        assert is_fasta(path)
++
++
++def _write_unaligned_bam(path, tags_per_read):
++    header = pysam.AlignmentHeader.from_dict({"HD": {"VN": "1.6", "SO": "unknown"}})
++    with pysam.AlignmentFile(path, "wb", header=header) as bam:
++        for i, tags in enumerate(tags_per_read):
++            read = pysam.AlignedSegment(header)
++            read.query_name = "read%d" % i
++            read.query_sequence = "ACGTACGT"
++            read.flag = 4
++            read.set_tags(tags)
++            bam.write(read)
++
++
++def test_bam_tags_to_keep(tmp_path):
++    path = str(tmp_path / "calls.bam")
++    _write_unaligned_bam(path, [[("pt", 85), ("ts", 7), ("RG", "run1")], [("qs", 12.5), ("TS", "+")]])
++    assert bam_tags_to_keep(path) == ["TS", "pt", "qs"]
++
++
++def test_count_tagged_alignments(tmp_path):
++    path = str(tmp_path / "aligned.bam")
++    header = pysam.AlignmentHeader.from_dict({"HD": {"VN": "1.6", "SO": "coordinate"},
++                                              "SQ": [{"SN": "chr1", "LN": 1000}]})
++    with pysam.AlignmentFile(path, "wb", header=header) as bam:
++        for i, (flag, tags) in enumerate([(0, [("pt", 10)]), (256, [("pt", 10)]), (0, []), (2048, [])]):
++            read = pysam.AlignedSegment(header)
++            read.query_name = "read%d" % i
++            read.query_sequence = "ACGTACGT"
++            read.flag = flag
++            read.reference_id = 0
++            read.reference_start = 10 * i
++            read.cigarstring = "8M"
++            read.set_tags(tags)
++            bam.write(read)
++    assert count_tagged_alignments(path, "pt") == (1, 2)
++    assert count_tagged_alignments(path, "XX") == (0, 2)
++
++
++class TestReadInputStages:
++    def test_fastq_without_tags_is_read_directly(self, tmp_path):
++        path = str(tmp_path / "reads.fq")
++        _write_fastq(path, [""])
++        assert read_input_stages(path, InputDataType.fastq) == (path, [], [])
++
++    def test_fastq_with_tags_goes_through_samtools(self, tmp_path):
++        path = str(tmp_path / "reads.fq")
++        _write_fastq(path, [DORADO_COMMENT])
++        reads_input, stages, kept_tags = read_input_stages(path, InputDataType.fastq)
++        assert reads_input == "-"
++        assert "pt" in kept_tags and "ts" not in kept_tags and "RG" not in kept_tags
++        tag_list = ",".join(kept_tags)
++        assert [stage[0] for stage in stages] == [["samtools", "import", "-T", tag_list, path],
++                                                  ["samtools", "fastq", "-T", tag_list, "-"]]
++
++    def test_fasta_with_tags_stays_fasta(self, tmp_path):
++        path = str(tmp_path / "reads.fa")
++        with open(path, "w") as out:
++            out.write(">read0\tpt:i:1\nACGT\n")
++        _, stages, _ = read_input_stages(path, InputDataType.fastq)
++        assert stages[1][0][:2] == ["samtools", "fasta"]
++
++    def test_unmapped_bam(self, tmp_path):
++        path = str(tmp_path / "calls.bam")
++        _write_unaligned_bam(path, [[("pt", 85), ("RG", "run1")]])
++        reads_input, stages, kept_tags = read_input_stages(path, InputDataType.unmapped_bam)
++        assert reads_input == "-"
++        assert kept_tags == ["pt"]
++        assert [stage[0] for stage in stages] == [["samtools", "fastq", "-T", "pt", path]]
++
++    def test_unmapped_bam_without_tags(self, tmp_path):
++        path = str(tmp_path / "calls.bam")
++        _write_unaligned_bam(path, [[]])
++        _, stages, kept_tags = read_input_stages(path, InputDataType.unmapped_bam)
++        assert kept_tags == []
++        assert [stage[0] for stage in stages] == [["samtools", "fastq", path]]

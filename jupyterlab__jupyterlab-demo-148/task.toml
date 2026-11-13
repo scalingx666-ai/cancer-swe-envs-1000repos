@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/jupyterlab__jupyterlab-demo-148"
+description = "Simplify CI, fix mybinder.org build, bump python (and other) versions"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "jupyterlab-demo",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "jupyterlab/jupyterlab-demo"
+ref = "24a396b12aa0ffbff6360125759585bd13916127"
+reference = "https://github.com/jupyterlab/jupyterlab-demo/pull/148"
+source_access = "auto"
+built_at = "2026-11-13T15:33:18.721238+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f8ddea8dbf81b2550d167897f681404299f0235d91ba54dab33df65cbcb888b6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-02-11T10:01:40Z"
+diff_format = "unified"
+context_files = [
+    ".binder/environment.yml",
+    ".binder/postBuild",
+    ".github/workflows/main.yml",
+    ".github/workflows/update_env.yml",
+    "README.md",
+    "build.py",
+    "tasks.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 589
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

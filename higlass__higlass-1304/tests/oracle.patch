@@ -1,0 +1,63 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9fbe3d0e3..6c6bf6fba 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,9 @@
+ # Release notes
+ 
++## 2.3.3
++
++- Fix value-scale zoom (`zoomedY`) not firing with a mouse wheel by checking the shift key on the current source event and falling back to `deltaX` when `deltaY` is zero
++
+ ## 2.3.2
+ 
+ - Fix horizontal cross sections on tilesets with resolutions
+diff --git a/app/scripts/TrackRenderer.jsx b/app/scripts/TrackRenderer.jsx
+index 9e90d473e..68c0ff037 100644
+--- a/app/scripts/TrackRenderer.jsx
++++ b/app/scripts/TrackRenderer.jsx
+@@ -1400,7 +1400,7 @@ export class TrackRenderer extends React.Component {
+     if (!isWheelEvent(event.sourceEvent)) {
+       return;
+     }
+-    const mdy = event.sourceEvent.deltaY;
++    const mdy = event.sourceEvent.deltaY || event.sourceEvent.deltaX;
+     const mdm = event.sourceEvent.deltaMode;
+ 
+     /**
+@@ -1467,7 +1467,11 @@ export class TrackRenderer extends React.Component {
+     if (trackOrientation && event.sourceEvent) {
+       // if somebody is holding down the shift key and is zooming over
+       // a 1d track, try to apply value scale zooming
+-      if (event.shiftKey || this.valueScaleZooming) {
++      if (
++        event.shiftKey ||
++        this.valueScaleZooming ||
++        event.sourceEvent?.shiftKey
++      ) {
+         if (event.sourceEvent.deltaY !== undefined) {
+           this.valueScaleZoom(event, trackOrientation);
+           return;
+diff --git a/package.json b/package.json
+index 2827de605..11c8b99df 100644
+--- a/package.json
++++ b/package.json
+@@ -15,16 +15,8 @@
+     },
+     "./dist/*": "./dist/*"
+   },
+-  "files": [
+-    "app",
+-    "dist"
+-  ],
+-  "keywords": [
+-    "hi-c",
+-    "genomics",
+-    "matrix",
+-    "tracks"
+-  ],
++  "files": ["app", "dist"],
++  "keywords": ["hi-c", "genomics", "matrix", "tracks"],
+   "scripts": {
+     "start": "vite",
+     "build": "tsc -p tsconfig.emit.json && node ./scripts/build.mjs",

@@ -1,0 +1,70 @@
+diff --git a/Consensus/Consensus.cpp b/Consensus/Consensus.cpp
+index a8443c4d0..4fd8f7264 100644
+--- a/Consensus/Consensus.cpp
++++ b/Consensus/Consensus.cpp
+@@ -376,7 +376,6 @@ static void consensus(const string& outPath, const string& pileupPath)
+ 		: (pileupFile.open(pileupPath.c_str()), pileupFile);
+ 	assert_good(pileupOut, pileupPath);
+ 
+-	unsigned numIgnored = 0;
+ 	for (ContigMap::const_iterator it = g_contigs.begin();
+ 			it != g_contigs.end(); ++it) {
+ 		const ContigCount& contig = it->second;
+@@ -397,7 +396,6 @@ static void consensus(const string& outPath, const string& pileupPath)
+ 			float percentAgreement
+ 				= sumBest / (float)(sumBest + sumSecond);
+ 			if (isnan(percentAgreement) || percentAgreement < .9) {
+-				numIgnored++;
+ 				if (opt::csToNt) {
+ 					if (opt::verbose > 0)
+ 						cerr << "warning: Contig " << it->first
+diff --git a/RResolver/BloomFilters.cpp b/RResolver/BloomFilters.cpp
+index 477efcd75..734fd0c88 100644
+--- a/RResolver/BloomFilters.cpp
++++ b/RResolver/BloomFilters.cpp
+@@ -141,10 +141,8 @@ loadReads(const std::vector<std::string>& readFilepaths, int r)
+ {
+ 	ReadSize::readsSampleSize = 0;
+ 	ReadSize::current.sampleCount = 0;
+-	int i = 0;
+ 	for (auto& b : ReadSize::readSizes) {
+ 		b.sampleCount = 0;
+-		i++;
+ 	}
+ 
+ 	for (const auto& path : readFilepaths) {
+diff --git a/SimpleGraph/SimpleGraph.cpp b/SimpleGraph/SimpleGraph.cpp
+index 5bddb8012..236cf1281 100644
+--- a/SimpleGraph/SimpleGraph.cpp
++++ b/SimpleGraph/SimpleGraph.cpp
+@@ -516,7 +516,7 @@ static void handleEstimate(const Graph& g,
+ 			= makeDistanceMap(g, origin, *solIter);
+ 
+ 		// Remove solutions whose distance estimates are not correct.
+-		unsigned validCount = 0, invalidCount = 0, ignoredCount = 0;
++		unsigned validCount = 0, invalidCount = 0;
+ 		for (Estimates::const_iterator iter
+ 					= er.estimates[dirIdx].begin();
+ 				iter != er.estimates[dirIdx].end(); ++iter) {
+@@ -528,7 +528,6 @@ static void handleEstimate(const Graph& g,
+ 				= distanceMap.find(v);
+ 			if (dmIter == distanceMap.end()) {
+ 				// This contig is a repeat.
+-				ignoredCount++;
+ 				vout << "ignored\n";
+ 				continue;
+ 			}
+@@ -541,11 +540,9 @@ static void handleEstimate(const Graph& g,
+ 			bool invalid = (unsigned)abs(diff) > buffer;
+ 			bool repeat = repeats.count(v.contigIndex()) > 0;
+ 			bool ignored = invalid && repeat;
+-			if (ignored)
+-				ignoredCount++;
+-			else if (invalid)
++			if (invalid)
+ 				invalidCount++;
+-			else
++			else if (!ignored)
+ 				validCount++;
+ 			vout << "dist: " << actualDistance
+ 				<< " diff: " << diff

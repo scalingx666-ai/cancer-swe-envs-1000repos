@@ -1,0 +1,19 @@
+diff --git a/src/worker.js b/src/worker.js
+index 0a2ee87..76f5dd4 100644
+--- a/src/worker.js
++++ b/src/worker.js
+@@ -291,6 +291,14 @@ const aioli = {
+ 		this.cd(pwd);
+ 	},
+ 
++	// =========================================================================
++	// Close the worker
++	// =========================================================================
++	async close() {
++		aioli._log("Closing worker...");
++		self.close();
++	},
++
+ 	// =========================================================================
+ 	// Stdin management: Use `CLI.stdin = "some text"` to set stdin before calling a tool
+ 	// =========================================================================

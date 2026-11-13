@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/phac-nml__staramr-252"
+description = "Merge development into master for v0.12.3 Release"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "staramr",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "phac-nml/staramr"
+ref = "d08f1b5a01ba5ab2311615a43785b11d726b687f"
+reference = "https://github.com/phac-nml/staramr/pull/252"
+source_access = "auto"
+built_at = "2026-11-13T16:09:59.875815+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:76b70e173f10150a58bc5362a9fb0658c4818b1139a98ede9276f12e1ad53fe1"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-10T17:20:36Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "staramr/__init__.py",
+    "staramr/databases/resistance/data/ARG_drug_key_resfinder.tsv",
+    "staramr/databases/resistance/data/info.ini",
+    "staramr/results/AMRDetectionSummary.py",
+    "staramr/tests/integration/data/CmlA7_1_JQ639792.fasta",
+    "staramr/tests/integration/data/FloR_4_CP136914.fasta",
+    "staramr/tests/integration/data/cmlA1_1_M64556.fasta",
+    "staramr/tests/integration/data/floR_1_AF071555.fasta",
+    "staramr/tests/integration/data/floR_1_AF071555_modified.fasta",
+    "staramr/tests/integration/detection/test_AMRDetection.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 259
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/AIM-Harvard__SlicerRadiomics-73"
+description = "BUG: Fix links to extension icon and screenshot"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "SlicerRadiomics",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AIM-Harvard/SlicerRadiomics"
+ref = "a57d1426d8d54b1292265483a4923879ad27a904"
+reference = "https://github.com/AIM-Harvard/SlicerRadiomics/pull/73"
+source_access = "auto"
+built_at = "2026-11-13T15:36:22.014985+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:adf53373364c5f17c559e5f09bc80eaee5d5ac5586aa75343e3576d2f0a1f64c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-07-05T20:16:40Z"
+diff_format = "unified"
+context_files = [
+    "CMakeLists.txt",
+    "resources/SlicerRadiomics-lung.png",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

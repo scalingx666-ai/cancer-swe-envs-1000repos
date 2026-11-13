@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/chhylp123__hifiasm-446"
+description = "fixed missing/false duplication for diploid asm"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "hifiasm",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "chhylp123/hifiasm"
+ref = "fbfcf72eb3f295a2cdf10a92f2d932c6a54fbca9"
+reference = "https://github.com/chhylp123/hifiasm/pull/446"
+source_access = "auto"
+built_at = "2026-11-13T16:40:37.377174+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f703d65400396a1cf1fda061c8507fdc82cae1e1c91df0e7565b8dfeef2c1cec"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-04-17T23:58:31Z"
+diff_format = "unified"
+context_files = [
+    "CommandLines.h",
+    "Overlaps.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 366
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

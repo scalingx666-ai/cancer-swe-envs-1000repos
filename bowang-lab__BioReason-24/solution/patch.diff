@@ -1,0 +1,492 @@
+diff --git a/bioreason/dataset/kegg.py b/bioreason/dataset/kegg.py
+index 09ac15e..66b13c1 100644
+--- a/bioreason/dataset/kegg.py
++++ b/bioreason/dataset/kegg.py
+@@ -94,13 +94,16 @@ def qwen_dna_collate_fn(
+     max_length_text: int,
+     max_length_dna: int,
+     return_answer_in_batch: bool = False,
+-    truncate_for_generation: bool = True
++    truncate_for_generation: bool = False,
+ ) -> Dict:
+     """
+     Custom collate function for Qwen DNA models.
+ 
+     Creates a batch with proper labels for supervised fine-tuning where only
+     the assistant responses contribute to the loss calculation.
++
++    Set ``truncate_for_generation=True`` only for generation-only batches —
++    it drops the assistant span (and its labels) past the assistant marker.
+     """
+ 
+     dna_module = NucleotideDNAModule()
+diff --git a/bioreason/models/dna_llm.py b/bioreason/models/dna_llm.py
+index e5ba995..2c89dfa 100644
+--- a/bioreason/models/dna_llm.py
++++ b/bioreason/models/dna_llm.py
+@@ -10,7 +10,6 @@
+ 
+ from typing import Optional, List, Dict, Any, Union, Tuple
+ 
+-from bioreason.utils.dna_utils import DNAInput
+ from bioreason.models.dl.processing_dl import DLProcessor
+ from bioreason.models.dl.chat_template_dl import CHAT_TEMPLATE
+ from bioreason.models.evo2_tokenizer import Evo2Tokenizer, register_evo2_tokenizer
+@@ -116,6 +115,8 @@ def __init__(
+ 
+         new_tokens = ["<|dna_start|>", "<|dna_pad|>", "<|dna_end|>"]
+         self.text_tokenizer.add_special_tokens({"additional_special_tokens": new_tokens})
++        # Keep embedding/output matrices in sync with the (possibly-extended) tokenizer.
++        self.text_model.resize_token_embeddings(len(self.text_tokenizer))
+         self.dna_token_id = self.text_tokenizer.convert_tokens_to_ids("<|dna_pad|>")
+ 
+ 
+@@ -132,7 +133,6 @@ def __init__(
+             self.dna_model = Evo2(dna_model_name)
+             self.dna_tokenizer = Evo2Tokenizer(self.dna_model.tokenizer)
+             self.dna_config = self.dna_model.model.config
+-            self.dna_embedding_layer = self.dna_embedding_layer
+ 
+         # Get model dimensions
+         self.text_hidden_size = self.text_config.hidden_size
+@@ -201,11 +201,11 @@ def process_dna_embeddings(
+                 if hidden_states_list:
+                     hidden_states = torch.stack(hidden_states_list)
+                 else:
+-                    # Return empty tensors on the correct device
+-                    return [torch.zeros((0, self.text_hidden_size), 
++                    # Return empty tensors on the correct device, one per batch item
++                    return [torch.zeros((0, self.text_hidden_size),
+                                        device=self.dna_projection.weight.device,
+-                                       dtype=self.dna_projection.weight.dtype) 
+-                           for _ in range(2 * batch_size)]
++                                       dtype=self.dna_projection.weight.dtype)
++                           for _ in range(batch_size)]
+                     
+             else:  # Standard HuggingFace model
+                 # Use existing code path for HF models
+@@ -221,23 +221,20 @@ def process_dna_embeddings(
+         hidden_states = hidden_states.to(device=self.dna_projection.weight.device, dtype=self.dna_projection.weight.dtype)
+         projected_states = self.dna_projection(hidden_states)
+ 
+-        # Group embeddings by batch item
+-        result = [[] for _ in range(2 * batch_size)]
+-
+-        # For each sequence, get its embeddings and add to appropriate batch result
++        # Group embeddings by batch item, using the attention mask to drop padding
++        # (Evo2 left-pads, HF DNA tokenizers right-pad — mask-indexing handles both).
++        result = [[] for _ in range(batch_size)]
+         for seq_idx, batch_idx in enumerate(batch_idx_map):
+-            # Get only the valid (non-padding) tokens
+-            valid_length = dna_tokenized["attention_mask"][seq_idx].sum().item()
+-            seq_embedding = projected_states[seq_idx, :valid_length]
++            seq_embedding = projected_states[seq_idx][dna_tokenized["attention_mask"][seq_idx].bool()]
+             result[batch_idx].append(seq_embedding)
+ 
+         # Concatenate embeddings for each batch item
+-        for i in range(2 * batch_size):
++        for i in range(batch_size):
+             if result[i]:
+                 result[i] = torch.cat(result[i], dim=0)
+             else:
+                 # Create empty tensor on the same device as the projection layer
+-                result[i] = torch.zeros((0, self.text_hidden_size), 
++                result[i] = torch.zeros((0, self.text_hidden_size),
+                                        device=self.dna_projection.weight.device,
+                                        dtype=self.dna_projection.weight.dtype)
+ 
+diff --git a/bioreason/trainer/grpo_config.py b/bioreason/trainer/grpo_config.py
+index 4c54792..790ef38 100644
+--- a/bioreason/trainer/grpo_config.py
++++ b/bioreason/trainer/grpo_config.py
+@@ -466,14 +466,6 @@ class DNALLMGRPOConfig(TrainingArguments):
+     )
+ 
+      # Parameters that control colocated vLLM execution (only used when `vllm_mode` is `"colocate"`)
+-    vllm_gpu_memory_utilization: float = field(
+-        default=0.3,
+-        metadata={
+-            "help": "Control the GPU memory utilization for vLLM. This setting only applies when `vllm_mode` is set "
+-            "to `'colocate'`. If you are using `vllm_mode='server'`, this parameter must be passed separately when "
+-            "launching the vLLM server via the `--vllm_gpu_memory_utilization` flag."
+-        },
+-    )
+     vllm_tensor_parallel_size: int = field(
+         default=1,
+         metadata={
+diff --git a/bioreason/trainer/grpo_trainer.py b/bioreason/trainer/grpo_trainer.py
+index 8787d11..044cf31 100644
+--- a/bioreason/trainer/grpo_trainer.py
++++ b/bioreason/trainer/grpo_trainer.py
+@@ -211,7 +211,8 @@ def __init__(
+         
+         assert not isinstance(model, str), "model must NOT be a string in the current implementation"
+ 
+-        model_id = "Qwen/Qwen3-4B"
++        # Derive ref-model arch from the actual policy backbone.
++        model_id = model.text_model.config._name_or_path
+ 
+         # Some models (SmolVLM/Idefics3) don't support `logits_to_keep` argument and error out if we pass it
+         # Inspect the forward method before we wrap the model with PEFT
+@@ -499,7 +500,9 @@ def __init__(
+ 
+                 os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "localhost")
+                 os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "12345") 
+-                if self.max_prompt_length is not None and self.max_completion_length is not None:
++                if args.vllm_max_model_len:
++                    max_model_len = args.vllm_max_model_len
++                elif self.max_prompt_length is not None and self.max_completion_length is not None:
+                     max_model_len = self.max_prompt_length + self.max_completion_length
+                 else:
+                     max_model_len = None
+@@ -510,7 +513,7 @@ def __init__(
+                     max_num_seqs=self.args.per_device_train_batch_size
+                     * self.vllm_tensor_parallel_size
+                     * self.args.steps_per_generation,
+-                    max_model_len=10000,
++                    max_model_len=max_model_len,
+                     distributed_executor_backend="external_launcher",
+                     # Feed identical seed for tp groups to ensure sampling results are the same across workers
+                     seed=self.accelerator.process_index // self.vllm_tensor_parallel_size,
+@@ -1508,18 +1511,18 @@ def input_ids_debugger(self, input_ids):
+     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+         if return_outputs:
+             raise ValueError("The GRPOTrainer does not support returning outputs")
+-        
++
+         # inputs have already been processed by _prepare_inputs
+         # which handles generation, scoring, and buffering
+         # Get the prepared inputs
+         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
+         completion_ids, completion_mask = inputs["completion_ids"], inputs["completion_mask"]
+         multimodal_inputs = inputs["multimodal_inputs"]
+-        
++
+         # Concatenate for full sequence
+         input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+         attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
+-        
++
+         # Get the current policy's log probabilities
+         logits_to_keep = completion_ids.size(1)  # number of completion tokens
+         per_token_logps = self._get_per_token_logps(model, input_ids, attention_mask, logits_to_keep, **multimodal_inputs)
+@@ -1540,7 +1543,7 @@ def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=N
+         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+-        
++
+         # Add KL penalty if beta > 0
+         if self.beta > 0:
+             ref_per_token_logps = inputs["ref_per_token_logps"]
+diff --git a/eval_kegg_dna_vllm.py b/eval_kegg_dna_vllm.py
+index 56dd67b..79ca3dd 100644
+--- a/eval_kegg_dna_vllm.py
++++ b/eval_kegg_dna_vllm.py
+@@ -164,7 +164,7 @@ def evaluate_single_example(
+     if "Answer:" in generated_text:
+         answer_part = generated_text.split("Answer:")[-1].strip()
+         predicted_answer = answer_part.lower()
+-    
++
+     # Get ground truth answer
+     ground_truth = example["answer"].strip().lower()
+ 
+@@ -204,23 +204,23 @@ def calculate_metrics(results: List[Dict[str, Any]]) -> Dict[str, float]:
+     # Calculate accuracy
+     accuracy = correct_predictions / total_examples if total_examples > 0 else 0.0
+     
+-    # For binary classification metrics, we need to determine positive/negative labels
+-    # Get all unique ground truth answers
++    # For binary classification metrics, we need to determine positive/negative labels.
++    # Sort so the chosen positive label is deterministic across runs.
+     all_answers = [r["ground_truth"] for r in results]
+-    unique_answers = list(set(all_answers))
+-    
++    unique_answers = sorted(set(all_answers))
++
+     if len(unique_answers) == 2:
+         # Binary classification case
+-        pos_label = unique_answers[0]  # Assume first label is positive
++        pos_label = unique_answers[0]
+         neg_label = unique_answers[1]
+-        
+-        true_positives = sum(1 for r in results 
++
++        true_positives = sum(1 for r in results
+                            if r["ground_truth"] == pos_label and r["predicted_answer"] == pos_label)
+-        false_positives = sum(1 for r in results 
++        false_positives = sum(1 for r in results
+                             if r["ground_truth"] == neg_label and r["predicted_answer"] == pos_label)
+-        false_negatives = sum(1 for r in results 
++        false_negatives = sum(1 for r in results
+                             if r["ground_truth"] == pos_label and r["predicted_answer"] == neg_label)
+-        true_negatives = sum(1 for r in results 
++        true_negatives = sum(1 for r in results
+                            if r["ground_truth"] == neg_label and r["predicted_answer"] == neg_label)
+         
+         # Calculate precision, recall, and F1
+diff --git a/reason.py b/reason.py
+index c297afb..0465930 100644
+--- a/reason.py
++++ b/reason.py
+@@ -80,40 +80,6 @@ def on_save(self, args, state, control, **kwargs):
+         control.should_save = False
+         return control
+ 
+-def _get_target_modules(model: DNALLMModel):
+-    # Apply LoRA to all linear layers in the text model
+-    target_modules = []
+-
+-    # Get all unique linear layer names
+-    seen_names = set()
+-    for name, module in model.text.named_modules():
+-        if isinstance(module, torch.nn.Linear):
+-            names = name.split(".")
+-            target_name = names[-1]  # Use the last part of the name
+-
+-            # Skip output head but include all other linear layers
+-            if target_name != "lm_head" and target_name not in seen_names:
+-                target_modules.append(target_name)
+-                seen_names.add(target_name)
+-
+-    # Add attention-specific layers
+-    attention_patterns = [
+-        "q_proj",
+-        "k_proj",
+-        "v_proj",
+-        "out_proj",
+-        "query",
+-        "key",
+-        "value",
+-    ]
+-    for pattern in attention_patterns:
+-        if pattern not in seen_names:
+-            target_modules.append(pattern)
+-
+-    # Return all unique layer names to apply LoRA to all layers
+-    return list(target_modules)
+-
+-
+ def extract_xml_answer(text: str) -> str:
+     # answer = text.split("<answer>")[-1]
+     # answer = answer.split("</answer>")[0]
+@@ -194,9 +160,8 @@ def correctness_reward_func(prompts, completions, answer, **kwargs) -> List[floa
+     responses = [completion[0]['content'] for completion in completions]
+     q = prompts[0][-1]['content']
+     extracted_responses = [extract_xml_answer(r) for r in responses]
+-    # extracted_responses = [r.lower().replace("answer:", "").strip() for r in extracted_responses]
+     print('-'*20, f"Question:\n{q}", f"\nAnswer:\n{answer[0]}", f"\nResponse:\n{responses[0]}", f"\nExtracted:\n{extracted_responses[0]}")
+-    return [2.0 if a.lower() in r.lower() else 0.0 for r, a in zip(extracted_responses, answer[0])]
++    return [2.0 if a.lower() in r.lower() else 0.0 for r, a in zip(extracted_responses, answer)]
+ 
+ def less_than_4_reward_func(completions, **kwargs) -> List[float]:
+     responses = [completion[0]['content'] for completion in completions]
+diff --git a/train_dna_only.py b/train_dna_only.py
+index d0474a5..b96b36a 100644
+--- a/train_dna_only.py
++++ b/train_dna_only.py
+@@ -14,7 +14,10 @@
+ from bioreason.models.dna_only import DNAClassifierModel
+ from bioreason.dataset.utils import truncate_dna
+ from bioreason.dataset.kegg import dna_collate_fn
+-from bioreason.dataset.variant_effect import clean_variant_effect_example
++from bioreason.dataset.variant_effect import (
++    clean_variant_effect_example,
++    clean_variant_effect_non_snv_example,
++)
+ from bioreason.models.evo2_tokenizer import register_evo2_tokenizer
+ register_evo2_tokenizer()
+ 
+@@ -282,8 +285,8 @@ def load_dataset(self):
+             labels = []
+             for split, data in dataset.items():
+                 labels.extend(data["answer"])
+-            labels = list(set(labels))
+-        
++            labels = sorted(set(labels))
++
+         elif self.hparams.dataset_type == "variant_effect_coding":
+             dataset = load_dataset("wanglab/bioR_tasks", "variant_effect_coding")
+             dataset = dataset.map(clean_variant_effect_example)
+@@ -301,7 +304,7 @@ def load_dataset(self):
+         elif self.hparams.dataset_type == "variant_effect_non_snv":
+             dataset = load_dataset("wanglab/bioR_tasks", "task5_variant_effect_non_snv")
+             dataset = dataset.rename_column("mutated_sequence", "variant_sequence")
+-            dataset = dataset.map(clean_variant_effect_example)
++            dataset = dataset.map(clean_variant_effect_non_snv_example)
+ 
+             if self.hparams.truncate_dna_per_side:
+                 dataset = dataset.map(
+@@ -448,14 +451,14 @@ def main(args):
+     trainer.fit(model, ckpt_path=args.ckpt_path)
+     trainer.test(model, ckpt_path=args.ckpt_path if args.ckpt_path else "best")
+ 
+-    # Save final model
+-    final_model_path = os.path.join(args.output_dir, "final_model")
+-    torch.save(model.dna_model.state_dict(), final_model_path)
+-    print(f"Final model saved to {final_model_path}")
++    # Save final model only on rank 0 to avoid concurrent writes corrupting the file under DDP.
++    if trainer.is_global_zero:
++        final_model_path = os.path.join(args.output_dir, "final_model")
++        torch.save(model.dna_model.state_dict(), final_model_path)
++        print(f"Final model saved to {final_model_path}")
+ 
+ 
+ if __name__ == "__main__":
+-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+     parser = argparse.ArgumentParser(description="Train DNA Classifier")
+ 
+     # Model parameters
+diff --git a/train_dna_qwen.py b/train_dna_qwen.py
+index c2def4c..831c481 100644
+--- a/train_dna_qwen.py
++++ b/train_dna_qwen.py
+@@ -704,27 +704,27 @@ def on_test_epoch_end(self):
+                             top_k=20,
+                             do_sample=True,
+                         )
+-                    
++
+                     # Decode user input and generated text
+                     user_input = self.tokenizer.decode(gen_input_ids[0], skip_special_tokens=False).strip()
+                     generation = self.tokenizer.decode(generated[0], skip_special_tokens=False).strip()
+-                    
++
+                     # Get ground truth and clean it if needed
+                     ground_truth = answer[example_idx]
+                     if ";" in ground_truth:
+                         ground_truth = ground_truth.split(";")[0]
+-                    
++
+                     # Determine if this is a positive or negative example
+                     is_positive_example = ground_truth.lower() == pos_label.lower()
+                     is_negative_example = ground_truth.lower() == neg_label.lower()
+-                    
++
+                     # Check if the generated text contains the ground truth
+                     generation_contains_ground_truth = ground_truth.lower() in generation.lower()
+-                    
++
+                     # Update metrics based on the classification
+                     total_examples += 1
+                     examples_in_batch += 1
+-                    
++
+                     if is_positive_example and generation_contains_ground_truth:
+                         true_positives += 1
+                     elif is_positive_example and not generation_contains_ground_truth:
+@@ -733,7 +733,7 @@ def on_test_epoch_end(self):
+                         true_negatives += 1
+                     elif is_negative_example and not generation_contains_ground_truth:
+                         false_positives += 1
+-                    
++
+                     # Add metadata about the prediction
+                     prediction_category = (
+                         "TP" if is_positive_example and generation_contains_ground_truth else
+@@ -831,10 +831,10 @@ def on_test_epoch_end(self):
+                 f"test_generations_{time.strftime('%Y%m%d-%H%M%S')}:": wandb.Table(columns=columns, data=data)
+             })
+         
+-        # Save generations to a CSV file
++        # --ckpt_path is a file path; anchor the csv next to it, not inside it.
+         model_name = self.hparams.text_model_name.split('/')[-1]
+         if self.hparams.ckpt_path:
+-            csv_path = os.path.join(self.hparams.ckpt_path, f"{time.strftime('%Y%m%d-%H%M%S')}-test_generations_{model_name}.csv")
++            csv_path = os.path.join(os.path.dirname(self.hparams.ckpt_path) or ".", f"{time.strftime('%Y%m%d-%H%M%S')}-test_generations_{model_name}.csv")
+         else:
+             csv_path = os.path.join(self.hparams.checkpoint_dir, f"{time.strftime('%Y%m%d-%H%M%S')}-test_generations_{model_name}.csv")
+         
+@@ -887,9 +887,10 @@ def main(args: ArgumentParser):
+     torch.cuda.empty_cache()
+     torch.set_float32_matmul_precision("medium")
+ 
+-    # Setup directories
++    # Don't re-timestamp checkpoint_dir when resuming, or wandb resumes onto a stale dir.
+     run_name = f"{args.wandb_project}-{args.dataset_type}-{args.text_model_name.split('/')[-1]}"
+-    args.checkpoint_dir = f"{args.checkpoint_dir}/{run_name}-{time.strftime('%Y%m%d-%H%M%S')}"
++    if args.ckpt_path is None:
++        args.checkpoint_dir = f"{args.checkpoint_dir}/{run_name}-{time.strftime('%Y%m%d-%H%M%S')}"
+ 
+     # Initialize model
+     model = DNALLMFineTuner(args)
+diff --git a/train_grpo.py b/train_grpo.py
+index 16f3590..45fe669 100644
+--- a/train_grpo.py
++++ b/train_grpo.py
+@@ -298,7 +298,7 @@ def main(script_args, training_args, model_args):
+         else:
+             # It's a PyTorch state dict file
+             print("Loading as PyTorch state dict file")
+-            checkpoint = torch.load(model_args.sft_checkpoint)
++            checkpoint = torch.load(model_args.sft_checkpoint, map_location="cpu")
+             
+             # replace model.text_model with text_model for all in state dict
+             def new_key(k):
+@@ -327,11 +327,12 @@ def new_key(k):
+             if lora_prefix:
+                 print("Detected LoRA weights in state dict")
+                 # First prepare model for LoRA training
+-                print(f"CALLING SECOND PREP_FOR_TRAINING with protein_model_finetune: {not model_args.freeze_protein_modules}, go_model_finetune: {getattr(model_args, 'go_model_finetune', False)}, protein_projection_finetune: {getattr(model_args, 'protein_projection_finetune', False)}, go_projection_finetune: {getattr(model_args, 'go_projection_finetune', False)}")
+-                _prep_for_training(model, model_args, protein_model_finetune=not model_args.freeze_protein_modules, 
+-                                                    go_model_finetune=getattr(model_args, "go_model_finetune", False), 
+-                                                        protein_projection_finetune=getattr(model_args, "protein_projection_finetune", False), 
+-                                                        go_projection_finetune=getattr(model_args, "go_projection_finetune", False))
++                _prep_for_training(
++                    model,
++                    model_args,
++                    dna_model_finetune=model_args.dna_model_finetune,
++                    dna_projection_finetune=model_args.dna_projection_finetune,
++                )
+                 
+                 # Print some diagnostic info about the keys
+                 model_keys = set(model.state_dict().keys())
+@@ -376,31 +377,31 @@ def new_key(k):
+                 print("Standard weights detected - remapping keys")
+                 # Map keys to model structure
+                 magic = {k.replace("text_model", "text_model.base_model.model"): v for k, v in magic.items()}
+-                magic = {k.replace("protein_model", "protein_model"): v for k, v in magic.items()}
+-                
++
+                 # Fix the shared memory tensors issue by making a copy of weights
+                 for key in list(magic.keys()):
+                     if 'lm_head.weight' in key:
+                         magic[key] = magic[key].clone()
+-                
++
+                 # Load weights before setting up LoRA
+                 result = model.load_state_dict(magic, strict=False)
+                 print(f"Loaded checkpoint with {len(result.missing_keys)} missing keys and {len(result.unexpected_keys)} unexpected keys")
+-                
+-                # Now prepare for LoRA training
+-                print(f"CALLING THIRD PREP_FOR_TRAINING with protein_model_finetune: {not model_args.freeze_protein_modules}, go_model_finetune: {getattr(model_args, 'go_model_finetune', False)}, protein_projection_finetune: {getattr(model_args, 'protein_projection_finetune', False)}, go_projection_finetune: {getattr(model_args, 'go_projection_finetune', False)}")
+-                _ = _prep_for_training(model, model_args, protein_model_finetune=not model_args.freeze_protein_modules, 
+-                                                    go_model_finetune=getattr(model_args, "go_model_finetune", False), 
+-                                                    protein_projection_finetune=getattr(model_args, "protein_projection_finetune", False), 
+-                                                    go_projection_finetune=getattr(model_args, "go_projection_finetune", False))
+-    
++
++                _ = _prep_for_training(
++                    model,
++                    model_args,
++                    dna_model_finetune=model_args.dna_model_finetune,
++                    dna_projection_finetune=model_args.dna_projection_finetune,
++                )
++
+     else:
+         # No checkpoint, just prepare for training
+-        print(f"CALLING FOURTH PREP_FOR_TRAINING with protein_model_finetune: {not model_args.freeze_protein_modules}, go_model_finetune: {getattr(model_args, 'go_model_finetune', False)}, protein_projection_finetune: {getattr(model_args, 'protein_projection_finetune', False)}, go_projection_finetune: {getattr(model_args, 'go_projection_finetune', False)}")
+-        _ = _prep_for_training(model, model_args, protein_model_finetune=not model_args.freeze_protein_modules, 
+-                                                    go_model_finetune=getattr(model_args, "go_model_finetune", False), 
+-                                                    protein_projection_finetune=getattr(model_args, "protein_projection_finetune", False), 
+-                                                    go_projection_finetune=getattr(model_args, "go_projection_finetune", False))
++        _ = _prep_for_training(
++            model,
++            model_args,
++            dna_model_finetune=model_args.dna_model_finetune,
++            dna_projection_finetune=model_args.dna_projection_finetune,
++        )
+     if script_args.full_ckpt is not None:
+         print(f"Loading full checkpoint from {script_args.full_ckpt}")
+         checkpoint_path = os.path.join(script_args.full_ckpt, "pytorch_model.bin")

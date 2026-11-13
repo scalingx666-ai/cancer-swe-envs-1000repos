@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/commontk__CTK-1457"
+description = "PERF: Speed up retrieving DICOM tag values for many files"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "CTK",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "commontk/CTK"
+ref = "a5c2e4d1cdac28e0b93c3434ec042f19e63d1d55"
+reference = "https://github.com/commontk/CTK/pull/1457"
+source_access = "auto"
+built_at = "2026-11-13T15:48:58.987024+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:44f55751dbdab80324f2a8ac7e5bb735e5ab7a3df111d05dcc3a33de2b34488f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-30T15:41:16Z"
+diff_format = "unified"
+context_files = [
+    "Libs/DICOM/Core/Testing/Cpp/CMakeLists.txt",
+    "Libs/DICOM/Core/Testing/Cpp/ctkDICOMDatabaseTest8.cpp",
+    "Libs/DICOM/Core/ctkDICOMDatabase.cpp",
+    "Libs/DICOM/Core/ctkDICOMDatabase.h",
+    "Libs/DICOM/Core/ctkDICOMDatabase_p.h",
+    "Libs/DICOM/Core/ctkDICOMSeriesModel.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 510
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

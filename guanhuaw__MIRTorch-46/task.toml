@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/guanhuaw__MIRTorch-46"
+description = "fix: make example notebooks run in Colab"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MIRTorch",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "guanhuaw/MIRTorch"
+ref = "4871278ebdf3c1a988cc0c733838ca16b85bc270"
+reference = "https://github.com/guanhuaw/MIRTorch/pull/46"
+source_access = "auto"
+built_at = "2026-11-13T16:17:44.352156+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:81a138a6a0209c87b6b9dd4d784ef8db1e627ee61376c2ea8cbf00e3038960d2"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-21T01:37:23Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "docs/HISTORY.md",
+    "docs/README.md",
+    "examples/demo_3d.ipynb",
+    "examples/demo_cs.ipynb",
+    "examples/demo_dl.ipynb",
+    "examples/demo_mlem.ipynb",
+    "examples/demo_mnist.ipynb",
+    "examples/demo_mr_physics.ipynb",
+    "examples/demo_mri.ipynb",
+    "examples/demo_trajectory_optimization.ipynb",
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 714
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/docker-image.yml b/.github/workflows/docker-image.yml
+index a3eda6b34..9b22307ec 100644
+--- a/.github/workflows/docker-image.yml
++++ b/.github/workflows/docker-image.yml
+@@ -30,6 +30,8 @@ jobs:
+             dockertag: cuda118
+           - platform: CPU
+             dockertag: cpu
++          - platform: CPU
++            dockertag: latest
+           # - platform: ROCm
+           #   dockertag: rocm
+ 

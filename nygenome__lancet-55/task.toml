@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/nygenome__lancet-55"
+description = "feat: Create Dockerfile"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "lancet",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nygenome/lancet"
+ref = "e592939e4e8eaa5edc63a765b5fc0294a38b2413"
+reference = "https://github.com/nygenome/lancet/pull/55"
+source_access = "auto"
+built_at = "2026-11-13T15:43:29.467617+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6798930bb1ce1cacd00458f82b384c5c5931fa4544e1cea815e66f7da7bc9616"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-06-23T11:28:19Z"
+diff_format = "unified"
+context_files = [
+    "Dockerfile",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 11
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/plotly__dash-cytoscape-219"
+description = "Bugfix/cyleaflet tiles not found"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "dash-cytoscape",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "plotly/dash-cytoscape"
+ref = "1a096d968118e469d2947427ad1ff7e21fb57210"
+reference = "https://github.com/plotly/dash-cytoscape/pull/219"
+source_access = "auto"
+built_at = "2026-11-13T15:50:58.548764+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:faa717336e06afc0dbe6ee9e0571441e3607413234a6c5af2dced9bfbe1cef5e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-07-11T09:10:38Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "DESCRIPTION",
+    "Project.toml",
+    "R/internal.R",
+    "dash_cytoscape/CyLeaflet.py",
+    "dash_cytoscape/package.json",
+    "demos/usage-cy-leaflet-maxzoom.py",
+    "demos/usage-cy-leaflet-update-tiles.py",
+    "package.json",
+    "setup.py",
+    "src/DashCytoscape.jl",
+    "tests/requirements.txt",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 148
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

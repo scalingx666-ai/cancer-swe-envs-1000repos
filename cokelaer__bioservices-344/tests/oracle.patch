@@ -1,0 +1,23 @@
+diff --git a/.github/workflows/all.yml b/.github/workflows/all.yml
+deleted file mode 100644
+index 05e3def..0000000
+--- a/.github/workflows/all.yml
++++ /dev/null
+@@ -1,17 +0,0 @@
+-name: Trigger All Workflows
+-
+-on:
+-  workflow_dispatch:
+-
+-permissions:
+-  contents: read
+-
+-jobs:
+-  batch1:
+-    uses: ./.github/workflows/all_1.yml
+-  batch2:
+-    uses: ./.github/workflows/all_2.yml
+-  batch3:
+-    uses: ./.github/workflows/all_3.yml
+-  batch4:
+-    uses: ./.github/workflows/all_4.yml

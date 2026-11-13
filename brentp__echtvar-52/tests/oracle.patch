@@ -1,0 +1,185 @@
+diff --git a/src/commands/annotate_cmd.rs b/src/commands/annotate_cmd.rs
+index 111a876..31acf21 100644
+--- a/src/commands/annotate_cmd.rs
++++ b/src/commands/annotate_cmd.rs
+@@ -162,6 +162,15 @@ pub fn annotate_main(
+ 
+                 match v {
+                     Value::Int(i) => match fld.ftype {
++                        fields::FieldType::Flag => {
++                            if i == 1 {
++                                record
++                                    .push_info_flag(fld.alias.as_bytes())
++                                    .unwrap_or_else(|_| {
++                                        panic!("error adding flag for {}", fld.alias)
++                                    });
++                            }
++                        }
+                         fields::FieldType::Categorical => {
+                             // categorical missing_value must be set to the index of the missing_string
+                             assert!(i >= 0, "can't have missing value for categorical!");
+diff --git a/src/commands/encoder_cmd.rs b/src/commands/encoder_cmd.rs
+index ae1f173..f724b29 100644
+--- a/src/commands/encoder_cmd.rs
++++ b/src/commands/encoder_cmd.rs
+@@ -49,6 +49,14 @@ fn get_float_field<'a, B: BorrowMut<Buffer> + Borrow<Buffer> + 'a>(
+     };
+ }
+ 
++#[inline]
++fn get_flag_field(rec: &Record, field: &[u8]) -> u32 {
++    match rec.info(field).flag() {
++        Ok(true) => 1,
++        _ => 0,
++    }
++}
++
+ fn get_string_field<'a, B: BorrowMut<Buffer> + Borrow<Buffer> + 'a>(
+     rec: &Record,
+     field: &[u8],
+@@ -237,11 +245,15 @@ pub fn encoder_main(vpaths: Vec<&str>, opath: &str, jpath: &str) {
+                     eprintln!("\tLarger multipliers result in higher precision.");
+                 }
+             },
+-            TagType::String /* TagType::Flag */ => {
++            TagType::String => {
+               f.ftype = fields::FieldType::Categorical;
+               // and a new table into lookups for this field
+               lookups.entry(f.alias.clone()).or_insert(HashMap::new());
+             },
++            TagType::Flag => {
++                f.ftype = fields::FieldType::Flag;
++                f.missing_value = 0;
++            },
+             _ => panic!(
+                 "[echtvar] unsupported field type: {:?} for field {}",
+                 tt, f.field
+@@ -408,6 +420,9 @@ pub fn encoder_main(vpaths: Vec<&str>, opath: &str, jpath: &str) {
+                         );
+                         val
+                     }
++                    fields::FieldType::Flag => {
++                        get_flag_field(&rec, fld.field.as_bytes())
++                    }
+                 };
+ 
+                 values_vv[i].push(v);
+diff --git a/src/lib/echtvar.rs b/src/lib/echtvar.rs
+index 1dac36b..d01995c 100644
+--- a/src/lib/echtvar.rs
++++ b/src/lib/echtvar.rs
+@@ -181,12 +181,16 @@ impl EchtVars {
+                 format!(
+                     "##INFO=<ID={},Number={},Type={},Description=\"{}\">",
+                     e.alias,
+-                    if ["A", "R", "G"].contains(&e.number.as_str()) {
++                    if e.ftype == fields::FieldType::Flag {
++                        "0"
++                    } else if ["A", "R", "G"].contains(&e.number.as_str()) {
+                         "1"
+                     } else {
+                         &e.number
+                     },
+-                    if e.ftype == fields::FieldType::Integer {
++                    if e.ftype == fields::FieldType::Flag {
++                        "Flag"
++                    } else if e.ftype == fields::FieldType::Integer {
+                         "Integer"
+                     } else if e.ftype == fields::FieldType::Categorical {
+                         "String"
+@@ -377,6 +381,7 @@ impl EchtVars {
+                 for fld in &self.fields {
+                     if fld.ftype == fields::FieldType::Integer
+                         || fld.ftype == fields::FieldType::Categorical
++                        || fld.ftype == fields::FieldType::Flag
+                     {
+                         let val = self.get_int_value(fld, idx);
+                         self.evalues[fld.values_i] = Value::Int(val);
+@@ -394,6 +399,7 @@ impl EchtVars {
+                 for fld in &self.fields {
+                     if fld.ftype == fields::FieldType::Integer
+                         || fld.ftype == fields::FieldType::Categorical
++                        || fld.ftype == fields::FieldType::Flag
+                     {
+                         // for Categorical missing_value has been set to the index of missing_string
+                         let val = fld.missing_value;
+diff --git a/src/lib/fields.rs b/src/lib/fields.rs
+index c5b9509..fff49a4 100644
+--- a/src/lib/fields.rs
++++ b/src/lib/fields.rs
+@@ -6,6 +6,7 @@ pub enum FieldType {
+     Integer,
+     Float,
+     Categorical,
++    Flag,
+ }
+ 
+ #[derive(Debug, Deserialize, Serialize, PartialEq, PartialOrd, Clone)]
+@@ -101,4 +102,67 @@ mod tests {
+ 
+         eprintln!("{}", json5::to_string(&fields[0]).unwrap());
+     }
++
++    #[test]
++    fn test_flag_field_type() {
++        let fields: Vec<Field> = json5::from_str(
++            r#"
++        [
++         {"field": "DB", "alias": "is_dbsnp", "ftype": "Flag"},
++        ]
++        "#,
++        )
++        .unwrap();
++
++        assert_eq!(fields.len(), 1);
++        assert_eq!(fields[0].field, "DB");
++        assert_eq!(fields[0].alias, "is_dbsnp");
++        assert_eq!(fields[0].ftype, FieldType::Flag);
++    }
++
++    #[test]
++    fn test_flag_field_config_roundtrip() {
++        // Simulate creating a Flag field as the encoder would
++        let mut f = Field::default();
++        f.field = "DB".to_string();
++        f.alias = "is_dbsnp".to_string();
++        f.ftype = FieldType::Flag;
++        f.missing_value = 0;
++        f.number = "0".to_string();
++
++        // Serialize to JSON (as stored in config.json inside the zip)
++        let json = serde_json::to_string(&f).unwrap();
++
++        // Deserialize back (as read during annotation)
++        let f2: Field = serde_json::from_str(&json).unwrap();
++
++        assert_eq!(f2.ftype, FieldType::Flag);
++        assert_eq!(f2.field, "DB");
++        assert_eq!(f2.alias, "is_dbsnp");
++        assert_eq!(f2.missing_value, 0);
++        assert_eq!(f2.number, "0");
++    }
++
++    #[test]
++    fn test_flag_missing_value_semantics() {
++        // For Flag fields, missing_value=0 means absent.
++        // When a variant is not in the database, get_int_value returns
++        // missing_value, which is 0 for flags (absent) — correct behavior.
++        let f = Field {
++            ftype: FieldType::Flag,
++            missing_value: 0,
++            number: "0".to_string(),
++            ..Field::default()
++        };
++
++        assert_eq!(f.missing_value, 0);
++        assert_eq!(f.number, "0");
++
++        // Flag values are 0 (absent) or 1 (present), both valid u32 values.
++        // Neither should be confused with the u32::MAX missing sentinel.
++        let flag_present: u32 = 1;
++        let flag_absent: u32 = 0;
++        assert!(flag_present < u32::MAX);
++        assert!(flag_absent < u32::MAX);
++    }
+ }

@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/hbc__knowledgebase-128"
+description = "Initial Shiny Draft"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "knowledgebase",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "hbc/knowledgebase"
+ref = "acc5d01321604a178422b1b88567b98efdcecf81"
+reference = "https://github.com/hbc/knowledgebase/pull/128"
+source_access = "auto"
+built_at = "2026-11-13T15:35:03.742107+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4178f58028f2395eaf12cea1d46dc67e16046f8dafb3f5b0fa3a9ed720c221df"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-02-22T23:06:22Z"
+diff_format = "unified"
+context_files = [
+    "r/Shiny_images/Added_tabs.png",
+    "r/Shiny_images/Adding_panels.png",
+    "r/Shiny_images/Adding_theme.png",
+    "r/Shiny_images/Altered_action_button.png",
+    "r/Shiny_images/Check_boxes_with_action_button.png",
+    "r/Shiny_images/Return_table.png",
+    "r/Shiny_images/Return_text_app_blank.png",
+    "r/Shiny_images/Return_text_app_hello.png",
+    "r/Shiny_images/Sample_size_hist_100.png",
+    "r/Shiny_images/Sample_size_hist_5.png",
+    "r/Shiny_images/Shiny_UI_server.png",
+    "r/Shiny_images/Shiny_process.png",
+    "r/Shiny_images/Squaring_number_app.png",
+    "r/Shiny_images/mtcars_table.png",
+    "r/rshiny_server.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 535
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,54 @@
+diff --git a/.bumpversion.cfg b/.bumpversion.cfg
+index 018491fc..546cae9f 100644
+--- a/.bumpversion.cfg
++++ b/.bumpversion.cfg
+@@ -1,5 +1,5 @@
+ [bumpversion]
+-current_version = 3.5.0
++current_version = 4.0.0
+ parse = (?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)((?P<release>a|b|rc)(?P<build>\d+))?
+ serialize = 
+ 	{major}.{minor}.{patch}{release}{build}
+diff --git a/docs/source/release_notes/index.md b/docs/source/release_notes/index.md
+index bfa871fb..7aef97a5 100644
+--- a/docs/source/release_notes/index.md
++++ b/docs/source/release_notes/index.md
+@@ -4,6 +4,13 @@
+ :hidden:
+ :maxdepth: 2
+ 
++```
++## Version 4.0
++
++```{toctree}
++:maxdepth: 1
++
++v4.0.0
+ ```
+ ## Version 3.0
+ 
+diff --git a/docs/source/release_notes/v4.0.0.md b/docs/source/release_notes/v4.0.0.md
+new file mode 100644
+index 00000000..6ef9dec8
+--- /dev/null
++++ b/docs/source/release_notes/v4.0.0.md
+@@ -0,0 +1,18 @@
++# Version 4.0.0 ( June 2026)
++
++## What's new in 4.0.0
++
++- CUDA 13 is now used by default so CUDA version dependent packages have been updated accordingly.
++- [Holoscan SDK](https://pypi.org/project/holoscan) and [Holoscan CLI](https://pypi.org/project/holoscan-cli/), the key dependencies if this SDK, are now pinned below version 4.3.0. This is because of the following reasons
++  - Holoscan SDK version 4.2 provides all core functionalities to support this SDK.
++  - MAP packaging support is [deprecated](https://github.com/nvidia-holoscan/holoscan-cli#deprecations) starting from Holoscan CLI version 4.3.0.
++- More robust decoding of compressed images with nvImageCodec due to the use of improved GPU-accelerated libraries in the CUDA 13 toolkit.
++
++Please also see the <a href="https://github.com/Project-MONAI/monai-deploy-app-sdk/issues?q=is%3Aissue+is%3Aclosed">closed issues on Github</a> and the <a href="https://github.com/Project-MONAI/monai-deploy-app-sdk/pulls?q=is%3Apr+is%3Aclosed">closed pull requests on Github</a>.
++
++## Additional information
++Please visit [GETTING STARTED](/getting_started/index) guide and follow the tutorials.
++
++You can learn more about SDK usage through [DEVELOPING WITH SDK](/developing_with_sdk/index).
++
++Please let us know how you like it and what could be improved by [submitting an issue](https://github.com/Project-MONAI/monai-deploy-app-sdk/issues/new/choose) or [asking questions](https://github.com/Project-MONAI/monai-deploy-app-sdk/discussions).
+\ No newline at end of file

@@ -1,0 +1,1060 @@
+diff --git a/README.md b/README.md
+index 2a969f7..fb72fed 100644
+--- a/README.md
++++ b/README.md
+@@ -130,7 +130,7 @@ from src.Base.models import LogisticRegressionBase
+ import the smoother of choice from src/smooth/model e.g., 
+ 
+ ```python
+-from src.Smooth.models import XGB_Smoother
++from src.Smooth.models import XGBSmoother
+ ```
+ 
+ and then, in the train_model() function in initilize the Gnomix object with the imported models:
+@@ -139,7 +139,7 @@ and then, in the train_model() function in initilize the Gnomix object with the
+ model = Gnomix(
+ 	...,
+ 	base = LogisticRegressionBase,
+-	smooth = XGB_Smoother,
++	smooth = XGBSmoother,
+ 	...
+ )
+ ```
+diff --git a/requirements.txt b/requirements.txt
+index 08791df..22c4833 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -9,7 +9,7 @@ seaborn==0.11.2
+ sklearn-crfsuite==0.3.6
+ tqdm==4.62.3
+ uncertainty-calibration==0.0.7
+-xgboost==1.1.1
++xgboost==1.6.1
+ torch==1.11.0
+ pytest==7.1.2
+ string-kernels==1.1.2
+\ No newline at end of file
+diff --git a/src/gnomix/model/base/base.py b/src/gnomix/model/base/base.py
+index 50de61f..39d7847 100644
+--- a/src/gnomix/model/base/base.py
++++ b/src/gnomix/model/base/base.py
+@@ -1,5 +1,4 @@
+ import numpy as np
+-from sklearn.metrics import accuracy_score, balanced_accuracy_score
+ from multiprocessing import get_context
+ import tqdm
+ 
+@@ -158,19 +157,4 @@ def predict_proba(self, X: ArrayLike) -> ArrayLike:
+     def predict(self, X: ArrayLike) -> ArrayLike:
+         B = self.predict_proba(X)
+         return np.argmax(B, axis=-1)
+-        
+-    def evaluate(self, X: ArrayLike = None, y: ArrayLike = None, B: ArrayLike = None) -> Tuple[float, float]:
+-
+-        round_accr = lambda accr : round(np.mean(accr)*100,2)
+-
+-        if X is not None:
+-            y_pred = self.predict(X)
+-        elif B is not None:
+-            y_pred = np.argmax(B, axis=-1)
+-        else:
+-            print("Error: Need either SNP input or estimated probabilities to evaluate.")
+-
+-        accr = round_accr( accuracy_score(y.reshape(-1), y_pred.reshape(-1)) )
+-        accr_bal = round_accr( balanced_accuracy_score(y.reshape(-1), y_pred.reshape(-1)) )
+-
+-        return accr, accr_bal
+\ No newline at end of file
++        
+\ No newline at end of file
+diff --git a/src/gnomix/model/model.py b/src/gnomix/model/model.py
+index a81f55c..807a113 100644
+--- a/src/gnomix/model/model.py
++++ b/src/gnomix/model/model.py
+@@ -4,9 +4,18 @@
+ import sys
+ from time import time
+ from copy import deepcopy
++from sklearn.metrics import accuracy_score, balanced_accuracy_score
++from typing import Tuple, Callable, Any, Dict
++from numpy.typing import ArrayLike
+ 
++from gnomix.model.base.base import Base
+ from gnomix.model.base.models import LogisticRegressionBase, CovRSKBase
+-from gnomix.model.smooth.models import XGB_Smoother
++
++from gnomix.model.smooth.smoother import Smoother
++from gnomix.model.smooth.xgb import XGBSmoother
++from gnomix.model.smooth.crf import CRFSmoother
++from gnomix.model.smooth.cnn import CNNSmoother
++
+ from gnomix.model.gnofix.gnofix import gnofix
+ 
+ class Gnomix:
+@@ -15,7 +24,7 @@ def __init__(self, C, M, A, S,
+                 base=None, smooth=None, mode="default", # base and smooth models
+                 snp_pos=None, snp_ref=None, snp_alt=None, population_order=None, missing_encoding=2, # dataset specific, TODO: store in one object
+                 n_jobs=None, path=None, # configs
+-                calibrate=False, context_ratio=0.5, mode_filter=False, # hyperparams
++                calibrate=False, context_ratio=0.5,
+                 seed=94305, verbose=False
+     ):
+         """
+@@ -60,26 +69,22 @@ def __init__(self, C, M, A, S,
+                 print("Base models:", base)
+         if smooth is None:
+             if mode == "fast":
+-                from gnomix.model.smooth.models import CRF_Smoother # import here to avoid strict crf suite dependency
+-                smooth = CRF_Smoother 
++                smooth = CRFSmoother 
+             elif mode == "large":
+-                from gnomix.model.smooth.models import CNN_Smoother # import here to avoid strict torch dependency
+-                smooth = CNN_Smoother 
++                smooth = CNNSmoother 
+             elif mode=="best":
+-                smooth = XGB_Smoother
++                smooth = XGBSmoother
+             else:
+-                smooth = XGB_Smoother
++                smooth = XGBSmoother
+             if verbose:
+                 print("Smoother:", smooth)
+ 
+-        self.base = base(C=self.C, M=self.M, W=self.W, A=self.A,
++        self.base: Base = base(C=self.C, M=self.M, W=self.W, A=self.A,
+                             missing_encoding=missing_encoding, context=self.context,
+                             n_jobs=self.n_jobs, seed=self.seed, verbose=self.verbose)
+ 
+-        self.smooth = smooth(n_windows=self.W, num_ancestry=self.A, smooth_window_size=self.S,
+-                            n_jobs=self.n_jobs, calibrate=self.calibrate, mode_filter=mode_filter, 
+-                            seed=self.seed, verbose=self.verbose)
+-        
++        self.smooth: Smoother = smooth(num_ancestries=self.A, num_features=self.S)
++
+         # model stats
+         self.time = {}
+         self.accuracies = {}
+@@ -114,14 +119,14 @@ def train(self,data,retrain_base=True,evaluate=True,verbose=True):
+         if verbose:
+             print("Training smoother...")
+         B_t2 = self.base.predict_proba(X_t2)
+-        self.smooth.train(B_t2,y_t2)
++        self.smooth.fit(B_t2,y_t2)
+ 
+         if self.calibrate:
+             # calibrates the predictions to be balanced w.r.t. the train1 class distribution
+             if verbose:
+                 print("Fitting calibrator...")
+             B_t1 = self.base.predict_proba(X_t1)
+-            self.smooth.train_calibrator(B_t1, y_t1)
++            self.smooth.fit_calibrator(B_t1, y_t1)
+ 
+         # Evaluate model
+         if evaluate:
+@@ -135,16 +140,17 @@ def train(self,data,retrain_base=True,evaluate=True,verbose=True):
+             B_t1 = self.base.predict_proba(X_t1)
+             y_t1_pred = self.smooth.predict(B_t1)
+             y_t2_pred = self.smooth.predict(B_t2)
+-            Acc["base_train_acc"],   Acc["base_train_acc_bal"]   = self.base.evaluate(X=None,   y=y_t1, B=B_t1)
+-            Acc["smooth_train_acc"], Acc["smooth_train_acc_bal"] = self.smooth.evaluate(B=None, y=y_t2, y_pred=y_t2_pred)
++
++            Acc["base_train_acc"],   Acc["base_train_acc_bal"]   = self.evaluate(B=B_t1, y=y_t1)
++            Acc["smooth_train_acc"], Acc["smooth_train_acc_bal"] = self.evaluate(y_pred=y_t2_pred, y=y_t2)
+             CM["train"] = self.conf_matrix(y=y_t1, y_pred=y_t1_pred)
+             
+             # val accuracy
+             if X_v is not None:
+                 B_v = self.base.predict_proba(X_v)
+                 y_v_pred  = self.smooth.predict(B_v)
+-                Acc["base_val_acc"],     Acc["base_val_acc_bal"]     = self.base.evaluate(X=None,   y=y_v,  B=B_v )
+-                Acc["smooth_val_acc"],   Acc["smooth_val_acc_bal"]   = self.smooth.evaluate(B=None, y=y_v,  y_pred=y_v_pred )
++                Acc["base_val_acc"],     Acc["base_val_acc_bal"]    = self.evaluate(B=B_v, y=y_v)
++                Acc["smooth_val_acc"],   Acc["smooth_val_acc_bal"]  = self.evaluate(y_pred=y_v_pred, y=y_v)
+                 CM["val"] = self.conf_matrix(y=y_v, y_pred=y_v_pred)
+ 
+             self.accuracies = Acc
+@@ -166,6 +172,28 @@ def train(self,data,retrain_base=True,evaluate=True,verbose=True):
+ 
+         self.time["training"] = round(time() - train_time_begin,2)
+ 
++    def evaluate(
++        self, 
++        X: ArrayLike = None,
++        B: ArrayLike = None,
++        y_pred: ArrayLike = None,
++        y: ArrayLike = None
++    ) -> Tuple[float, float]:
++
++        round_accr = lambda accr : round(np.mean(accr)*100,2)
++
++        assert sum([X is not None, B is not None, y_pred is not None]) == 1
++
++        if X is not None:
++            y_pred = self.predict(X)
++        elif B is not None:
++            y_pred = np.argmax(B, axis=-1)
++
++        accr = round_accr( accuracy_score(y.reshape(-1), y_pred.reshape(-1)) )
++        accr_bal = round_accr( balanced_accuracy_score(y.reshape(-1), y_pred.reshape(-1)) )
++
++        return accr, accr_bal
++
+     def retrain_base(self,data,verbose):
+         (X_t1,y_t1), (X_t2,y_t2), (X_v,y_v) = data
+         if X_v is not None:
+diff --git a/src/gnomix/model/smooth/Calibration.py b/src/gnomix/model/smooth/Calibration.py
+deleted file mode 100644
+index 7b2e5ba..0000000
+--- a/src/gnomix/model/smooth/Calibration.py
++++ /dev/null
+@@ -1,137 +0,0 @@
+-import numpy as np
+-import matplotlib.pyplot as plt
+-import calibration as cal
+-from sklearn.isotonic import IsotonicRegression
+-from sklearn import preprocessing
+-from sklearn.calibration import  calibration_curve
+-from sklearn.metrics import precision_score, f1_score, recall_score, roc_auc_score
+-
+-"""
+-This script uses library uncertianity-calibration to estimate calibration error from 
+-@inproceedings{kumar2019calibration,
+-  author = {Ananya Kumar and Percy Liang and Tengyu Ma},
+-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+-  title = {Verified Uncertainty Calibration},
+-  year = {2019},
+-}
+-"""
+-
+-class Calibrator():
+-
+-    def __init__(self, n_classes, method="Isotonic"):
+-        self.method = method
+-        self.n_classes = n_classes
+-        self.models = [None]*n_classes
+-
+-    def normalize(self, proba):
+-        """ Normalize the probabilities
+-        """
+-        if self.n_classes == 2:
+-            proba[:, 0] = 1. - proba[:, 1]
+-        else:
+-            proba /= np.sum(proba, axis=1)[:, np.newaxis]
+-
+-        # handle nan probs
+-        proba[np.isnan(proba)] = 1. / self.n_classes
+-
+-        # handle when predicted probaability minimally exceeds 1.0
+-        proba[(1.0 < proba) & (proba <= 1.0 + 1e-5)] = 1.0
+-        
+-        return proba
+-
+-    def fit(self, proba, y):
+-        
+-        if self.method == 'Platt':
+-            print("Not implemented yet. Using Isotonic regression..")
+-            self.method = "Isotonic"
+-            
+-        if self.method =='Isotonic':
+-
+-            # binarize class labels
+-            lb = preprocessing.OneHotEncoder().fit(y.reshape(-1,1))
+-            y_cal_ohe = lb.transform(y.reshape(-1,1)).toarray()
+-            
+-            for i in range(self.n_classes):
+-                self.models[i] = IsotonicRegression(out_of_bounds = 'clip').fit(proba[:,i], y_cal_ohe[:,i])
+-
+-    def transform(self, proba):
+-
+-        if np.any([model is None for model in self.models]):
+-            print("Warning: No trained calibrator found. Returning original probabilities.")
+-            return proba
+-        
+-        shape = proba.shape
+-        proba_flatten = proba.reshape(-1,self.n_classes)
+-        iso_prob = np.zeros((proba_flatten.shape[0],self.n_classes))
+-        for i in range(self.n_classes):    
+-            iso_prob[:,i] = self.models[i].transform(proba_flatten[:,i])
+-        iso_prob = self.normalize(iso_prob).reshape(*shape)
+-        return iso_prob
+- 
+-def plot_reliability_curve(pred_prob,y_cal,pop_order,method='Uncalibrated',bins=10, legend=True):
+-    
+-    fig, (ax1) = plt.subplots(nrows = 1, ncols=1, figsize = (8,6))
+-                                              
+-    ax1.plot([0, 1], [0, 1], "k:", label="Perfectly calibrated")
+-    ax1.set_title(method + ' Reliability Plot')
+-        
+-    class_metrics = {}
+-    n_classes = len(pop_order)
+-    for i in range(n_classes):
+-        y_label = np.where(y_cal==i,1,0)
+-        est_prob = pred_prob[:,:,i]
+-        true_prob, pred_proba = calibration_curve(y_label.flatten(),est_prob.flatten(), n_bins = bins)
+-        ax1.plot(pred_proba, true_prob, label = pop_order[i])
+-        
+-        ax1.set_xlabel('Est. Prob/ mean predicted value')
+-        ax1.set_ylabel('True Prob/fraction_of_positives')
+-        
+-        y_test = y_label.flatten()
+-        y_pred =np.where(est_prob.flatten()>1/n_classes,1,0)
+-        
+-        class_metrics[pop_order[i]]={}
+-        class_metrics[pop_order[i]]['Precision'] = float("%1.3f" %precision_score(y_test, y_pred))
+-        class_metrics[pop_order[i]]['Recall'] = float("%1.3f" %recall_score(y_test, y_pred))
+-        class_metrics[pop_order[i]]['F1'] = float("%1.3f" %f1_score(y_test, y_pred))
+-        class_metrics[pop_order[i]]['AUC'] = float("%1.3f" %roc_auc_score(y_test, y_pred))
+-
+-    if legend:
+-        ax1.legend(loc="lower right")
+-    fig.tight_layout()
+-    plt.show()
+-    return class_metrics
+-
+-def comparison(uncalibrated_zs,calibrated_zs,ys,pop_type,pop_order):
+-    
+-    """
+-    Compare probabilities of a population type before and after calibration and plot binned probabilities histogram   """
+-    # pop_type (int between 0 and len(pop_order) for which population the comparison needs to be
+-    
+-    fig, (ax1,ax2) = plt.subplots(nrows = 2, ncols=1, figsize = (10,10))
+-    
+-    y_label = np.where(ys==pop_type,1,0)
+-    uncal_est_prob = uncalibrated_zs[:,:,pop_type]
+-    cal_est_prob = calibrated_zs[:,:,pop_type]
+-    uncal_true_prob, uncal_pred_proba = calibration_curve(y_label.flatten(),uncal_est_prob.flatten(), n_bins = 10)
+-    ax1.plot(uncal_pred_proba, uncal_true_prob, label = pop_order[pop_type] + ' uncalib.')
+-    
+-    cal_true_prob, cal_pred_proba = calibration_curve(y_label.flatten(),cal_est_prob.flatten(), n_bins = 10)
+-    ax1.plot([0, 1], [0, 1], "k:", label="Perfectly calibrated")
+-    ax1.plot(cal_pred_proba, cal_true_prob, label = pop_order[pop_type] + ' calib.')
+-    
+-    ax1.set_xlabel('Est. Prob/ mean predicted value')
+-    ax1.set_ylabel('True Prob/fraction_of_positives')
+-    ax1.legend(loc="lower right")
+-    
+-    ax2.hist(uncal_est_prob.flatten(), range=(0, 1), bins=20, histtype="step", label = 'uncalib.', log=True, lw=3)
+-    ax2.hist(cal_est_prob.flatten(), range=(0, 1), bins=20, histtype="step", label = 'calib.', log=True, lw=3)
+-    ax2.legend(loc="lower right")
+-        
+-    calibration_error = cal.get_ece(uncal_est_prob.flatten(), y_label.flatten())
+-    print("Scaling-binning L2 calibration error for uncalib. probs is %.2f%%" % (100 * calibration_error))
+-    
+-    calibration_error = cal.get_ece(cal_est_prob.flatten(), y_label.flatten())
+-    print("Scaling-binning L2 calibration error for calib. probs is %.2f%%" % (100 * calibration_error))
+-        
+-    fig.tight_layout()
+-    plt.show()
+diff --git a/src/gnomix/model/smooth/cnn.py b/src/gnomix/model/smooth/cnn.py
+index ffe729c..7911908 100644
+--- a/src/gnomix/model/smooth/cnn.py
++++ b/src/gnomix/model/smooth/cnn.py
+@@ -1,8 +1,12 @@
+ import numpy as np
+ import torch
+ from torch import nn
++from typing import Optional
+ 
+-class LAIDataset(torch.utils.data.Dataset):
++from gnomix.model.smooth.smoother import Smoother
++
++
++class TorchDataset(torch.utils.data.Dataset):
+     
+     def __init__(self, data, labels):
+         self.labels = labels
+@@ -13,32 +17,40 @@ def __len__(self):
+ 
+     def __getitem__(self, index):
+ 
+-        # select sample
+         X = self.data[index]
+         y = self.labels[index]
+ 
+         return X, y
+ 
+-class CNN(nn.Module):
++
++class CNNSmoother(Smoother, nn.Module):
+     
+-    def __init__(self, num_classes, num_features, lr=0.001, verbose=False):
++    def __init__(
++        self,
++        num_ancestries,
++        num_features,
++        lr=0.001,
++        input_dtype: Optional[str] = torch.float,
++        proba_dtype: Optional[str] = "float32"
++    ):
+         super().__init__()
+-        self.num_features = num_features
+-        self.num_classes = num_classes
+-        
+-        self.smoothNet = self._get_conv_smoother()
+-        self.drop = nn.Dropout(0.5)
+-        self.drop_cols = nn.Dropout(0.5)
+ 
++        self.num_ancestries = num_ancestries
++        self.num_features = num_features if num_features % 2 else num_features + 1 # require odd
++        
++        layer = nn.Conv1d(
++            self.num_ancestries,
++            self.num_ancestries,
++            self.num_features, 
++            padding=(self.num_features - 1) // 2,
++            padding_mode="reflect"
++        )
++        self.layers = nn.Sequential(*[layer])
+         self.optimizer = torch.optim.Adam(self.parameters(), lr = lr)
++        self.input_dtype = input_dtype
++        self.proba_dtype = proba_dtype
+ 
+-        self.verbose = verbose
+-        
+-    def _get_conv_smoother(self):
+-        layers = [ nn.Conv1d(self.num_classes,self.num_classes,self.num_features,padding=(self.num_features-1)//2,padding_mode="reflection") ]
+-        return nn.Sequential(*layers)
+-        
+-    def forward_tensors(self,base_out):
++    def forward_tensors(self, base_out):
+         """
+         Inputs:
+         snps: batch of actual snps - encodings could be either 0/1 or -1/1. Shape: (N,chromosome_length)
+@@ -49,12 +61,11 @@ def forward_tensors(self,base_out):
+ 
+         """
+         # computes probabilities.
+-        smooth_out = self.smoothNet(base_out)
++        smooth_out = self.layers(base_out)
+         smooth_out = nn.Softmax(dim=1)(smooth_out)
+             
+         return smooth_out
+     
+-    
+     def forward(self,base_out,labels):
+         """
+         Inputs:
+@@ -77,11 +88,6 @@ def forward(self,base_out,labels):
+     def predict_proba_torch(self, base_out):
+         proba_torch = self.forward_tensors(base_out)
+         return proba_torch
+-
+-    def predict_torch(self, base_out):
+-        smooth_out = self.forward_tensors(base_out)
+-        preds = torch.argmax(smooth_out,dim=1)
+-        return preds
+     
+     def validate(self,base_out,labels):
+         """
+@@ -96,14 +102,14 @@ def validate(self,base_out,labels):
+         Note: Assumes coordinates are given and are not None. 
+         """       
+         preds = self.predict_torch(base_out)
+-        accuracy = float(torch.mean((preds==labels),dtype=torch.float))
++        accuracy = float(torch.mean((preds==labels), dtype=torch.float))
+         
+         return accuracy
+     
+-    def fit(self, X, y, max_ep=250, val_every=50):
++    def fit(self, X, y, max_ep=250, val_every=50, verbose: bool = False):
+ 
+-        X_torch, y_torch = as_torch_tensor(X, y)
+-        generator = get_data_generator(X_torch, y_torch)
++        X_torch, y_torch = self.as_torch_tensor(X, y)
++        generator = self._get_data_generator(X_torch, y_torch)
+ 
+         for ep in range(1,max_ep+1):
+             
+@@ -116,10 +122,10 @@ def fit(self, X, y, max_ep=250, val_every=50):
+                 loss.backward()
+                 self.optimizer.step()
+             
+-            if self.verbose:
++            if verbose:
+                 print("Loss at iteration {}: {}".format(ep,running_loss.data.cpu().numpy()/len(generator)))
+             
+-            if self.verbose and ep % val_every == 0:
++            if verbose and ep % val_every == 0:
+                 
+                 self.eval()
+                 
+@@ -140,34 +146,35 @@ def fit(self, X, y, max_ep=250, val_every=50):
+                 print("Sample Training accuracy after {} iterations: {}".format(ep,new_accr))
+             
+     def predict(self, X):
+-        X_torch = as_torch_tensor(X)
+-        y_pred_torch = self.predict_torch(X_torch)
+-        y_pred = np.array(y_pred_torch, dtype=int)
++        y_proba = self.predict_proba(X)
++        y_pred = np.argmax(y_proba, axis=-1)
+         return y_pred
+ 
+     def predict_proba(self, X):
+-        X_torch = as_torch_tensor(X)
++        X_torch = self.as_torch_tensor(X)
+         proba_torch = self.predict_proba_torch(X_torch)
+         proba_np = proba_torch.detach().numpy()
+-        proba = np.swapaxes(proba_np,1,2)
++        proba = np.swapaxes(proba_np, 1, 2)
++        proba = proba.astype(self.proba_dtype)
+         return proba
+ 
+-def as_torch_tensor(base_proba, labels=None):
++    def as_torch_tensor(self, base_proba, labels=None):
+ 
+-    base_proba = np.copy(base_proba)
+-    B = np.transpose(base_proba,[0,2,1])
+-    B_torch = torch.tensor(B,dtype=torch.float)
++        base_proba = np.copy(base_proba)
++        B = np.transpose(base_proba,[0,2,1])
++        B_torch = torch.tensor(B, dtype=self.input_dtype)
+ 
+-    if labels is not None:
+-        y = np.copy(labels)
+-        y_torch  = torch.tensor(y,dtype=torch.long)
+-        return B_torch, y_torch
++        if labels is not None:
++            y = np.copy(labels)
++            y_torch  = torch.tensor(y, dtype=torch.long)
++            return B_torch, y_torch
+ 
+-    return B_torch
++        return B_torch
+ 
+-def get_data_generator(B_torch, y_torch, shuffle=True):
++    @staticmethod
++    def _get_data_generator(B_torch, y_torch, shuffle=True):
+ 
+-    dataset = LAIDataset(B_torch, y_torch)
+-    generator = torch.utils.data.DataLoader(dataset, batch_size = 128, shuffle = shuffle, num_workers = 0)
++        dataset = TorchDataset(B_torch, y_torch)
++        generator = torch.utils.data.DataLoader(dataset, batch_size = 128, shuffle = shuffle)
+ 
+-    return generator
++        return generator
+diff --git a/src/gnomix/model/smooth/crf.py b/src/gnomix/model/smooth/crf.py
+index bdfe1bc..6068a8b 100644
+--- a/src/gnomix/model/smooth/crf.py
++++ b/src/gnomix/model/smooth/crf.py
+@@ -1,67 +1,63 @@
+-from copy import deepcopy
+ import numpy as np
++from numpy.typing import ArrayLike
+ import sklearn_crfsuite
+-
+-class CRF:
+-
+-    def __init__(self, solver="lbfgs", max_it=10000, verbose=False):
+-
+-        self.CRF = sklearn_crfsuite.CRF(
+-            algorithm=solver,
+-            max_iterations=max_it,
+-            all_possible_transitions=True,
+-            all_possible_states=True,
+-            verbose=verbose
+-        )
+-
+-    def npy2crf(self, X, Y=None):
+-        """format data for linear-chain CRF"""
+-        N, B, A = X.shape
+-        X_out, Y_out = [], []
+-        for i in range(N):
+-            x, y = [], []
+-            for b in range(B):
+-                datapoint={}
+-                for a in range(A):
+-                    datapoint[str(a)]=X[i,b,a]
+-                x.append(datapoint)
+-                if Y is not None:
+-                    y.append(str(Y[i,b]))
+-
+-            X_out.append(x)
+-            Y_out.append(y)
+-            
+-        return X_out, Y_out
+-
+-    def crf2npy(self, proba):
+-        """format data from CRF probabilities to np probabilities"""
+-        N = len(proba)
+-        B = len(proba[0])
+-        A = len(proba[0][0])
+-        
+-        # level 2 dict to list
+-        if A > 1:
+-            proba = deepcopy(proba)
+-            for i in range(N):
+-                for b in range(B):
+-                    proba[i][b] = [proba[i][b][str(a)] for a in range(A)]
+-
+-        return np.array(proba)
++from typing import Dict, Any, Optional
++
++from gnomix.model.smooth.smoother import Smoother
++
++class CRFSmoother(Smoother):
++
++    def __init__(
++        self,
++        crf_config: Optional[Dict[str, Any]] = {
++            "algorithm": "lbfgs",
++            "max_iterations": 10000,
++            "all_possible_transitions": True,
++            "all_possible_states": True
++        },
++        input_dtype: Optional[str] = "float32",
++        proba_dtype: Optional[str] = "float32",
++        *args,
++        **kwargs
++    ):
++
++        self.CRF = sklearn_crfsuite.CRF(**crf_config)
++        self.input_dtype = input_dtype
++        self.proba_dtype = proba_dtype
+ 
+     def fit(self, X, y):
+         X_CRF, y_CRF = self.npy2crf(X, y)
+         self.CRF.fit(X_CRF, y_CRF)
+-        self.classes_ = self.CRF.classes_
+ 
+-    def predict(self, X):
+-        X_CRF, _ = self.npy2crf(X)
+-        y_pred_CRF = self.CRF.predict(X_CRF)
+-        y_pred = np.array(y_pred_CRF, dtype=int)
+-        return y_pred
+-
+-    def predict_proba(self, X):
+-        # extract probabilites
++    def predict_proba(self, X: ArrayLike) -> ArrayLike:
+         X_CRF, _ = self.npy2crf(X)
+         proba_CRF = self.CRF.predict_marginals(X_CRF)
+         proba = self.crf2npy(proba_CRF)
+-        return proba
+\ No newline at end of file
++        return proba
++
++    def predict(self, X: ArrayLike) -> ArrayLike:
++        y_proba = self.predict_proba(X)
++        y_pred = np.argmax(y_proba, axis=-1)
++        return y_pred
++
++    def crf2npy(self, crf_proba):
++        """format data from CRF probabilities to np probabilities"""
++        N = len(crf_proba)
++        W = len(crf_proba[0])
++        A = len(crf_proba[0][0])
++        
++        proba = np.zeros((N, W, A), dtype=self.proba_dtype)
++        for i in range(N):
++            for w in range(W):
++                for a, a_crf in enumerate(self.CRF.classes_):
++                    proba[i, w, a] = crf_proba[i][w][a_crf]
++
++        return proba
++
++    @staticmethod
++    def npy2crf(X, Y=None):
++        """format data for linear-chain CRF"""
++        N, W, A = X.shape
++        X_out = [[{str(a): X[i, w, a] for a in range(A)} for w in range (W)] for i in range(N)]
++        Y_out = [[str(Y[i, w]) for w in range(W)] for i in range(N)] if Y is not None else []
++        return X_out, Y_out
+\ No newline at end of file
+diff --git a/src/gnomix/model/smooth/models.py b/src/gnomix/model/smooth/models.py
+deleted file mode 100644
+index a7e95ba..0000000
+--- a/src/gnomix/model/smooth/models.py
++++ /dev/null
+@@ -1,42 +0,0 @@
+-from gnomix.model.smooth.smooth import Smoother
+-
+-from gnomix.model.smooth.utils import slide_window
+-
+-from xgboost import XGBClassifier
+-from gnomix.model.smooth.crf import CRF
+-
+-class XGB_Smoother(Smoother):
+-    
+-    def __init__(self, *args, **kwargs):
+-        super().__init__(*args, **kwargs)
+-        self.gnofix = True
+-        assert self.W >= 2*self.S, "Smoother size to large for given window size. "
+-        self.model = XGBClassifier(
+-            n_estimators=100, max_depth=4,
+-            learning_rate=0.1, reg_lambda=1, reg_alpha=0,
+-            nthread=self.n_jobs, random_state=self.seed,
+-            num_class=self.A, 
+-            use_label_encoder=False, objective='multi:softprob', eval_metric="mlogloss"
+-        )
+-
+-    def process_base_proba(self,B,y=None):
+-        B_slide, y_slide = slide_window(B, self.S, y)
+-        return B_slide, y_slide
+-
+-
+-class CRF_Smoother(Smoother):
+-    
+-    def __init__(self, *args, **kwargs):
+-
+-        super().__init__(*args, **kwargs)
+-        self.model = CRF(verbose=self.verbose)
+-
+-
+-class CNN_Smoother(Smoother):
+-    
+-    def __init__(self, *args, **kwargs):
+-        super().__init__(*args, **kwargs)
+-        
+-        from gnomix.model.smooth.cnn import CNN # This is to avoid requiring the installation of pytorch
+-
+-        self.model = CNN(num_classes=self.A, num_features=self.S, verbose=self.verbose)
+\ No newline at end of file
+diff --git a/src/gnomix/model/smooth/smooth.py b/src/gnomix/model/smooth/smooth.py
+deleted file mode 100644
+index cdc44a8..0000000
+--- a/src/gnomix/model/smooth/smooth.py
++++ /dev/null
+@@ -1,93 +0,0 @@
+-import numpy as np
+-from gnomix.model.smooth.utils import mode_filter
+-from sklearn.metrics import accuracy_score, balanced_accuracy_score
+-from gnomix.model.smooth.Calibration import Calibrator
+-from time import time
+-
+-class Smoother:
+-
+-    def __init__(self, n_windows, num_ancestry, smooth_window_size=75, model=None,
+-                calibrate=None, n_jobs=None, seed=None, mode_filter=0, verbose=False):
+-
+-        self.W = n_windows
+-        self.A = num_ancestry
+-        self.S = smooth_window_size if smooth_window_size %2 else smooth_window_size-1
+-        self.model = model
+-        self.calibrate = calibrate
+-        self.calibrator = None
+-        self.mode_filter = mode_filter
+-        self.n_jobs = n_jobs
+-        self.seed = seed
+-        self.verbose = verbose
+-        self.gnofix = False
+-
+-        self.time = {}
+-
+-    def process_base_proba(self,B,y=None):
+-        return B, y # smoother doesn't pre-process by default
+-
+-    def train(self,B,y):
+-
+-        assert len(np.unique(y)) == self.A, "Smoother training data does not include all populations"
+-
+-        t = time()
+-
+-        B_s, y_s = self.process_base_proba(B, y)
+-        self.model.fit(B_s, y_s)
+-        
+-        self.time["train"] = time() - t
+-
+-    def predict_proba(self, B):
+-
+-        t = time()
+-
+-        B_s, _ = self.process_base_proba(B)
+-
+-        proba = self.model.predict_proba(B_s)
+-        
+-        if self.calibrate:
+-            if self.calibrator is None:
+-                print("No calibrator found, returning original probabilities.")
+-            else:
+-                proba = self.calibrator.transform(proba)
+-                
+-        self.time["inference"] = time() - t
+-
+-        return proba.reshape(-1, self.W, self.A)
+-
+-    def predict(self, B):
+-
+-        proba = self.predict_proba(B)
+-        y_pred = np.argmax(proba, axis=-1)
+-
+-        if self.mode_filter != 0:
+-            y_pred = np.apply_along_axis(func1d=mode_filter, axis=1, arr=y_pred, size=self.mode_filter)
+-        return y_pred
+-
+-    def evaluate(self,B=None,y=None,y_pred=None):
+-
+-        round_accr = lambda accr : round(np.mean(accr)*100,2)
+-
+-        if B is not None:
+-            y_pred = self.predict(B)
+-        elif y_pred is None:
+-            print("Error: Need either Base probabilities or y predictions.")
+-
+-        accr = round_accr( accuracy_score(y.reshape(-1), y_pred.reshape(-1)) )
+-        accr_bal = round_accr( balanced_accuracy_score(y.reshape(-1), y_pred.reshape(-1)) )
+-
+-        return accr, accr_bal
+-
+-    def train_calibrator(self, B, y, frac=0.05):
+-
+-        # get pure probabilities
+-        calibrate = self.calibrate
+-        self.calibrate = False
+-        idxs = np.random.choice(len(B),int(frac*len(B)),replace=False)
+-        proba = self.predict_proba(B[idxs]).reshape(-1,self.A)
+-        self.calibrate = calibrate
+-
+-        # calibrate
+-        self.calibrator = Calibrator(self.A)
+-        self.calibrator.fit(proba, y[idxs].reshape(-1))
+-
+diff --git a/src/gnomix/model/smooth/smoother.py b/src/gnomix/model/smooth/smoother.py
+new file mode 100644
+index 0000000..077bd0e
+--- /dev/null
++++ b/src/gnomix/model/smooth/smoother.py
+@@ -0,0 +1,36 @@
++from numpy.typing import ArrayLike
++from abc import ABC, abstractmethod
++
++class Smoother(ABC):
++
++    @abstractmethod
++    def fit(self, B: ArrayLike, y: ArrayLike) -> None:
++        """
++        Takes in base probabilities and labels for each window and performs training.
++        Inputs:
++            - B: float of shape [N, W, A]
++            - y: int of shape [N, W]
++        """
++        pass
++
++    @abstractmethod
++    def predict_proba(self, B: ArrayLike) -> ArrayLike:
++        """
++        Takes in base probabilities and estimates ancestry probabilites
++        Inputs:
++            - B: float of shape [N, W, A]
++        Outputs:
++            - y_proba: float of shape [N, W, A]
++        """
++        pass
++
++    @abstractmethod
++    def predict(self, B: ArrayLike) -> ArrayLike:
++        """
++        Takes in base probabilities and returns most likely ancestry
++        Inputs:
++            - B: float of shape [N, W, A]
++        Outputs:
++            - y_proba: int of shape [N, W]
++        """
++        pass
+\ No newline at end of file
+diff --git a/src/gnomix/model/smooth/utils.py b/src/gnomix/model/smooth/utils.py
+deleted file mode 100644
+index c29f1c1..0000000
+--- a/src/gnomix/model/smooth/utils.py
++++ /dev/null
+@@ -1,46 +0,0 @@
+-import numpy as np
+-from scipy import stats
+-
+-def slide_window(B, S, y=None):
+-    """
+-    inputs
+-        - B (np.array: base probabilities of shape (N,W,A)
+-        - S (int): smoother window size 
+-
+-    """
+-    N, W, A = B.shape
+-
+-    # pad it.
+-    pad = (S+1)//2
+-    pad_left  = np.flip(B[:,0:pad,:],axis=1)
+-    pad_right = np.flip(B[:,-pad:,:],axis=1)
+-    B_padded = np.concatenate([pad_left,B,pad_right],axis=1)
+-
+-    # window it.
+-    X_slide = np.zeros((N,W,A*S),dtype="float32")
+-    for ppl, dat in enumerate(B_padded):
+-        for w in range(W):
+-            X_slide[ppl,w,:] = dat[w:w+S].ravel()
+-
+-    # reshape
+-    X_slide = X_slide.reshape(N*W,A*S)
+-    y_slide = None if y is None else y.reshape(N*W)
+-
+-    return X_slide, y_slide
+-
+-def mode(arr):
+-    mode = stats.mode(arr)[0][0]
+-    if mode == -stats.mode(-arr)[0][0]:
+-        return mode # if mode is unambiguous
+-    else:
+-        return arr[len(arr)//2] # else return the center (default value)
+-
+-def mode_filter(pred, size):
+-    if not size:
+-        return pred # if size is 0 or None
+-    pred_out = np.copy(pred)
+-    ends = size//2
+-    for i in range(len(pred))[ends:-ends]:
+-        pred_out[i] = mode(pred[i-ends:i+ends+1])
+-    
+-    return pred_out
+\ No newline at end of file
+diff --git a/src/gnomix/model/smooth/xgb.py b/src/gnomix/model/smooth/xgb.py
+new file mode 100644
+index 0000000..608551d
+--- /dev/null
++++ b/src/gnomix/model/smooth/xgb.py
+@@ -0,0 +1,68 @@
++import numpy as np
++from numpy.typing import ArrayLike
++from xgboost import XGBClassifier
++from typing import Dict, Tuple, Any, Optional
++
++from gnomix.model.smooth.smoother import Smoother
++
++class XGBSmoother(Smoother):
++
++    def __init__(
++        self,
++        num_ancestries: int,
++        num_features: Optional[int] = 75,
++        xgb_config: Optional[Dict[str, Any]] = {},
++        input_dtype: Optional[str] = "float32",
++        proba_dtype: Optional[str] = "float32"
++    ):
++        self.num_features = num_features
++        xgb_config.update({
++            "num_class": num_ancestries,
++            "objective": 'multi:softprob',
++            "eval_metric": "mlogloss"
++        })
++        self.model = XGBClassifier(**xgb_config)
++        self.input_dtype = input_dtype
++        self.proba_dtype = proba_dtype
++
++    def fit(self, B: ArrayLike, y: ArrayLike) -> None:
++        B_slide, y_slide = self._slide_window(B, y)
++        self.model.fit(B_slide, y_slide)
++
++    def predict_proba(self, B: ArrayLike) -> ArrayLike:
++
++        N, W, A = B.shape
++
++        B_slide, _ = self._slide_window(B)
++        proba_flat = self.model.predict_proba(B_slide)
++        proba = proba_flat.reshape(N, W, A).astype(self.proba_dtype)
++        
++        return proba
++
++    def predict(self, B: ArrayLike) -> ArrayLike:
++        y_proba = self.predict_proba(B)
++        y_pred = np.argmax(y_proba, axis=-1)
++        return y_pred
++
++    def _slide_window(self, B: ArrayLike, y: Optional[ArrayLike] = None) -> Tuple[ArrayLike, ArrayLike]:
++        
++        N, W, A = B.shape
++
++        # pad it.
++        pad = (self.num_features + 1) // 2
++        pad_left = np.flip(B[:, 0:pad, :], axis=1)
++        pad_right = np.flip(B[:, -pad:, :], axis=1)
++        B_padded = np.concatenate([pad_left, B, pad_right], axis=1)
++
++        # window it.
++        B_slide = np.zeros((N, W, A * self.num_features), dtype=self.input_dtype)
++        for ppl, dat in enumerate(B_padded):
++            for w in range(W):
++                B_slide[ppl, w, :] = dat[w:(w + self.num_features)].ravel()
++
++        # reshape
++        B_slide = B_slide.reshape(N * W, A * self.num_features)
++        y_slide = None if y is None else y.reshape(N * W)
++
++        return B_slide, y_slide
++        
+\ No newline at end of file
+diff --git a/tests/unit/model/smooth/test_smooth.py b/tests/unit/model/smooth/test_smooth.py
+new file mode 100644
+index 0000000..55ebc79
+--- /dev/null
++++ b/tests/unit/model/smooth/test_smooth.py
+@@ -0,0 +1,74 @@
++import pytest 
++import numpy as np
++from typing import Tuple, Callable, Any, Dict
++from numpy.typing import ArrayLike
++
++from gnomix.model.smooth.smoother import Smoother
++from gnomix.model.smooth.xgb import XGBSmoother
++from gnomix.model.smooth.crf import CRFSmoother
++from gnomix.model.smooth.cnn import CNNSmoother
++
++def get_binary_toy_data(W: int) -> Tuple[Tuple[ArrayLike, ArrayLike], Dict[str, Any]]:
++
++    N_0 = 10
++    X_0 = np.zeros((N_0, W, 2))
++    X_0[:, :, 0] = 1
++    y_0 = np.zeros((N_0, W), dtype=float)
++
++    N_1 = 10
++    X_1 = np.zeros((N_1, W, 2))
++    X_1[:, :, 1] = 1
++    y_1 = np.ones((N_1, W), dtype=int)
++
++    X = np.concatenate([X_0, X_1])
++    y = np.concatenate([y_0, y_1])
++
++    meta_data = {"num_ancestries": 2}
++
++    return (X, y), meta_data
++
++def get_multilabel_toy_data(W: int) -> Tuple[Tuple[ArrayLike, ArrayLike], Dict[str, Any]]:
++
++    N = 10
++
++    X_0 = np.zeros((N, W, 3))
++    X_0[:, :, 0] = 1
++    y_0 = np.zeros((N, W), dtype=float)
++
++    X_1 = np.zeros((N, W, 3))
++    X_1[:, :, 1] = 1
++    y_1 = np.zeros((N, W), dtype=float) + 1
++
++    X_2 = np.zeros((N, W, 3))
++    X_2[:, :, 2] = 1
++    y_2 = np.zeros((N, W), dtype=float) + 2
++
++    X = np.concatenate([X_0, X_1, X_2])
++    y = np.concatenate([y_0, y_1, y_2])
++
++    meta_data = {"num_ancestries": 3}
++
++    return (X, y), meta_data
++
++
++@pytest.mark.parametrize("Smoother", [XGBSmoother, CRFSmoother, CNNSmoother])
++@pytest.mark.parametrize("num_features", [75, 100, 124])
++@pytest.mark.parametrize("get_toy_data", [get_binary_toy_data, get_multilabel_toy_data])
++def test_xgb_smooth_train_inference(
++    Smoother: Smoother,
++    get_toy_data: Callable,
++    num_features: int,
++    W: int = 100
++):
++
++    (X, y), meta_data = get_toy_data(W)
++    smoother = Smoother(
++        num_ancestries=meta_data["num_ancestries"],
++        num_features=num_features
++    )
++    smoother.fit(X, y)
++    y_pred = smoother.predict(X)
++
++    assert y.shape == y_pred.shape
++
++    assert np.all(y==y_pred)

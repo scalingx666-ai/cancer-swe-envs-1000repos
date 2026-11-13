@@ -1,0 +1,77 @@
+version = "1.0"
+
+[task]
+name = "default/instadeepai__nucleotide-transformer-123"
+description = "Port Ntv3"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "nucleotide-transformer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "instadeepai/nucleotide-transformer"
+ref = "0aabd22ba403a6ebc5dc183af2c1a88ab79c18f0"
+reference = "https://github.com/instadeepai/nucleotide-transformer/pull/123"
+source_access = "auto"
+built_at = "2026-11-13T16:29:49.196848+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:acb3d3f9f818dd27c23e9e5fe2db37200f282493ade528d3dac778f244e3e8a7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-12-23T13:14:37Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "docs/nucleotide_transformer_v3.md",
+    "imgs/ntv3_benchmark.png",
+    "imgs/nucleotide_transformer_v3.png",
+    "notebooks/nucleotide_transformer_v3/inference_posttrained.ipynb",
+    "notebooks/nucleotide_transformer_v3/inference_pretrained.ipynb",
+    "nucleotide_transformer_v3/__init__.py",
+    "nucleotide_transformer_v3/adaptive_layers.py",
+    "nucleotide_transformer_v3/heads.py",
+    "nucleotide_transformer_v3/layers.py",
+    "nucleotide_transformer_v3/model.py",
+    "nucleotide_transformer_v3/pretrained.py",
+    "nucleotide_transformer_v3/tokenizers.py",
+    "nucleotide_transformer_v3/types.py",
+    "nucleotide_transformer_v3/utils.py",
+    "setup.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5597
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

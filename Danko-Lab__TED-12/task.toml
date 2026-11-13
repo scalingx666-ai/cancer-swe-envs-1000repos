@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Danko-Lab__TED-12"
+description = "Fix for get.cormat when VST is not feasible"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "TED",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Danko-Lab/TED"
+ref = "21d39c1281e469ff5584e73e35943c7284f52442"
+reference = "https://github.com/Danko-Lab/TED/pull/12"
+source_access = "auto"
+built_at = "2026-11-13T15:44:37.118831+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8a52ca3206bf653b61d484d442e07dbe1f66d7661cc238d22262b6024243912e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-03-21T20:57:23Z"
+diff_format = "unified"
+context_files = [
+    "TED/R/runTed.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

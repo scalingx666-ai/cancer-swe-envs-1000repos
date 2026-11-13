@@ -1,0 +1,35 @@
+diff --git a/kmer_repeat_counter.py b/kmer_repeat_counter.py
+index 86287d2..5e77878 100755
+--- a/kmer_repeat_counter.py
++++ b/kmer_repeat_counter.py
+@@ -805,7 +805,7 @@ def generate_locus_output(normal, tumor):
+ """
+ def generate_index_if_needed(filepath):
+     index_file = os.path.abspath(filepath) + '.bai'
+-    if not os.path.isfile(index_file):
++    if not os.path.isfile(index_file) and not os.path.isfile(os.path.abspath(filepath)[:-4] + '.bai'):
+         # Index file doesn't exist; generate it
+         pysam.index(filepath, index_file)
+     return True
+diff --git a/mantis.py b/mantis.py
+index b3c9d14..12535fe 100755
+--- a/mantis.py
++++ b/mantis.py
+@@ -146,7 +146,7 @@
+             exit(1)
+         else:
+             # Make sure a corresponding .BAI index file exists
+-            if not os.path.isfile('{0}.bai'.format(normal_filepath)):
++            if not os.path.isfile('{0}.bai'.format(normal_filepath)) and not os.path.isfile('{0}.bai'.format(normal_filepath[:-4])):
+                 print('Error: {0} needs corresponding .bai index file!'.format(normal_filepath))
+                 exit(1)
+             config['normal_filepath'] = normal_filepath
+@@ -161,7 +161,7 @@
+             exit(1)
+         else:
+             # Make sure a corresponding .BAI index file exists
+-            if not os.path.isfile('{0}.bai'.format(tumor_filepath)):
++            if not os.path.isfile('{0}.bai'.format(tumor_filepath)) and not os.path.isfile('{0}.bai'.format(tumor_filepath[:-4])):
+                 print('Error: {0} needs corresponding .bai index file!'.format(tumor_filepath))
+                 exit(1)            
+             config['tumor_filepath'] = tumor_filepath

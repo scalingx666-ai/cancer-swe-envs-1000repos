@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/Clinical-Genomics__BALSAMIC-1680"
+description = "chore: fix cnvkit bgzip file already exists"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "BALSAMIC",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Clinical-Genomics/BALSAMIC"
+ref = "b374208c35d31da67fa944b372e16854ee296992"
+reference = "https://github.com/Clinical-Genomics/BALSAMIC/pull/1680"
+source_access = "auto"
+built_at = "2026-11-13T15:40:08.073725+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c6d4294bbfddc79ab9945c0ee6a3920745db150bb1e690c3cddf37ed97eab266"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-03T11:48:01Z"
+diff_format = "unified"
+context_files = [
+    "BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule",
+    "BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_only_tga.rule",
+    "CHANGELOG.rst",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 7
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/owkin__histoplus-27"
+description = "FIX: Skip degenerate cell polygons"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "histoplus",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "owkin/histoplus"
+ref = "a30923f647a11f60e545665d5b8ce67beb485acc"
+reference = "https://github.com/owkin/histoplus/pull/27"
+source_access = "auto"
+built_at = "2026-11-13T15:37:11.829415+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3526fcdba924ac3f63780cec9609735e5ebd611feaa21a950616f12eff54a515"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-08-27T08:19:14Z"
+diff_format = "unified"
+context_files = [
+    "histoplus/helpers/border_effects/utils.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

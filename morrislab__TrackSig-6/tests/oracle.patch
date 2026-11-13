@@ -1,0 +1,13 @@
+diff --git a/src/getMutationTypes.pl b/src/getMutationTypes.pl
+index 9ab5f6b..0a0b910 100644
+--- a/src/getMutationTypes.pl
++++ b/src/getMutationTypes.pl
+@@ -130,7 +130,7 @@ sub mean {
+     	{
+     		$checkChr++;
+     	}
+-    	elsif (isdigit($chr))
++    	elsif ($chr =~ /^\d+?$/)
+     	{
+     		if (($chr > 0) and ($chr < 23))
+     		{

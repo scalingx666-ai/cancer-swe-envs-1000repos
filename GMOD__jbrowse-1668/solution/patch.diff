@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/main.yml b/.github/workflows/main.yml
+index e0242bb10f..a6dc545811 100644
+--- a/.github/workflows/main.yml
++++ b/.github/workflows/main.yml
+@@ -21,7 +21,7 @@ jobs:
+         run: |
+           npm install -g yarn
+ 
+-      - uses: LizardByte/setup-python-action@master
++      - uses: LizardByte/actions/actions/setup_python@master
+         with:
+           python-version: '2.7'
+ 

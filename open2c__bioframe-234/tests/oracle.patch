@@ -1,0 +1,85 @@
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index f052d43..3171329 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -9,7 +9,7 @@ repos:
+       - id: check-case-conflict
+ 
+   - repo: https://github.com/astral-sh/ruff-pre-commit
+-    rev: v0.14.1
++    rev: v0.14.7
+     hooks:
+       - id: ruff
+         types_or: [python, pyi, jupyter]
+diff --git a/bioframe/core/checks.py b/bioframe/core/checks.py
+index ba00ddd..88a413b 100644
+--- a/bioframe/core/checks.py
++++ b/bioframe/core/checks.py
+@@ -169,7 +169,7 @@ def is_overlapping(df, cols=None):
+     """
+     from ..ops import merge
+ 
+-    ck1, sk1, ek1 = _get_default_colnames() if cols is None else cols
++    _ck1, sk1, ek1 = _get_default_colnames() if cols is None else cols
+ 
+     df_merged = merge(df, cols=cols)
+ 
+@@ -297,8 +297,8 @@ def is_contained(
+     """
+     from ..ops import trim
+ 
+-    ck1, sk1, ek1 = _get_default_colnames() if cols is None else cols
+-    ck2, sk2, ek2 = _get_default_colnames() if cols_view is None else cols_view
++    _ck1, sk1, ek1 = _get_default_colnames() if cols is None else cols
++    _ck2, sk2, ek2 = _get_default_colnames() if cols_view is None else cols_view
+     if df_view_col is None:
+         try:
+             df_view_assigned = ops.overlap(df, view_df, cols1=cols, cols2=cols_view)
+diff --git a/bioframe/core/construction.py b/bioframe/core/construction.py
+index b7363a5..481adf5 100644
+--- a/bioframe/core/construction.py
++++ b/bioframe/core/construction.py
+@@ -229,7 +229,7 @@ def make_viewframe(
+     view_df:dataframe satisfying properties of a view
+ 
+     """
+-    ck1, sk1, ek1 = _get_default_colnames() if cols is None else cols
++    ck1, _sk1, _ek1 = _get_default_colnames() if cols is None else cols
+ 
+     view_df = from_any(regions, name_col=view_name_col, cols=cols)
+ 
+diff --git a/bioframe/ops.py b/bioframe/ops.py
+index dfc42d4..8318075 100644
+--- a/bioframe/ops.py
++++ b/bioframe/ops.py
+@@ -880,8 +880,8 @@ def coverage(
+ 
+     """
+ 
+-    ck1, sk1, ek1 = _get_default_colnames() if cols1 is None else cols1
+-    ck2, sk2, ek2 = _get_default_colnames() if cols2 is None else cols2
++    _ck1, sk1, ek1 = _get_default_colnames() if cols1 is None else cols1
++    _ck2, _sk2, _ek2 = _get_default_colnames() if cols2 is None else cols2
+ 
+     df1.reset_index(inplace=True, drop=True)
+ 
+@@ -1365,8 +1365,8 @@ def setdiff(df1, df2, cols1=None, cols2=None, on=None):
+     df_setdiff : pandas.DataFrame
+ 
+     """
+-    ck1, sk1, ek1 = _get_default_colnames() if cols1 is None else cols1
+-    ck2, sk2, ek2 = _get_default_colnames() if cols2 is None else cols2
++    _ck1, _sk1, _ek1 = _get_default_colnames() if cols1 is None else cols1
++    _ck2, _sk2, _ek2 = _get_default_colnames() if cols2 is None else cols2
+ 
+     events1, _ = _overlap_intidxs(
+         df1, df2, how="inner", cols1=cols1, cols2=cols2, on=on
+@@ -1866,7 +1866,7 @@ def assign_view(
+ 
+     """
+ 
+-    ck1, sk1, ek1 = _get_default_colnames() if cols is None else cols
++    _ck1, sk1, ek1 = _get_default_colnames() if cols is None else cols
+ 
+     df = df.copy()
+     df.reset_index(inplace=True, drop=True)

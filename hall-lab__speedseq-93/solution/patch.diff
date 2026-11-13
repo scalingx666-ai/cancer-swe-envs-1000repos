@@ -1,0 +1,13 @@
+diff --git a/src/cnvnator/README b/src/cnvnator/README
+index 5f06678..d2aa257 100644
+--- a/src/cnvnator/README
++++ b/src/cnvnator/README
+@@ -14,7 +14,7 @@ $ make
+ Even if compilation is not completed but file libbam.a has been created you
+ can continue.
+ 
+-$ cd ../
++$ cd ../../
+ $ make
+ 
+ 2. Predicting CNV regions

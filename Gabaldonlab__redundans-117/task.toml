@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/Gabaldonlab__redundans-117"
+description = "Minimap2reduce bugfixing"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "redundans",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Gabaldonlab/redundans"
+ref = "b622d6eb2009aa13ad0ca7dc24280ce7a49a00cf"
+reference = "https://github.com/Gabaldonlab/redundans/pull/117"
+source_access = "auto"
+built_at = "2026-11-13T16:12:16.492287+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7f09c148ddf2418a73ab4841e6c63b36ba170f78a379d037b1c9ea75cfffe3a0"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-09T14:07:03Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/docker-image.yml",
+    "Dockerfile",
+    "bin/fasta2homozygous.py",
+    "redundans.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 605
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

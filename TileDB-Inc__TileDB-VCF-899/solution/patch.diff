@@ -1,0 +1,26 @@
+diff --git a/.github/workflows/nightly.yml b/.github/workflows/nightly.yml
+index db80107e3..8fc7cc5cf 100644
+--- a/.github/workflows/nightly.yml
++++ b/.github/workflows/nightly.yml
+@@ -82,7 +82,7 @@ jobs:
+       - name: Set up Python
+         uses: actions/setup-python@v6
+         with:
+-          python-version: "3.10"
++          python-version: "3.14"
+       - name: Build tiledb-py from source
+         run: bash TileDB-VCF/ci/nightly/build-tiledb-py.sh
+         env:
+diff --git a/apis/python/pyproject.toml b/apis/python/pyproject.toml
+index 3897c1170..06201097a 100644
+--- a/apis/python/pyproject.toml
++++ b/apis/python/pyproject.toml
+@@ -38,6 +38,8 @@ classifiers = [
+     "Programming Language :: Python :: 3.10",
+     "Programming Language :: Python :: 3.11",
+     "Programming Language :: Python :: 3.12",
++    "Programming Language :: Python :: 3.13",
++    "Programming Language :: Python :: 3.14",
+ ]
+ 
+ dependencies = ["pandas<3", "pyarrow>=14.0.1", "numpy"]

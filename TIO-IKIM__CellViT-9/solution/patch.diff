@@ -1,0 +1,171 @@
+diff --git a/base_ml/base_trainer.py b/base_ml/base_trainer.py
+index 0f3acb9d..8664244c 100644
+--- a/base_ml/base_trainer.py
++++ b/base_ml/base_trainer.py
+@@ -37,6 +37,7 @@ class BaseTrainer:
+         early_stopping (EarlyStopping, optional): Early Stopping Class. Defaults to None.
+         accum_iter (int, optional): Accumulation steps for gradient accumulation.
+             Provide a number greater than 1 for activating gradient accumulation. Defaults to 1.
++        mixed_precision (bool, optional): If mixed-precision should be used. Defaults to False.
+         log_images (bool, optional): If images should be logged to WandB. Defaults to False.
+     """
+ 
+@@ -52,6 +53,7 @@ def __init__(
+         experiment_config: dict,
+         early_stopping: EarlyStopping = None,
+         accum_iter: int = 1,
++        mixed_precision: bool = False,
+         log_images: bool = False,
+     ) -> None:
+         self.model = model
+@@ -66,6 +68,11 @@ def __init__(
+         self.start_epoch = 0
+         self.experiment_config = experiment_config
+         self.log_images = log_images
++        self.mixed_precision = mixed_precision
++        if self.mixed_precision:
++            self.scaler = torch.cuda.amp.GradScaler(enabled=True)
++        else:
++            self.scaler = None
+ 
+     @abstractmethod
+     def train_epoch(
+@@ -231,6 +238,9 @@ def save_checkpoint(self, epoch: int, checkpoint_name: str):
+             "wandb_id": wandb.run.id,
+             "logdir": str(self.logdir.resolve()),
+             "run_name": str(Path(self.logdir).name),
++            "scaler_state_dict": self.scaler.state_dict()
++            if self.scaler is not None
++            else None,
+         }
+ 
+         checkpoint_dir = self.logdir / "checkpoints"
+@@ -250,6 +260,9 @@ def resume_checkpoint(self, checkpoint):
+         if self.early_stopping is not None:
+             self.early_stopping.best_metric = checkpoint["best_metric"]
+             self.early_stopping.best_epoch = checkpoint["best_epoch"]
++        if self.scaler is not None:
++            self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
++
+         self.logger.info(f"Checkpoint epoch: {int(checkpoint['epoch'])}")
+         self.start_epoch = int(checkpoint["epoch"])
+         self.logger.info(f"Next epoch is: {self.start_epoch + 1}")
+diff --git a/cell_segmentation/experiments/experiment_cellvit.py b/cell_segmentation/experiments/experiment_cellvit.py
+index 972645c0..02599566 100644
+--- a/cell_segmentation/experiments/experiment_cellvit.py
++++ b/cell_segmentation/experiments/experiment_cellvit.py
+@@ -238,6 +238,7 @@ def run_experiment(self) -> tuple[Path, dict, nn.Module, dict]:
+             experiment_config=self.run_conf,
+             log_images=self.run_conf["logging"].get("log_images", False),
+             magnification=self.run_conf["data"].get("magnification", 40),
++            mixed_precision=self.run_conf["training"].get("mixed_precision", False),
+         )
+ 
+         # Load checkpoint if provided
+diff --git a/cell_segmentation/trainer/trainer_cellvit.py b/cell_segmentation/trainer/trainer_cellvit.py
+index f3930cb9..4cb3dc9d 100644
+--- a/cell_segmentation/trainer/trainer_cellvit.py
++++ b/cell_segmentation/trainer/trainer_cellvit.py
+@@ -64,6 +64,8 @@ class CellViTTrainer(BaseTrainer):
+         experiment_config (dict): Configuration of this experiment
+         early_stopping (EarlyStopping, optional):  Early Stopping Class. Defaults to None.
+         log_images (bool, optional): If images should be logged to WandB. Defaults to False.
++        magnification (int, optional): Image magnification. Please select either 40 or 20. Defaults to 40.
++        mixed_precision (bool, optional): If mixed-precision should be used. Defaults to False.
+     """
+ 
+     def __init__(
+@@ -81,6 +83,7 @@ def __init__(
+         early_stopping: EarlyStopping = None,
+         log_images: bool = False,
+         magnification: int = 40,
++        mixed_precision: bool = False,
+     ):
+         super().__init__(
+             model=model,
+@@ -94,6 +97,7 @@ def __init__(
+             early_stopping=early_stopping,
+             accum_iter=1,
+             log_images=log_images,
++            mixed_precision=mixed_precision,
+         )
+         self.loss_fn_dict = loss_fn_dict
+         self.num_classes = num_classes
+@@ -111,7 +115,6 @@ def __init__(
+                     f"{branch}_{loss_name}", ":.4f"
+                 )
+         self.batch_avg_tissue_acc = AverageMeter("Batch_avg_tissue_ACC", ":4.f")
+-        self.scaler = torch.cuda.amp.GradScaler(enabled=True)
+ 
+     def train_epoch(
+         self, epoch: int, train_dataloader: DataLoader, unfreeze_epoch: int = 50
+@@ -234,32 +237,38 @@ def train_step(
+         ]  # dict: keys: "instance_map", "nuclei_map", "nuclei_binary_map", "hv_map"
+         tissue_types = batch[2]  # list[str]
+ 
+-        with torch.autocast(device_type="cuda", dtype=torch.float16):
+-            # make predictions
++        if self.mixed_precision:
++            with torch.autocast(device_type="cuda", dtype=torch.float16):
++                # make predictions
++                predictions_ = self.model.forward(imgs)
++
++                # reshaping and postprocessing
++                predictions = self.unpack_predictions(predictions=predictions_)
++                gt = self.unpack_masks(masks=masks, tissue_types=tissue_types)
++
++                # calculate loss
++                total_loss = self.calculate_loss(predictions, gt)
++
++                # backward pass
++                self.scaler.scale(total_loss).backward()
++
++                if (
++                    ((batch_idx + 1) % self.accum_iter == 0)
++                    or ((batch_idx + 1) == num_batches)
++                    or (self.accum_iter == 1)
++                ):
++                    self.scaler.step(self.optimizer)
++                    self.scaler.update()
++                    self.optimizer.zero_grad(set_to_none=True)
++                    self.model.zero_grad()
++        else:
+             predictions_ = self.model.forward(imgs)
+-
+-            # reshaping and postprocessing
+             predictions = self.unpack_predictions(predictions=predictions_)
+             gt = self.unpack_masks(masks=masks, tissue_types=tissue_types)
+ 
+             # calculate loss
+             total_loss = self.calculate_loss(predictions, gt)
+ 
+-        # backward pass
+-        self.scaler.scale(total_loss).backward()
+-
+-        if (
+-            ((batch_idx + 1) % self.accum_iter == 0)
+-            or ((batch_idx + 1) == num_batches)
+-            or (self.accum_iter == 1)
+-        ):
+-            self.scaler.step(self.optimizer)
+-            self.scaler.update()
+-            self.optimizer.zero_grad(set_to_none=True)
+-            self.model.zero_grad()
+-            # with torch.cuda.device(self.device):
+-            #     torch.cuda.empty_cache()
+-
+         batch_metrics = self.calculate_step_metric_train(predictions, gt)
+ 
+         if return_example_images:
+diff --git a/configs/examples/cell_segmentation/train_cellvit.yaml b/configs/examples/cell_segmentation/train_cellvit.yaml
+index a40d623b..2fb189bb 100644
+--- a/configs/examples/cell_segmentation/train_cellvit.yaml
++++ b/configs/examples/cell_segmentation/train_cellvit.yaml
+@@ -82,6 +82,7 @@ training:
+     # hyperparameters       # gamma [default 0.95] for "exponential", "eta_min" [default 1e-5] for CosineAnnealingLR
+   sampling_strategy:        # Sampling strategy. Implemented are "random", "cell", "tissue" and "cell+tissue" [str] [Optional, defaults to "random"]
+   sampling_gamma:           # Gamma for balancing sampling. Must be between 0 (equal weights) and 1 (100% oversampling) [float] [Optional, defaults to 1]
++  mixed_precision:          # Mixed precision Flag. [bool] [Optional, default False]
+ 
+ # transformations, here all options are given. Remove transformations by removing them from this section
+ transformations:

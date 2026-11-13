@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/cBioPortal__datahub-2375"
+description = "Upgrade CircleCI config from version 2 to 2.1"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "datahub",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "cBioPortal/datahub"
+ref = "18763f8eee86d4886d7210068f745f1e509498ee"
+reference = "https://github.com/cBioPortal/datahub/pull/2375"
+source_access = "auto"
+built_at = "2026-11-13T16:32:34.959097+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8248ccaa8ccddf043b2cda18c7676d6318973d77f286a2f44171d3235271e02d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-13T14:46:01Z"
+diff_format = "unified"
+context_files = [
+    ".circleci/config.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/bigomics__omicsplayground-1921"
+description = "fix(upload): block scRNA-seq uploads with fewer than 100 cells"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "omicsplayground",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bigomics/omicsplayground"
+ref = "1367c67eebe510329a448feca853130e956bbfc8"
+reference = "https://github.com/bigomics/omicsplayground/pull/1921"
+source_access = "auto"
+built_at = "2026-11-13T16:21:28.629290+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9dafe60f4b70339396622b07c4228e5731a19423b5eb3c8251093bb8150f0bc2"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-27T10:02:04Z"
+diff_format = "unified"
+context_files = [
+    "components/board.upload/R/upload_server.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 13
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

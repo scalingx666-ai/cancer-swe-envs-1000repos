@@ -1,0 +1,459 @@
+diff --git a/Baseline_and_Metric/Imputation/GAIN/gain.py b/Baseline_and_Metric/Imputation/GAIN/gain.py
+index e316688..8cfcd75 100755
+--- a/Baseline_and_Metric/Imputation/GAIN/gain.py
++++ b/Baseline_and_Metric/Imputation/GAIN/gain.py
+@@ -59,6 +59,9 @@ def gain (data_x, gain_parameters):
+   
+   # Other parameters
+   no, dim = data_x.shape
++  # Clamp batch size so mini-batches never exceed the number of rows
++  # (MLOmics CSVs / small slices can have n < default batch_size=128).
++  batch_size = max(1, min(int(batch_size), int(no)))
+   
+   # Hidden state dimensions
+   h_dim = int(dim)
+@@ -155,14 +158,15 @@ def discriminator(x, h):
+   # Start Iterations
+   for it in tqdm(range(iterations)):    
+       
+-    # Sample batch
++    # Sample batch (length may be < requested batch_size when n is small)
+     batch_idx = sample_batch_index(no, batch_size)
++    actual_bs = len(batch_idx)
+     X_mb = norm_data_x[batch_idx, :]  
+     M_mb = data_m[batch_idx, :]  
+     # Sample random vectors  
+-    Z_mb = uniform_sampler(0, 0.01, batch_size, dim) 
++    Z_mb = uniform_sampler(0, 0.01, actual_bs, dim) 
+     # Sample hint vectors
+-    H_mb_temp = binary_sampler(hint_rate, batch_size, dim)
++    H_mb_temp = binary_sampler(hint_rate, actual_bs, dim)
+     H_mb = M_mb * H_mb_temp
+       
+     # Combine random vectors with observed vectors
+diff --git a/Baseline_and_Metric/Imputation/GAIN/utils.py b/Baseline_and_Metric/Imputation/GAIN/utils.py
+index a465450..f2f860d 100755
+--- a/Baseline_and_Metric/Imputation/GAIN/utils.py
++++ b/Baseline_and_Metric/Imputation/GAIN/utils.py
+@@ -204,6 +204,9 @@ def sample_batch_index(total, batch_size):
+   Returns:
+     - batch_idx: batch index
+   '''
++  if total < 1:
++    raise ValueError('total must be >= 1')
++  batch_size = min(int(batch_size), int(total))
+   total_idx = np.random.permutation(total)
+   batch_idx = total_idx[:batch_size]
+   return batch_idx
+diff --git a/Baseline_and_Metric/Imputation/run_classical_impute.py b/Baseline_and_Metric/Imputation/run_classical_impute.py
+index 1fe2eec..6d7c791 100644
+--- a/Baseline_and_Metric/Imputation/run_classical_impute.py
++++ b/Baseline_and_Metric/Imputation/run_classical_impute.py
+@@ -30,9 +30,15 @@ def main():
+     from sklearn.metrics import mean_absolute_error
+     from fancyimpute import SimpleFill, KNN, IterativeImputer, IterativeSVD, SoftImpute
+ 
+-    # Load data
++    # Load data — accept Main_Dataset or Imputation_datasets root
++    data_path = args.data_path
++    if os.path.basename(data_path) == 'Main_Dataset':
++        data_path = os.path.join(data_path, 'Imputation_datasets')
++    elif os.path.isdir(os.path.join(data_path, 'Imputation_datasets')):
++        data_path = os.path.join(data_path, 'Imputation_datasets')
++
+     cancer = args.dataset.replace('Imp-', '')
+-    fpath  = os.path.join(args.data_path, args.dataset, 'Top',
++    fpath  = os.path.join(data_path, args.dataset, 'Top',
+                           f'{cancer}_{args.omics}.csv')
+     if not os.path.exists(fpath):
+         raise FileNotFoundError(f'Data file not found: {fpath}')
+diff --git a/README.md b/README.md
+index d9adf57..26b8307 100755
+--- a/README.md
++++ b/README.md
+@@ -78,7 +78,7 @@ pip install -r requirements.txt
+ 
+ ## Quick Start
+ 
+-Run your first benchmark in under one minute (lightweight classical baseline):
++After `./download.sh` (so `Main_Dataset/` exists), run a classical baseline. With data already on disk, XGBoost typically finishes in under one minute (no Jupyter required):
+ 
+ ```bash
+ ./scripts/run_classification.sh \
+@@ -87,6 +87,9 @@ Run your first benchmark in under one minute (lightweight classical baseline):
+   --method XGBoost
+ ```
+ 
++Supported classification `--method` values: `XGBoost`, `SVM`, `RF`, `LR`, `MAUI`, `XOmiVAE`, `DCAP`, `CustOmics`.  
++(MAUI requires a separate install: `pip install git+https://github.com/BIMSBbioinfo/maui.git` — see `requirements.txt`.)
++
+ Unified interface for other tasks:
+ 
+ ```bash
+@@ -97,7 +100,10 @@ Unified interface for other tasks:
+ |------|---------|
+ | Classification | `./scripts/run_classification.sh --dataset GS-BRCA --version Top --method XGBoost` |
+ | Clustering | `./scripts/run_clustering.sh --dataset ACC --version Top --method SNF --k 3` |
+-| Imputation | `./scripts/run_imputation.sh --dataset Imp-BRCA --omics mRNA --method GAIN --missing 0.3` |
++| Imputation | `./scripts/run_imputation.sh --dataset Imp-BRCA --omics mRNA --method Mean --missing 0.3` |
++
++Supported imputation `--method` values: `Mean`, `KNN`, `MICE`, `SVD`, `Spectral`, `GAIN`, `GRAPE`.  
++GAIN defaults to 100 iterations (`--iterations` to override); batch size is clamped to `min(128, n_rows)`.
+ 
+ Direct model scripts also work under `scripts/Classification`, `scripts/Clustering`, and `scripts/Imputation`.
+ 
+diff --git a/scripts/Classification/Classifiers.sh b/scripts/Classification/Classifiers.sh
+index 73564e3..8c263d6 100755
+--- a/scripts/Classification/Classifiers.sh
++++ b/scripts/Classification/Classifiers.sh
+@@ -7,6 +7,6 @@ DATA_PATH=${3:-"$ROOT_DIR/Main_Dataset/Classification_datasets"}
+ OUTPUT_DIR=${4:-"$ROOT_DIR/results/classification"}
+ METHOD=${5:-"all"}
+ mkdir -p "$OUTPUT_DIR"
+-python3 "$ROOT_DIR/Baseline_and_Metric/Classification/Baselines/Python/XGBoost_ SVM_RF_LR/run_classifiers.py" \
++python3 "$ROOT_DIR/Baseline_and_Metric/Classification/Baselines/Python/XGBoost_SVM_RF_LR/run_classifiers.py" \
+   --dataset "$DATASET" --version "$VERSION" \
+   --data_path "$DATA_PATH" --output_dir "$OUTPUT_DIR" --method "$METHOD"
+diff --git a/scripts/Imputation/GAIN.sh b/scripts/Imputation/GAIN.sh
+index 86c160d..96703d0 100755
+--- a/scripts/Imputation/GAIN.sh
++++ b/scripts/Imputation/GAIN.sh
+@@ -1,25 +1,37 @@
+ #!/bin/bash
++# Run GAIN on an MLOmics imputation matrix.
++# Usage: ./GAIN.sh [CANCER] [OMICS] [MISS_RATE]
++# Example: ./GAIN.sh BRCA mRNA 0.3
+ 
+-# Save the current directory
+-current_dir=$(pwd)
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ 
+-# Navigate to the specific folder
+-cd ../../Baseline_and_Metric/Imputation/GAIN
++arg1=${1:-"BRCA"}
++arg2=${2:-"mRNA"}
++arg3=${3:-0.3}
+ 
+-# Parse arguments
+-arg1=${1:-"BRCA"}  
+-arg2=${2:-"CNV"}   
+-arg3=${3:-0.7}     
+-
+-# Build data_name
+ data_name="${arg1}_${arg2}"
+ miss_rate="$arg3"
++data_file="$ROOT_DIR/Main_Dataset/Imputation_datasets/Imp-${arg1}/Top/${arg1}_${arg2}.csv"
+ 
+-# Define the output file
+-output_file="$current_dir/GAIN.txt"
++if [[ ! -f "$data_file" ]]; then
++  echo "Error: data file not found: $data_file"
++  exit 1
++fi
+ 
+-# Run all commands and append their output to the output file
+-python3 main_letter_spam.py --data_name "$data_name" --miss_rate "$miss_rate" --batch_size 128 --hint_rate 0.9 --alpha 100 --iterations 100 >> "$output_file"
++# batch = min(128, n_rows); iterations match unified runner default (100)
++read -r eff_batch <<EOF
++$(python3 -c "import pandas as pd; n=pd.read_csv(r'''$data_file''', index_col=0).shape[0]; print(max(1, min(128, int(n))))")
++EOF
+ 
+-# Navigate back to the original directory
+-cd "$current_dir"
++cd "$ROOT_DIR/Baseline_and_Metric/Imputation/GAIN"
++output_file="$SCRIPT_DIR/GAIN.txt"
++python3 main_letter_spam.py \
++  --data_name "$data_name" \
++  --data_path "$data_file" \
++  --miss_rate "$miss_rate" \
++  --batch_size "$eff_batch" \
++  --hint_rate 0.9 \
++  --alpha 100 \
++  --iterations 100 \
++  | tee -a "$output_file"
+diff --git a/scripts/run_classification.sh b/scripts/run_classification.sh
+index 76bbffa..dc63fa3 100755
+--- a/scripts/run_classification.sh
++++ b/scripts/run_classification.sh
+@@ -12,7 +12,7 @@
+ #   --dataset   GS-BRCA | GS-COAD | GS-GBM | GS-LGG | GS-OV | Pan-cancer
+ #   --version   Original | Top | Aligned  (default: Top)
+ #   --method    Baseline name (default: XGBoost)
+-#   --data_root Path to Main_Dataset dir (default: reads MLOmics Local Data.md or env var)
++#   --data_root Path to Main_Dataset dir (default: env MLOMICS_DATA_ROOT or ./Main_Dataset)
+ 
+ set -euo pipefail
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+@@ -23,6 +23,7 @@ DATASET="GS-BRCA"
+ VERSION="Top"
+ METHOD="XGBoost"
+ DATA_ROOT="${MLOMICS_DATA_ROOT:-$PROJECT_ROOT/Main_Dataset}"
++OUTPUT_DIR="$PROJECT_ROOT/results/classification"
+ 
+ # ---------- parse args ----------
+ while [[ $# -gt 0 ]]; do
+@@ -43,84 +44,70 @@ echo "  Method  : $METHOD"
+ echo "  Data    : $DATA_ROOT"
+ echo "======================================"
+ 
++if [[ ! -d "$DATA_ROOT" ]]; then
++  echo "Error: data root not found: $DATA_ROOT"
++  echo "Run ./download.sh first (or set --data_root / MLOMICS_DATA_ROOT)."
++  exit 1
++fi
++
+ export MLOMICS_DATA_ROOT="$DATA_ROOT"
+ BASELINES_ROOT="$PROJECT_ROOT/Baseline_and_Metric/Classification/Baselines/Python"
++mkdir -p "$OUTPUT_DIR"
+ 
+ case "$METHOD" in
+ 
+   XGBoost|SVM|RF|LR)
+-    NB="$BASELINES_ROOT/XGBoost_ SVM_RF_LR/XGBoost_ SVM_RF_LR.ipynb"
+-    echo "Running $METHOD via Jupyter notebook..."
+-    cd "$BASELINES_ROOT/XGBoost_ SVM_RF_LR"
+-    jupyter nbconvert --to notebook --execute --inplace \
+-      --ExecutePreprocessor.timeout=600 \
+-      "XGBoost_ SVM_RF_LR.ipynb" \
+-      2>&1 | tail -5
+-    echo "Done. Output notebook in place."
++    echo "Running $METHOD via run_classifiers.py..."
++    python3 "$BASELINES_ROOT/XGBoost_SVM_RF_LR/run_classifiers.py" \
++      --dataset "$DATASET" \
++      --version "$VERSION" \
++      --data_path "$DATA_ROOT" \
++      --output_dir "$OUTPUT_DIR" \
++      --method "$METHOD"
+     ;;
+ 
+   MAUI)
+-    echo "Running MAUI vignette..."
+-    cd "$BASELINES_ROOT/MAUI"
+-    python -c "
+-import sys; sys.path.insert(0, '$PROJECT_ROOT')
+-from utils.data_loader import MLOmicsLoader
+-loader = MLOmicsLoader('$DATA_ROOT')
+-omics = loader.load_omics('$DATASET', version='$VERSION')
+-y     = loader.load_labels('$DATASET', version='$VERSION')
+-print('Loaded:', {k: v.shape for k, v in omics.items()})
+-from maui import Maui
+-maui_model = Maui(n_hidden=[900], n_latent=70, epochs=10)
+-maui_model.fit(omics)
+-z = maui_model.transform(omics)
+-print('Latent factors:', z.shape)
+-print('MAUI test run complete.')
+-"
++    echo "Running MAUI via run_maui.py..."
++    if ! python3 -c "import maui" 2>/dev/null; then
++      echo "Error: MAUI is not installed."
++      echo "Install with: pip install git+https://github.com/BIMSBbioinfo/maui.git"
++      echo "(See notes in requirements.txt.)"
++      exit 1
++    fi
++    python3 "$BASELINES_ROOT/MAUI/run_maui.py" \
++      --dataset "$DATASET" \
++      --version "$VERSION" \
++      --data_path "$DATA_ROOT" \
++      --output_dir "$OUTPUT_DIR"
+     ;;
+ 
+   XOmiVAE)
+-    echo "Running XOmiVAE..."
+-    cd "$BASELINES_ROOT/XOmiVAE"
+-    python -c "
+-import sys; sys.path.insert(0, '$PROJECT_ROOT')
+-from generalHelperFunctions import loadData_mlomics
+-class_num, labels, samples, omics = loadData_mlomics('$DATASET', version='$VERSION', data_root='$DATA_ROOT')
+-print(f'Dataset: $DATASET/$VERSION | classes={class_num} | samples={len(samples)}')
+-for k, arr in omics.items():
+-    print(f'  {k}: {arr.shape}')
+-print('XOmiVAE data loading OK.')
+-"
++    echo "Running XOmiVAE via run_xomivae.py..."
++    python3 "$BASELINES_ROOT/XOmiVAE/run_xomivae.py" \
++      --dataset "$DATASET" \
++      --version "$VERSION" \
++      --data_path "$DATA_ROOT" \
++      --output_dir "$OUTPUT_DIR"
+     ;;
+ 
+   DCAP)
+-    echo "Running DCAP (requires R preprocessing first)..."
+-    cd "$BASELINES_ROOT/DCAP"
+-    CANCER="${DATASET#GS-}"
+-    INPUT_CSV="$DATA_ROOT/Classification_datasets/$DATASET/$VERSION/${CANCER}_mRNA_${VERSION,,}.csv"
+-    OUTPUT_CSV="/tmp/dcap_preprocessed.csv"
+-    echo "  Step 1: R preprocessing..."
+-    Rscript Data_preprocessing.R "$DATA_ROOT/Classification_datasets/$DATASET/$VERSION" \
+-      "${CANCER}_mRNA_${VERSION,,}.csv" \
+-      "$OUTPUT_CSV"
+-    echo "  Step 2: Python autoencoder..."
+-    python autoencoder_DCAP.py --data_path "$OUTPUT_CSV" --output_path /tmp/dcap_output.csv
+-    echo "DCAP run complete."
++    echo "Running DCAP via run_dcap.py..."
++    python3 "$BASELINES_ROOT/DCAP/run_dcap.py" \
++      --dataset "$DATASET" \
++      --version "$VERSION" \
++      --data_path "$DATA_ROOT" \
++      --output_dir "$OUTPUT_DIR"
+     ;;
+ 
+   CustOmics)
+-    echo "Running CustOmics data loading test..."
+-    cd "$BASELINES_ROOT/CustOmics"
+-    python -c "
+-import sys; sys.path.insert(0, '$PROJECT_ROOT')
+-sys.path.insert(0, 'src')
+-from src.tools.utils import read_data_mlomics
+-omics, labels = read_data_mlomics('$DATASET', version='$VERSION', data_root='$DATA_ROOT')
+-print('CustOmics loaded:')
+-for k, df in omics.items():
+-    print(f'  {k}: {df.shape}')
+-print(f'  labels: {labels.shape}')
+-print('CustOmics data loading OK.')
+-"
++    echo "Running CustOmics via main.py..."
++    python3 "$BASELINES_ROOT/CustOmics/main.py" \
++      --cohorts "$DATASET" \
++      --version "$VERSION" \
++      --data_directory "$DATA_ROOT" \
++      --result_directory "$OUTPUT_DIR" \
++      --task classification \
++      --sources mRNA,miRNA,CNV,Methy
+     ;;
+ 
+   *)
+diff --git a/scripts/run_imputation.sh b/scripts/run_imputation.sh
+index 693163a..0e306aa 100755
+--- a/scripts/run_imputation.sh
++++ b/scripts/run_imputation.sh
+@@ -3,17 +3,20 @@
+ #
+ # Usage:
+ #   ./scripts/run_imputation.sh --dataset Imp-BRCA --omics mRNA --method GAIN --missing 0.3
+-#   ./scripts/run_imputation.sh --dataset Imp-COAD --omics CNV  --method GRAPE
++#   ./scripts/run_imputation.sh --dataset Imp-BRCA --omics mRNA --method Mean --missing 0.3
++#   ./scripts/run_imputation.sh --dataset Imp-COAD --omics CNV  --method GRAPE --iterations 100
+ #
+ # Supported --method values:
+-#   GAIN  GRAPE
++#   Mean  KNN  MICE  SVD  Spectral  GAIN  GRAPE
+ #
+ # Options:
+-#   --dataset    Imp-BRCA|Imp-COAD|Imp-GBM|Imp-LGG|Imp-OV
+-#   --omics      mRNA | miRNA | CNV | Methy  (default: mRNA)
+-#   --method     GAIN | GRAPE
+-#   --missing    Missing rate 0.3|0.5|0.7  (default: 0.3)
+-#   --data_root  Path to Main_Dataset (default: auto)
++#   --dataset     Imp-BRCA|Imp-COAD|Imp-GBM|Imp-LGG|Imp-OV
++#   --omics       mRNA | miRNA | CNV | Methy  (default: mRNA)
++#   --method      Mean | KNN | MICE | SVD | Spectral | GAIN | GRAPE
++#   --missing     Missing rate 0.3|0.5|0.7  (default: 0.3)
++#   --iterations  GAIN training iterations (default: 100)
++#   --batch_size  GAIN batch size before clamp (default: 128; clamped to n_rows)
++#   --data_root   Path to Main_Dataset (default: auto)
+ 
+ set -euo pipefail
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+@@ -23,15 +26,20 @@ DATASET="Imp-BRCA"
+ OMICS="mRNA"
+ METHOD="GAIN"
+ MISSING="0.3"
++ITERATIONS="100"
++BATCH_SIZE="128"
+ DATA_ROOT="${MLOMICS_DATA_ROOT:-$PROJECT_ROOT/Main_Dataset}"
++OUTPUT_DIR="$PROJECT_ROOT/results/imputation"
+ 
+ while [[ $# -gt 0 ]]; do
+   case "$1" in
+-    --dataset)   DATASET="$2";   shift 2 ;;
+-    --omics)     OMICS="$2";     shift 2 ;;
+-    --method)    METHOD="$2";    shift 2 ;;
+-    --missing)   MISSING="$2";   shift 2 ;;
+-    --data_root) DATA_ROOT="$2"; shift 2 ;;
++    --dataset)    DATASET="$2";    shift 2 ;;
++    --omics)      OMICS="$2";      shift 2 ;;
++    --method)     METHOD="$2";     shift 2 ;;
++    --missing)    MISSING="$2";    shift 2 ;;
++    --iterations) ITERATIONS="$2"; shift 2 ;;
++    --batch_size) BATCH_SIZE="$2"; shift 2 ;;
++    --data_root)  DATA_ROOT="$2";  shift 2 ;;
+     *) echo "Unknown option: $1"; exit 1 ;;
+   esac
+ done
+@@ -39,6 +47,7 @@ done
+ CANCER="${DATASET#Imp-}"
+ DATA_FILE="$DATA_ROOT/Imputation_datasets/$DATASET/Top/${CANCER}_${OMICS}.csv"
+ BASELINES_ROOT="$PROJECT_ROOT/Baseline_and_Metric/Imputation"
++mkdir -p "$OUTPUT_DIR"
+ 
+ echo "======================================"
+ echo "MLOmics Imputation Baseline Runner"
+@@ -53,22 +62,53 @@ if [[ ! -f "$DATA_FILE" ]]; then
+   echo "Error: data file not found: $DATA_FILE"; exit 1
+ fi
+ 
++# GAIN: effective batch = min(requested, n_rows in CSV body)
++gain_batch_size() {
++  python3 -c "
++import pandas as pd
++n = pd.read_csv(r'''$DATA_FILE''', index_col=0).shape[0]
++print(max(1, min(int('$BATCH_SIZE'), int(n))))
++"
++}
++
+ case "$METHOD" in
+ 
++  Mean|KNN|MICE|SVD|Spectral)
++    # map display names to run_classical_impute.py choices
++    case "$METHOD" in
++      Mean)     CLASSICAL="mean" ;;
++      KNN)      CLASSICAL="knn" ;;
++      MICE)     CLASSICAL="mice" ;;
++      SVD)      CLASSICAL="svd" ;;
++      Spectral) CLASSICAL="spectral" ;;
++    esac
++    echo "Running $METHOD via run_classical_impute.py..."
++    python3 "$BASELINES_ROOT/run_classical_impute.py" \
++      --dataset "$DATASET" \
++      --omics "$OMICS" \
++      --miss_rate "$MISSING" \
++      --method "$CLASSICAL" \
++      --data_path "$DATA_ROOT" \
++      --output_dir "$OUTPUT_DIR"
++    ;;
++
+   GAIN)
++    EFF_BATCH="$(gain_batch_size)"
++    echo "Running GAIN (batch_size=$EFF_BATCH, iterations=$ITERATIONS)..."
+     cd "$BASELINES_ROOT/GAIN"
+-    python main_letter_spam.py \
++    python3 main_letter_spam.py \
+       --data_path "$DATA_FILE" \
+       --miss_rate "$MISSING" \
+-      --batch_size 128 \
++      --batch_size "$EFF_BATCH" \
+       --hint_rate 0.9 \
+       --alpha 100 \
+-      --iterations 10000
++      --iterations "$ITERATIONS"
+     ;;
+ 
+   GRAPE)
++    echo "Running GRAPE..."
+     cd "$BASELINES_ROOT/GRAPE"
+-    python train_mdi.py \
++    python3 train_mdi.py \
+       --epochs 20000 \
+       --known "$(python3 -c "print(1 - $MISSING)")" \
+       uci \
+@@ -79,7 +119,7 @@ case "$METHOD" in
+ 
+   *)
+     echo "Error: unknown method '$METHOD'"
+-    echo "Supported: GAIN GRAPE"
++    echo "Supported: Mean KNN MICE SVD Spectral GAIN GRAPE"
+     exit 1
+     ;;
+ esac

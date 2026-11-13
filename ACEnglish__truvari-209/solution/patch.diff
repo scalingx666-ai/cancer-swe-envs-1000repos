@@ -1,0 +1,81 @@
+diff --git a/truvari/__init__.py b/truvari/__init__.py
+index f52ef5d6..d84a2be8 100644
+--- a/truvari/__init__.py
++++ b/truvari/__init__.py
+@@ -164,6 +164,7 @@
+     HEADERMAT,
+     LogFileStderr,
+     bed_ranges,
++    check_vcf_index,
+     cmd_exe,
+     compress_index_vcf,
+     help_unknown_cmd,
+diff --git a/truvari/bench.py b/truvari/bench.py
+index 1132aef9..e1fd7a30 100644
+--- a/truvari/bench.py
++++ b/truvari/bench.py
+@@ -130,17 +130,15 @@ def check_params(args):
+         logging.error("Comparison vcf %s does not end with .gz. Must be bgzip'd",
+                       args.comp)
+         check_fail = True
+-    if not os.path.exists(args.comp + '.tbi'):
+-        logging.error("Comparison vcf index %s.tbi does not exist. Must be indexed",
+-                      args.comp)
++    if not truvari.check_vcf_index(args.comp):
++        logging.error("Comparison vcf '%s' must be indexed.", args.comp)
+         check_fail = True
+     if not args.base.endswith(".gz"):
+         logging.error("Base vcf %s does not end with .gz. Must be bgzip'd",
+                       args.base)
+         check_fail = True
+-    if not os.path.exists(args.base + '.tbi'):
+-        logging.error("Base vcf index %s.tbi does not exist. Must be indexed",
+-                      args.base)
++    if not truvari.check_vcf_index(args.base):
++        logging.error("Base vcf '%s' must be indexed.", args.base)
+         check_fail = True
+     if args.includebed and not os.path.exists(args.includebed):
+         logging.error("Include bed %s does not exist", args.includebed)
+diff --git a/truvari/phab.py b/truvari/phab.py
+index 358edd36..392ad4d2 100644
+--- a/truvari/phab.py
++++ b/truvari/phab.py
+@@ -459,17 +459,17 @@ def check_params(args):
+         logging.error(
+             "Comparison vcf %s does not end with .gz. Must be bgzip'd", args.comp)
+         check_fail = True
+-    if args.comp is not None and not os.path.exists(args.comp + '.tbi'):
++    if args.comp is not None and not truvari.check_vcf_index(args.comp):
+         logging.error(
+-            "Comparison vcf index %s.tbi does not exist. Must be indexed", args.comp)
++            "Comparison vcf %s must be indexed", args.comp)
+         check_fail = True
+     if not args.base.endswith(".gz"):
+         logging.error(
+             "Base vcf %s does not end with .gz. Must be bgzip'd", args.base)
+         check_fail = True
+-    if not os.path.exists(args.base + '.tbi'):
++    if not truvari.check_vcf_index(args.base):
+         logging.error(
+-            "Base vcf index %s.tbi does not exist. Must be indexed", args.base)
++            "Base vcf %s must be indexed", args.base)
+         check_fail = True
+     if not os.path.exists(args.reference):
+         logging.error("Reference %s does not exist", args.reference)
+diff --git a/truvari/utils.py b/truvari/utils.py
+index ef89287d..f6d7365a 100644
+--- a/truvari/utils.py
++++ b/truvari/utils.py
+@@ -437,3 +437,12 @@ def compress_index_vcf(fn, fout=None, remove=True):
+     if remove:
+         os.remove(fn)
+     os.remove(m_tmp)
++
++
++def check_vcf_index(vcf_path):
++    """
++    Return true if an index file is found for the vcf
++    """
++    vcf_index_ext = ['tbi','csi']
++    return any([os.path.exists(vcf_path + '.' + x) for x in vcf_index_ext])
++

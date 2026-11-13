@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/Illumina__hap.py-150"
+description = "Update rtgtools to v3.12.1"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "hap.py",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Illumina/hap.py"
+ref = "79de3c780cd5aa5a7cb7ab93cbd65643fafbeddf"
+reference = "https://github.com/Illumina/hap.py/pull/150"
+source_access = "auto"
+built_at = "2026-11-13T15:54:59.059096+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ce80feb107d4d01746a9836a5a3f1bd0415831a74f3ac308987a072853111569"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-12-04T00:31:13Z"
+diff_format = "unified"
+context_files = [
+    ".gitattributes",
+    "README.md",
+    "RELEASES.md",
+    "external/make_dependencies.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 32
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,236 @@
+diff --git a/docs/export.md b/docs/export.md
+index 46acb911a5..08718d17ac 100644
+--- a/docs/export.md
++++ b/docs/export.md
+@@ -327,6 +327,15 @@ to the VCF genotypes; to include non-sample nodes as well (e.g., internal
+ nodes that have been marked as individuals), set
+ ``include_non_sample_nodes=True`` when calling :meth:`TreeSequence.write_vcf`.
+ 
++A subset of individuals can be output using the ``individuals`` argument.
++Every site in the tree sequence is still written, and the REF and ALT
++alleles are those of the whole tree sequence, so a site can be output even
++if it does not vary among the chosen individuals. To drop such sites,
++{meth}`simplify <TreeSequence.simplify>` the tree sequence to the nodes
++of those individuals first. Passing an empty list (``individuals=[]``)
++writes a sites-only VCF, which has the site columns but no ``FORMAT`` or
++sample columns.
++
+ :::{note}
+ At present, :meth:`TreeSequence.write_vcf` only supports sites with up to
+ 9 distinct alleles; attempting to write a site with more than 9 alleles
+diff --git a/python/CHANGELOG.rst b/python/CHANGELOG.rst
+index dace3aada3..260381b3ca 100644
+--- a/python/CHANGELOG.rst
++++ b/python/CHANGELOG.rst
+@@ -4,6 +4,12 @@
+ 
+ In development
+ 
++**Features**
++
++- ``TreeSequence.write_vcf`` and ``TreeSequence.as_vcf`` now accept an empty
++  list of individuals (``individuals=[]``), writing a sites-only VCF with no
++  ``FORMAT`` or sample columns. (:user:`RClaudiuM`, :issue:`3463`)
++
+ --------------------
+ [1.0.4] - 2026-10-30
+ --------------------
+diff --git a/python/tests/test_highlevel.py b/python/tests/test_highlevel.py
+index 42390a79d1..7338e74996 100644
+--- a/python/tests/test_highlevel.py
++++ b/python/tests/test_highlevel.py
+@@ -5900,6 +5900,18 @@ def test_individual_with_no_nodes_only(self):
+         assert result.individuals_nodes.shape == (1, 1)
+         assert np.array_equal(result.individuals_nodes, [[-1]])
+ 
++    @pytest.mark.parametrize("num_individuals", [0, 2])
++    def test_empty_individuals(self, num_individuals):
++        tables = tskit.TableCollection(1.0)
++        for j in range(num_individuals):
++            tables.individuals.add_row()
++            tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0, individual=j)
++        ts = tables.tree_sequence()
++
++        result = ts.map_to_vcf_model(individuals=[])
++        assert len(result.individuals_nodes) == 0
++        assert len(result.individuals_name) == 0
++
+     def test_invalid_individual_id(self):
+         tables = tskit.TableCollection(1.0)
+         tables.individuals.add_row()
+diff --git a/python/tests/test_vcf.py b/python/tests/test_vcf.py
+index 232d2b198e..4b25e840e3 100644
+--- a/python/tests/test_vcf.py
++++ b/python/tests/test_vcf.py
+@@ -389,8 +389,19 @@ def test_ploidy_with_no_node_individuals(self):
+     def test_empty_individuals(self):
+         ts = msprime.sim_ancestry(3, random_seed=2)
+         ts = tsutil.insert_branch_sites(ts)
+-        with pytest.raises(ValueError, match="No individuals specified"):
+-            ts.as_vcf(individuals=[])
++        vcf = ts.as_vcf(individuals=[], allow_position_zero=True)
++        assert "##FORMAT" not in vcf
++        lines = drop_header(vcf).splitlines()
++        assert lines[0].split("\t")[-1] == "INFO"
++        assert len(lines) == ts.num_sites + 1
++        for line in lines:
++            assert len(line.split("\t")) == 8
++
++    def test_empty_individuals_with_names(self):
++        ts = msprime.sim_ancestry(3, random_seed=2)
++        ts = tsutil.insert_branch_sites(ts)
++        with pytest.raises(ValueError, match="does not match the number of names"):
++            ts.as_vcf(individuals=[], individual_names=["A"])
+ 
+     def test_duplicate_individuals(self):
+         ts = msprime.sim_ancestry(3, random_seed=2)
+@@ -910,6 +921,32 @@ def test_defaults(self):
+         expected = textwrap.dedent(s)
+         assert drop_header(ts.as_vcf(allow_position_zero=True)) == expected
+ 
++    def test_empty_individuals(self):
++        ts = self.ts()
++        s = """\
++        #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
++        1\t0\t0\t0\t1\t.\tPASS\t.
++        1\t2\t1\t0\t1\t.\tPASS\t.
++        1\t4\t2\t0\t1\t.\tPASS\t.
++        1\t6\t3\t0\t1\t.\tPASS\t."""
++        expected = textwrap.dedent(s)
++        assert (
++            drop_header(ts.as_vcf(individuals=[], allow_position_zero=True)) == expected
++        )
++
++    def test_no_individuals_empty_individuals(self):
++        ts = drop_individuals(self.ts())
++        s = """\
++        #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
++        1\t0\t0\t0\t1\t.\tPASS\t.
++        1\t2\t1\t0\t1\t.\tPASS\t.
++        1\t4\t2\t0\t1\t.\tPASS\t.
++        1\t6\t3\t0\t1\t.\tPASS\t."""
++        expected = textwrap.dedent(s)
++        assert (
++            drop_header(ts.as_vcf(individuals=[], allow_position_zero=True)) == expected
++        )
++
+     def test_individual_0(self):
+         ts = self.ts()
+         s = """\
+diff --git a/python/tskit/trees.py b/python/tskit/trees.py
+index f79b35a11d..168cead7e0 100644
+--- a/python/tskit/trees.py
++++ b/python/tskit/trees.py
+@@ -6670,7 +6670,10 @@ def write_vcf(
+         :param str contig_id: The value of the CHROM column in the output VCF.
+         :param list(int) individuals: A list containing the individual IDs to
+             corresponding to the VCF samples. Defaults to all individuals
+-            associated with sample nodes in the tree sequence.
++            associated with sample nodes in the tree sequence. If an empty
++            list is given, a sites-only VCF is written, with no ``FORMAT`` or
++            sample columns. All sites are still output, and the REF and ALT
++            values are computed over all samples in the tree sequence.
+             See the :ref:`sec_export_vcf_constructing_gt` section for more
+             details and examples.
+         :param list(str) individual_names: A list of string names to identify
+@@ -11164,6 +11167,7 @@ def map_to_vcf_model(
+             included that are associated with least one sample node (or at least one of
+             any node if ``include_non_sample_nodes`` is True), and the mapping arrays
+             will be in ascending order of the ID of the individual in the tree sequence.
++            If an empty list is given, the mapping contains no individuals.
+         :param int ploidy: The ploidy, or number of nodes per individual. Only used when
+             the tree sequence does not contain individuals. Cannot be used if the tree
+             sequence contains individuals. Defaults to 1 if not specified.
+@@ -11244,8 +11248,8 @@ def map_to_vcf_model(
+             if individuals is None:
+                 individuals = np.arange(self.num_individuals, dtype=np.int32)
+             if len(individuals) == 0:
+-                raise ValueError("No individuals specified")
+-            if min(individuals) < 0 or max(individuals) >= self.num_individuals:
++                individuals = np.array([], dtype=np.int32)
++            elif min(individuals) < 0 or max(individuals) >= self.num_individuals:
+                 raise ValueError("Invalid individual ID")
+ 
+             individuals_nodes = self.individuals_nodes[individuals]
+diff --git a/python/tskit/vcf.py b/python/tskit/vcf.py
+index 987ec27e00..196216da8b 100644
+--- a/python/tskit/vcf.py
++++ b/python/tskit/vcf.py
+@@ -75,7 +75,9 @@ def __init__(
+         ]
+         self.num_individuals = len(vcf_model.individual_names)
+ 
+-        if len(vcf_model.individuals_nodes) == 0:
++        # An explicitly empty list of individuals gives a sites-only VCF.
++        self.sites_only = individuals is not None and len(individuals) == 0
++        if len(vcf_model.individuals_nodes) == 0 and not self.sites_only:
+             raise ValueError("No samples in resulting VCF model")
+ 
+         if len(vcf_model.transformed_positions) > 0:
+@@ -130,24 +132,15 @@ def __write_header(self, output):
+             f"##contig=<ID={self.vcf_model.contig_id},length={self.vcf_model.contig_length}>",
+             file=output,
+         )
+-        print(
+-            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">', file=output
+-        )
+-        vcf_samples = "\t".join(self.vcf_model.individual_names)
+-        print(
+-            "#CHROM",
+-            "POS",
+-            "ID",
+-            "REF",
+-            "ALT",
+-            "QUAL",
+-            "FILTER",
+-            "INFO",
+-            "FORMAT",
+-            vcf_samples,
+-            sep="\t",
+-            file=output,
+-        )
++        columns = ["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO"]
++        if not self.sites_only:
++            print(
++                '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
++                file=output,
++            )
++            columns.append("FORMAT")
++            columns.append("\t".join(self.vcf_model.individual_names))
++        print(*columns, sep="\t", file=output)
+ 
+     def write(self, output):
+         self.__write_header(output)
+@@ -163,11 +156,15 @@ def write(self, output):
+                 # genotypes into when for each variant.
+                 gt_array.extend([0, ord("|")])
+             gt_array[-1] = ord("\t")
+-        gt_array[-1] = ord("\n")
++        if len(gt_array) > 0:
++            gt_array[-1] = ord("\n")
+         gt_array = np.array(gt_array, dtype=np.int8)
+         # TODO Unclear here whether using int64 or int32 will be faster for this index
+         # array. Test it out.
+         indexes = np.array(indexes, dtype=int)
++        # A sites-only VCF ends each row after the INFO column.
++        format_column = () if self.sites_only else ("GT",)
++        fixed_columns_end = "\n" if self.sites_only else "\t"
+ 
+         for variant in self.tree_sequence.variants(
+             samples=self.samples, isolated_as_missing=self.vcf_model.isolated_as_missing
+@@ -197,11 +194,13 @@ def write(self, output):
+                 ".",
+                 "PASS",
+                 ".",
+-                "GT",
++                *format_column,
+                 sep="\t",
+-                end="\t",
++                end=fixed_columns_end,
+                 file=output,
+             )
++            if self.sites_only:
++                continue
+             genotypes = variant.genotypes
+             gt_array[indexes] = genotypes + ord("0")
+             if self.sample_mask is not None:

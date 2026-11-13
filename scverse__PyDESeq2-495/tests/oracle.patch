@@ -1,0 +1,241 @@
+diff --git a/.github/PULL_REQUEST_TEMPLATE.md b/.github/PULL_REQUEST_TEMPLATE.md
+index 6222fe20..f24ea664 100644
+--- a/.github/PULL_REQUEST_TEMPLATE.md
++++ b/.github/PULL_REQUEST_TEMPLATE.md
+@@ -12,5 +12,4 @@ You can use github keywords as described:
+ https://github.com/blog/1506-closing-issues-via-pull-requests
+ -->
+ 
+-
+ #### What does your PR implement? Be specific.
+diff --git a/.panache.toml b/.panache.toml
+new file mode 100644
+index 00000000..cd9509d6
+--- /dev/null
++++ b/.panache.toml
+@@ -0,0 +1,14 @@
++#:schema https://panache.bz/panache.schema.json
++flavor = "myst"
++
++[format]
++wrap = "preserve"
++smart-punctuation = "unicode"
++tab-stops = "preserve"
++
++# MyST syntax extensions from `scverse_doc.config.MYST_ENABLE_EXTENSIONS`
++[extensions]
++myst-colon-fence = true  # colon_fence
++definition-lists = true  # deflist
++tex-math-dollars = true  # dollarmath, amsmath
++raw-html = true          # html_image, html_admonition
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 7f4f5560..447d54d8 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -11,6 +11,10 @@ repos:
+     hooks:
+       - id: biome-format
+         exclude: ^\.cruft\.json$ # inconsistent indentation with cruft - file never to be modified manually.
++  - repo: https://github.com/jolars/panache-pre-commit
++    rev: v3.18.0
++    hooks:
++      - id: panache-format
+   - repo: https://github.com/tox-dev/pyproject-fmt
+     rev: v2.25.3
+     hooks:
+diff --git a/CODE_OF_CONDUCT.md b/CODE_OF_CONDUCT.md
+index 6cd2fe26..5d9a8e16 100644
+--- a/CODE_OF_CONDUCT.md
++++ b/CODE_OF_CONDUCT.md
+@@ -1,5 +1,4 @@
+-Code of Conduct
+----------------
++## Code of Conduct
+ 
+ We want everyone in the community of users and contributors to PyDeseq2 to feel welcomed.
+ 
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index 4469d02f..e4d45f58 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -1,14 +1,11 @@
+-
+-Contributing to PyDeseq2
+-========================
++# Contributing to PyDeseq2
+ 
+ Please check out the current version of the contributing guidelines in:
+ `docs/contributing.md`, or in the `PyDeseq2` Documentation at:
+ 
+ https://pydeseq2.readthedocs.io/en/latest/contributing.html
+ 
+-Code of Conduct
+----------------
++## Code of Conduct
+ 
+ `PyDeseq2` follows the code of conduct defined by
+ the Python Software Foundation: https://www.python.org/psf/codeofconduct/.
+diff --git a/README.md b/README.md
+index c006cf07..903203c7 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,7 @@
+ <img src="docs/_static/pydeseq2_logo_green.png" width="600">
+ 
+ #
++
+ [![pypi version](https://img.shields.io/pypi/v/pydeseq2)](https://pypi.org/project/pydeseq2)
+ [![pypiDownloads](https://static.pepy.tech/badge/pydeseq2)](https://pepy.tech/project/pydeseq2)
+ [![condaDownloads](https://img.shields.io/conda/dn/bioconda/pydeseq2?logo=Anaconda)](https://anaconda.org/bioconda/pydeseq2)
+@@ -19,6 +20,7 @@ We plan to implement more in the future.
+ In case there is a feature you would particularly like to be implemented, feel free to open an issue.
+ 
+ ## Table of Contents
++
+ - [PyDESeq2](#pydeseq2)
+   - [Table of Contents](#table-of-contents)
+   - [Installation](#installation)
+@@ -65,7 +67,7 @@ uv add pydeseq2
+ 
+ `conda install -c bioconda pydeseq2`
+ 
+-If you're interested in contributing or want access to the development version, please see the [contributing](#contributing) section.
++If you’re interested in contributing or want access to the development version, please see the [contributing](#contributing) section.
+ 
+ ### Requirements
+ 
+@@ -85,15 +87,13 @@ For reference, the code is being tested in a github workflow (CI) with python
+ - matplotlib
+ ```
+ 
+-Please don't hesitate to open an issue in case you encounter any issue due to possible deprecations.
+-
++Please don’t hesitate to open an issue in case you encounter any issue due to possible deprecations.
+ 
+ ## Getting started
+ 
+ The [Getting Started](https://pydeseq2.readthedocs.io/en/latest/auto_examples/index.html) section of the documentation
+ contains downloadable examples on how to use PyDESeq2.
+ 
+-
+ ### Documentation
+ 
+ The documentation is hosted [here on ReadTheDocs](https://pydeseq2.readthedocs.io/en/latest/).
+@@ -149,13 +149,13 @@ In Dec 2025, the maintenance of PyDESeq2 was taken over by the scverse community
+ 
+ ## References
+ 
+-[1] Love, M. I., Huber, W., & Anders, S. (2014). "Moderated estimation of fold
+-        change and dispersion for RNA-seq data with DESeq2." Genome biology, 15(12), 1-21.
++[1] Love, M. I., Huber, W., & Anders, S. (2014). “Moderated estimation of fold
++        change and dispersion for RNA-seq data with DESeq2.” Genome biology, 15(12), 1-21.
+         <https://genomebiology.biomedcentral.com/articles/10.1186/s13059-014-0550-8>
+ 
+ [2] Zhu, A., Ibrahim, J. G., & Love, M. I. (2019).
+-        "Heavy-tailed prior distributions for sequence count data:
+-        removing the noise and preserving large differences."
++        “Heavy-tailed prior distributions for sequence count data:
++        removing the noise and preserving large differences.”
+         Bioinformatics, 35(12), 2084-2092.
+         <https://academic.oup.com/bioinformatics/article/35/12/2084/5159452>
+ 
+diff --git a/datasets/README.md b/datasets/README.md
+index a4afee51..c1e99ba3 100644
+--- a/datasets/README.md
++++ b/datasets/README.md
+@@ -7,7 +7,6 @@ The `tests_clinical.csv` and `test_counts.csv` files were generated using a cust
+ `makeExampleDESeqDataSet` method of [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html),
+ to handle several factors.
+ 
+-
+ ## Folder organisation
+ 
+ ```
+diff --git a/docs/api.md b/docs/api.md
+index 7ae13bd3..f578ac74 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -4,20 +4,20 @@
+ .. currentmodule:: pydeseq2
+ 
+ .. autosummary::
+-    :toctree: generated
+-    :recursive:
++   :toctree: generated
++   :recursive:
+ 
+-    dds.DeseqDataSet
+-    ds.DeseqStats
+-    inference.Inference
+-    default_inference.DefaultInference
+-    datasets
+-    dispersions
+-    distributions
+-    glm
+-    grid_search
+-    misc
+-    plotting
+-    preprocessing
+-    stats
++   dds.DeseqDataSet
++   ds.DeseqStats
++   inference.Inference
++   default_inference.DefaultInference
++   datasets
++   dispersions
++   distributions
++   glm
++   grid_search
++   misc
++   plotting
++   preprocessing
++   stats
+ ```
+diff --git a/docs/index.md b/docs/index.md
+index 2e0b62a3..c69134f6 100644
+--- a/docs/index.md
++++ b/docs/index.md
+@@ -50,7 +50,6 @@ Set up a development environment and open a pull request.
+ 
+ Read the source, report a bug, or open a pull request.
+ :::
+-
+ ::::
+ 
+ ## NumFOCUS
+diff --git a/docs/installation.md b/docs/installation.md
+index ac08864d..cfa04170 100644
+--- a/docs/installation.md
++++ b/docs/installation.md
+@@ -3,31 +3,23 @@
+ PyDESeq2 requires Python 3.12 or newer.
+ 
+ ::::{tab-set}
+-
+ :::{tab-item} pip
+-
+ ```bash
+ pip install pydeseq2
+ ```
+-
+ :::
+ 
+ :::{tab-item} uv
+-
+ ```bash
+ uv add pydeseq2
+ ```
+-
+ :::
+ 
+ :::{tab-item} conda
+-
+ ```bash
+ conda install bioconda::pydeseq2
+ ```
+-
+ :::
+-
+ ::::
+ 
+ This installs everything needed to run a differential expression analysis: dispersion and log fold-change estimation, Wald tests, and the plots.

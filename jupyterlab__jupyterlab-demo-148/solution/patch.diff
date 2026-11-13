@@ -1,0 +1,668 @@
+diff --git a/.binder/environment.yml b/.binder/environment.yml
+index 0914eae..1954123 100644
+--- a/.binder/environment.yml
++++ b/.binder/environment.yml
+@@ -2,42 +2,42 @@ channels:
+ - conda-forge
+ - nodefaults
+ dependencies:
+-# !! you can only use single `=` to set a version. Otherwise it will break the update job
+-- invoke=2.2.0
+-- packaging
+-- pyyaml
++- ruamel.yaml
+ # applications
+-- jupyterlab=4.1.8
+-- jupyter-collaboration=2.1.1
+-- nbconvert=7.16.4
+-- notebook=7.1.3
++- jupyterlab
++- jupyter-collaboration
++- nbconvert
++- notebook
+ # extensions
+-- jupyter-offlinenotebook=0.3.1
+-- jupyterlab-fasta=3.3
+-- jupyterlab-geojson=3.4
++- jupyter-offlinenotebook
++- jupyterlab-fasta
++- jupyterlab-geojson
++# R kernel
++- r-irkernel
++- r-ggplot2
+ # Python Kernel
+-- ipykernel=6.29.3
+-- xeus-python=0.14.3
+-- ipywidgets=8
+-- ipyleaflet=0.19.1
+-- altair=5.3.0
+-- bqplot=0.12.43
+-- dask=2024.5.0
+-- matplotlib-base=3.8.4
+-- pandas=2.2.2
+-- python=3.9
+-- scikit-image=0.22.0
+-- scikit-learn=1.4.2
+-- seaborn-base=0.13.2
+-- tensorflow=2.11.0
+-- sympy=1.12
+-- traittypes=0.2.1
++- ipykernel
++- xeus-python
++- ipywidgets
++- ipyleaflet
++- altair
++- bqplot
++- dask
++- matplotlib-base
++- pandas
++- python=3.12
++- scikit-image
++- scikit-learn
++- seaborn-base
++- tensorflow
++- sympy
++- traittypes
+ # C++ Kernel
+-- xeus-cling=0.13.0
+-- xtensor=0.23.10
+-- xtensor-blas=0.19.2
+-- xwidgets=0.26.1
+-- xleaflet=0.16.0
++# - xeus-cling
++# - xtensor
++# - xtensor-blas
++# - xwidgets
++# - xleaflet
+ # CLI tools
+ - pip
+ - vim
+diff --git a/.binder/postBuild b/.binder/postBuild
+index d88715f..1898fb3 100644
+--- a/.binder/postBuild
++++ b/.binder/postBuild
+@@ -1,8 +1,7 @@
+ set -ex
+ 
+-# invoke r --env-name=notebook
+-invoke demofiles
+-invoke talk -t demo
++python build.py
++
+ rm -rf demofiles
+ rm -rf notebooks
+ rm -rf narrative
+diff --git a/.github/workflows/main.yml b/.github/workflows/main.yml
+index f310cd6..20d1d65 100644
+--- a/.github/workflows/main.yml
++++ b/.github/workflows/main.yml
+@@ -15,38 +15,21 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v3
+-      - name: Cache conda
+-        uses: actions/cache@v3
+-        env:
+-          # Increase this value to reset cache if .binder/environment.yml has not changed
+-          CACHE_NUMBER: 0
++      - name: Install mamba
++        uses: mamba-org/setup-micromamba@v1
+         with:
+-          path: ~/conda_pkgs_dir
+-          key:
+-            ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('.binder/environment.yml') }}
+-      - uses: conda-incubator/setup-miniconda@v2
+-        with:
+-          mamba-version: ">=1.4.0"
+-          # Defaults is added automatically
+-          channels: conda-forge
+-          channel-priority: "strict"
+-          activate-environment: jupyterlab-demo
++          micromamba-version: '1.5.1-0'
+           environment-file: .binder/environment.yml
+-          # The following option is blocking the environment resolution (newer versions are not found)
+-          # use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
++          environment-name: jupyterlab-demo
++          cache-environment: true
+       - run: |
+-          conda info
+-          conda list
+-          conda config --show-sources
+-          conda config --show
++          micromamba info
++          micromamba list
++          micromamba config sources
++          micromamba config list
+           printenv | sort
+       - run: |
+-          invoke r --env-name=jupyterlab-demo
+           jupyter nbconvert --to notebook --execute  --ExecutePreprocessor.timeout=60 --stdout notebooks/Data.ipynb > /dev/null;
+           jupyter nbconvert --to notebook --execute --ExecutePreprocessor.timeout=60 --stdout notebooks/Fasta.ipynb > /dev/null;
+           jupyter nbconvert --to notebook --execute  --ExecutePreprocessor.timeout=60 --stdout notebooks/R.ipynb > /dev/null;
+-          invoke demofiles
+-          invoke talk -t demo
+-          jupyter lab workspaces import .binder/workspace.json
+-          python -m jupyterlab.browser_check
+-          invoke clean
++          python build.py
+\ No newline at end of file
+diff --git a/.github/workflows/update_env.yml b/.github/workflows/update_env.yml
+deleted file mode 100644
+index 8f81f0c..0000000
+--- a/.github/workflows/update_env.yml
++++ /dev/null
+@@ -1,68 +0,0 @@
+-name: Check environment for updates
+-
+-on:
+-  schedule:
+-    - cron: "0 6 15 * *"
+-  workflow_dispatch:
+-
+-defaults:
+-  run:
+-    shell: bash -el {0}
+-
+-jobs:
+-  check:
+-    runs-on: ubuntu-latest
+-
+-    permissions:
+-      contents: write
+-      pull-requests: write
+-
+-    steps:
+-      - uses: actions/checkout@v3
+-      - name: Cache conda
+-        uses: actions/cache@v3
+-        env:
+-          # Increase this value to reset cache if .binder/environment.yml has not changed
+-          CACHE_NUMBER: 0
+-        with:
+-          path: ~/conda_pkgs_dir
+-          key:
+-            ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('.binder/environment.yml') }}
+-      - uses: conda-incubator/setup-miniconda@v2
+-        with:
+-          mamba-version: ">=1.4.0"
+-          # Defaults is added automatically
+-          channels: conda-forge
+-          channel-priority: "strict"
+-          activate-environment: jupyterlab-demo
+-          environment-file: .binder/environment.yml
+-          # The following option is blocking the environment resolution (newer versions are not found)
+-          # use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
+-
+-      - run: |
+-          # FIXME First invoke r task as it changes the environment
+-          # invoke r --env-name=jupyterlab-demo
+-          # Check for updates in the final environment with r installed
+-          invoke update
+-
+-      - name: Create a PR optionally
+-        shell: bash
+-        env:
+-          GITHUB_USER: ${{ secrets.GITHUB_USER }}
+-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+-        run: |
+-          set -eux
+-          if [[ ! -z "$(git status --porcelain .binder/environment.yml)" ]]; then
+-            export SHA=$(git rev-parse --short HEAD)
+-            export BRANCH_NAME=new-updates-${SHA}
+-            git checkout -b "${BRANCH_NAME}"
+-
+-            git config user.name "github-actions[bot]"
+-            git config user.email "github-actions[bot]@users.noreply.github.com"
+-            
+-            git add .binder/environment.yml
+-            git commit -m "Update environment"
+-            
+-            git push --set-upstream origin "${BRANCH_NAME}"
+-            gh pr create -B "master" -t "New update available at ${SHA}" -b "[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jupyterlab/jupyterlab-demo/${BRANCH_NAME}?urlpath=lab) :point_left: Launch a Binder on branch _${BRANCH_NAME}_"
+-          fi
+diff --git a/README.md b/README.md
+index b8be677..583c7e5 100644
+--- a/README.md
++++ b/README.md
+@@ -13,84 +13,15 @@ generation user interface of Project Jupyter.
+ The demo requires `mamba`, available as part of [Mambaforge](https://github.com/conda-forge/miniforge) and the package
+  requirements are described in `environment.yml`
+ 
+-To install the environment and demofiles, we use [pyinvoke](http://pyinvoke.org). To install pyinvoke with `mamba` call:
+-```bash
+-mamba install -c conda-forge invoke packaging pyyaml
+-```
+-
+-### Create the environment
+-
+-To create the conda environment with all the dependencies and jupyterlab extensions for the demo, run:
+-
+-```bash
+-invoke environment  # optionally --env-name=my-env-name
+-```
+-
+-The default environment name is `jupyterlab-demo`.
+-
+-To create the environment and remove previous installation, call:
+-
+-```bash
+-invoke environment --clean
+-```
+-
+-### Activate/deactivate the environment
+-
+-To activate the conda environment, run:
+-
+-```bash
+-source activate jupyterlab-demo
+-```
+-
+-To deactivate the conda environment, run:
+-
+-```bash
+-source deactivate
+-```
+-
+-### Additional demo files
+-
+-The demo includes files from a number of other repositories. To install these files,
+-run:
+-
+-```bash
+-invoke demofiles
+-```
+-
+-To remove demofiles and download again all:
+-```
+-invoke demofiles --clean
+-```
+-
+-### R Language support
+-
+-To add R language support, run:
+-
+-```bash
+-invoke r
+-```
+-
+-### Julia Language support
+-
+-To add Julia language support follow the instructions [here](https://github.com/JuliaLang/IJulia.jl#installation).
+-
+-
+-### Uninstalling
+-
+-To uninstall the demofiles and enviornment, call:
+-
+-```
+-invoke clean
+-```
++TODO: More installation instructions
+ 
+ # Demo guide
+ 
+ The basic outline of the JupyterLab demo is described in the file `jupyterlab.md`.
+ 
+-
+ # External Repositories
+ 
+-Our `invoke demofiles` clones repos from other authors.  The details of these repos are as follows:
++Our `build.py` clones repos from other authors.  The details of these repos are as follows:
+ 
+ | Name  | Author |License |
+ |---|---|---|
+diff --git a/build.py b/build.py
+new file mode 100755
+index 0000000..d789bba
+--- /dev/null
++++ b/build.py
+@@ -0,0 +1,96 @@
++#!/usr/bin/env python3
++from pathlib import Path
++import subprocess
++from ruamel.yaml import YAML
++import shutil
++import os
++
++yaml = YAML()
++
++DEMO_FOLDER = "demofiles"
++
++def setup_talks():
++    """
++    Reads yaml file talks.yml and moves files and folders specified in yaml
++    file to the a folder matching the name of the talk Args: talk_name: name
++    of talk in talks.yml Note: yaml file is assumed to be a dict of dicts of
++    lists and dict with the following python format:
++    {'talk_name':
++        {'folders':
++            {'src0': 'dest0', 'src1': 'dest1']
++        'files':
++            ['file0', file1']
++    'rename':
++    {'oldname': 'newname'}
++        }
++    }
++    or in yaml format:
++    talk_name:
++        folders:
++            src0: dest0
++            src1: dest1
++        files:
++            - file0
++            - file1
++        rename:
++            oldname: newname
++    """
++    with open("talks.yml", "r") as stream:
++        talks = yaml.load(stream)
++    for talk_name in talks:
++        Path(talk_name).mkdir(parents=True, exist_ok=True)
++
++        if "files" in talks[talk_name]:
++            for f in talks[talk_name]["files"]:
++                copied_path = os.path.join(talk_name, os.path.basename(f))
++                shutil.copy(f, copied_path)
++                assert os.path.isfile(copied_path), f"{f} failed to copy into {talk_name}"
++
++        if "folders" in talks[talk_name]:
++            for src, dst in talks[talk_name]["folders"].items():
++                dst = os.path.join(talk_name, dst)
++                if not os.path.exists(dst):
++                    shutil.copytree(src, dst)
++
++        if "rename" in talks[talk_name]:
++            for old_file, new_file in talks[talk_name]["rename"].items():
++                moved_file = os.path.join(talk_name, os.path.basename(old_file))
++                if os.path.isfile(moved_file):
++                    os.rename(moved_file, os.path.join(talk_name, new_file))
++                elif os.path.isfile(old_file):
++                    shutil.copy(old_file, os.path.join(talk_name, new_file))
++
++def setup_demofiles():
++    print("creating demofolder")
++    demo_folder = Path("demofiles")
++    demo_folder.mkdir(parents=True, exist_ok=True)
++
++    # list of repos used in demo
++    print(f"cloning repos into demo folder {demo_folder}")
++    reponames = [
++        "jakevdp/PythonDataScienceHandbook",
++        "swissnexSF/Urban-Data-Challenge",
++        "altair-viz/altair",
++        "QuantEcon/QuantEcon.notebooks",
++        "theandygross/TCGA",
++        "aymericdamien/TensorFlow-Examples",
++        "bloomberg/bqplot",
++    ]
++    for repo in reponames:
++        target_path = demo_folder / Path(repo.split("/")[1])
++        if not target_path.is_dir():
++            subprocess.check_call([
++                "git", "clone", "--depth", "1",
++                f"https://github.com/{repo}.git"
++            ], cwd=demo_folder)
++    # This empty file and empty folder are for showing drag and drop in jupyterlab
++    Path("move_this_file.txt").touch()
++    Path("move_it_here").mkdir(exist_ok=True)
++
++def main():
++    setup_demofiles()
++    setup_talks()
++
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/tasks.py b/tasks.py
+deleted file mode 100644
+index af5ada4..0000000
+--- a/tasks.py
++++ /dev/null
+@@ -1,246 +0,0 @@
+-import json
+-import os
+-import re
+-import shutil
+-from pathlib import Path
+-from subprocess import check_output
+-
+-from invoke import task, Collection
+-from packaging.version import parse
+-from yaml import safe_load
+-
+-
+-env_name = "jupyterlab-demo"
+-demofolder = "demofiles"
+-source = "" if os.name == "nt" else "source"
+-
+-
+-def activate_path() -> str:
+-    conda_path = Path(shutil.which("conda"))
+-    return conda_path.parent / os.path.pardir / "bin"
+-
+-
+-@task
+-def environment(ctx, clean=False, env_name=env_name):
+-    """
+-    Creates environment for demo
+-    Args:
+-    clean: deletes environment prior to reinstallation
+-    env_name: name of environment to install
+-    """
+-    if clean:
+-        print("deleting environment")
+-        path = os.environ.get("PATH")
+-        ctx.run(
+-            f"{source!s} deactivate; mamba remove -n {env_name!s} --all",
+-            env={"PATH": f"{activate_path()}:{path}"},
+-        )
+-    # Create a new environment
+-    print(f"creating environment {env_name!s}")
+-    ctx.run(
+-        f"mamba env update -f .binder/environment.yml -n {env_name!s} && mamba clean -yaf"
+-    )
+-
+-    build(ctx, env_name=env_name)
+-
+-
+-@task
+-def build(ctx, env_name=env_name, kernel=True):
+-    """
+-    Builds an environment with appropriate kernels.
+-    """
+-
+-    if kernel:
+-        ctx.run(
+-            f"conda run -n {env_name!s} ipython kernel install --name {env_name!s} --display-name {env_name!s} --sys-prefix"
+-        )
+-
+-
+-@task
+-def demofiles(ctx, clean=False, demofolder=demofolder):
+-    """
+-    Clones demofiles into demofolder
+-    Args:
+-    clean: deletes demofiles from demofolder prior to installation
+-    demofolder: name of demofolder
+-    """
+-    print("cleaning demofiles")
+-    if clean:
+-        shutil.rmtree(demofolder, ignore_errors=True)
+-
+-    print("creating demofolder")
+-    demo_folder = Path(demofolder)
+-    demo_folder.mkdir(parents=True, exist_ok=True)
+-    os.chdir(f"{demo_folder!s}")
+-
+-    # list of repos used in demo
+-    print(f"cloning repos into demo folder {demo_folder!s}")
+-    reponames = [
+-        "jakevdp/PythonDataScienceHandbook",
+-        "swissnexSF/Urban-Data-Challenge",
+-        "altair-viz/altair",
+-        "QuantEcon/QuantEcon.notebooks",
+-        "theandygross/TCGA",
+-        "aymericdamien/TensorFlow-Examples",
+-        "bloomberg/bqplot",
+-    ]
+-    for repo in reponames:
+-        if not Path(repo.split("/")[1]).is_dir():
+-            ctx.run(f"git clone --depth 1 https://github.com/{repo!s}.git")
+-        assert Path(repo.split("/")[1]).is_dir(), f"{repo!s} failed download"
+-    # This empty file and empty folder are for showing drag and drop in jupyterlab
+-    Path("move_this_file.txt").touch()
+-    Path("move_it_here").mkdir(exist_ok=True)
+-
+-
+-@task
+-def update(ctx, env_name=env_name):
+-    """Check for conda environment update and modify the environment file"""
+-    result = ctx.run(f"mamba update -qn {env_name!s} --json --dry-run --all")
+-    # clean the output
+-    from_ = result.stdout.find("{")
+-    to = result.stdout.rfind("}")
+-    data = json.loads(result.stdout[from_:to+1])
+-
+-    if "error" in data:
+-        print(data["error"])
+-    elif "actions" in data:
+-        links = data["actions"].get("LINK", [])
+-        # Data structure in LINK
+-        #   List of dictionary. Example:
+-        # {
+-        #     "base_url": null,
+-        #     "build_number": 0,
+-        #     "build_string": "mkl",
+-        #     "channel": "defaults",
+-        #     "dist_name": "blas-1.0-mkl",
+-        #     "name": "blas",
+-        #     "platform": null,
+-        #     "version": "1.0"
+-        # }
+-
+-        if links:
+-            environment = Path(".binder/environment.yml")
+-            raw_content = environment.read_text()
+-            env_content = safe_load(raw_content)
+-            dependencies = {}
+-            for dep in env_content["dependencies"]:
+-                if "=" in dep:
+-                    package, version = dep.split("=", maxsplit=1)
+-                    dependencies[package] = parse(version)
+-            new_content = raw_content
+-            has_update = False
+-            for link in links:
+-                name = link.get("name")
+-                if name in dependencies:
+-                    version = link["version"]
+-                    if parse(version) > dependencies[name]:
+-                        new_content = re.sub(f"- {name}={dependencies[name]!s}", f"- {name}={version}", new_content)
+-                        has_update = True
+-            
+-            if has_update:
+-                environment.write_text(new_content)
+-
+-
+-@task
+-def clean(ctx, env_name=env_name, demofolder=demofolder):
+-    """
+-    Deletes both environment and demofolder
+-    Args:
+-    env_name: name of conda environment
+-    demofolder: path to folder with demofiles
+-    """
+-    cmd = f"{source!s} deactivate && mamba remove --name {env_name!s} --all"
+-    path = os.environ.get("PATH")
+-    ctx.run(cmd, env={"PATH": f"{activate_path()}:{path}"})
+-
+-    with open("talks.yml", "r") as stream:
+-        talks = safe_load(stream)
+-    for t in talks:
+-        shutil.rmtree(t, ignore_errors=True)
+-
+-    shutil.rmtree(demofolder, ignore_errors=True)
+-
+-
+-@task
+-def r(ctx, env_name=env_name):
+-    """
+-    Installs the r kernel and associated libs.
+-    """
+-    ctx.run(
+-        f"mamba install -yn {env_name!s} -c conda-forge -c nodefaults r-irkernel r-ggplot2",
+-    )
+-
+-
+-@task
+-def talk(ctx, talk_name, clean=False):
+-    """
+-      Reads yaml file talks.yml and
+-      moves files and folders specified
+-      in yaml file to the a folder
+-      matching the name of the talk
+-      Args:
+-      talk_name: name of talk in talks.yml
+-      Note: yaml file is assumed to be
+-      a dict of dicts of lists and
+-    dict with the following python format:
+-      {'talk_name':
+-          {'folders':
+-              {'src0': 'dest0', 'src1': 'dest1']
+-          'files':
+-              ['file0', file1']
+-       'rename':
+-        {'oldname': 'newname'}
+-          }
+-      }
+-      or in yaml format:
+-      talk_name:
+-          folders:
+-              src0: dest0
+-              src1: dest1
+-          files:
+-              - file0
+-              - file1
+-          rename:
+-              oldname: newname
+-    """
+-    with open("talks.yml", "r") as stream:
+-        talks = safe_load(stream)
+-    if clean:
+-        shutil.rmtree(talk_name, ignore_errors=True)
+-    Path(talk_name).mkdir(parents=True, exist_ok=True)
+-
+-    if "files" in talks[talk_name]:
+-        for f in talks[talk_name]["files"]:
+-            if (f.split("/")[0] == demofolder) and not os.path.exists(demofolder):
+-                demofiles(ctx)
+-                os.chdir("..")
+-            copied_path = os.path.join(talk_name, os.path.basename(f))
+-            shutil.copy(f, copied_path)
+-            assert os.path.isfile(copied_path), f"{f} failed to copy into {talk_name}"
+-
+-    if "folders" in talks[talk_name]:
+-        for src, dst in talks[talk_name]["folders"].items():
+-            dst = os.path.join(talk_name, dst)
+-            if not os.path.exists(dst):
+-                shutil.copytree(src, dst)
+-
+-    if "rename" in talks[talk_name]:
+-        for old_file, new_file in talks[talk_name]["rename"].items():
+-            moved_file = os.path.join(talk_name, os.path.basename(old_file))
+-            if os.path.isfile(moved_file):
+-                os.rename(moved_file, os.path.join(talk_name, new_file))
+-            elif os.path.isfile(old_file):
+-                shutil.copy(old_file, os.path.join(talk_name, new_file))
+-
+-
+-# Configure cross-platform settings.
+-ns = Collection(environment, build, demofiles, r, clean, update, talk)
+-ns.configure(
+-    {
+-        "run": {
+-            "shell": shutil.which("bash") if os.name != "nt" else shutil.which("cmd"),
+-            "pty": False if os.name == "nt" else True,
+-        }
+-    }
+-)

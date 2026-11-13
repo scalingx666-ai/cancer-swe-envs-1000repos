@@ -1,0 +1,20 @@
+diff --git a/.github/workflows/dependabot.yml b/.github/workflows/dependabot.yml
+new file mode 100644
+index 00000000..a32d4f87
+--- /dev/null
++++ b/.github/workflows/dependabot.yml
+@@ -0,0 +1,13 @@
++# Dependabot for GitHub Actions
++
++version: 2
++updates:
++
++  - package-ecosystem: "github-actions"
++    directory: "/"
++    schedule:
++      interval: "weekly"
++    target-branch: "rubicon"
++    commit-message:
++      prefix: "GitHub Actions"
++      include: "scope"
+\ No newline at end of file

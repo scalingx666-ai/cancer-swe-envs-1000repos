@@ -1,0 +1,2038 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 348bd89..5117be3 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ ## [Unreleased]
+ 
++### Fixed
++- Reject incomplete, duplicated, negative, or non-finite user-supplied COSMIC catalogues and ambiguous catalogue versions.
++- Keep COSMIC catalogue metadata synchronized when a file is replaced in place.
++- Prevent uploaded matrix replacement from deleting a backing file during an active dashboard render.
++- Preserve dashboard socket errors during startup and support IPv6 loopback hosts correctly.
++- Parse repeated CLI custom-text options as per-sample values instead of individual characters.
++- Accept R row-name matrix exports whose header omits the mutation-context column, inferred only when the data proves the shift, so a genuinely wrong first column is still rejected.
++- Canonicalize the legacy ID89 `Del(C):R(6,9)` repeat-interval label to the reference `Del(C):R(6,)`.
++- Omit, with a visible dashboard warning, ID476 signature columns R-padded with `NA` for an unresolved or entirely missing context instead of zero-filling them; reject any other `NA` pattern as a corrupted matrix.
++
++### Changed
++- Updated repository, maintainer, and contact metadata.
++
++## [1.5.0] - 2026-11-06
++
++### Added
++- Added static and interactive SBS4608 plotting through `plotSBS`.
++- Added a local interactive dashboard with one-click launchers for macOS, Linux, and Windows.
++- Added counts, percentage, and proportion views, plot export, and optional comparison with user-supplied COSMIC SBS catalogues.
++- Added static plotting support for the ID89 and ID476 indel classifications.
++- Added tagged TestPyPI and GitHub Release-to-PyPI publication workflows.
++
++### Changed
++- Unified SBS4608 static plotting under `plotSBS` and removed the transitional `plotStatic` entry point.
++- Streamed dashboard matrix uploads to disk and made sample rendering lazy for large matrices.
++- Expanded MkDocs and README guidance for SBS4608, the dashboard, indel plots, and releases.
++
++### Fixed
++- Corrected SBS4608 PDF export, scaling, labels, heatmap colorbars, and compact interactive layouts.
++- Hardened dashboard upload, process identity, shutdown, and relaunch behavior.
++- Corrected ID89/ID476 labels, peak annotations, complex-indel handling, and plot widths.
++
++## [1.4.4] - 2026-10-02
++
++### Added
++- Migrated CI, documentation deployment, tagging, and publication automation to GitHub Actions.
++
++### Fixed
++- Made image-baseline comparisons portable across supported runners.
++- Added input-validation and plotting regression coverage.
++- Updated project organization links and contact information.
++
+ ## [1.4.3] - 2026-01-22
+ 
+ ### Fixed
+diff --git a/docs/osf_wiki/home.md b/docs/osf_wiki/home.md
+index bd41d33..623c5d5 100644
+--- a/docs/osf_wiki/home.md
++++ b/docs/osf_wiki/home.md
+@@ -1,40 +1,41 @@
+-# SigProfilerPlotting #
+-----------
+-
+-SigProfilerPlotting provides a standard tool for displaying all types of mutational signatures as well as all types of mutational patterns in cancer genomes. The tool seamlessly integrates with other SigProfiler tools.
+-
+-The SigProfilerPlotting library can be found on github [here][2].
+-The [README.md][3] file provides a great overview if you already have python and pip installed on your computer. For users that prefer working in an R environment, we provide an R wrapper (SigProfilerPlottingR) that can be found on github [here][12].
+-
+-## Citation ##
+-Bergstrom EN, Huang MN, Mahto U, Barnes M, Stratton MR, Rozen SG, and Alexandrov LB (2019) SigProfilerMatrixGenerator: a tool for visualizing and exploring patterns of small mutational events. **BMC Genomics** 20, Article number: 685.
+-https://bmcgenomics.biomedcentral.com/articles/10.1186/s12864-019-6041-2
+-## License ## 
+-
+-Copyright (c) 2019, Erik Bergstrom [Alexandrov Lab]
+-All rights reserved.
+-
+-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+-
+-1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+-
+-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+-
+-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-
+-## Contact ##
+-
+-Please address any queries or bug reports to Erik Bergstrom at ebergstr@eng.ucsd.edu
+-
+-  [1]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73d34f8d5d98001a393840?mode=render
+-  [2]: https://github.com/AlexandrovLab/SigProfilerPlotting
+-  [3]: https://github.com/AlexandrovLab/SigProfilerPlotting/blob/master/README.md
+-  [4]: https://realpython.com/installing-python/
+-  [5]: https://docs.brew.sh/Homebrew-and-Python
+-  [6]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c6b0c28737a510019aa3e15?mode=render
+-  [7]: https://github.com/AlexandrovLab/SigProfilerPlotting
+-  [8]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c5de3d676653c0018270138?mode=render
+-  [9]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73d2c482a3950017d09b92?mode=render
+-  [10]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73c72862c82a0019dae02f?mode=render
+-  [11]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73c7eb82a3950018cbfddc?mode=render
+-  [12]: https://github.com/AlexandrovLab/SigProfilerPlottingR
++# SigProfilerPlotting #
++----------
++
++SigProfilerPlotting provides a standard tool for displaying all types of mutational signatures as well as all types of mutational patterns in cancer genomes. The tool seamlessly integrates with other SigProfiler tools.
++
++The SigProfilerPlotting library can be found on github [here][2].
++The [README.md][3] file provides a great overview if you already have python and pip installed on your computer. For users that prefer working in an R environment, we provide an R wrapper (SigProfilerPlottingR) that can be found on github [here][12].
++
++## Citation ##
++Bergstrom EN, Huang MN, Mahto U, Barnes M, Stratton MR, Rozen SG, and Alexandrov LB (2019) SigProfilerMatrixGenerator: a tool for visualizing and exploring patterns of small mutational events. **BMC Genomics** 20, Article number: 685.
++https://bmcgenomics.biomedcentral.com/articles/10.1186/s12864-019-6041-2
++## License ##
++
++Copyright (c) 2019, Erik Bergstrom [Alexandrov Lab]
++All rights reserved.
++
++Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
++
++1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
++
++2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++## Contact ##
++
++Please address any queries or bug reports to S M Ashiqul Islam at
++sislam6@albany.edu.
++
++  [1]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73d34f8d5d98001a393840?mode=render
++  [2]: https://github.com/SigProfilerSuite/SigProfilerPlotting
++  [3]: https://github.com/SigProfilerSuite/SigProfilerPlotting/blob/master/README.md
++  [4]: https://realpython.com/installing-python/
++  [5]: https://docs.brew.sh/Homebrew-and-Python
++  [6]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c6b0c28737a510019aa3e15?mode=render
++  [7]: https://github.com/SigProfilerSuite/SigProfilerPlotting
++  [8]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c5de3d676653c0018270138?mode=render
++  [9]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73d2c482a3950017d09b92?mode=render
++  [10]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73c72862c82a0019dae02f?mode=render
++  [11]: https://files.osf.io/v1/resources/2aj6t/providers/osfstorage/5c73c7eb82a3950018cbfddc?mode=render
++  [12]: https://github.com/SigProfilerSuite/SigProfilerPlottingR
+diff --git a/setup.py b/setup.py
+index c96986e..e366657 100644
+--- a/setup.py
++++ b/setup.py
+@@ -16,17 +16,22 @@
+     description="SigProfiler plotting tool",
+     long_description=readme,
+     long_description_content_type="text/markdown",
+-    url="https://github.com/alexandrovlab/SigProfilerPlotting",
+-    author="Erik Bergstrom",
+-    author_email="ebergstr@eng.ucsd.edu",
++    url="https://github.com/SigProfilerSuite/SigProfilerPlotting",
++    author="SigProfilerSuite",
++    author_email="sislam6@albany.edu",
++    maintainer="S M Ashiqul Islam",
++    maintainer_email="sislam6@albany.edu",
+     license="UCSD",
+     packages=[
+         "sigProfilerPlotting",
++        "sigProfilerPlotting.examples",
++        "sigProfilerPlotting.examples.input",
+         "sigProfilerPlotting.reference_formats",
+         "sigProfilerPlotting.fonts",
+         "sigProfilerPlotting.controllers",
+         "sigProfilerPlotting.sbs4608",
+         "sigProfilerPlotting.web",
++        "sigProfilerPlotting.web.static",
+     ],
+     python_requires=">=3.9",
+     install_requires=[
+diff --git a/sigProfilerPlotting/controllers/cli_controller.py b/sigProfilerPlotting/controllers/cli_controller.py
+index 29b3261..4ead338 100644
+--- a/sigProfilerPlotting/controllers/cli_controller.py
++++ b/sigProfilerPlotting/controllers/cli_controller.py
+@@ -31,13 +31,28 @@ def common_plotting_arguments(parser):
+         help="Display percentages in the plot; omit to use the function default.",
+     )
+     parser.add_argument(
+-        "--custom_text_upper", help="Custom text to display at the top of the plot."
++        "--custom_text_upper",
++        action="append",
++        help=(
++            "Custom text to display at the top of a plot. Repeat once per "
++            "sample/signature, in matrix order."
++        ),
+     )
+     parser.add_argument(
+-        "--custom_text_middle", help="Custom text to display in the middle of the plot."
++        "--custom_text_middle",
++        action="append",
++        help=(
++            "Custom text to display in the middle of a plot. Repeat once per "
++            "sample/signature, in matrix order."
++        ),
+     )
+     parser.add_argument(
+-        "--custom_text_bottom", help="Custom text to display at the bottom of the plot."
++        "--custom_text_bottom",
++        action="append",
++        help=(
++            "Custom text to display at the bottom of a plot. Repeat once per "
++            "sample/signature, in matrix order."
++        ),
+     )
+     parser.add_argument(
+         "--savefig_format",
+diff --git a/sigProfilerPlotting/web/cosmic.py b/sigProfilerPlotting/web/cosmic.py
+index 1248192..ab9e333 100644
+--- a/sigProfilerPlotting/web/cosmic.py
++++ b/sigProfilerPlotting/web/cosmic.py
+@@ -21,20 +21,24 @@
+ 
+ import csv
+ import hashlib
++import io
+ import math
+ import os
+ import re
+ from dataclasses import dataclass
+ from pathlib import Path
+ 
+-from .matrix import MatrixError
++from .matrix import MatrixError, REFERENCE_CONTEXTS
+ 
+-_FILENAME_RE = re.compile(r"^COSMIC_v(?P<version>[0-9][0-9A-Za-z.]*)_SBS_(?P<build>\w+)\.txt$")
++_FILENAME_RE = re.compile(
++    r"^COSMIC_v(?P<version>[0-9][0-9A-Za-z.]*)_SBS_(?P<build>\w+)\.txt$"
++)
+ 
+ # Canonical casing for recognized genome builds, and the fixed, human-sensible
+ # display order (human builds first) rather than filesystem order.
+ _KNOWN_BUILDS = ("GRCh37", "GRCh38", "mm9", "mm10", "mm39", "rn6", "rn7")
+ _BUILD_BY_LOWER = {name.lower(): name for name in _KNOWN_BUILDS}
++_EXPECTED_SBS96 = frozenset(REFERENCE_CONTEXTS["SBS96"])
+ 
+ _catalogue_dir: Path | None = None
+ _env_dir = os.environ.get("SIGPROFILERPLOTTING_COSMIC_DIR")
+@@ -51,6 +55,7 @@ def configure_catalogue_dir(path) -> None:
+     global _catalogue_dir
+     _catalogue_dir = Path(path).expanduser() if path else None
+     _cache.clear()
++    _metadata_cache.clear()
+ 
+ 
+ def catalogue_dir() -> Path | None:
+@@ -75,7 +80,7 @@ def _discover() -> dict[str, tuple[Path, str]]:
+     directory = _catalogue_dir
+     if directory is None or not directory.is_dir():
+         return {}
+-    found: dict[str, tuple[Path, str]] = {}
++    candidates: dict[str, list[tuple[Path, str]]] = {}
+     for entry in sorted(directory.iterdir()):
+         match = _FILENAME_RE.match(entry.name)
+         if not match or not entry.is_file():
+@@ -83,8 +88,20 @@ def _discover() -> dict[str, tuple[Path, str]]:
+         build = _BUILD_BY_LOWER.get(match.group("build").lower())
+         if build is None:
+             continue
+-        found[build] = (entry, match.group("version"))
+-    return found
++        candidates.setdefault(build, []).append((entry, match.group("version")))
++
++    duplicates = {build: files for build, files in candidates.items() if len(files) > 1}
++    if duplicates:
++        details = "; ".join(
++            f"{build}: {', '.join(path.name for path, _ in files)}"
++            for build, files in sorted(duplicates.items())
++        )
++        raise MatrixError(
++            "Multiple COSMIC catalogue files were found for the same genome build "
++            f"({details}). Keep exactly one version per build in the configured directory."
++        )
++    return {build: files[0] for build, files in candidates.items()}
++
+ 
+ # Matches the single base immediately adjacent to the mutated base on each
+ # side of a "[C>A]"-style substitution, regardless of what precedes or
+@@ -110,6 +127,7 @@ def collapse_to_sbs96(raw_by_label: dict[str, float]) -> dict[str, float]:
+         collapsed[key] = collapsed.get(key, 0.0) + value
+     return collapsed
+ 
++
+ _cache: dict[str, dict[str, dict[str, float]]] = {}
+ _metadata_cache: dict[str, CatalogueInfo] = {}
+ 
+@@ -132,21 +150,21 @@ def catalogue_metadata() -> list[CatalogueInfo]:
+     return [_load_metadata(build) for build in available_builds()]
+ 
+ 
+-def _checksum(path: Path) -> str:
+-    return hashlib.sha256(path.read_bytes()).hexdigest()
+-
+-
+ def _load_metadata(build: str) -> CatalogueInfo:
++    signatures, path, version, checksum = _read_build(build)
+     cached = _metadata_cache.get(build)
+-    path, version = _discover()[build]
+-    if cached is not None and cached.source_path == str(path):
++    if (
++        cached is not None
++        and cached.source_path == str(path)
++        and cached.version == version
++        and cached.checksum == checksum
++    ):
+         return cached
+-    signatures = _load_build(build)
+     info = CatalogueInfo(
+         build=build,
+         version=version,
+         source_path=str(path),
+-        checksum=_checksum(path),
++        checksum=checksum,
+         signature_count=len(signatures),
+     )
+     _metadata_cache[build] = info
+@@ -158,19 +176,33 @@ def _load_build(build: str) -> dict[str, dict[str, float]]:
+     loaded once and cached by its source path -- a file replaced at the
+     same path (different content, same name) still invalidates correctly
+     since the cache key folds in its checksum."""
++    return _read_build(build)[0]
++
++
++def _read_build(
++    build: str,
++) -> tuple[dict[str, dict[str, float]], Path, str, str]:
++    """Load and validate one catalogue from a single immutable byte snapshot."""
+     found = _discover()
+     if build not in found:
+         raise MatrixError(
+             f"Unknown or unavailable COSMIC genome build {build!r}. Choose one of: "
+             + ", ".join(available_builds())
+         )
+-    path, _version = found[build]
+-    cache_key = f"{path}:{_checksum(path)}"
++    path, version = found[build]
++    raw = path.read_bytes()
++    checksum = hashlib.sha256(raw).hexdigest()
++    cache_key = f"{path}:{checksum}"
+     if cache_key in _cache:
+-        return _cache[cache_key]
++        return _cache[cache_key], path, version, checksum
+ 
+-    with open(path, encoding="utf-8") as handle:
+-        rows = list(csv.reader(handle, delimiter="\t"))
++    try:
++        text = raw.decode("utf-8-sig")
++    except UnicodeDecodeError as exc:
++        raise MatrixError(
++            f"The COSMIC reference file for {build!r} ({path}) is not valid UTF-8."
++        ) from exc
++    rows = list(csv.reader(io.StringIO(text), delimiter="\t"))
+     if not rows or len(rows[0]) < 2:
+         raise MatrixError(
+             f"The COSMIC reference file for {build!r} ({path}) must have a header row "
+@@ -179,8 +211,24 @@ def _load_build(build: str) -> dict[str, dict[str, float]]:
+     header = rows[0]
+     signature_names = [name.strip() for name in header[1:]]
+     if any(not name for name in signature_names):
+-        raise MatrixError(f"The COSMIC reference file for {build!r} ({path}) has an unnamed signature column.")
++        raise MatrixError(
++            f"The COSMIC reference file for {build!r} ({path}) has an unnamed signature column."
++        )
++    duplicate_signature = next(
++        (
++            name
++            for index, name in enumerate(signature_names)
++            if name in signature_names[:index]
++        ),
++        None,
++    )
++    if duplicate_signature is not None:
++        raise MatrixError(
++            f"The COSMIC reference file for {build!r} ({path}) has duplicate "
++            f"signature column {duplicate_signature!r}."
++        )
+     signatures: dict[str, dict[str, float]] = {name: {} for name in signature_names}
++    labels: list[str] = []
+     for line_number, row in enumerate(rows[1:], 2):
+         if not row or all(not str(cell).strip() for cell in row):
+             continue
+@@ -190,6 +238,17 @@ def _load_build(build: str) -> dict[str, dict[str, float]]:
+                 f"on line {line_number}; the header has {len(header)}."
+             )
+         label = row[0].strip()
++        if not label:
++            raise MatrixError(
++                f"The COSMIC reference file for {build!r} ({path}) has an empty "
++                f"context label on line {line_number}."
++            )
++        if label in labels:
++            raise MatrixError(
++                f"The COSMIC reference file for {build!r} ({path}) has duplicate "
++                f"context {label!r} on line {line_number}."
++            )
++        labels.append(label)
+         for name, cell in zip(signature_names, row[1:]):
+             try:
+                 value = float(cell)
+@@ -198,9 +257,33 @@ def _load_build(build: str) -> dict[str, dict[str, float]]:
+                     f"The COSMIC reference file for {build!r} ({path}) has a non-numeric "
+                     f"value {cell!r} on line {line_number}, column {name!r}."
+                 ) from exc
++            if not math.isfinite(value) or value < 0:
++                raise MatrixError(
++                    f"The COSMIC reference file for {build!r} ({path}) has invalid "
++                    f"value {cell!r} on line {line_number}, column {name!r}; values "
++                    "must be finite and non-negative."
++                )
+             signatures[name][label] = value
++
++    label_set = set(labels)
++    if len(labels) != len(_EXPECTED_SBS96) or label_set != _EXPECTED_SBS96:
++        missing = sorted(_EXPECTED_SBS96 - label_set)
++        extra = sorted(label_set - _EXPECTED_SBS96)
++        details = []
++        if missing:
++            details.append(
++                f"{len(missing)} missing (for example {', '.join(map(repr, missing[:3]))})"
++            )
++        if extra:
++            details.append(
++                f"{len(extra)} unrecognized (for example {', '.join(map(repr, extra[:3]))})"
++            )
++        raise MatrixError(
++            f"The COSMIC reference file for {build!r} ({path}) must contain exactly "
++            f"the 96 unique SBS96 contexts; {'; '.join(details)}."
++        )
+     _cache[cache_key] = signatures
+-    return signatures
++    return signatures, path, version, checksum
+ 
+ 
+ def _cosine_similarity(a: list[float], b: list[float]) -> float:
+@@ -222,11 +305,21 @@ def top_matches(query_by_label: dict[str, float], build: str, n: int = 5) -> lis
+     not be considered here at all.
+     """
+     signatures = _load_build(build)
+-    labels = list(query_by_label.keys())
++    query_labels = set(query_by_label)
++    if len(query_by_label) != len(_EXPECTED_SBS96) or query_labels != _EXPECTED_SBS96:
++        raise MatrixError(
++            "COSMIC comparison requires exactly the 96 unique SBS96 contexts in the query."
++        )
++    if any(not math.isfinite(value) or value < 0 for value in query_by_label.values()):
++        raise MatrixError(
++            "COSMIC comparison query values must be finite and non-negative."
++        )
++
++    labels = list(REFERENCE_CONTEXTS["SBS96"])
+     query_vector = [query_by_label[label] for label in labels]
+     scored = []
+     for name, values_by_label in signatures.items():
+-        signature_vector = [values_by_label.get(label, 0.0) for label in labels]
++        signature_vector = [values_by_label[label] for label in labels]
+         score = _cosine_similarity(query_vector, signature_vector)
+         scored.append((score, name, values_by_label))
+     scored.sort(key=lambda entry: entry[0], reverse=True)
+diff --git a/sigProfilerPlotting/web/matrix.py b/sigProfilerPlotting/web/matrix.py
+index 35587d4..32271d8 100644
+--- a/sigProfilerPlotting/web/matrix.py
++++ b/sigProfilerPlotting/web/matrix.py
+@@ -20,7 +20,7 @@
+ import os
+ from dataclasses import dataclass
+ from pathlib import Path
+-from typing import Iterable
++from typing import Iterable, Sequence
+ 
+ from ..sigProfilerPlotting import INDEX_VALS
+ 
+@@ -55,6 +55,11 @@ class MatrixData:
+     values: tuple[tuple[float, ...], ...] | None = None
+     _source_path: Path | None = None
+     _delimiter: str = "\t"
++    # Logical sample columns can be a subset of the physical file columns
++    # when structurally incomplete R-padded profiles were omitted.  Entries
++    # are zero-based within the value columns (i.e. excluding the context).
++    _source_column_indices: tuple[int, ...] = ()
++    warnings: tuple[str, ...] = ()
+ 
+     def sample_values(self, sample: str) -> list[float]:
+         try:
+@@ -66,7 +71,12 @@ def sample_values(self, sample: str) -> list[float]:
+             ) from exc
+         if self.values is not None:
+             return [row[index] for row in self.values]
+-        return self._read_column_from_disk(index)
++        source_index = (
++            self._source_column_indices[index]
++            if self._source_column_indices
++            else index
++        )
++        return self._read_column_from_disk(source_index)
+ 
+     def _read_column_from_disk(self, index: int) -> list[float]:
+         # Already fully validated once, at upload time (see
+@@ -80,7 +90,8 @@ def _read_column_from_disk(self, index: int) -> list[float]:
+             for row in reader:
+                 if not row or all(not str(cell).strip() for cell in row):
+                     continue
+-                by_label[row[0].strip()] = float(row[index + 1])
++                label = _canonicalize_label(row[0])
++                by_label[label] = float(row[index + 1])
+         return [by_label[label] for label in self.labels]
+ 
+     def raw4608(self, sample: str) -> list[dict[str, object]]:
+@@ -113,6 +124,17 @@ def _references() -> dict[str, tuple[str, ...]]:
+ 
+ REFERENCE_CONTEXTS = _references()
+ 
++# Koh et al.'s original ID89 tables used the closed repeat interval 6--9.
++# mSigSpectra now deliberately canonicalizes that one spelling to a right-open
++# interval so the category remains valid when repeats above 9 are retained.
++# Keep this exact, input-boundary alias narrow; no fuzzy label matching.
++_LEGACY_LABEL_ALIASES = {"Del(C):R(6,9)": "Del(C):R(6,)"}
++
++
++def _canonicalize_label(value: object) -> str:
++    label = str(value).strip()
++    return _LEGACY_LABEL_ALIASES.get(label, label)
++
+ 
+ def detect_context(labels: Iterable[str]) -> str:
+     """Return the one reference context whose complete label set is present."""
+@@ -190,8 +212,10 @@ def _decode(source) -> tuple[list[list[str]], str]:
+         raise MatrixError(f"{name} is not UTF-8 text.") from exc
+     if not text.strip():
+         raise MatrixError(f"{name} is empty.")
+-    first = next((line for line in text.splitlines() if line.strip()), "")
+-    delimiter = "\t" if "\t" in first else "," if "," in first else None
++    nonempty_lines = (line for line in text.splitlines() if line.strip())
++    first = next(nonempty_lines, "")
++    second = next(nonempty_lines, "")
++    delimiter = _detect_delimiter(first, second)
+     if delimiter is None:
+         raise MatrixError(
+             "The matrix must be tab-delimited (preferred) or comma-delimited with a header row."
+@@ -202,6 +226,21 @@ def _decode(source) -> tuple[list[list[str]], str]:
+         raise MatrixError(f"Could not parse {name}: {exc}") from exc
+ 
+ 
++def _detect_delimiter(header_line: str, first_data_line: str = "") -> str | None:
++    """Detect a delimiter, including one-sample R row-name exports.
++
++    Such exports have no delimiter at all in their one-cell header, so the
++    first data line is the only place where the delimiter can be observed.
++    Header-first detection remains authoritative whenever it is available.
++    """
++    for line in (header_line, first_data_line):
++        if "\t" in line:
++            return "\t"
++        if "," in line:
++            return ","
++    return None
++
++
+ def _from_dataframe(frame) -> tuple[list[list[object]], str]:
+     columns = [str(c).strip() for c in frame.columns]
+     if columns and columns[0].lower() in MUTATION_TYPE_HEADER_ALIASES:
+@@ -242,6 +281,121 @@ def _validate_header(header: list[str]) -> list[str]:
+     return columns
+ 
+ 
++def _prepare_header(header: list[str], first_data_row: Sequence[object] | None) -> list[str]:
++    """Normalize R matrices whose top-left context cell was omitted.
++
++    R's row-name exports can write only the sample names in the header while
++    still writing the row name as the first field of every data row.  Accept
++    that layout only when the first non-empty data row proves the header is
++    short by exactly one field.  A recognized context header is never
++    reinterpreted as a sample name, so genuinely malformed rows remain errors.
++    """
++    if (
++        first_data_row is not None
++        and header
++        and header[0].lower() not in MUTATION_TYPE_HEADER_ALIASES
++        and len(first_data_row) == len(header) + 1
++    ):
++        return ["MutationType", *header]
++    return header
++
++
++def _format_column_examples(columns: Sequence[str]) -> str:
++    examples = ", ".join(repr(column) for column in columns[:5])
++    if len(columns) > 5:
++        examples += f", and {len(columns) - 5} more"
++    return examples
++
++
++def _resolve_missing_columns(
++    context: str,
++    labels: Sequence[str],
++    columns: Sequence[str],
++    missing_by_column: Sequence[set[str]],
++) -> tuple[tuple[int, ...], tuple[str, ...]]:
++    """Return usable physical columns and warnings for R ``NA`` padding.
++
++    The Liu compilation combines genuine 476-channel signatures with
++    lower-resolution 83-value profiles.  R pads those shorter columns with
++    393 ``NA`` cells (the first 83 physical rows contain the original values),
++    but those values are *not* ID476 measurements and cannot be scientifically
++    zero-filled into the remaining channels.  Omit that one exact structural
++    shape, plus wholly empty columns, and reject every other missing-value
++    pattern.
++    """
++    keep: list[int] = []
++    lower_resolution: list[str] = []
++    empty: list[str] = []
++    label_set = set(labels)
++    id476_prefix = set(REFERENCE_CONTEXTS.get("ID476", ())[:83])
++
++    for index, (column, missing) in enumerate(zip(columns, missing_by_column)):
++        if not missing:
++            keep.append(index)
++            continue
++        if context != "ID476":
++            raise MatrixError(
++                f"Missing value 'NA' in column {column!r}. NA padding is only "
++                "supported for the documented ID476 R-export layouts."
++            )
++        if missing == label_set:
++            empty.append(column)
++            continue
++        present = label_set - missing
++        if present == id476_prefix and len(missing) == 393:
++            lower_resolution.append(column)
++            continue
++        raise MatrixError(
++            f"Column {column!r} has {len(present)} of 476 ID476 values. "
++            "Only complete columns, wholly empty columns, or the documented "
++            "83-value/393-NA R padding layout are supported; other missing "
++            "values may indicate a corrupted matrix."
++        )
++
++    if not keep:
++        raise MatrixError(
++            "The matrix has no complete profiles to plot after omitting "
++            "incomplete R-padded columns."
++        )
++
++    warnings: list[str] = []
++    if lower_resolution:
++        warnings.append(
++            f"Omitted {len(lower_resolution)} lower-resolution "
++            f"{'column' if len(lower_resolution) == 1 else 'columns'} with only "
++            "83 of 476 values; they are not valid ID476 profiles and were not "
++            f"zero-filled: {_format_column_examples(lower_resolution)}."
++        )
++    if empty:
++        warnings.append(
++            f"Omitted {len(empty)} entirely missing "
++            f"{'column' if len(empty) == 1 else 'columns'}: "
++            f"{_format_column_examples(empty)}."
++        )
++    return tuple(keep), tuple(warnings)
++
++
++def _parse_cell(cell: object, line_number: int, column: str) -> float | None:
++    text = str(cell).strip()
++    if text == "NA":
++        return None
++    try:
++        number = float(text)
++    except (TypeError, ValueError) as exc:
++        raise MatrixError(
++            f"Non-numeric value {text!r} at line {line_number}, column {column!r}."
++        ) from exc
++    if not math.isfinite(number):
++        raise MatrixError(
++            f"Value at line {line_number}, column {column!r} must be finite; got {text!r}."
++        )
++    if number < 0:
++        raise MatrixError(
++            f"Value at line {line_number}, column {column!r} must be non-negative; got {text!r}."
++        )
++    return number
++
++
+ def _canonical_order(context: str, labels: list[str]) -> tuple[str, ...]:
+     order = {label: i for i, label in enumerate(REFERENCE_CONTEXTS[context])}
+     return tuple(sorted(labels, key=lambda label: order[label]))
+@@ -254,12 +408,23 @@ def _load_from_rows(rows: list[list], name: str) -> MatrixData:
+     streaming benefit to chase here)."""
+     if not rows:
+         raise MatrixError(f"{name} is empty.")
+-    header = [str(value).strip() for value in rows[0]]
++    first_data_row = next(
++        (
++            row
++            for row in rows[1:]
++            if row and any(str(cell).strip() for cell in row)
++        ),
++        None,
++    )
++    header = _prepare_header(
++        [str(value).strip() for value in rows[0]], first_data_row
++    )
+     width = len(header)
+     columns = _validate_header(header)
+ 
+     labels: list[str] = []
+-    values: list[tuple[float, ...]] = []
++    values: list[tuple[float | None, ...]] = []
++    missing_by_column = [set() for _ in columns]
+     for line_number, row in enumerate(rows[1:], 2):
+         if not row or all(str(cell).strip() == "" for cell in row):
+             continue
+@@ -268,37 +433,32 @@ def _load_from_rows(rows: list[list], name: str) -> MatrixData:
+                 f"Line {line_number} has {len(row)} fields; the header has {width}. "
+                 "Check for missing values or stray delimiters."
+             )
+-        label = str(row[0]).strip()
++        label = _canonicalize_label(row[0])
+         if not label:
+             raise MatrixError(f"Line {line_number} has an empty mutation context.")
+-        parsed = []
+-        for column, cell in zip(columns, row[1:]):
+-            text = str(cell).strip()
+-            try:
+-                number = float(text)
+-            except (TypeError, ValueError) as exc:
+-                raise MatrixError(
+-                    f"Non-numeric value {text!r} at line {line_number}, column {column!r}."
+-                ) from exc
+-            if not math.isfinite(number):
+-                raise MatrixError(
+-                    f"Value at line {line_number}, column {column!r} must be finite; got {text!r}."
+-                )
+-            if number < 0:
+-                raise MatrixError(
+-                    f"Value at line {line_number}, column {column!r} must be non-negative; got {text!r}."
+-                )
++        parsed: list[float | None] = []
++        for index, (column, cell) in enumerate(zip(columns, row[1:])):
++            number = _parse_cell(cell, line_number, column)
++            if number is None:
++                missing_by_column[index].add(label)
+             parsed.append(number)
+         labels.append(label)
+         values.append(tuple(parsed))
+     context = detect_context(labels)
++    keep, warnings = _resolve_missing_columns(
++        context, labels, columns, missing_by_column
++    )
+     order = {label: i for i, label in enumerate(REFERENCE_CONTEXTS[context])}
+     sorted_rows = sorted(zip(labels, values), key=lambda pair: order[pair[0]])
+     return MatrixData(
+         context=context,
+         labels=tuple(pair[0] for pair in sorted_rows),
+-        columns=tuple(columns),
+-        values=tuple(pair[1] for pair in sorted_rows),
++        columns=tuple(columns[index] for index in keep),
++        values=tuple(
++            tuple(pair[1][index] for index in keep)  # type: ignore[misc]
++            for pair in sorted_rows
++        ),
++        warnings=warnings,
+     )
+ 
+ 
+@@ -315,11 +475,12 @@ def _load_from_path(path: Path, name: str) -> MatrixData:
+     try:
+         with open(path, encoding="utf-8-sig", newline="") as probe:
+             first_line = probe.readline()
++            first_data_line = next((line for line in probe if line.strip()), "")
+     except UnicodeDecodeError as exc:
+         raise MatrixError(f"{name} is not UTF-8 text.") from exc
+     if not first_line.strip():
+         raise MatrixError(f"{name} is empty.")
+-    delimiter = "\t" if "\t" in first_line else "," if "," in first_line else None
++    delimiter = _detect_delimiter(first_line, first_data_line)
+     if delimiter is None:
+         raise MatrixError(
+             "The matrix must be tab-delimited (preferred) or comma-delimited with a header row."
+@@ -334,10 +495,36 @@ def _load_from_path(path: Path, name: str) -> MatrixData:
+             except StopIteration:
+                 raise MatrixError(f"{name} is empty.")
+             header = [str(value).strip() for value in header]
++            first_data: tuple[int, list[str]] | None = None
++            for line_number, row in enumerate(reader, 2):
++                if row and any(str(cell).strip() for cell in row):
++                    first_data = (line_number, row)
++                    break
++            header = _prepare_header(
++                header, first_data[1] if first_data is not None else None
++            )
+             width = len(header)
+             columns = _validate_header(header)
++            missing_by_column = [set() for _ in columns]
+ 
+-            for line_number, row in enumerate(reader, 2):
++            pending = [first_data] if first_data is not None else []
++            row_iterator = iter(reader)
++            for line_number, row in pending:
++                if len(row) != width:
++                    raise MatrixError(
++                        f"Line {line_number} has {len(row)} fields; the header has {width}. "
++                        "Check for missing values or stray delimiters."
++                    )
++                label = _canonicalize_label(row[0])
++                if not label:
++                    raise MatrixError(f"Line {line_number} has an empty mutation context.")
++                for index, (column, cell) in enumerate(zip(columns, row[1:])):
++                    if _parse_cell(cell, line_number, column) is None:
++                        missing_by_column[index].add(label)
++                labels.append(label)
++
++            start_line = (first_data[0] + 1) if first_data is not None else 2
++            for line_number, row in enumerate(row_iterator, start_line):
+                 if not row or all(str(cell).strip() == "" for cell in row):
+                     continue
+                 if len(row) != width:
+@@ -345,39 +532,29 @@ def _load_from_path(path: Path, name: str) -> MatrixData:
+                         f"Line {line_number} has {len(row)} fields; the header has {width}. "
+                         "Check for missing values or stray delimiters."
+                     )
+-                label = str(row[0]).strip()
++                label = _canonicalize_label(row[0])
+                 if not label:
+                     raise MatrixError(f"Line {line_number} has an empty mutation context.")
+-                for column, cell in zip(columns, row[1:]):
+-                    text = str(cell).strip()
+-                    try:
+-                        number = float(text)
+-                    except (TypeError, ValueError) as exc:
+-                        raise MatrixError(
+-                            f"Non-numeric value {text!r} at line {line_number}, column {column!r}."
+-                        ) from exc
+-                    if not math.isfinite(number):
+-                        raise MatrixError(
+-                            f"Value at line {line_number}, column {column!r} must be finite; "
+-                            f"got {text!r}."
+-                        )
+-                    if number < 0:
+-                        raise MatrixError(
+-                            f"Value at line {line_number}, column {column!r} must be non-negative; "
+-                            f"got {text!r}."
+-                        )
++                for index, (column, cell) in enumerate(zip(columns, row[1:])):
++                    if _parse_cell(cell, line_number, column) is None:
++                        missing_by_column[index].add(label)
+                 labels.append(label)
+     except UnicodeDecodeError as exc:
+         raise MatrixError(f"{name} is not UTF-8 text.") from exc
+ 
+     context = detect_context(labels)
++    keep, warnings = _resolve_missing_columns(
++        context, labels, columns, missing_by_column
++    )
+     return MatrixData(
+         context=context,
+         labels=_canonical_order(context, labels),
+-        columns=tuple(columns),
++        columns=tuple(columns[index] for index in keep),
+         values=None,
+         _source_path=path,
+         _delimiter=delimiter,
++        _source_column_indices=keep,
++        warnings=warnings,
+     )
+ 
+ 
+diff --git a/sigProfilerPlotting/web/server.py b/sigProfilerPlotting/web/server.py
+index 3c15a6a..f8a14da 100644
+--- a/sigProfilerPlotting/web/server.py
++++ b/sigProfilerPlotting/web/server.py
+@@ -16,6 +16,7 @@
+ import mimetypes
+ import os
+ import secrets
++import socket
+ import tempfile
+ import threading
+ import traceback
+@@ -29,7 +30,10 @@
+ 
+ STATIC_ROOT = (Path(__file__).parent / "static").resolve()
+ 
+-_EXTRA_MIME_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
++_EXTRA_MIME_TYPES = {
++    ".js": "text/javascript; charset=utf-8",
++    ".css": "text/css; charset=utf-8",
++}
+ 
+ # A real SBS4608 matrix can run into the hundreds of MB of plain text
+ # (tens of thousands of sample columns); this is a safety cap against a
+@@ -37,7 +41,9 @@
+ # straight to a temp file (_dispatch_post) is that memory use no longer
+ # scales with this number at all. Configurable since "unreasonable" is a
+ # judgment call that depends on the machine running the dashboard.
+-MAX_UPLOAD_BYTES = int(os.environ.get("SIGPROFILERPLOTTING_MAX_UPLOAD_BYTES", 4 * 1024 * 1024 * 1024))
++MAX_UPLOAD_BYTES = int(
++    os.environ.get("SIGPROFILERPLOTTING_MAX_UPLOAD_BYTES", 4 * 1024 * 1024 * 1024)
++)
+ _UPLOAD_CHUNK_SIZE = 1024 * 1024
+ 
+ # Defense-in-depth: 'unsafe-inline' is only for style-src (Plotly sets inline
+@@ -59,41 +65,54 @@ class DashboardHTTPServer(ThreadingHTTPServer):
+     daemon_threads = True
+ 
+     def __init__(self, server_address, handler_class):
+-        super().__init__(server_address, handler_class)
++        # Initialize our state before HTTPServer binds.  socketserver calls
++        # server_close() if binding fails, so the override below must be safe
++        # even when super().__init__() never completes.
+         self.dashboard_matrix = None
+         # The temp file backing dashboard_matrix's lazy, disk-backed reads
+         # (see matrix.py) -- owned by the server, not by MatrixData, so it
+         # can be cleaned up here when replaced by a new upload or when the
+         # server shuts down, rather than ever leaking.
+         self._matrix_tempfile: str | None = None
++        self._matrix_lock = threading.RLock()
+         # A fresh random token per launch -- the launcher's pidfile records
+         # it alongside the pid/port, and treats a pid/port whose live
+         # /api/identity doesn't echo this exact token as unrelated to this
+         # server (stale pidfile, reused pid, or a different process on the
+         # same port), rather than ever trusting the pidfile's pid alone.
+         self.instance_token = secrets.token_hex(16)
++        super().__init__(server_address, handler_class)
+ 
+     def set_dashboard_matrix(self, matrix, tempfile_path: str | None) -> None:
+         """Replace the active matrix, cleaning up whatever temp file the
+         previous one was reading from (if any) -- uploading a new matrix
+         must not leak the old one's backing file."""
+-        previous = self._matrix_tempfile
+-        self.dashboard_matrix = matrix
+-        self._matrix_tempfile = tempfile_path
+-        if previous is not None:
+-            try:
+-                os.unlink(previous)
+-            except OSError:
+-                pass
++        with self._matrix_lock:
++            previous = self._matrix_tempfile
++            self.dashboard_matrix = matrix
++            self._matrix_tempfile = tempfile_path
++            if previous is not None:
++                try:
++                    os.unlink(previous)
++                except OSError:
++                    pass
+ 
+     def server_close(self) -> None:
++        with self._matrix_lock:
++            if self._matrix_tempfile is not None:
++                try:
++                    os.unlink(self._matrix_tempfile)
++                except OSError:
++                    pass
++                self._matrix_tempfile = None
++            self.dashboard_matrix = None
+         super().server_close()
+-        if self._matrix_tempfile is not None:
+-            try:
+-                os.unlink(self._matrix_tempfile)
+-            except OSError:
+-                pass
+-            self._matrix_tempfile = None
++
++
++class IPv6DashboardHTTPServer(DashboardHTTPServer):
++    """IPv6 loopback variant used when ``make_server`` receives ``::1``."""
++
++    address_family = socket.AF_INET6
+ 
+ 
+ def make_server(host: str = "127.0.0.1", port: int = 0) -> DashboardHTTPServer:
+@@ -109,21 +128,26 @@ def make_server(host: str = "127.0.0.1", port: int = 0) -> DashboardHTTPServer:
+ 
+     if host not in ("127.0.0.1", "localhost", "::1"):
+         raise ValueError("The dashboard server only binds to loopback addresses.")
+-    return DashboardHTTPServer((host, port), DashboardRequestHandler)
++    server_class = IPv6DashboardHTTPServer if host == "::1" else DashboardHTTPServer
++    return server_class((host, port), DashboardRequestHandler)
+ 
+ 
+ def _allowed_host(header_value: str | None, port: int) -> bool:
+     if not header_value:
+         return False
+     host = header_value.split(",", 1)[0].strip()
+-    return host in (f"127.0.0.1:{port}", f"localhost:{port}")
++    return host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}")
+ 
+ 
+ def _allowed_origin(header_value: str | None, port: int) -> bool:
+     if not header_value:
+         return False
+     origin = header_value.strip().rstrip("/")
+-    return origin in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
++    return origin in (
++        f"http://127.0.0.1:{port}",
++        f"http://localhost:{port}",
++        f"http://[::1]:{port}",
++    )
+ 
+ 
+ def _stream_upload_to_tempfile(rfile, content_length: int) -> str:
+@@ -201,7 +225,7 @@ def do_GET(self) -> None:
+             elif path == "/plotly.js":
+                 self._serve_plotlyjs()
+             elif path.startswith("/static/"):
+-                self._serve_static(path[len("/static/"):])
++                self._serve_static(path[len("/static/") :])
+             elif path == "/api/render":
+                 self._serve_render(parse_qs(parsed.query))
+             elif path == "/api/cosmic/builds":
+@@ -218,15 +242,21 @@ def do_GET(self) -> None:
+     def _serve_index(self) -> None:
+         index_path = STATIC_ROOT / "index.html"
+         if not index_path.is_file():
+-            self._reject(HTTPStatus.NOT_FOUND, "The dashboard UI has not been built yet.")
++            self._reject(
++                HTTPStatus.NOT_FOUND, "The dashboard UI has not been built yet."
++            )
+             return
+-        self._write_bytes(HTTPStatus.OK, index_path.read_bytes(), "text/html; charset=utf-8")
++        self._write_bytes(
++            HTTPStatus.OK, index_path.read_bytes(), "text/html; charset=utf-8"
++        )
+ 
+     def _serve_plotlyjs(self) -> None:
+         import plotly.offline as pyo
+ 
+         self._write_bytes(
+-            HTTPStatus.OK, pyo.get_plotlyjs().encode("utf-8"), "text/javascript; charset=utf-8"
++            HTTPStatus.OK,
++            pyo.get_plotlyjs().encode("utf-8"),
++            "text/javascript; charset=utf-8",
+         )
+ 
+     def _serve_static(self, relative: str) -> None:
+@@ -246,18 +276,29 @@ def _serve_static(self, relative: str) -> None:
+         self._write_bytes(HTTPStatus.OK, candidate.read_bytes(), content_type)
+ 
+     def _serve_render(self, query: dict) -> None:
+-        matrix = self.server.dashboard_matrix
+-        if matrix is None:
+-            self._reject(HTTPStatus.CONFLICT, "Upload a matrix before requesting a render.")
+-            return
+         sample = query.get("sample", [None])[0]
+         unit = query.get("unit", ["counts"])[0]
+         compare_cosmic = query.get("compare_cosmic", [None])[0] or None
+         if not sample:
+-            self._reject(HTTPStatus.BAD_REQUEST, "The 'sample' query parameter is required.")
++            self._reject(
++                HTTPStatus.BAD_REQUEST, "The 'sample' query parameter is required."
++            )
+             return
+         try:
+-            figure = render_sample(matrix, sample, unit, compare_cosmic=compare_cosmic)
++            # MatrixData reads its selected sample lazily from the uploaded
++            # temp file.  Hold the same lock used by replacement/cleanup so
++            # another upload cannot unlink that file mid-render.
++            with self.server._matrix_lock:
++                matrix = self.server.dashboard_matrix
++                if matrix is None:
++                    self._reject(
++                        HTTPStatus.CONFLICT,
++                        "Upload a matrix before requesting a render.",
++                    )
++                    return
++                figure = render_sample(
++                    matrix, sample, unit, compare_cosmic=compare_cosmic
++                )
+         except MatrixError as exc:
+             self._reject(HTTPStatus.BAD_REQUEST, str(exc))
+             return
+@@ -281,7 +322,9 @@ def _serve_cosmic_builds(self) -> None:
+             {
+                 "builds": [c["build"] for c in catalogues],
+                 "catalogues": catalogues,
+-                "catalogue_dir": str(cosmic.catalogue_dir()) if cosmic.catalogue_dir() else None,
++                "catalogue_dir": (
++                    str(cosmic.catalogue_dir()) if cosmic.catalogue_dir() else None
++                ),
+             },
+         )
+ 
+@@ -323,7 +366,9 @@ def _dispatch_post(self) -> None:
+         try:
+             length = int(header)
+         except (TypeError, ValueError):
+-            self._reject(HTTPStatus.LENGTH_REQUIRED, "A valid Content-Length header is required.")
++            self._reject(
++                HTTPStatus.LENGTH_REQUIRED, "A valid Content-Length header is required."
++            )
+             return
+         if length < 0:
+             self._reject(HTTPStatus.BAD_REQUEST, "Content-Length must not be negative.")
+@@ -362,6 +407,7 @@ def _dispatch_post(self) -> None:
+                 "context": matrix.context,
+                 "samples": list(matrix.columns),
+                 "labels_count": len(matrix.labels),
++                "warnings": list(matrix.warnings),
+             },
+         )
+ 
+@@ -391,6 +437,8 @@ def _handle_unexpected_error(self, exc: Exception) -> None:
+         # still return a normal JSON error response.
+         traceback.print_exc()
+         try:
+-            self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, f"Internal server error: {exc}")
++            self._reject(
++                HTTPStatus.INTERNAL_SERVER_ERROR, f"Internal server error: {exc}"
++            )
+         except Exception:
+             pass  # the connection is already broken; nothing more to do
+diff --git a/sigProfilerPlotting/web/static/app.js b/sigProfilerPlotting/web/static/app.js
+index d4a307b..b05e0a3 100644
+--- a/sigProfilerPlotting/web/static/app.js
++++ b/sigProfilerPlotting/web/static/app.js
+@@ -84,8 +84,16 @@ function clearError() {
+   $('matrixError').classList.add('hidden');
+ }
+ 
++function showWarnings(messages) {
++  const box = $('matrixWarning');
++  const warnings = Array.isArray(messages) ? messages.map(String) : [];
++  box.textContent = warnings.join(' ');
++  box.classList.toggle('hidden', warnings.length === 0);
++}
++
+ async function upload(file) {
+   clearError();
++  showWarnings([]);
+   $('fileName').textContent = file.name;
+   const before = $('matrixSummary').textContent;
+   $('matrixSummary').textContent = 'Reading the matrix';
+@@ -133,6 +141,7 @@ function loadMatrix(info) {
+   $('matrixSummary').textContent =
+     `${state.context} · ${info.labels_count} mutation contexts · ` +
+     `${n} ${n === 1 ? 'sample' : 'samples'}`;
++  showWarnings(info.warnings);
+   // SBS1536 reuses the SBS4608 panel renderer (same "sbs4608" wire kind --
+   // a 1536-context matrix is exactly what SBS4608Data collapses to once
+   // strand is summed away) but has no strand/transcription data at all, so
+diff --git a/sigProfilerPlotting/web/static/index.html b/sigProfilerPlotting/web/static/index.html
+index abfcedd..dfef9c2 100644
+--- a/sigProfilerPlotting/web/static/index.html
++++ b/sigProfilerPlotting/web/static/index.html
+@@ -25,6 +25,7 @@ <h2>Matrix</h2>
+              accept=".txt,.tsv,.csv,.all,text/plain,text/tab-separated-values,text/csv">
+       <p id="fileName" class="hint">Tab- or comma-delimited, with a MutationType column.</p>
+       <p id="matrixError" class="error hidden" role="alert"></p>
++      <p id="matrixWarning" class="warning hidden" role="status"></p>
+     </section>
+ 
+     <section class="panel" id="unitPanel">
+diff --git a/sigProfilerPlotting/web/static/styles.css b/sigProfilerPlotting/web/static/styles.css
+index 5fbc642..a9a497e 100644
+--- a/sigProfilerPlotting/web/static/styles.css
++++ b/sigProfilerPlotting/web/static/styles.css
+@@ -111,6 +111,13 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
+   overflow-wrap: anywhere;
+ }
+ 
++.warning {
++  margin: 0; padding: 8px 10px;
++  color: #704500; background: #fff4d6;
++  border-radius: 6px;
++  overflow-wrap: anywhere;
++}
++
+ button, .file-button {
+   font: inherit;
+   padding: 6px 12px;
+diff --git a/tests/test_cli_controller.py b/tests/test_cli_controller.py
+index ea21ba3..c6d86da 100644
+--- a/tests/test_cli_controller.py
++++ b/tests/test_cli_controller.py
+@@ -15,9 +15,7 @@ def test_sbs_cli_percentage_omission_is_none():
+     [("false", False), ("true", True)],
+ )
+ def test_sbs_cli_preserves_explicit_percentage(value, expected):
+-    parsed = cli_controller.parse_arguments_sbs(
+-        [*BASE_ARGS, "--percentage", value]
+-    )
++    parsed = cli_controller.parse_arguments_sbs([*BASE_ARGS, "--percentage", value])
+     assert parsed.percentage is expected
+ 
+ 
+@@ -42,3 +40,21 @@ def fake_build(*args, **kwargs):
+     cli_controller.dispatch_plot_sbs(parsed)
+ 
+     assert captured["percentage"] is True
++
++
++def test_cli_custom_text_is_a_per_sample_list_instead_of_characters():
++    parsed = cli_controller.parse_arguments_sbs(
++        [
++            *BASE_ARGS,
++            "--custom_text_upper",
++            "Stability: 0.97",
++            "--custom_text_upper",
++            "Stability: 0.88",
++            "--custom_text_middle",
++            "Mutations: 12,345",
++        ]
++    )
++
++    assert parsed.custom_text_upper == ["Stability: 0.97", "Stability: 0.88"]
++    assert parsed.custom_text_middle == ["Mutations: 12,345"]
++    assert parsed.custom_text_bottom is None
+diff --git a/tests/test_cosmic.py b/tests/test_cosmic.py
+index e84be5d..6465d8a 100644
+--- a/tests/test_cosmic.py
++++ b/tests/test_cosmic.py
+@@ -3,7 +3,7 @@
+ import pytest
+ 
+ from sigProfilerPlotting.web import cosmic
+-from sigProfilerPlotting.web.matrix import MatrixError
++from sigProfilerPlotting.web.matrix import MatrixError, REFERENCE_CONTEXTS
+ 
+ # SigProfilerPlotting does not bundle or redistribute COSMIC's signature
+ # catalogues (see cosmic.py's module docstring) -- every test here builds
+@@ -11,12 +11,9 @@
+ # than relying on real bundled data.
+ 
+ _HEADER = ["Type", "SBS1", "SBS4", "SBS5"]
+-_ROWS = [
+-    _HEADER,
+-    ["A[C>A]A", "1", "0", "2"],
+-    ["A[C>G]A", "0", "1", "2"],
+-    ["A[C>T]A", "0", "0", "2"],
+-    ["A[T>A]A", "0", "0", "2"],
++_ROWS = [_HEADER] + [
++    [label, "1" if index == 0 else "0", "1" if index == 1 else "0", "2"]
++    for index, label in enumerate(REFERENCE_CONTEXTS["SBS96"])
+ ]
+ 
+ 
+@@ -56,7 +53,9 @@ def test_unrecognized_filenames_in_the_directory_are_ignored(tmp_path):
+     directory.mkdir()
+     _write_catalogue(directory / "COSMIC_v3.4_SBS_GRCh37.txt")
+     (directory / "readme.txt").write_text("not a catalogue\n", encoding="utf-8")
+-    (directory / "COSMIC_v3.4_SBS_notabuild.txt").write_text("Type\tSBS1\n", encoding="utf-8")
++    (directory / "COSMIC_v3.4_SBS_notabuild.txt").write_text(
++        "Type\tSBS1\n", encoding="utf-8"
++    )
+     cosmic.configure_catalogue_dir(directory)
+     try:
+         assert cosmic.available_builds() == ["GRCh37"]
+@@ -71,7 +70,9 @@ def test_configure_catalogue_dir_none_clears_it(catalogue_dir):
+     cosmic.configure_catalogue_dir(catalogue_dir)  # restore for fixture teardown parity
+ 
+ 
+-def test_catalogue_metadata_reports_version_path_checksum_and_signature_count(catalogue_dir):
++def test_catalogue_metadata_reports_version_path_checksum_and_signature_count(
++    catalogue_dir,
++):
+     metadata = {info.build: info for info in cosmic.catalogue_metadata()}
+     info = metadata["GRCh37"]
+     assert info.version == "3.4"
+@@ -79,7 +80,9 @@ def test_catalogue_metadata_reports_version_path_checksum_and_signature_count(ca
+     assert info.signature_count == 3
+     import hashlib
+ 
+-    expected = hashlib.sha256((catalogue_dir / "COSMIC_v3.4_SBS_GRCh37.txt").read_bytes()).hexdigest()
++    expected = hashlib.sha256(
++        (catalogue_dir / "COSMIC_v3.4_SBS_GRCh37.txt").read_bytes()
++    ).hexdigest()
+     assert info.checksum == expected
+ 
+ 
+@@ -140,8 +143,65 @@ def test_load_build_rejects_a_non_numeric_value(tmp_path):
+         cosmic.configure_catalogue_dir(None)
+ 
+ 
++def test_load_build_rejects_duplicate_signature_names(tmp_path):
++    directory = tmp_path / "cosmic"
++    directory.mkdir()
++    rows = [["Type", "SBS1", "SBS1"]] + [
++        [label, "1", "2"] for label in REFERENCE_CONTEXTS["SBS96"]
++    ]
++    _write_catalogue(directory / "COSMIC_v3.4_SBS_GRCh37.txt", rows=rows)
++    cosmic.configure_catalogue_dir(directory)
++    try:
++        with pytest.raises(MatrixError, match="duplicate signature column"):
++            cosmic._load_build("GRCh37")
++    finally:
++        cosmic.configure_catalogue_dir(None)
++
++
++def test_load_build_rejects_duplicate_contexts(tmp_path):
++    directory = tmp_path / "cosmic"
++    directory.mkdir()
++    rows = [_HEADER, *_ROWS[1:], _ROWS[1]]
++    _write_catalogue(directory / "COSMIC_v3.4_SBS_GRCh37.txt", rows=rows)
++    cosmic.configure_catalogue_dir(directory)
++    try:
++        with pytest.raises(MatrixError, match="duplicate context"):
++            cosmic._load_build("GRCh37")
++    finally:
++        cosmic.configure_catalogue_dir(None)
++
++
++def test_load_build_rejects_an_incomplete_sbs96_catalogue(tmp_path):
++    directory = tmp_path / "cosmic"
++    directory.mkdir()
++    _write_catalogue(directory / "COSMIC_v3.4_SBS_GRCh37.txt", rows=_ROWS[:-1])
++    cosmic.configure_catalogue_dir(directory)
++    try:
++        with pytest.raises(MatrixError, match="exactly the 96 unique SBS96 contexts"):
++            cosmic._load_build("GRCh37")
++    finally:
++        cosmic.configure_catalogue_dir(None)
++
++
++@pytest.mark.parametrize("value", ["-1", "nan", "inf", "-inf"])
++def test_load_build_rejects_negative_or_non_finite_values(tmp_path, value):
++    directory = tmp_path / "cosmic"
++    directory.mkdir()
++    rows = [row.copy() for row in _ROWS]
++    rows[1][1] = value
++    _write_catalogue(directory / "COSMIC_v3.4_SBS_GRCh37.txt", rows=rows)
++    cosmic.configure_catalogue_dir(directory)
++    try:
++        with pytest.raises(MatrixError, match="finite and non-negative"):
++            cosmic._load_build("GRCh37")
++    finally:
++        cosmic.configure_catalogue_dir(None)
++
++
+ def test_cosine_similarity_of_identical_vectors_is_one():
+-    assert cosmic._cosine_similarity([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) == pytest.approx(1.0)
++    assert cosmic._cosine_similarity([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) == pytest.approx(
++        1.0
++    )
+ 
+ 
+ def test_cosine_similarity_is_scale_invariant():
+@@ -185,11 +245,18 @@ def test_top_matches_rejects_an_unknown_build(catalogue_dir):
+         cosmic.top_matches({"A[C>A]A": 1.0}, "not-a-real-build")
+ 
+ 
+-def test_top_matches_rejects_a_build_removed_since_available_builds_was_checked(catalogue_dir):
++def test_top_matches_rejects_a_build_removed_since_available_builds_was_checked(
++    catalogue_dir,
++):
+     with pytest.raises(MatrixError, match="Unknown or unavailable COSMIC genome build"):
+         cosmic.top_matches({"A[C>A]A": 1.0}, "rn7")  # never configured in this fixture
+ 
+ 
++def test_top_matches_rejects_an_incomplete_query(catalogue_dir):
++    with pytest.raises(MatrixError, match="exactly the 96 unique SBS96 contexts"):
++        cosmic.top_matches({"A[C>A]A": 1.0}, "GRCh37")
++
++
+ def test_load_build_caches_across_calls(catalogue_dir):
+     first = cosmic._load_build("mm10")
+     second = cosmic._load_build("mm10")
+@@ -199,14 +266,32 @@ def test_load_build_caches_across_calls(catalogue_dir):
+ def test_load_build_cache_invalidates_when_the_file_content_changes(catalogue_dir):
+     first = cosmic._load_build("GRCh37")
+     assert first["SBS1"]["A[C>A]A"] == 1.0
+-    _write_catalogue(
+-        catalogue_dir / "COSMIC_v3.4_SBS_GRCh37.txt",
+-        rows=[["Type", "SBS1"], ["A[C>A]A", "99"]],
+-    )
++    rows = [["Type", "SBS1"]] + [
++        [label, "99" if label == "A[C>A]A" else "0"]
++        for label in REFERENCE_CONTEXTS["SBS96"]
++    ]
++    _write_catalogue(catalogue_dir / "COSMIC_v3.4_SBS_GRCh37.txt", rows=rows)
+     second = cosmic._load_build("GRCh37")
+     assert second["SBS1"]["A[C>A]A"] == 99.0
+ 
+ 
++def test_metadata_cache_invalidates_when_same_path_content_changes(catalogue_dir):
++    first = {info.build: info for info in cosmic.catalogue_metadata()}["GRCh37"]
++    rows = [["Type", "Replacement"]] + [
++        [label, "1"] for label in REFERENCE_CONTEXTS["SBS96"]
++    ]
++    _write_catalogue(catalogue_dir / "COSMIC_v3.4_SBS_GRCh37.txt", rows=rows)
++    second = {info.build: info for info in cosmic.catalogue_metadata()}["GRCh37"]
++    assert second.checksum != first.checksum
++    assert second.signature_count == 1
++
++
++def test_duplicate_catalogue_versions_for_one_build_are_rejected(catalogue_dir):
++    _write_catalogue(catalogue_dir / "COSMIC_v3.5_SBS_GRCh37.txt")
++    with pytest.raises(MatrixError, match="Multiple COSMIC catalogue files"):
++        cosmic.available_builds()
++
++
+ def test_collapse_to_sbs96_is_a_no_op_for_already_96_context_labels():
+     raw = {"A[C>A]A": 3.0, "C[C>G]T": 5.0}
+     assert cosmic.collapse_to_sbs96(raw) == raw
+@@ -227,7 +312,9 @@ def test_collapse_to_sbs96_strips_strand_tag_and_pentanucleotide_flanks_together
+     assert cosmic.collapse_to_sbs96(raw) == {"A[C>A]A": 15.0, "A[C>A]C": 3.0}
+ 
+ 
+-def test_environment_variable_configures_the_default_catalogue_dir(tmp_path, monkeypatch):
++def test_environment_variable_configures_the_default_catalogue_dir(
++    tmp_path, monkeypatch
++):
+     directory = tmp_path / "cosmic"
+     directory.mkdir()
+     _write_catalogue(directory / "COSMIC_v3.4_SBS_GRCh37.txt")
+diff --git a/tests/test_web_interactions.py b/tests/test_web_interactions.py
+index f533ea7..1247bdf 100644
+--- a/tests/test_web_interactions.py
++++ b/tests/test_web_interactions.py
+@@ -19,10 +19,10 @@
+ 
+ import pytest
+ 
+-sync_api = pytest.importorskip("playwright.sync_api")
+-
+ from sigProfilerPlotting.web.matrix import REFERENCE_CONTEXTS
+ 
++sync_api = pytest.importorskip("playwright.sync_api")
++
+ PAGE = 15          # plots drawn before the reader asks for more
+ PAGE_4608 = 4
+ 
+@@ -62,6 +62,15 @@ def _write_matrix(path, context, names, low=5, high=60, cell=None):
+     return path
+ 
+ 
++def _write_r_padded_id476(path):
++    rows = ["Lower83\tComplete476\tEmpty"]
++    for index, label in enumerate(_labels("ID476")):
++        lower = str(index + 10) if index < 83 else "NA"
++        rows.append(f"{label}\t{lower}\t{index + 1}\tNA")
++    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
++    return path
++
++
+ def _launch(playwright):
+     try:
+         return playwright.chromium.launch()
+@@ -272,6 +281,18 @@ def test_an_invalid_matrix_shows_the_servers_message(tmp_path):
+         assert page.locator(".card").count() == 0
+ 
+ 
++def test_r_padded_id476_omissions_are_visible_to_the_user(tmp_path):
++    path = _write_r_padded_id476(tmp_path / "id476-r-export.tsv")
++    with _dashboard() as page:
++        _upload(page, path, "ID476", 1)
++        page.wait_for_selector("#matrixWarning:not(.hidden)")
++        warning = page.text_content("#matrixWarning")
++        assert "83 of 476" in warning
++        assert "Empty" in warning
++        assert page.locator("#sampleList input").count() == 1
++        assert page.locator("#sampleList input").first.get_attribute("value") == "Complete476"
++
++
+ # -------------------------------------------------------------- the list
+ 
+ def test_select_all_clear_all_and_search(tmp_path):
+diff --git a/tests/test_web_matrix.py b/tests/test_web_matrix.py
+index 6dd7d33..7148050 100644
+--- a/tests/test_web_matrix.py
++++ b/tests/test_web_matrix.py
+@@ -1,6 +1,11 @@
+ import pytest
+ 
+-from sigProfilerPlotting.web.matrix import MatrixError, detect_context, load_matrix
++from sigProfilerPlotting.web.matrix import (
++    REFERENCE_CONTEXTS,
++    MatrixError,
++    detect_context,
++    load_matrix,
++)
+ 
+ SBS6_LABELS = ["C>A", "C>G", "C>T", "T>A", "T>C", "T>G"]
+ 
+@@ -176,3 +181,118 @@ def test_blank_first_header_cell_is_accepted(tmp_path):
+     path.write_text(path.read_text(encoding="utf-8").replace("MutationType", "", 1))
+     matrix = load_matrix(path)
+     assert matrix.context == "SBS6"
++
++
++@pytest.mark.parametrize("source_kind", ["path", "bytes"])
++def test_r_header_without_top_left_context_cell_is_accepted(tmp_path, source_kind):
++    text = "S1\tS2\n" + "\n".join(
++        f"{label}\t{index}\t{index + 10}"
++        for index, label in enumerate(SBS6_LABELS)
++    )
++    source = text.encode("utf-8")
++    if source_kind == "path":
++        source = tmp_path / "r-export.tsv"
++        source.write_text(text, encoding="utf-8")
++
++    matrix = load_matrix(source)
++
++    assert matrix.context == "SBS6"
++    assert matrix.columns == ("S1", "S2")
++    assert matrix.sample_values("S2") == [float(i + 10) for i in range(6)]
++
++
++def test_r_header_is_not_inferred_when_data_is_more_than_one_field_wider(tmp_path):
++    path = tmp_path / "too-wide.tsv"
++    path.write_text("S1\nC>A\t1\t2\n", encoding="utf-8")
++    with pytest.raises(MatrixError, match="header must contain"):
++        load_matrix(path)
++
++
++@pytest.mark.parametrize("source_kind", ["path", "bytes"])
++def test_legacy_id89_repeat_label_is_narrowly_canonicalized(tmp_path, source_kind):
++    labels = list(REFERENCE_CONTEXTS["ID89"])
++    labels[labels.index("Del(C):R(6,)")] = "Del(C):R(6,9)"
++    text = "LegacySignature\n" + "\n".join(
++        f"{label}\t{index + 1}" for index, label in enumerate(labels)
++    )
++    source = text.encode("utf-8")
++    if source_kind == "path":
++        source = tmp_path / "legacy-id89.tsv"
++        source.write_text(text, encoding="utf-8")
++
++    matrix = load_matrix(source)
++
++    assert matrix.context == "ID89"
++    assert matrix.labels == REFERENCE_CONTEXTS["ID89"]
++    assert "Del(C):R(6,9)" not in matrix.labels
++    assert len(matrix.sample_values("LegacySignature")) == 89
++
++
++def _id476_r_padded_text():
++    lines = ["LowerResolution\tComplete476\tEntirelyMissing"]
++    for index, label in enumerate(REFERENCE_CONTEXTS["ID476"]):
++        lower = str(index + 100) if index < 83 else "NA"
++        lines.append(f"{label}\t{lower}\t{index + 1}\tNA")
++    return "\n".join(lines) + "\n"
++
++
++@pytest.mark.parametrize("source_kind", ["path", "bytes"])
++def test_id476_r_padding_omits_incomplete_profiles_with_warnings(
++    tmp_path, source_kind
++):
++    text = _id476_r_padded_text()
++    source = text.encode("utf-8")
++    if source_kind == "path":
++        source = tmp_path / "id476-r-export.tsv"
++        source.write_text(text, encoding="utf-8")
++
++    matrix = load_matrix(source)
++
++    assert matrix.context == "ID476"
++    assert matrix.columns == ("Complete476",)
++    assert len(matrix.labels) == 476
++    assert matrix.sample_values("Complete476") == [float(i + 1) for i in range(476)]
++    assert len(matrix.warnings) == 2
++    assert "LowerResolution" in matrix.warnings[0]
++    assert "83 of 476" in matrix.warnings[0]
++    assert "EntirelyMissing" in matrix.warnings[1]
++
++
++def test_id476_arbitrary_na_pattern_is_rejected(tmp_path):
++    labels = REFERENCE_CONTEXTS["ID476"]
++    lines = ["MutationType\tBroken"]
++    for index, label in enumerate(labels):
++        value = "NA" if index == 100 else "1"
++        lines.append(f"{label}\t{value}")
++    path = tmp_path / "broken-id476.tsv"
++    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
++
++    with pytest.raises(MatrixError, match="corrupted matrix"):
++        load_matrix(path)
++
++
++def test_na_is_rejected_outside_documented_id476_layout(tmp_path):
++    lines = ["MutationType\tS1"] + [
++        f"{label}\t{'NA' if index == 0 else '1'}"
++        for index, label in enumerate(SBS6_LABELS)
++    ]
++    path = tmp_path / "sbs-na.tsv"
++    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
++
++    with pytest.raises(MatrixError, match="only supported.*ID476"):
++        load_matrix(path)
++
++
++def test_id476_with_no_complete_profiles_is_rejected(tmp_path):
++    text = _id476_r_padded_text().replace("\tComplete476", "").replace(
++        "\tEntirelyMissing", ""
++    )
++    lines = []
++    for line in text.splitlines():
++        fields = line.split("\t")
++        lines.append("\t".join(fields[:2]))
++    path = tmp_path / "only-lower-resolution.tsv"
++    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
++
++    with pytest.raises(MatrixError, match="no complete profiles"):
++        load_matrix(path)
+diff --git a/tests/test_web_server.py b/tests/test_web_server.py
+index 012dcde..e7f1a86 100644
+--- a/tests/test_web_server.py
++++ b/tests/test_web_server.py
+@@ -1,6 +1,7 @@
+ import http.client
+-import io
+ import json
++import os
++import socket
+ import threading
+ 
+ import pytest
+@@ -53,6 +54,28 @@ def _sbs6_tsv():
+     return "\n".join(lines) + "\n"
+ 
+ 
++def _id89_r_export_tsv():
++    from sigProfilerPlotting.web.matrix import REFERENCE_CONTEXTS
++
++    labels = list(REFERENCE_CONTEXTS["ID89"])
++    labels[labels.index("Del(C):R(6,)")] = "Del(C):R(6,9)"
++    lines = ["ID89Signature"]  # R row-name export: omitted top-left cell
++    lines.extend(f"{label}\t{index + 1}" for index, label in enumerate(labels))
++    return "\n".join(lines) + "\n"
++
++
++def _id476_r_export_tsv():
++    from sigProfilerPlotting.web.matrix import REFERENCE_CONTEXTS
++
++    # The incomplete columns reproduce only the *shape* of the Liu R export;
++    # all values and names here are synthetic.
++    lines = ["Lower83\tComplete476\tEmpty"]
++    for index, label in enumerate(REFERENCE_CONTEXTS["ID476"]):
++        lower = str(index + 10) if index < 83 else "NA"
++        lines.append(f"{label}\t{lower}\t{index + 1}\tNA")
++    return "\n".join(lines) + "\n"
++
++
+ # SigProfilerPlotting does not bundle or redistribute COSMIC's signature
+ # catalogues -- configure a small, synthetic, user-supplied-style catalogue
+ # directory for the tests below instead of relying on real bundled data.
+@@ -67,9 +90,13 @@ def _cosmic_catalogue(tmp_path):
+     names = ["SBS1", "SBS2", "SBS3", "SBS4", "SBS5", "SBS13"]
+     lines = ["\t".join(["Type", *names])]
+     for idx, label in enumerate(labels):
+-        row = [label] + [str(((idx * 7 + col * 13 + 3) % 23) / 23.0) for col in range(len(names))]
++        row = [label] + [
++            str(((idx * 7 + col * 13 + 3) % 23) / 23.0) for col in range(len(names))
++        ]
+         lines.append("\t".join(row))
+-    (directory / "COSMIC_v3.4_SBS_GRCh37.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
++    (directory / "COSMIC_v3.4_SBS_GRCh37.txt").write_text(
++        "\n".join(lines) + "\n", encoding="utf-8"
++    )
+     cosmic.configure_catalogue_dir(directory)
+     yield
+     cosmic.configure_catalogue_dir(None)
+@@ -96,7 +123,6 @@ def test_forged_host_header_is_rejected(running_server):
+ 
+ 
+ def test_cross_origin_post_is_rejected(running_server):
+-    port = running_server.server_address[1]
+     body, content_type = _matrix_body(_sbs6_tsv())
+     conn = _connection(running_server)
+     headers = {
+@@ -150,6 +176,55 @@ def test_matrix_upload_and_render_round_trip(running_server):
+     conn.close()
+ 
+ 
++@pytest.mark.parametrize(
++    ("matrix_text", "expected_context", "sample", "expected_warnings"),
++    [
++        (_id89_r_export_tsv, "ID89", "ID89Signature", 0),
++        (_id476_r_export_tsv, "ID476", "Complete476", 2),
++    ],
++)
++def test_r_style_id_matrix_upload_and_render_round_trip(
++    running_server, matrix_text, expected_context, sample, expected_warnings
++):
++    port = running_server.server_address[1]
++    origin = f"http://127.0.0.1:{port}"
++    body, content_type = _matrix_body(matrix_text())
++
++    conn = _connection(running_server)
++    conn.request(
++        "POST",
++        "/api/matrix",
++        body=body,
++        headers={
++            "Content-Type": content_type,
++            "Content-Length": str(len(body)),
++            "Origin": origin,
++        },
++    )
++    response = conn.getresponse()
++    assert response.status == 200
++    manifest = json.loads(response.read())
++    conn.close()
++
++    assert manifest["context"] == expected_context
++    assert manifest["samples"] == [sample]
++    assert manifest["labels_count"] == int(expected_context[2:])
++    assert len(manifest["warnings"]) == expected_warnings
++    assert running_server.dashboard_matrix.values is None
++
++    conn = _connection(running_server)
++    conn.request("GET", f"/api/render?sample={sample}&unit=counts")
++    response = conn.getresponse()
++    assert response.status == 200
++    figure = json.loads(response.read())
++    conn.close()
++
++    assert figure["kind"] == "standard"
++    if expected_context == "ID476":
++        assert "83 of 476" in manifest["warnings"][0]
++        assert "Empty" in manifest["warnings"][1]
++
++
+ def test_render_without_a_prior_upload_is_rejected(running_server):
+     conn = _connection(running_server)
+     conn.request("GET", "/api/render?sample=S1")
+@@ -158,7 +233,9 @@ def test_render_without_a_prior_upload_is_rejected(running_server):
+     conn.close()
+ 
+ 
+-def test_unexpected_render_error_returns_500_without_dropping_the_connection(running_server, monkeypatch):
++def test_unexpected_render_error_returns_500_without_dropping_the_connection(
++    running_server, monkeypatch
++):
+     # A bug anywhere in render_sample (anything that isn't MatrixError) must
+     # not silently kill the connection -- that's indistinguishable from a
+     # server crash to the browser ("Failed to fetch", no diagnostic info).
+@@ -173,8 +250,14 @@ def _boom(*args, **kwargs):
+     body, content_type = _matrix_body(_sbs6_tsv())
+     conn = _connection(running_server)
+     conn.request(
+-        "POST", "/api/matrix", body=body,
+-        headers={"Content-Type": content_type, "Content-Length": str(len(body)), "Origin": origin},
++        "POST",
++        "/api/matrix",
++        body=body,
++        headers={
++            "Content-Type": content_type,
++            "Content-Length": str(len(body)),
++            "Origin": origin,
++        },
+     )
+     resp = conn.getresponse()
+     resp.read()
+@@ -250,7 +333,9 @@ def test_upload_with_a_negative_content_length_is_rejected(running_server):
+     conn.close()
+ 
+ 
+-def test_upload_exceeding_the_configured_size_limit_is_rejected(running_server, monkeypatch):
++def test_upload_exceeding_the_configured_size_limit_is_rejected(
++    running_server, monkeypatch
++):
+     import sigProfilerPlotting.web.server as server_module
+ 
+     monkeypatch.setattr(server_module, "MAX_UPLOAD_BYTES", 10)
+@@ -260,8 +345,14 @@ def test_upload_exceeding_the_configured_size_limit_is_rejected(running_server,
+     assert len(body) > 10
+     conn = _connection(running_server)
+     conn.request(
+-        "POST", "/api/matrix", body=body,
+-        headers={"Content-Type": content_type, "Content-Length": str(len(body)), "Origin": origin},
++        "POST",
++        "/api/matrix",
++        body=body,
++        headers={
++            "Content-Type": content_type,
++            "Content-Length": str(len(body)),
++            "Origin": origin,
++        },
+     )
+     resp = conn.getresponse()
+     assert resp.status == 413
+@@ -296,8 +387,14 @@ def spy(rfile, length):
+     try:
+         conn = _connection(running_server)
+         conn.request(
+-            "POST", "/api/matrix", body=body,
+-            headers={"Content-Type": content_type, "Content-Length": str(len(body)), "Origin": origin},
++            "POST",
++            "/api/matrix",
++            body=body,
++            headers={
++                "Content-Type": content_type,
++                "Content-Length": str(len(body)),
++                "Origin": origin,
++            },
+         )
+         resp = conn.getresponse()
+         assert resp.status == 400
+@@ -312,9 +409,9 @@ def spy(rfile, length):
+     assert not os.path.exists(captured["path"])
+ 
+ 
+-def test_uploading_a_replacement_matrix_cleans_up_the_previous_temp_file(running_server):
+-    import os
+-
++def test_uploading_a_replacement_matrix_cleans_up_the_previous_temp_file(
++    running_server,
++):
+     port = running_server.server_address[1]
+     origin = f"http://127.0.0.1:{port}"
+ 
+@@ -322,8 +419,14 @@ def upload(content):
+         body, content_type = _matrix_body(content)
+         conn = _connection(running_server)
+         conn.request(
+-            "POST", "/api/matrix", body=body,
+-            headers={"Content-Type": content_type, "Content-Length": str(len(body)), "Origin": origin},
++            "POST",
++            "/api/matrix",
++            body=body,
++            headers={
++                "Content-Type": content_type,
++                "Content-Length": str(len(body)),
++                "Origin": origin,
++            },
+         )
+         resp = conn.getresponse()
+         assert resp.status == 200
+@@ -341,6 +444,84 @@ def upload(content):
+     assert os.path.exists(second_tempfile)
+ 
+ 
++def test_replacement_waits_for_an_in_flight_lazy_render(running_server, monkeypatch):
++    import sigProfilerPlotting.web.server as server_module
++
++    port = running_server.server_address[1]
++    origin = f"http://127.0.0.1:{port}"
++
++    def upload(content):
++        body, content_type = _matrix_body(content)
++        conn = _connection(running_server)
++        conn.request(
++            "POST",
++            "/api/matrix",
++            body=body,
++            headers={
++                "Content-Type": content_type,
++                "Content-Length": str(len(body)),
++                "Origin": origin,
++            },
++        )
++        response = conn.getresponse()
++        status = response.status
++        response.read()
++        conn.close()
++        return status
++
++    assert upload(_sbs6_tsv()) == 200
++    old_path = running_server._matrix_tempfile
++    real_render = server_module.render_sample
++    real_set_matrix = running_server.set_dashboard_matrix
++    render_started = threading.Event()
++    release_render = threading.Event()
++    replacement_attempted = threading.Event()
++
++    def blocking_render(*args, **kwargs):
++        render_started.set()
++        assert release_render.wait(timeout=5)
++        return real_render(*args, **kwargs)
++
++    monkeypatch.setattr(server_module, "render_sample", blocking_render)
++
++    def observed_set_matrix(matrix, tempfile_path):
++        replacement_attempted.set()
++        return real_set_matrix(matrix, tempfile_path)
++
++    monkeypatch.setattr(running_server, "set_dashboard_matrix", observed_set_matrix)
++    outcomes = {}
++
++    def render_request():
++        conn = _connection(running_server)
++        conn.request("GET", "/api/render?sample=S1&unit=counts")
++        response = conn.getresponse()
++        outcomes["render"] = response.status
++        response.read()
++        conn.close()
++
++    def replacement_upload():
++        outcomes["upload"] = upload(_sbs96_tsv())
++
++    render_thread = threading.Thread(target=render_request)
++    upload_thread = threading.Thread(target=replacement_upload)
++    render_thread.start()
++    assert render_started.wait(timeout=5)
++    upload_thread.start()
++    assert replacement_attempted.wait(timeout=5)
++
++    # The replacement has reached the swap, but it cannot unlink while the lazy
++    # renderer is still using the old backing file.
++    upload_thread.join(timeout=0.1)
++    assert upload_thread.is_alive()
++    assert old_path is not None and os.path.exists(old_path)
++
++    release_render.set()
++    render_thread.join(timeout=5)
++    upload_thread.join(timeout=5)
++    assert outcomes == {"render": 200, "upload": 200}
++    assert not os.path.exists(old_path)
++
++
+ def test_html_response_carries_a_content_security_policy(running_server):
+     conn = _connection(running_server)
+     conn.request("GET", "/")
+@@ -357,10 +538,49 @@ def test_make_server_rejects_non_loopback_host():
+         make_server("0.0.0.0", 0)
+ 
+ 
++def test_bind_failure_preserves_the_original_socket_error(monkeypatch):
++    import sigProfilerPlotting.web.server as server_module
++
++    def fail_bind(self):
++        raise OSError("address already in use")
++
++    monkeypatch.setattr(server_module.DashboardHTTPServer, "server_bind", fail_bind)
++    with pytest.raises(OSError, match="address already in use"):
++        make_server("127.0.0.1", 0)
++
++
++def test_ipv6_loopback_server_uses_ipv6_and_accepts_bracketed_host():
++    if not socket.has_ipv6:
++        pytest.skip("IPv6 is unavailable on this platform")
++    try:
++        server = make_server("::1", 0)
++    except OSError as exc:
++        pytest.skip(f"IPv6 loopback cannot be bound on this runner: {exc}")
++    thread = threading.Thread(target=server.serve_forever, daemon=True)
++    thread.start()
++    try:
++        assert server.address_family == socket.AF_INET6
++        port = server.server_address[1]
++        conn = http.client.HTTPConnection("::1", port, timeout=5)
++        conn.putrequest("GET", "/", skip_host=True)
++        conn.putheader("Host", f"[::1]:{port}")
++        conn.endheaders()
++        response = conn.getresponse()
++        assert response.status == 200
++        response.read()
++        conn.close()
++    finally:
++        server.shutdown()
++        server.server_close()
++        thread.join(timeout=5)
++
++
+ def test_shutdown_requires_matching_origin(running_server):
+     conn = _connection(running_server)
+     conn.request(
+-        "POST", "/api/shutdown", body=b"",
++        "POST",
++        "/api/shutdown",
++        body=b"",
+         headers={"Content-Length": "0", "Origin": "http://evil.example.com"},
+     )
+     resp = conn.getresponse()
+@@ -395,8 +615,14 @@ def test_shutdown_requires_matching_token(running_server):
+     origin = f"http://127.0.0.1:{port}"
+     conn = _connection(running_server)
+     conn.request(
+-        "POST", "/api/shutdown", body=b"",
+-        headers={"Content-Length": "0", "Origin": origin, "X-Dashboard-Token": "wrong-token"},
++        "POST",
++        "/api/shutdown",
++        body=b"",
++        headers={
++            "Content-Length": "0",
++            "Origin": origin,
++            "X-Dashboard-Token": "wrong-token",
++        },
+     )
+     resp = conn.getresponse()
+     assert resp.status == 403
+@@ -430,8 +656,14 @@ def test_quit_button_shuts_down_the_running_server():
+ 
+         conn = _connection(server)
+         conn.request(
+-            "POST", "/api/shutdown", body=b"",
+-            headers={"Content-Length": "0", "Origin": origin, "X-Dashboard-Token": token},
++            "POST",
++            "/api/shutdown",
++            body=b"",
++            headers={
++                "Content-Length": "0",
++                "Origin": origin,
++                "X-Dashboard-Token": token,
++            },
+         )
+         resp = conn.getresponse()
+         assert resp.status == 200
+@@ -440,7 +672,9 @@ def test_quit_button_shuts_down_the_running_server():
+         conn.close()
+ 
+         thread.join(timeout=5)
+-        assert not thread.is_alive(), "serve_forever() should have returned after /api/shutdown"
++        assert (
++            not thread.is_alive()
++        ), "serve_forever() should have returned after /api/shutdown"
+     finally:
+         server.server_close()
+ 
+@@ -462,7 +696,9 @@ def test_cosmic_builds_endpoint_lists_configured_genome_builds(running_server):
+     conn.close()
+ 
+ 
+-def test_cosmic_builds_endpoint_reports_no_builds_without_a_configured_directory(running_server):
++def test_cosmic_builds_endpoint_reports_no_builds_without_a_configured_directory(
++    running_server,
++):
+     from sigProfilerPlotting.web import cosmic
+ 
+     cosmic.configure_catalogue_dir(None)
+@@ -484,8 +720,14 @@ def test_render_with_compare_cosmic_returns_the_comparison_payload(running_serve
+ 
+     conn = _connection(running_server)
+     conn.request(
+-        "POST", "/api/matrix", body=body,
+-        headers={"Content-Type": content_type, "Content-Length": str(len(body)), "Origin": origin},
++        "POST",
++        "/api/matrix",
++        body=body,
++        headers={
++            "Content-Type": content_type,
++            "Content-Length": str(len(body)),
++            "Origin": origin,
++        },
+     )
+     resp = conn.getresponse()
+     assert resp.status == 200
+@@ -511,8 +753,14 @@ def test_render_with_an_unknown_cosmic_build_is_rejected(running_server):
+ 
+     conn = _connection(running_server)
+     conn.request(
+-        "POST", "/api/matrix", body=body,
+-        headers={"Content-Type": content_type, "Content-Length": str(len(body)), "Origin": origin},
++        "POST",
++        "/api/matrix",
++        body=body,
++        headers={
++            "Content-Type": content_type,
++            "Content-Length": str(len(body)),
++            "Origin": origin,
++        },
+     )
+     resp = conn.getresponse()
+     resp.read()

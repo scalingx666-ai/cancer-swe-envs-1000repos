@@ -1,0 +1,82 @@
+version = "1.0"
+
+[task]
+name = "default/instadeepai__nucleotide-transformer-113"
+description = "feat: push BulkRNABert and MOJO"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "nucleotide-transformer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "instadeepai/nucleotide-transformer"
+ref = "3035619a8d3efc10a5c28805a8391ed831264919"
+reference = "https://github.com/instadeepai/nucleotide-transformer/pull/113"
+source_access = "auto"
+built_at = "2026-11-13T16:29:56.964839+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:60c5413f261962dc33626c5078c746e36e9c48e4eb471b4e69896dec85444ef7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-07-09T17:50:37Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "docs/bulk_rna_bert.md",
+    "docs/mojo.md",
+    "notebooks/bulk_rna_bert/data/bulkrnabert_gene_ids.txt",
+    "notebooks/bulk_rna_bert/inference_bulkrnabert_pytorch_example.ipynb",
+    "notebooks/bulk_rna_bert/inference_bulkrnaert_jax_example.ipynb",
+    "notebooks/mojo/data/mojo_gene_names.txt",
+    "notebooks/mojo/inference_mojo_jax_example.ipynb",
+    "notebooks/mojo/inference_mojo_pytorch_example.ipynb",
+    "nucleotide_transformer/bulk_rna_bert/__init__.py",
+    "nucleotide_transformer/bulk_rna_bert/config.py",
+    "nucleotide_transformer/bulk_rna_bert/layers.py",
+    "nucleotide_transformer/bulk_rna_bert/model.py",
+    "nucleotide_transformer/bulk_rna_bert/pretrained.py",
+    "nucleotide_transformer/bulk_rna_bert/tokenizer.py",
+    "nucleotide_transformer/mojo/__init__.py",
+    "nucleotide_transformer/mojo/config.py",
+    "nucleotide_transformer/mojo/layers.py",
+    "nucleotide_transformer/mojo/model.py",
+    "nucleotide_transformer/mojo/pretrained.py",
+    "setup.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 38440
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

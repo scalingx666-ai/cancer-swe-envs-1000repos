@@ -1,0 +1,764 @@
+diff --git a/.github/workflows/main.yml b/.github/workflows/main.yml
+index 2529d192..dde64c89 100644
+--- a/.github/workflows/main.yml
++++ b/.github/workflows/main.yml
+@@ -12,7 +12,22 @@ jobs:
+     runs-on: ubuntu-latest
+     strategy:
+       matrix:
+-        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
++        include:
++          - python: "3.8"
++            gurobi_version: "11.0.3"
++            gurobi_major: "11.0"
++          - python: "3.9"
++            gurobi_version: "12.0.3"
++            gurobi_major: "12.0"
++          - python: "3.10"
++            gurobi_version: "12.0.3"
++            gurobi_major: "12.0"
++          - python: "3.11"
++            gurobi_version: "12.0.3"
++            gurobi_major: "12.0"
++          - python: "3.12"
++            gurobi_version: "12.0.3"
++            gurobi_major: "12.0"
+       fail-fast: false
+ 
+     steps:
+@@ -38,15 +53,27 @@ jobs:
+ 
+       - name: Install Gurobi
+         run: |
+-          wget https://packages.gurobi.com/9.0/gurobi9.0.2_linux64.tar.gz -O gurobi9.0.2_linux64.tar.gz
+-          tar xvzf gurobi9.0.2_linux64.tar.gz
+-          (cd gurobi902/linux64/src/build && make)
+-          (cd gurobi902/linux64/lib && ln -f -s ../src/build/libgurobi_c++.a libgurobi_c++.a)
+-          echo "GUROBI_HOME=$(realpath gurobi902)" >> $GITHUB_ENV
++          wget https://packages.gurobi.com/${{ matrix.gurobi_major }}/gurobi${{ matrix.gurobi_version }}_linux64.tar.gz -O gurobi_linux64.tar.gz
++          tar xvzf gurobi_linux64.tar.gz
++          GUROBI_EXTRACTED=$(find . -maxdepth 1 -name "gurobi*" -type d | head -1 | sed 's|./||')
++          if [ -d "$GUROBI_EXTRACTED/linux64" ]; then
++            GUROBI_SUBDIR="$GUROBI_EXTRACTED/linux64"
++          else
++            GUROBI_SUBDIR="$GUROBI_EXTRACTED"
++          fi
++          (cd $GUROBI_SUBDIR/src/build && make)
++          (cd $GUROBI_SUBDIR/lib && ln -f -s ../src/build/libgurobi_c++.a libgurobi_c++.a)
++          echo "GUROBI_HOME=$(realpath $GUROBI_EXTRACTED)" >> $GITHUB_ENV
+ 
+       - name: Activate Gurobi License
+         run: |
+-          (cd gurobi902/linux64/bin && ./grbgetkey -q ${{ secrets.GUROBI_KEYCODE }} --path ${GUROBI_HOME})
++          GUROBI_EXTRACTED=$(find . -maxdepth 1 -name "gurobi*" -type d | head -1 | sed 's|./||')
++          if [ -d "$GUROBI_EXTRACTED/linux64" ]; then
++            GUROBI_BIN="$GUROBI_EXTRACTED/linux64/bin"
++          else
++            GUROBI_BIN="$GUROBI_EXTRACTED/bin"
++          fi
++          ($GUROBI_BIN/grbgetkey -q ${{ secrets.GUROBI_KEYCODE }} --path ${GUROBI_HOME})
+           echo "GRB_LICENSE_FILE=${GUROBI_HOME}/gurobi.lic" >> $GITHUB_ENV
+         continue-on-error: true
+ 
+@@ -173,7 +200,10 @@ jobs:
+     runs-on: ubuntu-latest
+     strategy:
+       matrix:
+-        python: [3.8]
++        include:
++          - python: "3.8"
++            gurobi_version: "11.0.3"
++            gurobi_major: "11.0"
+ 
+     steps:
+       - uses: actions/checkout@v2
+@@ -192,11 +222,17 @@ jobs:
+ 
+       - name: Install Gurobi
+         run: |
+-          wget https://packages.gurobi.com/9.0/gurobi9.0.2_linux64.tar.gz -O gurobi9.0.2_linux64.tar.gz
+-          tar xvzf gurobi9.0.2_linux64.tar.gz
+-          (cd gurobi902/linux64/src/build && make)
+-          (cd gurobi902/linux64/lib && ln -f -s ../src/build/libgurobi_c++.a libgurobi_c++.a)
+-          echo "GUROBI_HOME=$(realpath gurobi902)" >> $GITHUB_ENV
++          wget https://packages.gurobi.com/${{ matrix.gurobi_major }}/gurobi${{ matrix.gurobi_version }}_linux64.tar.gz -O gurobi_linux64.tar.gz
++          tar xvzf gurobi_linux64.tar.gz
++          GUROBI_EXTRACTED=$(find . -maxdepth 1 -name "gurobi*" -type d | head -1 | sed 's|./||')
++          if [ -d "$GUROBI_EXTRACTED/linux64" ]; then
++            GUROBI_SUBDIR="$GUROBI_EXTRACTED/linux64"
++          else
++            GUROBI_SUBDIR="$GUROBI_EXTRACTED"
++          fi
++          (cd $GUROBI_SUBDIR/src/build && make)
++          (cd $GUROBI_SUBDIR/lib && ln -f -s ../src/build/libgurobi_c++.a libgurobi_c++.a)
++          echo "GUROBI_HOME=$(realpath $GUROBI_EXTRACTED)" >> $GITHUB_ENV
+ 
+       - name: Install package
+         run: |
+diff --git a/.gitignore b/.gitignore
+index 81d409c5..45e1bd34 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -5,6 +5,8 @@ src/hatchet/solve
+ !tests/data/fw/best.bbc.ucn
+ !tests/data/fw/results/best.bbc.ucn
+ 
++.venv/
++
+ # Build directory
+ build/
+ 
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index df09b9be..598b1759 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required( VERSION 2.8 )
++cmake_minimum_required( VERSION 3.5 )
+ 
+ project( HATCHet )
+ 
+diff --git a/FindGUROBI.cmake b/FindGUROBI.cmake
+index adfe9df1..1692184d 100644
+--- a/FindGUROBI.cmake
++++ b/FindGUROBI.cmake
+@@ -9,18 +9,37 @@ set(GUROBI_HOME "" CACHE STRING "Path where Gurobi is installed")
+ if(EXISTS ${GUROBI_HOME} )
+     message( "-- Gurobi's home is set to: " ${GUROBI_HOME} )
+ 
+-    string( REGEX MATCH "gurobi[0-9][0-9][0-9]" GUROBI_VER_FULL ${GUROBI_HOME} )
+-    string( REGEX MATCH "[0-9][0-9][0-9]" GUROBI_VER ${GUROBI_VER_FULL} )
+-
+-    ## If the previous process fails to find the correct version of Gurobi in variable GUROBI_VER (e.g. 702, 751, 801) please provide the correct version here below by properly setting the version instead of XXX and uncommented the command
+-    ## set(GUROBI_VER "XXX")
+-
+-    string(STRIP ${GUROBI_VER} GUROBI_VER )
+-    message( "-- The retrieved version of Gurobi is: " ${GUROBI_VER} )
+-
+-    string(SUBSTRING ${GUROBI_VER} 0 2 GUROBI_VER_LIB)
++    # Detect Gurobi version and compute the library suffix.
++    # Format A (<=9.x):  3 compact digits (e.g. gurobi902)
++    #   -> lib suffix = first 2 digits ("90" -> libgurobi90.so)
++    # Format B (>=10.x): 4 compact digits (e.g. gurobi1203 for 12.0.3)
++    #   -> lib suffix = first 3 digits ("120" -> libgurobi120.so)
++    # Format C (>=10.x): dotted version in path (e.g. gurobi11.0.3)
++    #   -> lib suffix = MAJOR*10+MINOR (110 -> libgurobi110.so)
++    string( REGEX MATCH "gurobi([0-9][0-9][0-9])[^0-9.]" _FMT_A_MATCH "${GUROBI_HOME}/" )
++    string( REGEX MATCH "gurobi([0-9][0-9][0-9][0-9])[^0-9.]" _FMT_B_MATCH "${GUROBI_HOME}/" )
++    string( REGEX MATCH "gurobi([0-9]+)\\.([0-9]+)\\." _FMT_C_MATCH "${GUROBI_HOME}" )
++
++    if( _FMT_A_MATCH )
++        string( REGEX REPLACE ".*gurobi([0-9][0-9][0-9])[^0-9.].*" "\\1" GUROBI_VER "${GUROBI_HOME}/" )
++        string( STRIP "${GUROBI_VER}" GUROBI_VER )
++        message( "-- The retrieved version of Gurobi is: " ${GUROBI_VER} )
++        string( SUBSTRING "${GUROBI_VER}" 0 2 GUROBI_VER_LIB )
++    elseif( _FMT_B_MATCH )
++        string( REGEX REPLACE ".*gurobi([0-9][0-9][0-9][0-9])[^0-9.].*" "\\1" GUROBI_VER "${GUROBI_HOME}/" )
++        string( STRIP "${GUROBI_VER}" GUROBI_VER )
++        message( "-- The retrieved version of Gurobi is: " ${GUROBI_VER} )
++        string( SUBSTRING "${GUROBI_VER}" 0 3 GUROBI_VER_LIB )
++    elseif( _FMT_C_MATCH )
++        string( REGEX REPLACE ".*gurobi([0-9]+)\\.([0-9]+)\\..*" "\\1" _GUROBI_MAJOR "${GUROBI_HOME}" )
++        string( REGEX REPLACE ".*gurobi([0-9]+)\\.([0-9]+)\\..*" "\\2" _GUROBI_MINOR "${GUROBI_HOME}" )
++        math( EXPR GUROBI_VER_LIB "${_GUROBI_MAJOR} * 10 + ${_GUROBI_MINOR}" )
++        message( "-- The retrieved version of Gurobi is: ${_GUROBI_MAJOR}.${_GUROBI_MINOR} (lib suffix: ${GUROBI_VER_LIB})" )
++    else()
++        message( FATAL_ERROR "Cannot determine Gurobi version from GUROBI_HOME: ${GUROBI_HOME}" )
++    endif()
+ 
+-    message( "-- The retrieved name of version-specific library is " gurobi ${GUROBI_VER_LIB} )
++    message( "-- The retrieved name of version-specific library is gurobi" ${GUROBI_VER_LIB} )
+ 
+     file( GLOB GUROBI_LIB_FILE ${GUROBI_HOME}/linux64/lib/libgurobi${GUROBI_VER_LIB}.* )
+     if( GUROBI_LIB_FILE )
+diff --git a/pyproject.toml b/pyproject.toml
+index 9018a1c3..618630ab 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,10 +1,10 @@
+ [build-system]
+-requires = ["setuptools>=61.0", "cmake>=2.8"]
++requires = ["setuptools>=61.0", "cmake>=3.5"]
+ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "hatchet"
+-version = "2.1.0"
++version = "2.2.0"
+ authors = [
+   { name="Simone Zaccaria", email="s.zaccaria@ucl.ac.uk" },
+   { name="Ben Raphael", email="braphael@cs.princeton.edu" },
+@@ -33,6 +33,7 @@ dependencies = [
+     "pysam",
+     "requests",
+     "seaborn",
++    "kneed",
+     "scikit-learn",
+     "scipy",
+     "statsmodels"
+diff --git a/setup.py b/setup.py
+index 6227b5cb..8b611631 100644
+--- a/setup.py
++++ b/setup.py
+@@ -7,7 +7,11 @@
+ 
+ from setuptools import setup, Extension
+ from setuptools.command.build_ext import build_ext
+-from distutils.version import LooseVersion
++
++try:
++    from distutils.version import LooseVersion
++except ImportError:
++    from packaging.version import Version as LooseVersion
+ 
+ 
+ class CMakeExtension(Extension):
+@@ -30,8 +34,8 @@ def run(self):
+             cmake_version = LooseVersion(
+                 re.search(r"version\s*([\d.]+)", out.decode()).group(1)
+             )
+-            if cmake_version < "3.1.0":
+-                raise RuntimeError("CMake >= 3.1.0 is required on Windows")
++            if cmake_version < "3.5.0":
++                raise RuntimeError("CMake >= 3.5.0 is required")
+ 
+         for ext in self.extensions:
+             self.build_extension(ext)
+diff --git a/src/hatchet/bin/HATCHet.py b/src/hatchet/bin/HATCHet.py
+index 83f7d0e5..eda961aa 100644
+--- a/src/hatchet/bin/HATCHet.py
++++ b/src/hatchet/bin/HATCHet.py
+@@ -11,6 +11,7 @@
+ from hatchet.utils.Supporting import ensure, log, error
+ from hatchet.utils.solve import solve
+ from hatchet.utils.solve.utils import segmentation
++from .model_select import model_selection
+ 
+ 
+ def parsing_arguments(args=None):
+@@ -153,6 +154,14 @@ def parsing_arguments(args=None):
+         default=config.compute_cn.mergebaf,
+         help="BAF tolerance used for finding the clonal copy numbers (default: 0.04)",
+     )
++    parser.add_argument(
++        "--model_select",
++        type=str,
++        choices=["likelihood", "objective"],
++        required=False,
++        default=config.compute_cn.model_select,
++        help="Model-selection option. (default: likelihood)",
++    )
+     parser.add_argument(
+         "-l",
+         "--limitinc",
+@@ -474,6 +483,7 @@ def parsing_arguments(args=None):
+         "mB": args.mergeBAF,
+         "limit": args.limitinc,
+         "g": args.ghostprop,
++        "model_select": args.model_select,
+         "p": args.seeds,
+         "j": args.jobs,
+         "r": args.randomseed,
+@@ -544,23 +554,25 @@ def main(args=None):
+         v=args["v"],
+     )
+ 
+-    if not args["diploid"] and not args["tetraploid"]:
+-        sys.stderr.write(
+-            log(
+-                '## Neither "diploid" nor "tetraploid" was fixed. '
+-                'Model selection will be performed and the "clonal" argument'
+-                "will not be used for scaling.\n"
+-            )
+-        )
++    sys.stderr.write(log("# Finding the neutral diploid/tetraploid cluster\n"))
++    neutral = findNeutralCluster(
++        seg=fseg, size=size, td=args["td"], samples=samples, v=args["v"]
++    )
+ 
+-        sys.stderr.write(log("# Finding the neutral diploid/tetraploid cluster\n"))
+-        neutral = findNeutralCluster(
+-            seg=fseg, size=size, td=args["td"], samples=samples, v=args["v"]
+-        )
++    ##################################################
++    run_diploid = args["diploid"]
++    run_tetraploid = args["tetraploid"]
++    if not run_diploid and not run_tetraploid:
++        run_diploid = True
++        run_tetraploid = True
+ 
++    diploidObjs = []
++    if run_diploid:
+         sys.stderr.write(log("# Running diploid\n"))
+         diploidObjs = runningDiploid(neutral=neutral, args=args)
+ 
++    tetraploidObjs = []
++    if run_tetraploid:
+         if args["clonal"] is None:
+             sys.stderr.write(log("# Finding clonal clusters and their copy numbers\n"))
+             clonal, scale = findClonalClusters(
+@@ -581,22 +593,11 @@ def main(args=None):
+                 samples=samples,
+                 v=args["v"],
+             )
+-
+         if len(clonal) > 0:
+             sys.stderr.write(log("# Running tetraploid\n"))
+             tetraploidObjs = runningTetraploid(
+                 clonal=clonal, scale=scale, size=size, args=args
+             )
+-
+-            sys.stderr.write(log("# Selecting best solution\n"))
+-            select(
+-                diploid=diploidObjs,
+-                tetraploid=tetraploidObjs,
+-                v=args["v"],
+-                rundir=args["x"],
+-                g=args["g"],
+-                limit=args["limit"],
+-            )
+         else:
+             sys.stderr.write(
+                 warning(
+@@ -612,8 +613,16 @@ def main(args=None):
+                     )
+                 )
+             )
+-
+-            sys.stderr.write(log("# Selecting best diploid solution\n"))
++    sys.stderr.write(log("# Selecting best solution\n"))
++    if args["model_select"] == "likelihood":
++        model_selection(
++            diploidObjs,
++            tetraploidObjs,
++            wd=args["x"],
++            v=args["v"],
++        )
++    else:
++        if run_diploid and not run_tetraploid:
+             selectDiploid(
+                 diploid=diploidObjs,
+                 v=args["v"],
+@@ -621,74 +630,7 @@ def main(args=None):
+                 g=args["g"],
+                 limit=args["limit"],
+             )
+-
+-    elif args["diploid"]:
+-        sys.stderr.write(log("# Running diploid\n"))
+-
+-        if args["clonal"] is not None:
+-            clonal = parse_clonal_diploid(args["clonal"])
+-            neutral = None
+-        else:
+-            sys.stderr.write(log("# Finding the neutral diploid cluster\n"))
+-            neutral = findNeutralCluster(
+-                seg=fseg,
+-                size=size,
+-                td=args["td"],
+-                samples=samples,
+-                v=args["v"],
+-            )
+-            clonal = None
+-
+-        diploidObjs = runningDiploid(neutral=neutral, args=args, clonal=clonal)
+-
+-        sys.stderr.write(log("# Selecting best diploid solution\n"))
+-        selectDiploid(
+-            diploid=diploidObjs,
+-            v=args["v"],
+-            rundir=args["x"],
+-            g=args["g"],
+-            limit=args["limit"],
+-        )
+-
+-    elif args["tetraploid"]:
+-        if args["clonal"] is None:
+-            sys.stderr.write(log("# Finding clonal clusters and their copy numbers\n"))
+-            neutral = findNeutralCluster(
+-                seg=fseg,
+-                size=size,
+-                td=args["td"],
+-                samples=samples,
+-                v=args["v"],
+-            )
+-
+-            clonal, scale = findClonalClusters(
+-                fseg=fseg,
+-                neutral=neutral,
+-                size=size,
+-                tB=args["tB"],
+-                tR=args["tR"],
+-                samples=samples,
+-                v=args["v"],
+-            )
+-        else:
+-            sys.stderr.write(log("# Parsing given clonal copy numbers\n"))
+-            clonal = parse_clonal_tetraploid(args["clonal"])
+-
+-            clonal, scale = parseClonalClusters(
+-                clonal=clonal,
+-                fseg=fseg,
+-                size=size,
+-                samples=samples,
+-                v=args["v"],
+-            )
+-
+-        if len(clonal) > 0:
+-            sys.stderr.write(log("# Running tetraploid\n"))
+-            tetraploidObjs = runningTetraploid(
+-                clonal=clonal, scale=scale, size=size, args=args
+-            )
+-
+-            sys.stderr.write(log("# Selecting best tetraploid solution\n"))
++        elif run_tetraploid and not run_diploid:
+             selectTetraploid(
+                 tetraploid=tetraploidObjs,
+                 v=args["v"],
+@@ -697,21 +639,17 @@ def main(args=None):
+                 limit=args["limit"],
+             )
+         else:
+-            sys.stderr.write(
+-                warning(
+-                    (
+-                        "# No potential clonal patterns found, the input is likely to be diploid.\n If the heuristic "
+-                        "failed to identify a clonal cluster due to high noisy in the data, there are two main "
+-                        "parameters which user may tune:\n\t1. Increase the values of tB and tR which define the "
+-                        "thresholds to predict the RDR and BAF of clonal clusters.\n\t2. Decrease the value of -ts "
+-                        "which define the minimum coverage of the genome for clusters to be considered potentially "
+-                        "clonal. As such, more clusters will be considered. \nLast, please assess the quality of the "
+-                        "clustering through cluster-bins and increase the corresponding thresholds (-tR and -tB) to "
+-                        "avoid overfitting of the data and overclustering.\n"
+-                    )
+-                )
++            select(
++                diploid=diploidObjs,
++                tetraploid=tetraploidObjs,
++                v=args["v"],
++                rundir=args["x"],
++                g=args["g"],
++                limit=args["limit"],
+             )
+ 
++    return
++
+ 
+ t2s = lambda x: [str(a) for a in x]
+ 
+@@ -1232,8 +1170,8 @@ def findClonalClusters(fseg, neutral, size, tB, tR, samples, v):
+                 )
+             )
+ 
+-        regPurity = (
+-            lambda v: 1.0 if 1.0 <= v <= 1.05 else (0.0 if -0.05 <= v <= 0.0 else v)
++        regPurity = lambda v: (
++            1.0 if 1.0 <= v <= 1.05 else (0.0 if -0.05 <= v <= 0.0 else v)
+         )
+         calcPurity = lambda d, c, r: regPurity(
+             float(2 * d - 2 * r) / float(2 * r + 2 * d - c * d)
+@@ -1241,8 +1179,8 @@ def findClonalClusters(fseg, neutral, size, tB, tR, samples, v):
+         calcScalingFactor = lambda p, d: float(2.0 + 2.0 * p) / float(d)
+         calcFraction = lambda p, cn: float(2.0 * (1.0 - p) + sum(cn) * p)
+         calcRDR = lambda p, cn, s: calcFraction(p, cn) / float(s)
+-        calcBAF = lambda p, cn: float(1.0 * (1.0 - p) + min(cn) * p) / calcFraction(
+-            p, cn
++        calcBAF = lambda p, cn: (
++            float(1.0 * (1.0 - p) + min(cn) * p) / calcFraction(p, cn)
+         )
+ 
+         for opt in options:
+@@ -1268,16 +1206,12 @@ def findClonalClusters(fseg, neutral, size, tB, tR, samples, v):
+             for cn in [a for a in allclonal if a != opt]:
+                 estRDR = {p: calcRDR(purity[p], cn, scaling[p]) for p in samples}
+                 estBAF = {p: calcBAF(purity[p], cn) for p in samples}
+-                checkRDR = (
+-                    lambda r, i: set(
+-                        p for p in samples if abs(r[p] - fseg[i][p]["rdr"]) <= tR
+-                    )
++                checkRDR = lambda r, i: (
++                    set(p for p in samples if abs(r[p] - fseg[i][p]["rdr"]) <= tR)
+                     == samples
+                 )
+-                checkBAF = (
+-                    lambda b, i: set(
+-                        p for p in samples if abs(b[p] - fseg[i][p]["baf"]) <= tB
+-                    )
++                checkBAF = lambda b, i: (
++                    set(p for p in samples if abs(b[p] - fseg[i][p]["baf"]) <= tB)
+                     == samples
+                 )
+                 candidates = [
+@@ -1418,7 +1352,7 @@ def execute_python(solver, args, n, outprefix):
+ 
+     _mode = ("both", "ilp", "cd")[args["M"]]
+ 
+-    obj, cA, cB, u, cluster_ids, sample_ids = solve(
++    (obj, cA, cB, u, cluster_ids, sample_ids), gamma = solve(
+         solver=solver,
+         clonal=args["c"],
+         bbc_file=args["bbc"],
+@@ -1455,7 +1389,7 @@ def execute_python(solver, args, n, outprefix):
+             info("# Best objective found with {} clones: {}\n".format(n, obj))
+         )
+ 
+-    return obj
++    return obj, gamma
+ 
+ 
+ def execute(args, basecmd, n, outprefix):
+@@ -1530,7 +1464,7 @@ def execute(args, basecmd, n, outprefix):
+             )
+         )
+ 
+-    return obj
++    return obj, 1.0
+ 
+ 
+ def select(diploid, tetraploid, v, rundir, g, limit):
+diff --git a/src/hatchet/bin/model_select.py b/src/hatchet/bin/model_select.py
+new file mode 100644
+index 00000000..e44934f3
+--- /dev/null
++++ b/src/hatchet/bin/model_select.py
+@@ -0,0 +1,173 @@
++##################################################
++import os
++import sys
++import shutil
++import pandas as pd
++import numpy as np
++import kneed
++import matplotlib.pyplot as plt
++
++
++def info(msg):
++    return "{}{}{}".format("\033[96m", msg, "\033[0m")
++
++
++def model_selection(
++    diploid_objs: list,
++    tetraploid_objs: list,
++    wd: str,
++    v=1,
++):
++    """
++    1. per solution instance, compute likelihoods of observed RDR and BAF given CNP.
++    2. select best solution based on elbow detection on likelihood curves.
++    3. WGD ver no WGD by principle of parsimony.
++    """
++
++    def compute_expected_fcn(row, n):
++        fcn = float(row["u_normal"]) * 2
++        fcn_b = float(row["u_normal"])
++        for nn in range(1, n):
++            a, b = str(row[f"cn_clone{nn}"]).split("|")
++            a = int(a)
++            b = int(b)
++            fcn += float(row[f"u_clone{nn}"]) * (a + b)
++            fcn_b += float(row[f"u_clone{nn}"]) * b
++        return [fcn, fcn_b]
++
++    def ll_gauss_profile(res, floor_rss=1e-12):
++        n = res.size
++        if n == 0:
++            return 0.0
++        rss = float(np.sum(res * res))
++        rss = max(rss, floor_rss)
++        return -0.5 * n * (1.0 + np.log(2 * np.pi) + np.log(rss / n))
++
++    if len(diploid_objs) == 0 and len(tetraploid_objs) == 0:
++        raise ValueError(
++            "ERROR! no solution found for either diploid or tetraploid setting!"
++        )
++
++    sys.stdout.write(info("Model selection\n"))
++
++    ploidy2scores = {}
++    for [ploidy, ploidy_objs] in [
++        ["diploid", diploid_objs],
++        ["tetraploid", tetraploid_objs],
++    ]:
++        if len(ploidy_objs) == 0:
++            sys.stdout.write(info(f"no {ploidy} solutions\n"))
++            continue
++
++        ploidy_objs_add1 = [
++            (1, (np.inf, ploidy_objs[0][1][1]), ploidy_objs[0][-1])
++        ] + ploidy_objs
++        ns = []
++        lls = []
++        for n, (obj, gamma), outprefix in ploidy_objs_add1:
++            n = int(n)
++            bbcs = pd.read_table(f"{outprefix}.bbc.ucn.tsv", sep="\t")
++            if n > 1:
++                bbcs[["exp-FCN", "exp-FCN-b"]] = bbcs.apply(
++                    func=lambda r: compute_expected_fcn(r, n),
++                    axis=1,
++                    result_type="expand",
++                )
++            else:
++                bbcs["exp-FCN"] = 2.0
++                bbcs["exp-FCN-b"] = 1.0
++            ll = 0.0
++            for (cluster_id, sample_id), bbc_sub in bbcs.groupby(
++                by=["CLUSTER", "SAMPLE"], sort=False
++            ):
++                obs_fcns = bbc_sub["RD"].to_numpy() * float(gamma.loc[sample_id])
++                obs_bafs = bbc_sub["BAF"].to_numpy()
++                exp_fcns = bbc_sub["exp-FCN"].to_numpy()
++                exp_fcns_b = bbc_sub["exp-FCN-b"].to_numpy()
++                exp_bafs = np.divide(
++                    exp_fcns_b,
++                    exp_fcns,
++                    where=exp_fcns > 0,
++                    out=np.full(len(bbc_sub), 0.5),
++                )
++
++                res_fcns = obs_fcns - exp_fcns
++                ll_fcn = ll_gauss_profile(res_fcns[np.isfinite(res_fcns)])
++                res_bafs = obs_bafs - exp_bafs
++                ll_baf = ll_gauss_profile(res_bafs[np.isfinite(res_bafs)])
++                ll += ll_fcn + ll_baf
++            ns.append(n)
++            lls.append(ll)
++            if v > 0:
++                sys.stdout.write(info(f"{ploidy}: n={n}, obj={obj}, loglik={ll}\n"))
++        chosen_n = ns[1]  # first n>1 solution
++        ns = np.array(ns, dtype=np.int32)
++        neg_lls = -1 * np.array(lls)
++        if len(ns) > 2:
++            kl_negll = kneed.KneeLocator(
++                x=ns, y=neg_lls, curve="convex", direction="decreasing"
++            )
++            chosen_n_negll = (
++                int(kl_negll.elbow) if kl_negll.elbow is not None else ns[0]
++            )
++            chosen_n = max(ns[1], chosen_n_negll)
++
++        sys.stdout.write(info(f"{ploidy}: choose n={chosen_n}\n"))
++        chosen_outprefix = [
++            outprefix for n, _, outprefix in ploidy_objs if int(n) == chosen_n
++        ][0]
++        ploidy2scores[ploidy] = [chosen_n, ns, neg_lls]
++        # save chosen sol
++        out_bbc = os.path.join(wd, f"chosen.{ploidy}.bbc.ucn")
++        out_seg = os.path.join(wd, f"chosen.{ploidy}.seg.ucn")
++        shutil.copy2(f"{chosen_outprefix}.bbc.ucn.tsv", out_bbc)
++        shutil.copy2(f"{chosen_outprefix}.seg.ucn.tsv", out_seg)
++
++    # choose ploidy by parsimony of clones
++    final_ploidy = min(ploidy2scores.keys(), key=lambda p: ploidy2scores[p][0])
++    final_n = ploidy2scores[final_ploidy][0]
++    sys.stdout.write(
++        info(f"final model selection: ploidy={final_ploidy}, n={final_n}\n")
++    )
++
++    # plot model-selections
++    decision = "chosen: "
++    fig = plt.figure(figsize=(4, 3))
++    if "diploid" in ploidy2scores:
++        plt.plot(
++            ploidy2scores["diploid"][1],
++            ploidy2scores["diploid"][2],
++            marker="o",
++            label="Diploid",
++        )
++        n = ploidy2scores["diploid"][0]
++        decision += f"diploid_n{n};"
++    if "tetraploid" in ploidy2scores:
++        plt.plot(
++            ploidy2scores["tetraploid"][1],
++            ploidy2scores["tetraploid"][2],
++            marker="o",
++            label="Tetraploid",
++        )
++        n = ploidy2scores["tetraploid"][0]
++        decision += f"tetraploid_n{n};"
++    decision += f"\nfinal_decision: {final_ploidy}_n{final_n}"
++    plt.xlabel("#clones")
++    plt.ylabel("neg-loglik")
++    plt.title(f"elbow curve\n{decision}")
++    plt.legend()
++    plt.tight_layout()
++    plt.savefig(os.path.join(wd, "elbow_curve.png"), dpi=100)
++    plt.close(fig)
++
++    # save final selected solutions
++    shutil.copy2(
++        os.path.join(wd, f"chosen.{final_ploidy}.bbc.ucn"),
++        os.path.join(wd, "best.bbc.ucn"),
++    )
++    shutil.copy2(
++        os.path.join(wd, f"chosen.{final_ploidy}.seg.ucn"),
++        os.path.join(wd, "best.seg.ucn"),
++    )
++
++    return final_ploidy, final_n, ploidy2scores
+diff --git a/src/hatchet/hatchet.ini b/src/hatchet/hatchet.ini
+index c36f3a44..301bcb5b 100644
+--- a/src/hatchet/hatchet.ini
++++ b/src/hatchet/hatchet.ini
+@@ -154,6 +154,7 @@ diploid = False
+ tetraploid = False
+ verbosity = 2
+ binwise = False
++model_select = "likelihood"
+ 
+ [plot_cn]
+ patientnames =
+diff --git a/src/hatchet/utils/solve/__init__.py b/src/hatchet/utils/solve/__init__.py
+index b533ecaa..6841d0b0 100644
+--- a/src/hatchet/utils/solve/__init__.py
++++ b/src/hatchet/utils/solve/__init__.py
+@@ -112,7 +112,7 @@ def solve(
+                 purities=purities,
+             )
+             ilp.create_model(pprint=True)
+-            return ilp.run(solver_type=solver, timelimit=timelimit)
++            return ilp.run(solver_type=solver, timelimit=timelimit), gamma
+         elif solve_mode == "cd":
+             cd = CoordinateDescent(
+                 f_a=f_a,
+@@ -133,7 +133,7 @@ def solve(
+                 j=n_worker,
+                 random_seed=random_seed,
+                 timelimit=timelimit,
+-            )
++            ), gamma
+         else:
+             cd = CoordinateDescent(
+                 f_a=f_a,
+@@ -170,7 +170,7 @@ def solve(
+             )
+             ilp.create_model()
+             ilp.hot_start(cA, cB)
+-            return ilp.run(solver_type=solver, timelimit=timelimit)
++            return ilp.run(solver_type=solver, timelimit=timelimit), gamma
+ 
+     else:
+         bins = OrderedDict()  # cluster_id => RDR for cluster
+@@ -240,7 +240,7 @@ def solve(
+                 purities=purities,
+             )
+             ilp.create_model(pprint=True)
+-            return ilp.run(solver_type=solver, timelimit=timelimit)
++            return ilp.run(solver_type=solver, timelimit=timelimit), gamma
+         elif solve_mode == "cd":
+             cd = CoordinateDescentSplit(
+                 f_a=f_a,
+@@ -262,7 +262,7 @@ def solve(
+                 j=n_worker,
+                 random_seed=random_seed,
+                 timelimit=timelimit,
+-            )
++            ), gamma
+         else:
+             cd = CoordinateDescentSplit(
+                 f_a=f_a,
+@@ -302,4 +302,4 @@ def solve(
+             )
+             ilp.create_model()
+             ilp.hot_start(cA, cB)
+-            return ilp.run(solver_type=solver, timelimit=timelimit)
++            return ilp.run(solver_type=solver, timelimit=timelimit), gamma

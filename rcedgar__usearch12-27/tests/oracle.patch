@@ -1,0 +1,914 @@
+diff --git a/src/Makefile b/src/Makefile
+index 12741ab..f796d95 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -103,6 +103,7 @@ HDRS = \
+   primes.h \
+   progress.h \
+   quarts.h \
++  queryblocklist.h \
+   searcher.h \
+   segmask.h \
+   seqdb.h \
+@@ -238,6 +239,7 @@ OBJS = \
+   $(OBJDIR)/prime.o \
+   $(OBJDIR)/progress.o \
+   $(OBJDIR)/quarts.o \
++  $(OBJDIR)/queryblocklist.o \
+   $(OBJDIR)/search.o \
+   $(OBJDIR)/searchcmd.o \
+   $(OBJDIR)/searcher.o \
+diff --git a/src/accepter.cpp b/src/accepter.cpp
+index 2d03c51..697fbea 100644
+--- a/src/accepter.cpp
++++ b/src/accepter.cpp
+@@ -3,6 +3,7 @@
+ #include "alignresult.h"
+ #include "seqinfo.h"
+ #include "cmd.h"
++#include "queryblocklist.h"
+ 
+ unsigned GetSizeFromLabel(const string &Label, unsigned Default);
+ 
+@@ -142,6 +143,9 @@ bool Accepter::RejectPair(const SeqInfo *Query, const SeqInfo *Target)
+ 	if (m_AcceptAll)
+ 		return false;
+ 
++	if (QueryBlocklist::IsExcludedLabel(Target->m_Label))
++		return true;
++
+ 	if (oget_flag(OPT_self) && strcmp(Query->m_Label, Target->m_Label) == 0)
+ 		return true;
+ 
+diff --git a/src/o_str.h b/src/o_str.h
+index 92ca092..a591a61 100644
+--- a/src/o_str.h
++++ b/src/o_str.h
+@@ -8,6 +8,7 @@ o(ampout)
+ o(biomout)
+ o(bitvec)
+ o(blast6out)
++o(blocklist)
+ o(boot_subset)
+ o(centroids)
+ o(chimeras)
+@@ -96,6 +97,7 @@ o(uchime3_denovo)
+ o(uchimealnout)
+ o(uchimeout)
+ o(udb2bitvec)
++o(unblocklist)
+ o(unoise3)
+ o(uparse_ref)
+ o(uparsealnout)
+diff --git a/src/queryblocklist.cpp b/src/queryblocklist.cpp
+new file mode 100644
+index 0000000..19748b4
+--- /dev/null
++++ b/src/queryblocklist.cpp
+@@ -0,0 +1,432 @@
++#include "myutils.h"
++#include "queryblocklist.h"
++#include "seqdb.h"
++#include "label.h"
++#include "tax.h"
++#include "taxy.h"
++
++bool QueryBlocklist::m_Loaded = false;
++const SeqDB *QueryBlocklist::m_DB = 0;
++map<string, QueryBlocklist::ItemSet> QueryBlocklist::m_QueryToBlock;
++map<string, QueryBlocklist::ItemSet> QueryBlocklist::m_QueryToUnblock;
++map<string, QueryBlocklist::InternedItems>
++		QueryBlocklist::m_QueryToBlockI;
++map<string, QueryBlocklist::InternedItems>
++		QueryBlocklist::m_QueryToUnblockI;
++
++const Taxy *QueryBlocklist::m_Taxy = 0;
++const vector<unsigned> *QueryBlocklist::m_SeqIndexToTaxIndex = 0;
++vector<unsigned> QueryBlocklist::m_TaxStrToLeaf;
++vector<unsigned> QueryBlocklist::m_SeqAccId;
++
++thread_local bool QueryBlocklist::m_Any = false;
++thread_local const QueryBlocklist::ItemSet *QueryBlocklist::m_Block = 0;
++thread_local const QueryBlocklist::ItemSet *QueryBlocklist::m_Unblock = 0;
++thread_local const QueryBlocklist::InternedItems *
++		QueryBlocklist::m_BlockI = 0;
++thread_local const QueryBlocklist::InternedItems *
++		QueryBlocklist::m_UnblockI = 0;
++
++bool QueryBlocklist::IsTaxonItem(const string &Item)
++	{
++	if (SIZE(Item) < 3)
++		return false;
++	if (Item[1] != ':')
++		return false;
++	return strchr(RANKS, Item[0]) != 0;
++	}
++
++void QueryBlocklist::AddItems(ItemSet &IS, const string &Rest)
++	{
++	vector<string> Items;
++	Split(Rest, Items, ',');
++	const unsigned N = SIZE(Items);
++	for (unsigned i = 0; i < N; ++i)
++		{
++		string Item = Items[i];
++		StripWhiteSpace(Item);
++		if (Item.empty())
++			continue;
++		if (IsTaxonItem(Item))
++			IS.Taxa.push_back(Item);
++		else
++			IS.Accs.insert(Item);
++		}
++	}
++
++void QueryBlocklist::ParseFile(const string &FileName,
++  map<string, ItemSet> &QueryToItems)
++	{
++	FILE *f = OpenStdioFile(FileName);
++	string Line;
++	unsigned LineNr = 0;
++	while (ReadLineStdioFile(f, Line))
++		{
++		++LineNr;
++		string Orig = Line;
++		StripWhiteSpace(Line);
++		if (Line.empty() || Line[0] == '#')
++			continue;
++
++		size_t Tab = Orig.find('\t');
++		if (Tab == string::npos)
++			Die("%s line %u: expected query<TAB>items",
++			  FileName.c_str(), LineNr);
++
++		string QueryAcc = Orig.substr(0, Tab);
++		string Rest = Orig.substr(Tab + 1);
++		StripWhiteSpace(QueryAcc);
++		StripWhiteSpace(Rest);
++		if (QueryAcc.empty())
++			Die("%s line %u: empty query id",
++			  FileName.c_str(), LineNr);
++		if (Rest.empty())
++			continue;
++
++		AddItems(QueryToItems[QueryAcc], Rest);
++		}
++	CloseStdioFile(f);
++	}
++
++	bool QueryBlocklist::IdInVec(const vector<unsigned> &V, unsigned Id)
++	{
++		const unsigned N = SIZE(V);
++		for (unsigned i = 0; i < N; ++i)
++		{
++			if (V[i] == Id)
++				return true;
++		}
++		return false;
++	}
++
++	bool QueryBlocklist::PathHasNode(unsigned Leaf,
++																	 const vector<unsigned> &Needles)
++	{
++		if (Leaf == UINT_MAX || Needles.empty())
++			return false;
++		const vector<unsigned> &Parents = m_Taxy->m_Parents;
++		unsigned Node = Leaf;
++		while (Node != UINT_MAX)
++		{
++			if (IdInVec(Needles, Node))
++				return true;
++			Node = Parents[Node];
++		}
++		return false;
++	}
++
++	bool QueryBlocklist::Matches(const ItemSet &IS, const string &Acc,
++															 const string &TaxStr)
++	{
++		if (IS.Accs.find(Acc) != IS.Accs.end())
++			return true;
++		const unsigned NT = SIZE(IS.Taxa);
++		for (unsigned i = 0; i < NT; ++i)
++		{
++			if (NameIsInTaxStr(TaxStr, IS.Taxa[i]))
++				return true;
++		}
++		return false;
++	}
++
++	bool QueryBlocklist::MatchesInterned(const InternedItems &II,
++																			 unsigned AccId, unsigned Leaf)
++	{
++		if (AccId != UINT_MAX && IdInVec(II.AccIds, AccId))
++			return true;
++		return PathHasNode(Leaf, II.TaxNodes);
++	}
++
++	bool QueryBlocklist::MatchesMixed(const ItemSet &IS,
++																		const InternedItems *II, unsigned AccId, const string &TaxStr)
++	{
++		if (II != 0 && AccId != UINT_MAX &&
++				IdInVec(II->AccIds, AccId))
++			return true;
++		const unsigned NT = SIZE(IS.Taxa);
++		for (unsigned i = 0; i < NT; ++i)
++		{
++			if (NameIsInTaxStr(TaxStr, IS.Taxa[i]))
++				return true;
++		}
++		return false;
++	}
++
++	bool QueryBlocklist::IsExcludedAccTax(const string &Acc,
++																				const string &TaxStr)
++	{
++		if (!m_Any)
++			return false;
++		if (m_Unblock != 0 && Matches(*m_Unblock, Acc, TaxStr))
++			return false;
++		if (m_Block != 0 && Matches(*m_Block, Acc, TaxStr))
++			return true;
++		return false;
++	}
++
++	bool QueryBlocklist::IsExcludedInterned(unsigned AccId, unsigned Leaf)
++	{
++		if (m_UnblockI != 0 && MatchesInterned(*m_UnblockI, AccId, Leaf))
++			return false;
++		if (m_BlockI != 0 && MatchesInterned(*m_BlockI, AccId, Leaf))
++			return true;
++		return false;
++	}
++
++	bool QueryBlocklist::IsExcludedLabel(const char *Label)
++	{
++		if (!m_Any || Label == 0)
++			return false;
++		string Acc;
++		GetAccFromLabel(Label, Acc);
++		string TaxStr;
++		GetTaxStrFromLabel(Label, TaxStr);
++		return IsExcludedAccTax(Acc, TaxStr);
++	}
++
++	bool QueryBlocklist::IsExcludedIndex(unsigned TargetIndex)
++	{
++		asserta(m_DB != 0);
++		if (m_Taxy != 0)
++		{
++			asserta(m_SeqIndexToTaxIndex != 0);
++			unsigned TaxIndex = (*m_SeqIndexToTaxIndex)[TargetIndex];
++			unsigned Leaf = UINT_MAX;
++			if (TaxIndex < SIZE(m_TaxStrToLeaf))
++				Leaf = m_TaxStrToLeaf[TaxIndex];
++			unsigned AccId = UINT_MAX;
++			if (TargetIndex < SIZE(m_SeqAccId))
++				AccId = m_SeqAccId[TargetIndex];
++			return IsExcludedInterned(AccId, Leaf);
++		}
++
++		if (!m_SeqAccId.empty())
++		{
++			unsigned AccId = UINT_MAX;
++			if (TargetIndex < SIZE(m_SeqAccId))
++				AccId = m_SeqAccId[TargetIndex];
++			string TaxStr;
++			GetTaxStrFromLabel(m_DB->GetLabel(TargetIndex), TaxStr);
++			if (m_Unblock != 0 &&
++					MatchesMixed(*m_Unblock, m_UnblockI, AccId, TaxStr))
++				return false;
++			if (m_Block != 0 &&
++					MatchesMixed(*m_Block, m_BlockI, AccId, TaxStr))
++				return true;
++			return false;
++		}
++
++		return IsExcludedLabel(m_DB->GetLabel(TargetIndex));
++	}
++
++	bool QueryBlocklist::AnyAccItems()
++	{
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToBlock.begin();
++				 p != m_QueryToBlock.end(); ++p)
++		{
++			if (!p->second.Accs.empty())
++				return true;
++		}
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToUnblock.begin();
++				 p != m_QueryToUnblock.end(); ++p)
++		{
++			if (!p->second.Accs.empty())
++				return true;
++		}
++		return false;
++	}
++
++	void QueryBlocklist::InitInterned()
++	{
++		m_QueryToBlockI.clear();
++		m_QueryToUnblockI.clear();
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToBlock.begin();
++				 p != m_QueryToBlock.end(); ++p)
++			m_QueryToBlockI[p->first];
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToUnblock.begin();
++				 p != m_QueryToUnblock.end(); ++p)
++			m_QueryToUnblockI[p->first];
++	}
++
++	void QueryBlocklist::InternAccsIfNeeded()
++	{
++		m_SeqAccId.clear();
++		if (!AnyAccItems())
++			return;
++
++		map<string, unsigned> AccToId;
++		unsigned Next = 0;
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToBlock.begin();
++				 p != m_QueryToBlock.end(); ++p)
++		{
++			for (set<string>::const_iterator q = p->second.Accs.begin();
++					 q != p->second.Accs.end(); ++q)
++			{
++				if (AccToId.find(*q) == AccToId.end())
++					AccToId[*q] = Next++;
++			}
++		}
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToUnblock.begin();
++				 p != m_QueryToUnblock.end(); ++p)
++		{
++			for (set<string>::const_iterator q = p->second.Accs.begin();
++					 q != p->second.Accs.end(); ++q)
++			{
++				if (AccToId.find(*q) == AccToId.end())
++					AccToId[*q] = Next++;
++			}
++		}
++
++		asserta(m_DB != 0);
++		const unsigned SeqCount = m_DB->GetSeqCount();
++		m_SeqAccId.resize(SeqCount, UINT_MAX);
++		string Acc;
++		for (unsigned i = 0; i < SeqCount; ++i)
++		{
++			GetAccFromLabel(m_DB->GetLabel(i), Acc);
++			map<string, unsigned>::const_iterator p = AccToId.find(Acc);
++			if (p != AccToId.end())
++				m_SeqAccId[i] = p->second;
++		}
++
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToBlock.begin();
++				 p != m_QueryToBlock.end(); ++p)
++		{
++			InternedItems &II = m_QueryToBlockI[p->first];
++			II.AccIds.clear();
++			for (set<string>::const_iterator q = p->second.Accs.begin();
++					 q != p->second.Accs.end(); ++q)
++				II.AccIds.push_back(AccToId[*q]);
++		}
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToUnblock.begin();
++				 p != m_QueryToUnblock.end(); ++p)
++		{
++			InternedItems &II = m_QueryToUnblockI[p->first];
++			II.AccIds.clear();
++			for (set<string>::const_iterator q = p->second.Accs.begin();
++					 q != p->second.Accs.end(); ++q)
++				II.AccIds.push_back(AccToId[*q]);
++		}
++	}
++
++	void QueryBlocklist::InternTaxa(const ItemSet &IS, InternedItems &II)
++	{
++		II.TaxNodes.clear();
++		const unsigned N = SIZE(IS.Taxa);
++		for (unsigned i = 0; i < N; ++i)
++		{
++			unsigned Node = m_Taxy->GetNode_NoFail(IS.Taxa[i]);
++			if (Node != UINT_MAX)
++				II.TaxNodes.push_back(Node);
++		}
++	}
++
++	void QueryBlocklist::SetTaxy(const Taxy *T,
++															 const vector<unsigned> *SeqIndexToTaxIndex)
++	{
++		m_Taxy = 0;
++		m_SeqIndexToTaxIndex = 0;
++		m_TaxStrToLeaf.clear();
++		if (!m_Loaded || T == 0)
++			return;
++
++		m_Taxy = T;
++		m_SeqIndexToTaxIndex = SeqIndexToTaxIndex;
++
++		const unsigned N = T->GetTaxCount();
++		m_TaxStrToLeaf.resize(N, UINT_MAX);
++		vector<string> Names;
++		for (unsigned i = 0; i < N; ++i)
++		{
++			GetTaxNamesFromTaxStr(T->GetTaxStr(i), Names);
++			if (Names.empty())
++				continue;
++			unsigned Node = T->GetNode_NoFail(Names.back());
++			m_TaxStrToLeaf[i] = Node;
++		}
++
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToBlock.begin();
++				 p != m_QueryToBlock.end(); ++p)
++			InternTaxa(p->second, m_QueryToBlockI[p->first]);
++		for (map<string, ItemSet>::const_iterator p =
++						 m_QueryToUnblock.begin();
++				 p != m_QueryToUnblock.end(); ++p)
++			InternTaxa(p->second, m_QueryToUnblockI[p->first]);
++	}
++
++	void QueryBlocklist::FromFiles(const SeqDB &DB)
++	{
++		if (ofilled(OPT_unblocklist) && !ofilled(OPT_blocklist))
++			Die("-unblocklist requires -blocklist");
++		if (!ofilled(OPT_blocklist))
++			return;
++
++		m_DB = &DB;
++		m_Taxy = 0;
++		m_SeqIndexToTaxIndex = 0;
++		m_TaxStrToLeaf.clear();
++		m_QueryToBlock.clear();
++		m_QueryToUnblock.clear();
++
++		ParseFile(oget_str(OPT_blocklist), m_QueryToBlock);
++		if (ofilled(OPT_unblocklist))
++			ParseFile(oget_str(OPT_unblocklist), m_QueryToUnblock);
++
++		InitInterned();
++		InternAccsIfNeeded();
++		m_Loaded = true;
++	}
++
++	void QueryBlocklist::BindQuery(const char *Label)
++	{
++		m_Any = false;
++		m_Block = 0;
++		m_Unblock = 0;
++		m_BlockI = 0;
++		m_UnblockI = 0;
++		if (!m_Loaded || Label == 0)
++			return;
++
++		string Acc;
++		GetAccFromLabel(Label, Acc);
++		map<string, ItemSet>::const_iterator pb =
++				m_QueryToBlock.find(Acc);
++		if (pb == m_QueryToBlock.end() || pb->second.Empty())
++			return;
++
++		m_Block = &pb->second;
++		m_Any = true;
++		map<string, InternedItems>::const_iterator pbi =
++				m_QueryToBlockI.find(Acc);
++		if (pbi != m_QueryToBlockI.end())
++			m_BlockI = &pbi->second;
++
++		map<string, ItemSet>::const_iterator pu =
++				m_QueryToUnblock.find(Acc);
++		if (pu != m_QueryToUnblock.end())
++		{
++			m_Unblock = &pu->second;
++			map<string, InternedItems>::const_iterator pui =
++					m_QueryToUnblockI.find(Acc);
++			if (pui != m_QueryToUnblockI.end())
++				m_UnblockI = &pui->second;
++		}
++
++		if (m_Taxy != 0 && (m_BlockI == 0 || m_BlockI->Empty()))
++		{
++			m_Any = false;
++			m_Block = 0;
++			m_Unblock = 0;
++			m_BlockI = 0;
++			m_UnblockI = 0;
++		}
++	}
+diff --git a/src/queryblocklist.h b/src/queryblocklist.h
+new file mode 100644
+index 0000000..4a9c4c1
+--- /dev/null
++++ b/src/queryblocklist.h
+@@ -0,0 +1,92 @@
++#ifndef queryblocklist_h
++#define queryblocklist_h
++
++#include "myutils.h"
++#include <map>
++#include <set>
++
++class SeqDB;
++class Taxy;
++
++class QueryBlocklist
++	{
++public:
++	struct ItemSet
++	{
++		set<string> Accs;
++		vector<string> Taxa;
++		bool Empty() const
++		{
++			return Accs.empty() && Taxa.empty();
++		}
++	};
++
++	struct InternedItems
++	{
++		vector<unsigned> AccIds;
++		vector<unsigned> TaxNodes;
++		bool Empty() const
++		{
++			return AccIds.empty() && TaxNodes.empty();
++		}
++	};
++
++	static bool m_Loaded;
++	static const SeqDB *m_DB;
++	static map<string, ItemSet> m_QueryToBlock;
++	static map<string, ItemSet> m_QueryToUnblock;
++	static map<string, InternedItems> m_QueryToBlockI;
++	static map<string, InternedItems> m_QueryToUnblockI;
++
++	static const Taxy *m_Taxy;
++	static const vector<unsigned> *m_SeqIndexToTaxIndex;
++	static vector<unsigned> m_TaxStrToLeaf;
++	static vector<unsigned> m_SeqAccId;
++
++	static thread_local bool m_Any;
++	static thread_local const ItemSet *m_Block;
++	static thread_local const ItemSet *m_Unblock;
++	static thread_local const InternedItems *m_BlockI;
++	static thread_local const InternedItems *m_UnblockI;
++
++public:
++	static void FromFiles(const SeqDB &DB);
++	static void SetTaxy(const Taxy *T,
++	  const vector<unsigned> *SeqIndexToTaxIndex);
++	static void BindQuery(const char *Label);
++
++	static bool IsExcluded(unsigned TargetIndex)
++		{
++		if (!m_Any)
++			return false;
++		return IsExcludedIndex(TargetIndex);
++		}
++
++	static bool IsExcludedLabel(const char *Label);
++	static bool IsExcludedAccTax(const string &Acc,
++	  const string &TaxStr);
++
++private:
++	static bool IsExcludedIndex(unsigned TargetIndex);
++	static bool IsExcludedInterned(unsigned AccId, unsigned Leaf);
++	static bool Matches(const ItemSet &IS, const string &Acc,
++	  const string &TaxStr);
++	static bool MatchesInterned(const InternedItems &II,
++	  unsigned AccId, unsigned Leaf);
++	static bool MatchesMixed(const ItemSet &IS,
++	  const InternedItems *II, unsigned AccId,
++	  const string &TaxStr);
++	static bool IdInVec(const vector<unsigned> &V, unsigned Id);
++	static bool PathHasNode(unsigned Leaf,
++	  const vector<unsigned> &Needles);
++	static void ParseFile(const string &FileName,
++	  map<string, ItemSet> &QueryToItems);
++	static void AddItems(ItemSet &IS, const string &Rest);
++	static bool IsTaxonItem(const string &Item);
++	static void InitInterned();
++	static void InternAccsIfNeeded();
++	static void InternTaxa(const ItemSet &IS, InternedItems &II);
++	static bool AnyAccItems();
++	};
++
++#endif // queryblocklist_h
+diff --git a/src/search.cpp b/src/search.cpp
+index c2aeee2..0cc75ce 100644
+--- a/src/search.cpp
++++ b/src/search.cpp
+@@ -12,6 +12,7 @@
+ #include "uparsesink.h"
+ #include "otutabsink.h"
+ #include "sintaxsearcher.h"
++#include "queryblocklist.h"
+ #include "hitmgr.h"
+ #include "filetype.h"
+ #include "label.h"
+@@ -101,6 +102,19 @@ void Search(CMD Cmd, const string &QueryFileName, const string &DBFileName)
+ 	bool DBIsNucleo = false;
+ 	LoadDB(DBFileName, Cmd, &seqdb, &udb, &DBIsNucleo);
+ 
++	if (ofilled(OPT_unblocklist) && !ofilled(OPT_blocklist))
++		Die("-unblocklist requires -blocklist");
++	if (ofilled(OPT_blocklist))
++	{
++		SeqDB *DB = seqdb;
++		if (DB == 0)
++		{
++			asserta(udb != 0 && udb->m_SeqDB != 0);
++			DB = udb->m_SeqDB;
++		}
++		QueryBlocklist::FromFiles(*DB);
++	}
++
+ 	bool RevComp = GetRevComp(QueryIsNucleo, DBIsNucleo);
+ 	bool Xlat = GetXlat(QueryIsNucleo, DBIsNucleo);
+ 
+diff --git a/src/searcher.cpp b/src/searcher.cpp
+index 4c69923..52cc9d1 100644
+--- a/src/searcher.cpp
++++ b/src/searcher.cpp
+@@ -6,6 +6,7 @@
+ #include "alignresult.h"
+ #include "terminator.h"
+ #include "orffinder.h"
++#include "queryblocklist.h"
+ 
+ mutex Searcher::m_Lock;
+ 
+@@ -108,6 +109,7 @@ void Searcher::SearchXlat(SeqInfo *Query)
+ 			break;
+ 			}
+ 		m_Query = ORFSI;
++		QueryBlocklist::BindQuery(ORFSI->m_Label);
+ 		SetQueryImpl();
+ 		m_Aligner->SetQuery(ORFSI);
+ 		m_Terminator->OnNewQuery();
+@@ -132,6 +134,7 @@ void Searcher::Search(SeqInfo *Query, bool KeepHits)
+ 
+ 	m_HitMgr->SetQuery(Query);
+ 	m_Query = Query;
++	QueryBlocklist::BindQuery(Query->m_Label);
+ 	SetQueryImpl();
+ 	if (m_Aligner != 0)
+ 		m_Aligner->SetQuery(Query);
+@@ -146,6 +149,7 @@ void Searcher::Search(SeqInfo *Query, bool KeepHits)
+ 		SeqInfo *QueryRC = m_OM->GetSeqInfo();
+ 		Query->GetRevComp(QueryRC);
+ 		m_Query = QueryRC;
++		QueryBlocklist::BindQuery(QueryRC->m_Label);
+ 		SetQueryImpl();
+ 		if (m_Aligner != 0)
+ 			m_Aligner->SetQuery(QueryRC);
+diff --git a/src/sintaxsearcher.cpp b/src/sintaxsearcher.cpp
+index 7deba1b..2cc347c 100644
+--- a/src/sintaxsearcher.cpp
++++ b/src/sintaxsearcher.cpp
+@@ -3,6 +3,7 @@
+ #include "tax.h"
+ #include "taxy.h"
+ #include "sintaxsearcher.h"
++#include "queryblocklist.h"
+ 
+ FILE *SintaxSearcher::m_f;
+ Taxy *SintaxSearcher::m_Taxy;
+@@ -157,19 +158,46 @@ void SintaxSearcher::Classify()
+ 		asserta(m_U.Size == SeqCount);
+ 
+ 		unsigned TopU = 0;
+-		for (unsigned TargetIndex = 0; TargetIndex < SeqCount; ++TargetIndex)
++		if (!QueryBlocklist::m_Any)
++		{
++			for (unsigned TargetIndex = 0; TargetIndex < SeqCount;
++					 ++TargetIndex)
+ 			{
+-			unsigned u = U[TargetIndex];
++				unsigned u = U[TargetIndex];
++
++				if (u > TopU && TargetIndex != SelfIndex)
++				{
++					TopU = u;
++					TopTargetIndexes.clear();
++				}
+ 
+-			if (u > TopU && TargetIndex != SelfIndex)
++				if (u == TopU && TargetIndex != SelfIndex)
++					TopTargetIndexes.push_back(TargetIndex);
++			}
++		}
++		else
++		{
++			for (unsigned TargetIndex = 0; TargetIndex < SeqCount;
++					 ++TargetIndex)
++			{
++				unsigned u = U[TargetIndex];
++				if (u == 0)
++					continue;
++				if (TargetIndex == SelfIndex)
++					continue;
++				if (QueryBlocklist::IsExcluded(TargetIndex))
++					continue;
++
++				if (u > TopU)
+ 				{
+-				TopU = u;
+-				TopTargetIndexes.clear();
++					TopU = u;
++					TopTargetIndexes.clear();
+ 				}
+-			
+-			if (u == TopU && TargetIndex != SelfIndex)
+-				TopTargetIndexes.push_back(TargetIndex);
++
++				if (u == TopU)
++					TopTargetIndexes.push_back(TargetIndex);
+ 			}
++		}
+ 
+ 		unsigned M = SIZE(TopTargetIndexes);
+ 		if (M == 0)
+@@ -186,22 +214,25 @@ void SintaxSearcher::Classify()
+ 		IncCountMap(TaxStrToCount, TaxStr);
+ 		}
+ 
+-	vector<string> TaxStrs;
+-	vector<unsigned> Counts;
+-	CountMapToVecs(TaxStrToCount, TaxStrs, Counts);
+-	const unsigned N = SIZE(TaxStrs);
+-	asserta(N > 0 && SIZE(Counts) == N);
++		if (TaxStrToCount.empty())
++			return;
+ 
+-	const string &TopTaxStr = TaxStrs[0];
+-	unsigned TopCount = Counts[0];
++		vector<string> TaxStrs;
++		vector<unsigned> Counts;
++		CountMapToVecs(TaxStrToCount, TaxStrs, Counts);
++		const unsigned N = SIZE(TaxStrs);
++		asserta(N > 0 && SIZE(Counts) == N);
+ 
+-	GetTaxNamesFromTaxStr(TopTaxStr, m_Pred);
++		const string &TopTaxStr = TaxStrs[0];
++		unsigned TopCount = Counts[0];
+ 
+-	bool Prod = true;
+-	double ProdP = 1.0;
+-	const unsigned Depth = SIZE(m_Pred);
+-	double Cutoff = oget_flt(OPT_sintax_cutoff);
+-	for (unsigned i = 0; i < Depth; ++i)
++		GetTaxNamesFromTaxStr(TopTaxStr, m_Pred);
++
++		bool Prod = true;
++		double ProdP = 1.0;
++		const unsigned Depth = SIZE(m_Pred);
++		double Cutoff = oget_flt(OPT_sintax_cutoff);
++		for (unsigned i = 0; i < Depth; ++i)
+ 		{
+ 		const string &PredName = m_Pred[i];
+ 		unsigned PredNameCount = TopCount;
+@@ -238,6 +269,7 @@ void SintaxSearcher::Init()
+ 		vector<unsigned> *SeqIndexToTaxIndex = new vector<unsigned>;
+ 		m_Taxy->FromSeqDB(*m_UDBData->m_SeqDB, SeqIndexToTaxIndex);
+ 		m_SeqIndexToTaxIndex = SeqIndexToTaxIndex;
++		QueryBlocklist::SetTaxy(m_Taxy, m_SeqIndexToTaxIndex);
+ 		}
+ 	UNLOCK_CLASS();
+ 
+diff --git a/src/udbusortedsearcher.cpp b/src/udbusortedsearcher.cpp
+index fe9ebf2..c333e38 100644
+--- a/src/udbusortedsearcher.cpp
++++ b/src/udbusortedsearcher.cpp
+@@ -8,6 +8,7 @@
+ #include "hspfinder.h"
+ #include "alignresult.h"
+ #include "sort.h"
++#include "queryblocklist.h"
+ 
+ unsigned GetMinWindexWordCount(unsigned QueryUniqueWordCount, double FractId,
+   unsigned WordLength, bool Nucleo);
+@@ -214,13 +215,15 @@ void UDBUsortedSearcher::SetTopNoBump(unsigned MinU)
+ 
+ 	for (unsigned TargetIndex = 0; TargetIndex < SeqCount; ++TargetIndex)
+ 		{
+-		unsigned n = U[TargetIndex];
+-		if (n >= MinU)
+-			{
++			unsigned n = U[TargetIndex];
++			if (n < MinU)
++				continue;
++			if (QueryBlocklist::m_Any &&
++					QueryBlocklist::IsExcluded(TargetIndex))
++				continue;
+ 			TopU[TopCount] = n;
+ 			TopTargetIndexes[TopCount] = TargetIndex;
+ 			++TopCount;
+-			}
+ 		}
+ 
+ 	m_TopU.Size = TopCount;
+@@ -246,20 +249,22 @@ void UDBUsortedSearcher::SetTopBump(unsigned MinU, unsigned BumpPct)
+ 	unsigned MaxU = 0;
+ 	for (unsigned TargetIndex = 0; TargetIndex < SeqCount; ++TargetIndex)
+ 		{
+-		unsigned n = U[TargetIndex];
+-		if (n >= MinU)
+-			{
++			unsigned n = U[TargetIndex];
++			if (n < MinU)
++				continue;
++			if (QueryBlocklist::m_Any &&
++					QueryBlocklist::IsExcluded(TargetIndex))
++				continue;
+ 			if (n > MaxCount)
+-				{
+-				unsigned NewMinCount = unsigned(n*Bump);
+-				if (NewMinCount > MinU && NewMinCount < MaxCount)
+-					MinU = NewMinCount;
+-				MaxCount = n;
+-				}
+-			TopU[TopCount] = n;
+-			TopTargetIndexes[TopCount] = TargetIndex;
+-			++TopCount;
+-			}
++		{
++			unsigned NewMinCount = unsigned(n * Bump);
++			if (NewMinCount > MinU && NewMinCount < MaxCount)
++				MinU = NewMinCount;
++			MaxCount = n;
++		}
++		TopU[TopCount] = n;
++		TopTargetIndexes[TopCount] = TargetIndex;
++		++TopCount;
+ 		}
+ 
+ 	m_TopU.Size = TopCount;
+diff --git a/src/udbusortedsearcherbig.cpp b/src/udbusortedsearcherbig.cpp
+index 61ecf72..d81a05a 100644
+--- a/src/udbusortedsearcherbig.cpp
++++ b/src/udbusortedsearcherbig.cpp
+@@ -7,6 +7,7 @@
+ #include "hspfinder.h"
+ #include "alignresult.h"
+ #include "sort.h"
++#include "queryblocklist.h"
+ 
+ #if	0
+ 
+@@ -113,6 +114,9 @@ void UDBUsortedSearcher::UDBSearchBig()
+ 	for (unsigned i = 0; i < TopCount2; ++i)
+ 		{
+ 		unsigned TargetIndex = TopTargetIndexes2[i];
++		if (QueryBlocklist::m_Any &&
++				QueryBlocklist::IsExcluded(TargetIndex))
++			continue;
+ 
+ 		m_Target = OM->GetSeqInfo();
+ 		GetTargetSeqInfo(TargetIndex, m_Target);
+diff --git a/src/usearch12.vcxproj b/src/usearch12.vcxproj
+index 1f05849..4d9f9f9 100644
+--- a/src/usearch12.vcxproj
++++ b/src/usearch12.vcxproj
+@@ -337,6 +337,7 @@
+     <ClCompile Include="prime.cpp" />
+     <ClCompile Include="progress.cpp" />
+     <ClCompile Include="quarts.cpp" />
++    <ClCompile Include="queryblocklist.cpp" />
+     <ClCompile Include="search.cpp" />
+     <ClCompile Include="searchcmd.cpp" />
+     <ClCompile Include="searcher.cpp" />
+@@ -474,6 +475,7 @@
+     <ClInclude Include="primes.h" />
+     <ClInclude Include="progress.h" />
+     <ClInclude Include="quarts.h" />
++    <ClInclude Include="queryblocklist.h" />
+     <ClInclude Include="searcher.h" />
+     <ClInclude Include="segmask.h" />
+     <ClInclude Include="seqdb.h" />
+diff --git a/src/usearch12.vcxproj.filters b/src/usearch12.vcxproj.filters
+index d2fc435..301d773 100644
+--- a/src/usearch12.vcxproj.filters
++++ b/src/usearch12.vcxproj.filters
+@@ -485,6 +485,9 @@
+     <ClCompile Include="progress.cpp">
+       <Filter>Source Files</Filter>
+     </ClCompile>
++    <ClCompile Include="queryblocklist.cpp">
++      <Filter>Source Files</Filter>
++    </ClCompile>
+     <ClCompile Include="test.cpp">
+       <Filter>Source Files</Filter>
+     </ClCompile>
+@@ -712,6 +715,9 @@
+     <ClInclude Include="quarts.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
++    <ClInclude Include="queryblocklist.h">
++      <Filter>Header Files</Filter>
++    </ClInclude>
+     <ClInclude Include="searcher.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>

@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/galaxyproject__galaxy-24870"
+description = "[26.1] Merge release_26.0 into release_26.1"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "galaxy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "galaxyproject/galaxy"
+ref = "490e69352b0c23f4e354c4eb134d8972133371f0"
+reference = "https://github.com/galaxyproject/galaxy/pull/24870"
+source_access = "auto"
+built_at = "2026-11-13T15:45:58.517898+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:55b880a44c9e0243fa54a5f2e5cfae238e5f58b283a09bdc80f0da4a454c0fd8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T08:04:30Z"
+diff_format = "unified"
+context_files = [
+    "lib/galaxy/celery/tasks.py",
+    "lib/galaxy/job_execution/actions/post.py",
+    "lib/galaxy/jobs/__init__.py",
+    "lib/galaxy/jobs/handler.py",
+    "lib/galaxy/model/__init__.py",
+    "lib/galaxy/util/__init__.py",
+    "lib/galaxy/util/unittest_utils/__init__.py",
+    "test/integration/test_job_completion_emails.py",
+    "test/unit/app/jobs/test_job_wrapper_finish.py",
+    "test/unit/job_execution/test_email_action.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 523
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

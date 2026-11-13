@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/arvados__arvados-525"
+description = "524: WB: Sanitize resource description displayed in <td> with DOMPurify"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "arvados",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "arvados/arvados"
+ref = "d909e69b5579b9f26bc50fd281db1dc0873ba32e"
+reference = "https://github.com/arvados/arvados/pull/525"
+source_access = "auto"
+built_at = "2026-11-13T15:55:52.085347+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d3a8e6ab38cf2155c444b051b99d5cb0d3709cf27312da5d2fe5655ae610f65b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-14T21:03:35Z"
+diff_format = "unified"
+context_files = [
+    "services/workbench2/src/common/html-sanitize.ts",
+    "services/workbench2/src/views-components/data-explorer/renderers.cy.js",
+    "services/workbench2/src/views-components/data-explorer/renderers.tsx",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 71
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

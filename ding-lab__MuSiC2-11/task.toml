@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/ding-lab__MuSiC2-11"
+description = "add smg test commands example"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MuSiC2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ding-lab/MuSiC2"
+ref = "dd1fe3ddc2e170ddbcc4e63b4a4000f8e98950bf"
+reference = "https://github.com/ding-lab/MuSiC2/pull/11"
+source_access = "auto"
+built_at = "2026-11-13T15:45:08.618451+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ddd72b4d3a87099e4d615ea987a6da138ab8e3f72bc2dc1454a293cf6b9bbab5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-11-23T09:29:03Z"
+diff_format = "unified"
+context_files = [
+    "MuSiC2-0.2.tar.gz",
+    "README.md",
+    "example/smg/example.bam_list",
+    "example/smg/example.input.maf",
+    "example/smg/example.roi_file",
+    "example/smg/example.run-coverage-command",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 220288
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

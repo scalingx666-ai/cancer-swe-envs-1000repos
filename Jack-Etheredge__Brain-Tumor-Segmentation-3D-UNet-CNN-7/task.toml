@@ -1,0 +1,82 @@
+version = "1.0"
+
+[task]
+name = "default/Jack-Etheredge__Brain-Tumor-Segmentation-3D-UNet-CNN-7"
+description = "Refactor"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Brain-Tumor-Segmentation-3D-UNet-CNN",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Jack-Etheredge/Brain-Tumor-Segmentation-3D-UNet-CNN"
+ref = "3ef0adca6c6f6d62419e8bcf710048aa6c47e53a"
+reference = "https://github.com/Jack-Etheredge/Brain-Tumor-Segmentation-3D-UNet-CNN/pull/7"
+source_access = "auto"
+built_at = "2026-11-13T16:39:37.920654+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b3b8f7c6f90fa789c4685bb74d60858ed9e04a341bc956936ba48f262e3c7845"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-10-03T04:04:26Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "BraTS_3DUNetCNN.ipynb",
+    "BraTS_3DUNetCNN.py",
+    "README.md",
+    "__pycache__/unet_utils.cpython-37.pyc",
+    "create_and_save_cropped_images.py",
+    "create_new_train_val_test_split.py",
+    "create_predictions.py",
+    "data/.gitignore",
+    "data/README.md",
+    "logs/.gitignore",
+    "logs/README.md",
+    "old-versions/BraTS_3DUNetCNN-making-tiffs-of-predictions-from-pickle-crops.ipynb",
+    "old-versions/BraTS_3DUNetCNN-making-tiffs-of-predictions-from-pickle-crops.py",
+    "predictions/.gitignore",
+    "predictions/README.md",
+    "requirements.txt",
+    "train_UNet.py",
+    "unet_utils.py",
+    "weights/.gitignore",
+    "weights/README.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 3066
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

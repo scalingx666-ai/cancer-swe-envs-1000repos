@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/morrislab__TrackSig-6"
+description = "isdigit function is deprecated"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "TrackSig",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "morrislab/TrackSig"
+ref = "b2841b2c03882b58ee64817e88a6f7c42f3d6b48"
+reference = "https://github.com/morrislab/TrackSig/pull/6"
+source_access = "auto"
+built_at = "2026-11-13T15:44:49.887486+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:78c0dafe2b192d65165f5e6843e5762612ba44e79e0e98184d4e5599d2ab4726"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-09-11T14:00:37Z"
+diff_format = "unified"
+context_files = [
+    "src/getMutationTypes.pl",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

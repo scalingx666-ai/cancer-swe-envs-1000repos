@@ -1,0 +1,963 @@
+diff --git a/requirements.txt b/requirements.txt
+index b39f405..08791df 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -11,4 +11,5 @@ tqdm==4.62.3
+ uncertainty-calibration==0.0.7
+ xgboost==1.1.1
+ torch==1.11.0
+-pytest==7.1.2
+\ No newline at end of file
++pytest==7.1.2
++string-kernels==1.1.2
+\ No newline at end of file
+diff --git a/run_gnomix.py b/run_gnomix.py
+index 039b56a..233148e 100644
+--- a/run_gnomix.py
++++ b/run_gnomix.py
+@@ -9,12 +9,15 @@
+ from gnomix.paths import DEFAULT_CONFIG_PATH
+ from gnomix.utils import join_paths, read_vcf, vcf_to_npy, npy_to_vcf, update_vcf 
+ from gnomix.utils import read_genetic_map, save_dict, load_dict, read_headers
+-from gnomix.preprocess import load_np_data, data_process
++from gnomix.preprocess import load_np_data, window_labels
+ from gnomix.postprocess import get_meta_data, write_msp, write_fb, msp_to_lai, msp_to_bed
+ from gnomix.visualization import plot_cm, plot_chm
+ from gnomix.laidataset import LAIDataset
+ from gnomix.model.model import Gnomix
+ 
++X_DTYPE = "int8"
++Y_DTYPE = "int16"
++
+ CLAIMER = """When using this software, please cite:
+ Helgi Hilmarsson, Arvind S Kumar, Richa Rastogi, Carlos D Bustamante,
+ Daniel Mas Montserrat, Alexander G Ioannidis:
+@@ -136,7 +139,9 @@ def read(split):
+         X_files = [p + "/mat_vcf_2d.npy" for p in paths]
+         labels_files = [p + "/mat_map.npy" for p in paths]
+         X_raw, labels_raw = [load_np_data(f) for f in [X_files, labels_files]]
+-        X, y = data_process(X_raw, labels_raw, window_size=M)
++        X = np.array(X_raw, dtype=X_DTYPE)
++        windowed_labels = window_labels(labels_raw, window_size=M)
++        y = np.array(windowed_labels, dtype=Y_DTYPE)
+         return X, y
+ 
+     X_t1, y_t1 = read("train1")
+diff --git a/src/gnomix/model/__init__.py b/src/gnomix/model/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/gnomix/model/base/__init__.py b/src/gnomix/model/base/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/gnomix/model/base/base.py b/src/gnomix/model/base/base.py
+index 32e210d..50de61f 100644
+--- a/src/gnomix/model/base/base.py
++++ b/src/gnomix/model/base/base.py
+@@ -1,32 +1,51 @@
+ import numpy as np
+-import sys
+ from sklearn.metrics import accuracy_score, balanced_accuracy_score
+-from time import time
+ from multiprocessing import get_context
+ import tqdm
+ 
+-class Base():
+-
+-    def __init__(self, chm_len, window_size, num_ancestry, missing_encoding=2,
+-                    context=0.5, train_admix=True, n_jobs=None, seed=94305, verbose=False):
+-
+-        self.C = chm_len
+-        self.M = window_size
+-        self.W = self.C//self.M # Number of windows
+-        self.A = num_ancestry
++from typing import Any, Tuple, Callable
++from numpy.typing import ArrayLike
++
++class Base:
++
++    X_dtype = np.int8
++    y_dtype = np.int16
++    proba_dtype = np.float32
++
++    def __init__(
++        self,
++        C: int,
++        M: int,
++        W: int,
++        A: int,
++        missing_encoding: int = 2,
++        context: int = 0,
++        train_admix: bool = False,
++        n_jobs: int = None,
++        seed: int = 94305,
++        verbose: bool = False,
++        vectorize: bool = True,
++        base_multithread: bool = False,
++        log_inference: bool = False,
++    ) -> None:
++
++        self.C = C
++        self.M = M
++        self.W = W
++        self.A = A
++        self.rem = self.W * self.M - self.C
++        assert self.rem >= 0
+         self.missing_encoding=missing_encoding
+-        self.context = context
++        self.context = context 
+         self.train_admix = train_admix
+         self.n_jobs = n_jobs
+         self.seed = seed
+         self.verbose = verbose
+-        self.base_multithread = False
+-        self.log_inference = False
+-        self.vectorize = True
+-
+-        self.time = {}
++        self.vectorize = vectorize
++        self.base_multithread = base_multithread
++        self.log_inference = log_inference
+ 
+-    def init_base_models(self, model_factory):
++    def init_base_models(self, model_factory: Callable) -> None:
+         """
+         inputs:
+             - model_factory: function that returns a model object that has the functions
+@@ -38,180 +57,109 @@ def init_base_models(self, model_factory):
+         """
+         self.models = [model_factory() for _ in range(self.W)]
+ 
+-    def pad(self,X):
+-        pad_left = np.flip(X[:,0:self.context],axis=1)
+-        pad_right = np.flip(X[:,-self.context:],axis=1)
+-        return np.concatenate([pad_left,X,pad_right],axis=1)
+-        
+-    def train(self, X, y, verbose=True):
+-        """
+-        inputs:
+-            - X: np.array of shape (N, C) where N is sample size and C chm length
+-            - y: np.array of shape (N, C) where N is sample size and C chm length
+-        """
+-        if self.vectorize:
+-            try:
+-                np.lib.stride_tricks.sliding_window_view
+-                return self.train_vectorized(X, y)
+-            except AttributeError:
+-                print("Vectorized implementation requires numpy versions 1.20+.. Using loopy version..")
+-                self.vectorize = False
+-        if not self.vectorize:
+-            return self.train_loopy(X, y, verbose=verbose)
+-
+-    def train_loopy(self, X, y, verbose=True):
+-        """Depricated"""
+-
+-        t = time()
+-
+-        if self.context != 0.0:
+-            X = self.pad(X)
++    @staticmethod
++    def pad_with_reflection_along_first_axis(
++        array: ArrayLike,
++        pad_width: int
++    ) -> ArrayLike:
+ 
+-        start = self.context
+-
+-        for i in range(self.W):
++        if pad_width == 0:
++            return array
+ 
+-            X_w = X[:,start-self.context:start+self.context+self.M]
+-            y_w = y[:,i]
++        pad_left = np.flip(array[:, 0:pad_width], axis=1)
++        pad_right = np.flip(array[:, -pad_width:], axis=1)
++        return np.concatenate([pad_left, array, pad_right], axis=1)
+ 
+-            if i == self.W-1:
+-                X_w = X[:,start-self.context:]
++    @staticmethod
++    def _train_base_model_(b, X: ArrayLike, y: ArrayLike) -> Any:
++        return b.fit(X, y)
+ 
+-            # train model
+-            self.models[i].fit(X_w,y_w)
++    @staticmethod
++    def _predict_proba_base_model(b, X: ArrayLike) -> ArrayLike:
++        return b.predict_proba(X)
+ 
+-            start += self.M
++    def preprocess(self, X: ArrayLike, y: ArrayLike = None) -> Tuple[ArrayLike, ArrayLike]:
++        """
++        inputs:
++            - X: shape (N, C)
++            - y: shape (N, W)
++        outputs:
++            - X: shape (W, N, M)
++            - y: shape (W, N)
++        """
+ 
+-            if verbose:
+-                sys.stdout.write("\rWindows done: %i/%i" % (i+1, self.W))
+-        
+-        if verbose:
+-            print("")
++        N_x, C = X.shape
++        assert C == self.C, f"Mismatch in number of SNPs for model ({self.C}) and data ({C})"
+ 
+-        self.time["train"] = time() - t
++        if y is not None:
++            N_y, W = y.shape
++            assert W == self.W, f"Mismatch in number of windows for model ({self.W}) and data ({W})"
++            assert N_x == N_y, f"Mismatch in number of samples for sequences ({N_x}) and labels ({N_y})"
+ 
+-    def train_base_model(self, b, X, y):
+-        return b.fit(X, y)
++        N = N_x
++        padding = np.zeros((N, self.rem))
++        X = np.concatenate([X, padding], axis=1)
+ 
+-    def predict_proba_base_model(self, b, X):
+-        return b.predict_proba(X)
++        if self.context != 0:
++            X = self.pad_with_reflection_along_first_axis(X, pad_width=self.context)
+ 
+-    def train_vectorized(self, X, y):
++        X_processed = np.zeros((self.W, N, self.M + 2 * self.context), dtype=self.X_dtype)
++        start = self.context
++        for w in range(self.W):
++            X_processed[w] = X[:,start-self.context:start+self.context+self.M] # (N, M)
++            start += self.M
+ 
+-        slide_window = np.lib.stride_tricks.sliding_window_view
++        y_processed = np.swapaxes(y, 0, 1).astype(self.y_dtype) if y is not None else None
+ 
+-        t = time()
++        return X_processed, y_processed
+ 
+-        # pad
+-        if self.context != 0.0:
+-            X = self.pad(X)
+-            
+-        # convolve
+-        M_ = self.M + 2*self.context        
+-        idx = np.arange(0,self.C,self.M)[:-2]
+-        X_b = slide_window(X, M_, axis=1)[:,idx,:]
++    def train(self, X, y):
++        """
++        inputs:
++            - X: np.array of shape (N, C) where N is sample size and C chm length
++            - y: np.array of shape (N, W) where N is sample size and C chm length
++        """        
++        X, y = self.preprocess(X, y)
+ 
+-        # stack
+-        train_args = tuple(zip( self.models[:-1], np.swapaxes(X_b,0,1), np.swapaxes(y,0,1)[:-1] ))
+-        rem = self.C - self.M*self.W
+-        train_args += ((self.models[-1], X[:,X.shape[1]-(M_+rem):], y[:,-1]),)
++        train_args = tuple(zip(self.models, X, y))
+ 
+-        # train
+         log_iter = tqdm.tqdm(train_args, total=self.W, bar_format='{l_bar}{bar:40}{r_bar}{bar:-40b}', position=0, leave=True)
+         if self.base_multithread:
+             with get_context("spawn").Pool(self.n_jobs) as pool:
+-                self.models = pool.starmap(self.train_base_model, log_iter) 
++                self.models = pool.starmap(self._train_base_model_, log_iter) 
+         else:
+-            self.models = [self.train_base_model(*b) for b in log_iter]
+-
+-        self.time["train"] = time() - t
++            for base_model, X, y in log_iter:
++                self._train_base_model_(base_model, X, y) 
+ 
+-    def predict_proba(self, X):
++    def predict_proba(self, X: ArrayLike) -> ArrayLike:
+         """
+         inputs:
+             - X: np.array of shape (N, C) where N is sample size and C chm length
+         returns 
+             - B: base probabilities of shape (N,W,A)
+         """
+-        if self.vectorize:
+-            try:
+-                np.lib.stride_tricks.sliding_window_view
+-                return self.predict_proba_vectorized(X)
+-            except AttributeError:
+-                print("Vectorized implementation requires numpy versions 1.20+.. Using loopy version..")
+-                self.vectorize = False
+-        if not self.vectorize:
+-            return self.predict_proba_loopy(X)
+-
+-    def predict_proba_vectorized(self, X):
+-
+-        slide_window = np.lib.stride_tricks.sliding_window_view
+-
+-        t = time()
+-
+-        # pad
+-        if self.context != 0.0:
+-            X = self.pad(X)
+-            
+-        # convolve
+-        M_ = self.M + 2*self.context        
+-        idx = np.arange(0,self.C,self.M)[:-2]
+-        X_b = slide_window(X, M_, axis=1)[:,idx,:]
+-
+-        # stack
+-        base_args = tuple(zip( self.models[:-1], np.swapaxes(X_b,0,1) ))
+-        rem = self.C - self.M*self.W
+-        base_args += ((self.models[-1], X[:,X.shape[1]-(M_+rem):]), )
++        X, _ = self.preprocess(X)
++
++        base_args = tuple(zip(self.models, X))
+ 
+         if self.log_inference:
+             base_args = tqdm.tqdm(base_args, total=self.W, bar_format='{l_bar}{bar:40}{r_bar}{bar:-40b}', position=0, leave=True)
+ 
+-        # predict proba
+         if self.base_multithread:
+             with get_context("spawn").Pool(self.n_jobs) as pool:
+-                B = np.array(pool.starmap(self.predict_proba_base_model, base_args))
++                B = np.array(pool.starmap(self._predict_proba_base_model, base_args))
+         else:
+-            B = np.array([self.predict_proba_base_model(*b) for b in base_args])
++            B = np.array([self._predict_proba_base_model(b,X) for b, X in base_args])
+ 
+         B = np.swapaxes(B, 0, 1)
+ 
+-        self.time["inference"] = time() - t
+-
+         return B
+ 
+-
+-    def predict_proba_loopy(self, X):
+-        """Depricated"""
+-
+-        t = time()
+-
+-        N = len(X)
+-        B = np.zeros( (N, self.W, self.A), dtype="float32" )
+-        
+-        start = self.context
+-        
+-        if self.context != 0.0:
+-            X = self.pad(X)
+-        
+-        for i in range(self.W):
+-            X_w = X[:,start-self.context:start+self.context+self.M]
+-
+-            if i == self.W-1:
+-                X_w = X[:,start-self.context:]
+-
+-            B[:,i,self.models[i].classes_] = self.models[i].predict_proba(X_w)
+-
+-            start += self.M
+-
+-        self.time["inference"] = time() - t
+-            
+-        return B
+-    
+-    def predict(self, X):
++    def predict(self, X: ArrayLike) -> ArrayLike:
+         B = self.predict_proba(X)
+         return np.argmax(B, axis=-1)
+         
+-    def evaluate(self,X=None,y=None,B=None):
++    def evaluate(self, X: ArrayLike = None, y: ArrayLike = None, B: ArrayLike = None) -> Tuple[float, float]:
+ 
+         round_accr = lambda accr : round(np.mean(accr)*100,2)
+ 
+diff --git a/src/gnomix/model/base/models.py b/src/gnomix/model/base/models.py
+index c864e90..316301a 100644
+--- a/src/gnomix/model/base/models.py
++++ b/src/gnomix/model/base/models.py
+@@ -5,9 +5,14 @@
+ from sklearn import svm
+ 
+ from gnomix.model.base.base import Base
+-from gnomix.model.base.string_kernel import CovRSK_DP_triangular_numbers, CovRSK_DP_triangular_numbers_multithread
+-from gnomix.model.base.string_kernel import string_kernel_DP_triangular_numbers, string_kernel_DP_triangular_numbers_multithread
+-from gnomix.model.base.string_kernel import poly_kernel, poly_kernel_multithread
++from stringkernels.kernels import (
++    polynomial_string_kernel, 
++    polynomial_string_kernel_multithread,
++    string_kernel_singlethread,
++    string_kernel_multithread,
++    CovRSK_singlethread,
++    CovRSK_multithread
++)
+ 
+ class LogisticRegressionBase(Base):
+ 
+@@ -17,7 +22,7 @@ def __init__(self,  *args, **kwargs):
+         self.base_multithread = True
+ 
+         self.init_base_models(
+-            lambda : LogisticRegression(penalty="l2", C = 3., solver="liblinear", max_iter=1000)
++            model_factory=lambda: LogisticRegression(penalty="l2", C = 3., solver="liblinear", max_iter=1000)
+         )
+ 
+ 
+@@ -30,9 +35,9 @@ def __init__(self,  *args, **kwargs):
+         n_jobs = self.n_jobs if not self.base_multithread else 1
+ 
+         self.init_base_models(
+-            lambda : XGBClassifier(
++            model_factory=lambda: XGBClassifier(
+                 n_estimators=20, max_depth=4, learning_rate=0.1, reg_lambda=1, reg_alpha=0,
+-                thread=n_jobs, missing=self.missing_encoding, random_state=self.seed)
++                nthread=n_jobs, missing=self.missing_encoding, random_state=self.seed)
+         )
+ 
+ class LGBMBase(Base):
+@@ -46,7 +51,7 @@ def __init__(self,  *args, **kwargs):
+         n_jobs = self.n_jobs if not self.base_multithread else 1
+ 
+         self.init_base_models(
+-            lambda : LGBMClassifier(
++            model_factory=lambda: LGBMClassifier(
+                 n_estimators=20, max_depth=4, learning_rate=0.1, reg_lambda=1, reg_alpha=0,
+                 n_jobs=n_jobs, random_state=self.seed) # use np.nan for missing encoding
+         )
+@@ -62,7 +67,7 @@ def __init__(self,  *args, **kwargs):
+         n_jobs = self.n_jobs if not self.base_multithread else 1
+ 
+         self.init_base_models(
+-            lambda : RandomForestClassifier(n_estimators=20,max_depth=4,n_jobs=n_jobs) 
++            model_factory=lambda: RandomForestClassifier(n_estimators=20,max_depth=4,n_jobs=n_jobs) 
+         )
+ 
+ class CBBase(Base):
+@@ -76,7 +81,7 @@ def __init__(self,  *args, **kwargs):
+         n_jobs = self.n_jobs if not self.base_multithread else 1
+ 
+         self.init_base_models(
+-            lambda : catboost.CatBoostClassifier(n_estimators=20, max_depth=4, reg_lambda=1,
++            model_factory=lambda: catboost.CatBoostClassifier(n_estimators=20, max_depth=4, reg_lambda=1,
+                 thread_count=n_jobs, verbose=0)
+         )
+ 
+@@ -90,7 +95,7 @@ def __init__(self,  *args, **kwargs):
+         self.base_multithread = True
+ 
+         self.init_base_models(
+-            lambda : LinearDiscriminantAnalysis()
++            model_factory=lambda: LinearDiscriminantAnalysis()
+         )
+ 
+ class NBGaussianBase(Base):
+@@ -103,7 +108,7 @@ def __init__(self,  *args, **kwargs):
+         self.base_multithread = True
+ 
+         self.init_base_models(
+-            lambda : GaussianNB()
++            model_factory=lambda: GaussianNB()
+         )
+ 
+ class NBBernoulliBase(Base):
+@@ -116,7 +121,7 @@ def __init__(self,  *args, **kwargs):
+         self.base_multithread = True
+ 
+         self.init_base_models(
+-            lambda : BernoulliNB(alpha=0)
++            model_factory=lambda: BernoulliNB(alpha=0)
+         )
+ 
+ class NBMultinomialBase(Base):
+@@ -129,7 +134,7 @@ def __init__(self,  *args, **kwargs):
+         self.base_multithread = True
+ 
+         self.init_base_models(
+-            lambda : MultinomialNB(alpha=0)
++            model_factory=lambda: MultinomialNB(alpha=0)
+         )
+ 
+ class KNNBase(Base):
+@@ -142,7 +147,7 @@ def __init__(self,  *args, **kwargs):
+         self.base_multithread = True
+ 
+         self.init_base_models(
+-            lambda : KNeighborsClassifier(n_neighbors=1)
++            model_factory=lambda: KNeighborsClassifier(n_neighbors=1)
+         )
+ 
+ class SVMBase(Base):
+@@ -151,11 +156,10 @@ def __init__(self,  *args, **kwargs):
+         super().__init__(*args, **kwargs)
+ 
+         self.log_inference = True # display progress of predict proba
+-        self.train_admix = False # save computation
+         self.base_multithread = True
+ 
+         self.init_base_models(
+-            lambda : svm.SVC(C=100., gamma=0.001, probability=True)
++            model_factory=lambda: svm.SVC(C=100., gamma=0.001, probability=True)
+         )
+ 
+ class StringKernelBase(Base):
+@@ -166,13 +170,12 @@ def __init__(self,  *args, **kwargs):
+         assert int(np.__version__.split(".")[1]) >= 20, "String kernel implementation requires numpy versions 1.20+"
+ 
+         self.log_inference = True # display progress of predict proba
+-        self.train_admix = False # save computation
+         self.base_multithread = False # this multithreads along the base models instead of with in each window
+         # self.kernel = string_kernel_singlethread if self.n_jobs==1 or self.base_multithread else string_kernel
+-        self.kernel = string_kernel_DP_triangular_numbers if self.n_jobs==1 or self.base_multithread else string_kernel_DP_triangular_numbers_multithread
++        self.kernel = string_kernel_singlethread if self.n_jobs==1 or self.base_multithread else string_kernel_multithread
+ 
+         self.init_base_models(
+-            lambda : svm.SVC(kernel=self.kernel, probability=True)
++            model_factory=lambda: svm.SVC(kernel=self.kernel, probability=True)
+         )
+ 
+ class PolynomialStringKernelBase(Base):
+@@ -183,13 +186,12 @@ def __init__(self,  *args, **kwargs):
+         assert int(np.__version__.split(".")[1]) >= 20, "String kernel implementation requires numpy versions 1.20+"
+ 
+         self.log_inference = True # display progress of predict proba
+-        self.train_admix = False # save computation
+         self.base_multithread = False # this multithreads along the base models instead of with in each window
+         # self.kernel = string_kernel_singlethread if self.n_jobs==1 or self.base_multithread else string_kernel
+-        self.kernel = poly_kernel if self.n_jobs==1 or self.base_multithread else poly_kernel_multithread
++        self.kernel = polynomial_string_kernel if self.n_jobs==1 or self.base_multithread else polynomial_string_kernel_multithread
+ 
+         self.init_base_models(
+-            lambda : svm.SVC(kernel=self.kernel, probability=True)
++            model_factory=lambda: svm.SVC(kernel=self.kernel, probability=True)
+         )
+ 
+ class CovRSKBase(Base):
+@@ -200,16 +202,15 @@ def __init__(self,  *args, **kwargs):
+         assert int(np.__version__.split(".")[1]) >= 20, "String kernel implementation requires numpy versions 1.20+"
+         
+         self.log_inference = True # display progress of predict proba
+-        self.train_admix = False # save computation
+ 
+         if self.M < 500:
+             self.base_multithread = True
+-            self.kernel = CovRSK_DP_triangular_numbers
++            self.kernel = CovRSK_singlethread
+         else:
+             # More robust to memory
+             self.base_multithread = False
+-            self.kernel = CovRSK_DP_triangular_numbers_multithread
++            self.kernel = CovRSK_multithread
+ 
+         self.init_base_models(
+-            lambda : svm.SVC(kernel=self.kernel, probability=True)
++            model_factory=lambda: svm.SVC(kernel=self.kernel, probability=True)
+         )
+\ No newline at end of file
+diff --git a/src/gnomix/model/base/string_kernel.py b/src/gnomix/model/base/string_kernel.py
+deleted file mode 100644
+index 7437038..0000000
+--- a/src/gnomix/model/base/string_kernel.py
++++ /dev/null
+@@ -1,131 +0,0 @@
+-import numpy as np
+-import multiprocessing as mp
+-from functools import partial
+-
+-def string_kernel_DP_triangular_numbers_(x,y):
+-    z = x==y # O(M)
+-    tri, K = 0, 0
+-    for equal in z: # O(M)
+-        if equal: # (1)
+-            tri += 1 # O(1)
+-            K += tri # O(1)
+-        else:
+-            tri = 0 # O(1)
+-    return K
+-
+-def string_kernel_DP_triangular_numbers_vectorized(x,Y):
+-    z = x==Y
+-    tri = np.zeros(len(z), dtype=int)
+-    K = np.zeros(len(z), dtype=int)
+-    for equal in z.T:
+-        tri += equal
+-        tri[~equal] = 0 
+-        K += tri
+-    return K
+-
+-def string_kernel_DP_triangular_numbers(X,Y):
+-    return np.array([string_kernel_DP_triangular_numbers_vectorized(x,Y) for x in X])
+-
+-def string_kernel_DP_triangular_numbers_multithread(X,Y,n_jobs=None):
+-
+-    with mp.Pool(n_jobs) as pool:
+-        K_list = pool.map(partial(string_kernel_DP_triangular_numbers_vectorized, Y=Y), X)
+-    
+-    K = np.array(K_list).squeeze()
+-    
+-    return K
+-
+-## ------------------------------- Polynomial String Kernel ------------------------------- ##
+-
+-def poly_kernel_(x,y,p):
+-    z = x==y # O(M)
+-    contigs = []
+-    counter = 0
+-    for equal in z: # O(M)
+-        if equal: # (1)
+-            counter += 1 # O(1)
+-        else:
+-            contigs += [counter] # O(1)
+-            counter = 0 # O(1)
+-    contigs += [counter] # O(1)
+-    contigs = np.array(contigs) # O(1)
+-    return np.sum(contigs**p)/p # O(3M) + O(1)
+-
+-def poly_kernel(X,Y,p=1.2):
+-    
+-    K = np.zeros((len(X), len(Y)), dtype=int)
+-    for i, x in enumerate(X):
+-        for j, y in enumerate(Y):
+-            K[i,j] = poly_kernel_(x,y,p=p)
+-            
+-    return K
+-
+-def poly_kernel_multithread(X,Y,p=1.2,n_jobs=16):
+-
+-    Xn, Xm = X.shape
+-    with mp.Pool(n_jobs) as pool:
+-        K_list = pool.map(partial(poly_kernel, Y=Y, p=p), X.reshape(Xn, 1, Xm))
+-    
+-    K = np.array(K_list).squeeze()
+-    
+-    return K
+-
+-## ------------------------------- CovRSK ------------------------------- ##
+-
+-def ohe(idx, size):
+-    out = np.zeros(size,dtype=int)
+-    out[idx-1] = 1
+-    return out
+-
+-def CovSample(M, alpha, beta, seed=1):
+-
+-    np.random.seed(seed)
+-    
+-    Ms = [1]
+-    for m in range(2,M+1): 
+-        if (1-(alpha**(m-Ms[-1]+1)))*(m**(-beta)) >= np.random.rand():
+-            Ms += [m]
+-
+-    return Ms
+-
+-def CovRSK_DP_triangular_numbers_vectorized(x,Y,Ms_ohe):
+-    z = x==Y
+-    K, tri, cov_tri = np.zeros((3, len(z)), dtype=int)
+-    for equal in z.T:
+-        tri += equal
+-        mask = Ms_ohe[tri] == 1
+-        cov_tri += mask*equal
+-        tri[~equal] = 0
+-        cov_tri[~equal] = 0
+-        K += cov_tri
+-    return K
+-    
+-def CovRSK_DP_triangular_numbers(X, Y, alpha=0.6, beta=1.0, seed=37):
+-
+-    Xn, Xm = X.shape
+-    Ms = CovSample(Xm, alpha, beta, seed)
+-    Ms_ohe = ohe(idx=np.array(Ms)+1, size=Xm+1)
+-    K = np.array([CovRSK_DP_triangular_numbers_vectorized(x,Y,Ms_ohe=Ms_ohe) for x in X])
+-
+-    return K
+-
+-def CovRSK_DP_triangular_numbers_multithread(X, Y, alpha=0.6, beta=1.0, n_jobs=None, seed=37):
+-    
+-    Xn, Xm = X.shape
+-    Ms = CovSample(Xm, alpha, beta, seed)
+-    Ms_ohe = ohe(idx=np.array(Ms)+1, size=Xm+1)
+-    func = partial(CovRSK_DP_triangular_numbers_vectorized, Y=Y,Ms_ohe=Ms_ohe)
+-    with mp.Pool(n_jobs) as pool:
+-        K_list = pool.map(func, X)
+-    
+-    K = np.array(K_list).squeeze()
+-    
+-    return K
+-    
+-## ------------------------------- other kernels ------------------------------- ##
+-
+-def linear_kernel(X,Y):
+-    return np.dot(X,Y.T)
+-
+-def hamming_kernel(X, Y):
+-    return np.dot(X,Y.T) + np.dot((1-X), (1-Y).T)
+\ No newline at end of file
+diff --git a/src/gnomix/model/gnofix/__init__ copy.py b/src/gnomix/model/gnofix/__init__ copy.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/gnomix/model/model.py b/src/gnomix/model/model.py
+index af49e82..7715366 100644
+--- a/src/gnomix/model/model.py
++++ b/src/gnomix/model/model.py
+@@ -9,7 +9,7 @@
+ from gnomix.model.smooth.models import XGB_Smoother
+ from gnomix.model.gnofix.gnofix import gnofix
+ 
+-class Gnomix():
++class Gnomix:
+ 
+     def __init__(self, C, M, A, S,
+                 base=None, smooth=None, mode="default", # base and smooth models
+@@ -27,9 +27,9 @@ def __init__(self, C, M, A, S,
+ 
+         self.C = C
+         self.M = M
++        self.W = int(np.ceil(self.C / self.M)) # number of windows
+         self.A = A
+         self.S = S
+-        self.W = self.C//self.M # number of windows
+ 
+         # configs
+         self.path = path
+@@ -72,7 +72,7 @@ def __init__(self, C, M, A, S,
+             if verbose:
+                 print("Smoother:", smooth)
+ 
+-        self.base = base(chm_len=self.C, window_size=self.M, num_ancestry=self.A,
++        self.base = base(C=self.C, M=self.M, W=self.W, A=self.A,
+                             missing_encoding=missing_encoding, context=self.context,
+                             n_jobs=self.n_jobs, seed=self.seed, verbose=self.verbose)
+ 
+diff --git a/src/gnomix/model/smooth/__init__.py b/src/gnomix/model/smooth/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/gnomix/model/smooth/smooth.py b/src/gnomix/model/smooth/smooth.py
+index 878dd9a..cdc44a8 100644
+--- a/src/gnomix/model/smooth/smooth.py
++++ b/src/gnomix/model/smooth/smooth.py
+@@ -4,7 +4,7 @@
+ from gnomix.model.smooth.Calibration import Calibrator
+ from time import time
+ 
+-class Smoother():
++class Smoother:
+ 
+     def __init__(self, n_windows, num_ancestry, smooth_window_size=75, model=None,
+                 calibrate=None, n_jobs=None, seed=None, mode_filter=0, verbose=False):
+diff --git a/src/gnomix/postprocess.py b/src/gnomix/postprocess.py
+index 4d23de5..85dee37 100644
+--- a/src/gnomix/postprocess.py
++++ b/src/gnomix/postprocess.py
+@@ -39,8 +39,11 @@ def get_meta_data(chm, model_pos, query_pos, n_wind, wind_size, gen_map_df):
+     chm_array = [chm]*n_wind
+ 
+     # start and end pyshical positions
+-    spos_idx = np.arange(0, model_chm_len, wind_size)[:-1]
+-    epos_idx = np.concatenate([np.arange(0, model_chm_len, wind_size)[1:-1],np.array([model_chm_len])])-1
++    spos_idx = np.arange(0, model_chm_len, wind_size)
++    epos_idx = np.concatenate([
++        np.arange(0, model_chm_len, wind_size)[1:],
++        np.array([model_chm_len])
++    ]) - 1
+     spos = model_pos[spos_idx]
+     epos = model_pos[epos_idx]
+ 
+diff --git a/src/gnomix/preprocess.py b/src/gnomix/preprocess.py
+index e3338d0..a0fc30c 100644
+--- a/src/gnomix/preprocess.py
++++ b/src/gnomix/preprocess.py
+@@ -33,49 +33,20 @@ def map2npy(map_file, shape, pop_order):
+         y[2*i:2*i+2] = a_numeric
+     return y
+ 
+-def window_reshape(data, win_size):
++def window_labels(labels, window_size):
+     """
+-    Takes in data of shape (N, chm_len), aggregates labels and 
+-    returns window shaped data of shape (N, chm_len//window_size)
++    Takes in labels of shape (N, C), aggregates labels and 
++    returns window shaped labels of shape (N, W) where
++    W = ceil(C/window_size)
+     """
+ 
+-    # Split in windows and make the last one contain the remainder
+-    chm_len = data.shape[1]
+-    drop_last_idx = chm_len//win_size*win_size - win_size
+-    window_data = data[:,0:drop_last_idx]
+-    rem = data[:,drop_last_idx:]
+-
+-    # reshape accordingly
+-    N, C = window_data.shape
+-    num_winds = C//win_size
+-    window_data =  window_data.reshape(N,num_winds,win_size)
+-
+-    # attach thet remainder
+-    window_data = stats.mode(window_data, axis=2)[0].squeeze() 
+-    rem_label = stats.mode(rem, axis=1)[0].squeeze()
+-    window_data = np.concatenate((window_data,rem_label[:,np.newaxis]),axis=1)
+-
+-    return window_data
+-
+-def data_process(X, labels, window_size):
+-    """ 
+-    Takes in 2 numpy arrays:
+-        - X is of shape (N, chm_len)
+-        - labels is of shape (N, chm_len)
+-
+-    And returns 2 processed numpy arrays:
+-        - X is of shape (N, chm_len)
+-        - labels is of shape (N, chm_len//window_size)
+-    """
+-
+-    # Reshape labels into windows 
+-    y = window_reshape(labels, window_size)
+-
+-    # dtypes
+-    X = np.array(X, dtype="int8")
+-    y = np.array(y, dtype="int16")
+-
+-    return X, y
++    # # Split in windows and make the last one contain the remainder
++    N, C = labels.shape
++    W = int(np.ceil(C / window_size))
++    windowed_labels = np.zeros((N, W))
++    for w in range(W):
++        windowed_labels[:, w] = stats.mode(labels[:, w*window_size:(w+1)*window_size], axis=1)[0].squeeze()
++    return windowed_labels
+ 
+ def dropout_row(data, missing_percent):
+     num_drops = int(len(data)*missing_percent)
+diff --git a/tests/unit/model/__init__.py b/tests/unit/model/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/tests/unit/model/base/test_base.py b/tests/unit/model/base/test_base.py
+new file mode 100644
+index 0000000..e9dfe3e
+--- /dev/null
++++ b/tests/unit/model/base/test_base.py
+@@ -0,0 +1,132 @@
++import pytest 
++import numpy as np
++from typing import Tuple, Callable, Any, Dict
++from numpy.typing import ArrayLike
++
++from gnomix.model.base.base import Base
++
++from gnomix.model.base.models import (
++    LogisticRegressionBase,
++    XGBBase,
++    StringKernelBase,
++)
++
++BASE_MODELS = [LogisticRegressionBase, XGBBase, StringKernelBase]
++
++def get_binary_toy_data(C: int, W: int) -> Tuple[Tuple[ArrayLike, ArrayLike], Dict[str, Any]]:
++
++    N_0 = 10
++    X_0 = np.zeros((N_0, C))
++    y_0 = np.zeros((N_0, W), dtype=int)
++
++    N_1 = 10
++    X_1 = np.ones((N_1, C))
++    y_1 = np.ones((N_1, W), dtype=int)
++
++    X = np.concatenate([X_0, X_1])
++    y = np.concatenate([y_0, y_1])
++
++    meta_data = {"num_ancestry": 2}
++
++    return (X, y), meta_data
++
++def get_multilabel_toy_data(C: int, W: int) -> Tuple[Tuple[ArrayLike, ArrayLike], Dict[str, Any]]:
++
++    N_0 = 10
++    X_0 = np.zeros((N_0, C))
++    y_0 = np.zeros((N_0, W), dtype=int)
++
++    N_1 = 10
++    X_1 = np.ones((N_1, C))
++    y_1 = np.ones((N_1, W), dtype=int)
++
++    N_2 = 10
++    X_2 = np.ones((N_2, C))
++    y_2 = np.ones((N_2, W), dtype=int)
++
++    X = np.concatenate([X_0, X_1, X_2])
++    y = np.concatenate([y_0, y_1, y_2])
++
++    meta_data = {"num_ancestry": 3}
++    
++    return (X, y), meta_data
++
++@pytest.mark.parametrize("base_model_class", BASE_MODELS)
++@pytest.mark.parametrize("get_toy_data", [get_binary_toy_data, get_multilabel_toy_data])
++@pytest.mark.parametrize("vectorize", [False, True])
++@pytest.mark.parametrize("base_multithread", [False, True])
++@pytest.mark.parametrize("context", [0, 50])
++@pytest.mark.parametrize("C", [299, 300, 301])
++def test_binary_base_train_inference(
++    base_model_class: Base,
++    get_toy_data: Callable,
++    vectorize: bool,
++    base_multithread: bool,
++    context: int,
++    C: int
++):
++
++    M = 100
++    W = int(np.ceil(C / M))
++    (X, y), meta_data = get_toy_data(C, W)
++
++    base = base_model_class(
++        C=C,
++        M=M,
++        W=W,
++        A=meta_data["num_ancestry"],
++        vectorize=vectorize,
++        base_multithread=base_multithread,
++        context=context
++    )
++
++    base.train(X, y)
++    y_pred = base.predict(X)
++    assert np.all(y==y_pred)
++
++
++@pytest.mark.parametrize("array, pad_width, expected_output", [
++    (
++        np.array([
++            [1,2,3],
++            [4,5,6]
++        ]),
++        0,
++        np.array([
++            [1,2,3],
++            [4,5,6]
++        ]),
++    ),
++    (
++        np.array([
++            [1,2,3],
++            [4,5,6]
++        ]),
++        1,
++        np.array([
++            [1,1,2,3,3],
++            [4,4,5,6,6]
++        ]),
++    ),
++    (
++        np.array([
++            [1,2,3],
++            [4,5,6]
++        ]),
++        2,
++        np.array([
++            [2,1,1,2,3,3,2],
++            [5,4,4,5,6,6,5]
++        ]),
++    )
++])
++def test_pad_with_reflection_along_first_axis(
++    array: ArrayLike,
++    pad_width: int,
++    expected_output: ArrayLike
++) -> None:
++    output = Base.pad_with_reflection_along_first_axis(
++        array=array, 
++        pad_width=pad_width
++    )
++    assert np.all(output == expected_output)

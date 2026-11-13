@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/bioconvert__bioconvert-386"
+description = "Fix genbank2gff3 wrong Parent when `gene` follows its RNA/CDS feature"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "bioconvert",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bioconvert/bioconvert"
+ref = "92f4655cc75a0cbb7a0d6db581e98859fbffb344"
+reference = "https://github.com/bioconvert/bioconvert/pull/386"
+source_access = "auto"
+built_at = "2026-11-13T15:56:45.243417+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b2c241c2a4419b115024a6c141c804893e4e05401218aeb849349031ac733d63"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-23T10:10:40Z"
+diff_format = "unified"
+context_files = [
+    "bioconvert/utils/biocode/convert_genbank_to_gff3.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 37
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

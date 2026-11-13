@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/oncokb__oncokb-annotator-247"
+description = "Update clinical data annotator with separated germline/somatic columns"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "oncokb-annotator",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "oncokb/oncokb-annotator"
+ref = "4bfe7205602c0db9e8e60efadc591550492e9703"
+reference = "https://github.com/oncokb/oncokb-annotator/pull/247"
+source_access = "auto"
+built_at = "2026-11-13T15:35:21.250750+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:aad2a19a4e0fb35c2125c6f6edc924da939e9a45d5f1c8fa893913e62fe5e9fb"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-25T13:55:19Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/compare-annotation.yml",
+    ".github/workflows/compare-genomic-change-annotation.yml",
+    ".version-level",
+    "AnnotatorCore.py",
+    "OncoKBPlots.py",
+    "README.md",
+    "test_Annotation.py",
+    "test_AnnotatorCore.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 147
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

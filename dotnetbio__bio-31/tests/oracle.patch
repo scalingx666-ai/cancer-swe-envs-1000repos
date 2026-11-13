@@ -1,0 +1,273 @@
+diff --git a/Tests/Bio.Tests/IO/Bed/BEDOperationsTests.cs b/Tests/Bio.Tests/IO/Bed/BEDOperationsTests.cs
+index e0f2672c..1a94ad64 100644
+--- a/Tests/Bio.Tests/IO/Bed/BEDOperationsTests.cs
++++ b/Tests/Bio.Tests/IO/Bed/BEDOperationsTests.cs
+@@ -383,25 +383,7 @@ public void SubtractTest()
+         /// <returns>True if results are equal, else false</returns>
+         private static bool CompareBEDOutput(string resultfile, string expectedresultfile)
+         {
+-            StreamReader resultReader = null;
+-            try
+-            {
+-                resultReader = new StreamReader(resultfile);
+-                using (StreamReader expectedResultReader = new StreamReader(expectedresultfile))
+-                {
+-                    string result = resultReader.ReadToEnd();
+-                    string expectedResult = expectedResultReader.ReadToEnd().Replace("\r\n", System.Environment.NewLine);
+-                    int resultvalue = string.Compare(result, expectedResult, true,
+-                        CultureInfo.CurrentCulture);
+-                    return resultvalue == 0;
+-                }
+-
+-            }
+-            finally
+-            {
+-                if (resultReader != null)
+-                    resultReader.Dispose();
+-            }
++            return Bio.TestAutomation.Util.Utility.CompareFiles(resultfile, expectedresultfile);
+         }
+ 
+         /// <summary>
+diff --git a/Tests/Bio.Tests/IO/GenBank/GenBankTests.cs b/Tests/Bio.Tests/IO/GenBank/GenBankTests.cs
+index a203b45f..6d519b2a 100644
+--- a/Tests/Bio.Tests/IO/GenBank/GenBankTests.cs
++++ b/Tests/Bio.Tests/IO/GenBank/GenBankTests.cs
+@@ -10,6 +10,7 @@
+ using Bio.Util.Logging;
+ using NUnit.Framework;
+ using Bio.Properties;
++using Bio.TestAutomation.Util;
+ 
+ namespace Bio.Tests.IO.GenBank
+ {
+@@ -407,7 +408,8 @@ public void TestGenBankWhenParsingOne()
+             File.Delete(TempGenBankFileName);
+ 
+             // test the formatting
+-            Assert.AreEqual(_singleProteinSeqGenBankFileExpectedOutput.Replace(" ", "").Replace("\r\n", Environment.NewLine), actual.Replace(" ", ""));
++            Assert.AreEqual(Utility.CleanupWhiteSpace(_singleProteinSeqGenBankFileExpectedOutput),
++                            Utility.CleanupWhiteSpace(actual));
+         }
+ 
+         /// <summary>
+@@ -455,7 +457,8 @@ public void TestGenBankWhenUserSetsProteinAlphabet()
+ 
+             File.Delete(TempGenBankFileName);
+             // test the formatting
+-            Assert.AreEqual(_singleProteinSeqGenBankFileExpectedOutput.Replace(" ", "").Replace("\r\n", Environment.NewLine), actual.Replace(" ", ""));
++            Assert.AreEqual(Utility.CleanupWhiteSpace(_singleProteinSeqGenBankFileExpectedOutput),
++                            Utility.CleanupWhiteSpace(actual));
+         }
+ 
+         /// <summary>
+@@ -483,7 +486,8 @@ public void TestGenBankWhenUserSetsDnaAlphabet()
+             File.Delete(TempGenBankFileName);
+ 
+             // test the formatting
+-            Assert.AreEqual(_singleDnaSeqGenBankFileExpectedOutput.Replace(" ", "").Replace("\r\n", Environment.NewLine), actual.Replace(" ", ""));
++            Assert.AreEqual(Utility.CleanupWhiteSpace(_singleDnaSeqGenBankFileExpectedOutput),
++                            Utility.CleanupWhiteSpace(actual));
+         }
+ 
+         /// <summary>
+@@ -675,7 +679,7 @@ public void GenBankFormatterValidateReadAndWriteMultipleDBLinks()
+                     formatter.Close();
+                 }
+             }
+-            var same = CompareFiles(tempFileName, _genBankFile_WithMultipleDBLines);
++            var same = Utility.CompareFiles(tempFileName, _genBankFile_WithMultipleDBLines);
+             File.Delete(tempFileName);
+             Assert.IsTrue(same);
+             ApplicationLog.WriteLine("GenBank Formatter: Successful read->write loop");
+@@ -683,47 +687,7 @@ public void GenBankFormatterValidateReadAndWriteMultipleDBLinks()
+ 
+ 
+ 
+-        /// <summary>
+-        /// Compare the results/output file
+-        /// 
+-        /// Checks that only differences are \r\n versus \n
+-        /// </summary>
+-        /// <param name="file1">File 1 to compare</param>
+-        /// <param name="file2">File 2 to compare with</param>
+-        /// <returns>True, if both files are the same.</returns>
+-        internal static bool CompareFiles(string observed, string expected)
+-        {
+-            FileInfo fileInfoObj1 = new FileInfo(observed);
+-            FileInfo fileInfoObj2 = new FileInfo(expected);
+-
+-            if (fileInfoObj1.Length > fileInfoObj2.Length)
+-                return false;
+-
+-            byte[] bytesO = File.ReadAllBytes(observed);
+-            byte[] bytesE = File.ReadAllBytes(expected);
+ 
+-            if (bytesO.Length > bytesE.Length)
+-                return false;
+-            int j = 0;
+-            for (int i = 0; i < bytesE.Length; i++)
+-            {
+-                if (bytesO [j] != bytesE [i]) {
+-                    if (i + 1 < bytesE.Length) {
+-                        if (bytesO [j] == '\n' &&
+-                            bytesE [i] == '\r' &&
+-                            bytesE [i + 1] == '\n') {
+-                            i++;
+-                        } else {
+-                            return false;
+-                        }
+-                    } else {
+-                        return false;
+-                    }
+-                }
+-                j++;
+-            }
+-            return true;
+-        }
+ 
+ 
+     }
+diff --git a/Tests/Bio.Tests/IO/Gff/GffTests.cs b/Tests/Bio.Tests/IO/Gff/GffTests.cs
+index 0f51bec9..622a5f8d 100644
+--- a/Tests/Bio.Tests/IO/Gff/GffTests.cs
++++ b/Tests/Bio.Tests/IO/Gff/GffTests.cs
+@@ -8,6 +8,7 @@
+ using Bio.Util.Logging;
+ using NUnit.Framework;
+ using Bio.Properties;
++using Bio.TestAutomation.Util;
+ 
+ namespace Bio.Tests.IO.Gff
+ {
+@@ -222,7 +223,8 @@ public void TestGffWhenParsingOne()
+             // just test the formatting; if that's good, the parsing was good
+             GffFormatter formatter = new GffFormatter();
+             string actual = formatter.FormatString(seq);
+-            Assert.AreEqual(_singleSeqGffFileExpectedOutput.Replace("\r\n", Environment.NewLine), actual);
++            Assert.AreEqual(Utility.CleanupWhiteSpace(_singleSeqGffFileExpectedOutput),
++                            Utility.CleanupWhiteSpace(actual));
+         }
+ 
+         /// <summary>
+@@ -262,7 +264,8 @@ public void TestGffWhenParsingMultiple()
+             }
+             
+             File.Delete(TempGFFFileName);
+-            Assert.AreEqual(_multipleSeqGffFileExpectedOutput.Replace("\r\n", Environment.NewLine), actual);
++            Assert.AreEqual(Utility.CleanupWhiteSpace(_multipleSeqGffFileExpectedOutput),
++                            Utility.CleanupWhiteSpace(actual));
+             
+         }
+ 
+diff --git a/Tests/Bio.Tests/IO/Xsv/XsvSparseTests.cs b/Tests/Bio.Tests/IO/Xsv/XsvSparseTests.cs
+index baa4d198..84c6a90e 100644
+--- a/Tests/Bio.Tests/IO/Xsv/XsvSparseTests.cs
++++ b/Tests/Bio.Tests/IO/Xsv/XsvSparseTests.cs
+@@ -5,6 +5,7 @@
+ using Bio;
+ using Bio.Algorithms.Assembly;
+ using Bio.IO.Xsv;
++using Bio.TestAutomation.Util;
+ 
+ using NUnit.Framework;
+ 
+@@ -174,7 +175,8 @@ private void XsvSparseParserGeneralTestCases()
+                 actualOutput = readerDest.ReadToEnd();
+             }
+            
+-            Assert.AreEqual(expectedOutput.Replace("\r\n", System.Environment.NewLine), actualOutput);
++            Assert.AreEqual(Utility.CleanupWhiteSpace(expectedOutput),
++                            Utility.CleanupWhiteSpace(actualOutput));
+ 
+ 
+             Assert.IsNotNull(sparseSeq.Alphabet);
+diff --git a/Tests/Bio.Tests/Util/Utility.cs b/Tests/Bio.Tests/Util/Utility.cs
+index e719539d..382b336e 100644
+--- a/Tests/Bio.Tests/Util/Utility.cs
++++ b/Tests/Bio.Tests/Util/Utility.cs
+@@ -179,5 +179,83 @@ public static string GetDefaultEncodedQualityScores(FastQFormatType formatType,
+             return new string(encodedQualityScores);
+         }
+ 
+-    }
++		/// <summary>
++		/// Takes two strings encoded as either "\n" or "\r\n" and converts
++		/// them to only "\n" and removes any empty characters. 
++		/// </summary>
++		/// <returns>A cleaned up string</returns>
++		/// <param name="str">String to format</param>
++		public static string CleanupWhiteSpace(string str)
++		{
++			str = str.Replace(" ", "");
++			var index = str.IndexOf('\n');
++			if (index > 0 && str[index - 1] == '\r')
++			{
++				str = str.Replace("\r\n", "\n");
++			}
++			return str;
++		}
++
++		/// <summary>
++		/// Compare the results/output file
++		/// 
++		/// Checks that only differences are \r\n versus \n
++		/// </summary>
++		/// <param name="file1">File 1 to compare</param>
++		/// <param name="file2">File 2 to compare with</param>
++		/// <returns>True, if both files are the same.</returns>
++		public static bool CompareFiles(string observed, string expected)
++		{
++
++			byte[] bytesO = File.ReadAllBytes(observed);
++			byte[] bytesE = File.ReadAllBytes(expected);
++			if (bytesO.Length == bytesE.Length)
++			{
++				return bytesO.SequenceEqual(bytesE);
++			}
++			else
++			{
++				// Assume the larger array is only larger because of \r\n endings
++				var maxLength = Math.Max(bytesO.Length, bytesE.Length);
++				byte[] big, small;
++				if (bytesE.Length > bytesO.Length)
++				{
++					big = bytesE;
++					small = bytesO;
++				}
++				else
++				{
++					big = bytesO;
++					small = bytesE;
++				}
++				int b = 0;
++				int s = 0;
++				while (b < big.Length)
++				{
++					if (s == small.Length)
++					{
++						return false;
++					}
++					else if (big[b] != small[s])
++					{
++						if (big[b] == '\r' &&
++						   (b + 1) < big.Length &&
++						   big[b + 1] == '\n' &&
++						   small[s] == '\n')
++						{
++							b += 2;
++							s += 1;
++						}
++						else
++						{
++							return false;
++						}
++					}
++					b++;
++					s++;
++				}
++				return true;
++			}
++		}
++	}
+ }

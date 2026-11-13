@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/bcgsc__mirna-3"
+description = "End coordinates are now inclusive."
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "mirna",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bcgsc/mirna"
+ref = "3b3f717a72b76fa3ad58bd7961e605feb59411eb"
+reference = "https://github.com/bcgsc/mirna/pull/3"
+source_access = "auto"
+built_at = "2026-11-13T15:44:01.886270+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ba68b728a67c4d525bc7888c9bbc57e11bc8b866d24ad92a67d5749396758026"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-01-31T00:51:54Z"
+diff_format = "unified"
+context_files = [
+    "v0.2.7/CHANGELOG",
+    "v0.2.7/code/annotation/Annotate.pm",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 12
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

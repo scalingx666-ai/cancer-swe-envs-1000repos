@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/ding-lab__MuSiC2-10"
+description = "fix the bug caused by flexible coverage bases classs"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "MuSiC2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ding-lab/MuSiC2"
+ref = "d79ce2ee9fe53215c5588582ec55bc59556238ee"
+reference = "https://github.com/ding-lab/MuSiC2/pull/10"
+source_access = "auto"
+built_at = "2026-11-13T15:45:12.341676+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:beaa2975068783e1c61b145809897d8ae001f8747aeb202b7794b8d77cb918ae"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-10-24T09:16:36Z"
+diff_format = "unified"
+context_files = [
+    "MuSiC2-0.2.tar.gz",
+    "lib/TGI/MuSiC2/CalcBmr.pm",
+    "lib/TGI/MuSiC2/CalcBmr_music2.pm",
+    "lib/TGI/MuSiC2/CalcBmr_prag.pm",
+    "lib/TGI/MuSiC2/CalcCovg.pm",
+    "lib/TGI/MuSiC2/CalcCovgHelper.pm",
+    "lib/TGI/MuSiC2/CalcWigCovg.pm",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 22
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

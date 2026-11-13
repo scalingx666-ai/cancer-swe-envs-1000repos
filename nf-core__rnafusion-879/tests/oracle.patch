@@ -1,0 +1,318 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index f52993f5..fbb0783e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -3,7 +3,7 @@
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
+-## v4.2.0
++## v4.2.0 - [2026-11-12]
+ 
+ ### Added
+ 
+@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ 10. Updated the nf-core modules. `SALMON_INDEX` and `SALMON_QUANT` stay on 1.10.3 because salmon 2.x rejects the published index, and `utils_nfschema_plugin` stays on the nf-schema 2 version
+ 11. Replaced the local `GENCODE_DOWNLOAD` and `HGNC_DOWNLOAD` modules with the nf-core `wget` and `gunzip` modules [#575](https://github.com/nf-core/rnafusion/issues/575).
+ 12. Cleaned up pipeline-level lint findings: removed the deprecated `when:` section from the local `VCF_COLLECT` module, added `meta.yml` files to the local subworkflows, filled in the pipeline-specific contribution guidelines and ignored the renamed iGenomes config files in the `files_exist` lint test
++13. Updated the `starfusion/detect` module to include its new nf-test with a chimeric junction file as input [#593](https://github.com/nf-core/rnafusion/issues/593)
+ 
+ ### Fixed
+ 
+diff --git a/modules.json b/modules.json
+index 86c89ccd..73f2b063 100644
+--- a/modules.json
++++ b/modules.json
+@@ -197,7 +197,7 @@
+                     },
+                     "starfusion/detect": {
+                         "branch": "master",
+-                        "git_sha": "7b3452a23773f687ededb4befd037920e5a51341",
++                        "git_sha": "2c3af8756cf783a1ef63d7d922dcc1c510384840",
+                         "installed_by": ["modules"]
+                     },
+                     "stringtie/merge": {
+diff --git a/modules/nf-core/starfusion/detect/tests/main.nf.test b/modules/nf-core/starfusion/detect/tests/main.nf.test
+index 5c125f48..5389127c 100644
+--- a/modules/nf-core/starfusion/detect/tests/main.nf.test
++++ b/modules/nf-core/starfusion/detect/tests/main.nf.test
+@@ -7,6 +7,7 @@ nextflow_process {
+     tag "starfusion/build"
+     tag "starfusion"
+     tag "starfusion/detect"
++    tag "star/align"
+     tag "modules"
+     config "./nextflow.config"
+ 
+@@ -141,4 +142,111 @@ nextflow_process {
+ 
+     }
+ 
++    test("Junction file - Should run without failures") {
++        tag "junction"
++
++        setup {
++            run("STAR_ALIGN") {
++                script "../../../star/align/main.nf"
++                process {
++                    """
++                    input[0] = [
++                        [ id:'test', single_end:false ], // meta map
++                        [
++                            file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/test_starfusion_rnaseq_1.fastq.gz', checkIfExists: true),
++                            file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/test_starfusion_rnaseq_2.fastq.gz', checkIfExists: true)
++                        ]
++                    ]
++                    input[1] = STARFUSION_BUILD.out.reference.map { meta, reference ->
++                        [ meta, file("\${reference}/ref_genome.fa.star.idx") ]
++                    }
++                    input[2] = STARFUSION_BUILD.out.reference.map { meta, reference ->
++                        [ meta, file("\${reference}/ref_annot.gtf") ]
++                    }
++                    input[3] = false
++                    """
++                }
++            }
++        }
++
++        when {
++            params {
++                starfusion_detect_args = "--examine_coding_effect"
++            }
++            process {
++                """
++                input[0] = STAR_ALIGN.out.junction.map { meta, junction ->
++                    [ meta, [], junction ] // empty list for reads, STAR-Fusion runs on the pre-computed Chimeric.out.junction
++                }
++                input[1] = STARFUSION_BUILD.out.reference.map { it[1] }
++                """
++            }
++        }
++
++        then {
++            assert process.success
++            assert snapshot(
++                sanitizeOutput(process.out, unstableKeys: ["coding_effect"]),
++                process.out.coding_effect.collect { meta, tsv ->
++                    [meta, path(tsv).readLines().collect { line ->
++                        line.split('\t')[0] // Get first column (tab-separated)
++                    }]
++                }
++            ).match()
++        }
++
++    }
++
++    test("Junction file - Should create stub files") {
++        tag "junction"
++
++        options "-stub"
++
++        setup {
++            run("STAR_ALIGN") {
++                script "../../../star/align/main.nf"
++                process {
++                    """
++                    input[0] = [
++                        [ id:'test', single_end:false ], // meta map
++                        [
++                            file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/test_starfusion_rnaseq_1.fastq.gz', checkIfExists: true),
++                            file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/test_starfusion_rnaseq_2.fastq.gz', checkIfExists: true)
++                        ]
++                    ]
++                    input[1] = STARFUSION_BUILD.out.reference.map { meta, reference ->
++                        [ meta, file("\${reference}/ref_genome.fa.star.idx") ]
++                    }
++                    input[2] = STARFUSION_BUILD.out.reference.map { meta, reference ->
++                        [ meta, file("\${reference}/ref_annot.gtf") ]
++                    }
++                    input[3] = false
++                    """
++                }
++            }
++        }
++
++        when {
++            params {
++                starfusion_detect_args = "--examine_coding_effect"
++            }
++            process {
++                """
++                input[0] = STAR_ALIGN.out.junction.map { meta, junction ->
++                    [ meta, [], junction ]
++                }
++                input[1] = STARFUSION_BUILD.out.reference.map { it[1] }
++                """
++            }
++        }
++
++        then {
++            assert process.success
++            assert snapshot(
++                sanitizeOutput(process.out)
++            ).match()
++        }
++
++    }
++
+ }
+diff --git a/modules/nf-core/starfusion/detect/tests/main.nf.test.snap b/modules/nf-core/starfusion/detect/tests/main.nf.test.snap
+index 12c3aa80..410b7e42 100644
+--- a/modules/nf-core/starfusion/detect/tests/main.nf.test.snap
++++ b/modules/nf-core/starfusion/detect/tests/main.nf.test.snap
+@@ -1,4 +1,49 @@
+ {
++    "Junction file - Should create stub files": {
++        "content": [
++            {
++                "abridged": [
++                    [
++                        {
++                            "id": "test",
++                            "single_end": false
++                        },
++                        "test.starfusion.abridged.tsv:md5,d41d8cd98f00b204e9800998ecf8427e"
++                    ]
++                ],
++                "coding_effect": [
++                    [
++                        {
++                            "id": "test",
++                            "single_end": false
++                        },
++                        "test.starfusion.abridged.coding_effect.tsv:md5,d41d8cd98f00b204e9800998ecf8427e"
++                    ]
++                ],
++                "fusions": [
++                    [
++                        {
++                            "id": "test",
++                            "single_end": false
++                        },
++                        "test.starfusion.fusion_predictions.tsv:md5,d41d8cd98f00b204e9800998ecf8427e"
++                    ]
++                ],
++                "versions_starfusion": [
++                    [
++                        "STARFUSION_DETECT",
++                        "star-fusion",
++                        "1.15.1"
++                    ]
++                ]
++            }
++        ],
++        "timestamp": "2026-11-11T17:47:08.122899",
++        "meta": {
++            "nf-test": "0.9.5",
++            "nextflow": "26.10.5"
++        }
++    },
+     "Should create stub files": {
+         "content": [
+             {
+@@ -130,6 +175,91 @@
+             "nextflow": "26.04.1"
+         }
+     },
++    "Junction file - Should run without failures": {
++        "content": [
++            {
++                "abridged": [
++                    [
++                        {
++                            "id": "test",
++                            "single_end": false
++                        },
++                        "test.starfusion.abridged.tsv:md5,f047ae317e6969671f277da11722644e"
++                    ]
++                ],
++                "coding_effect": [
++                    [
++                        {
++                            "id": "test",
++                            "single_end": false
++                        },
++                        "test.starfusion.abridged.coding_effect.tsv"
++                    ]
++                ],
++                "fusions": [
++                    [
++                        {
++                            "id": "test",
++                            "single_end": false
++                        },
++                        "test.starfusion.fusion_predictions.tsv:md5,19aa4bf7dd9cb83c4f290339d8fdddd0"
++                    ]
++                ],
++                "versions_starfusion": [
++                    [
++                        "STARFUSION_DETECT",
++                        "star-fusion",
++                        "1.15.1"
++                    ]
++                ]
++            },
++            [
++                [
++                    {
++                        "id": "test",
++                        "single_end": false
++                    },
++                    [
++                        "#FusionName",
++                        "TATDN1--GSDMB",
++                        "ACACA--STAC2",
++                        "TATDN1--GSDMB",
++                        "CCDC6--RET",
++                        "TOB1--SYNRG",
++                        "TATDN1--GSDMB",
++                        "BCAS4--BCAS3",
++                        "RPS6KB1--SNF8",
++                        "BAG6--SLC44A4",
++                        "BCR--ABL1",
++                        "VAPB--IKZF3",
++                        "CYTH1--EIF3H",
++                        "RAB22A--MYO9B",
++                        "RARA--PKIA",
++                        "ARFGEF2--SULF2",
++                        "SUMF1--LRRFIP2",
++                        "ANKHD1--PCDH1",
++                        "MED1--ACSF2",
++                        "AHCTF1--NAAA",
++                        "MED1--STXBP4",
++                        "BCAS4--BCAS3",
++                        "ZMYND8--CEP250",
++                        "VAPB--IKZF3",
++                        "SUMF1--LRRFIP2",
++                        "ZMYND8--CEP250",
++                        "RARA--PKIA",
++                        "CYTH1--EIF3H",
++                        "MED13--BCAS3",
++                        "VAPB--IKZF3"
++                    ]
++                ]
++            ]
++        ],
++        "timestamp": "2026-11-11T17:44:55.356678",
++        "meta": {
++            "nf-test": "0.9.5",
++            "nextflow": "26.10.5"
++        }
++    },
+     "Single end - Should run without failures": {
+         "content": [
+             {
+diff --git a/modules/nf-core/starfusion/detect/tests/nextflow.config b/modules/nf-core/starfusion/detect/tests/nextflow.config
+index dd8a78db..f7a8cf3e 100644
+--- a/modules/nf-core/starfusion/detect/tests/nextflow.config
++++ b/modules/nf-core/starfusion/detect/tests/nextflow.config
+@@ -2,4 +2,9 @@ process {
+     withName: 'STARFUSION_DETECT' {
+         ext.args = params.starfusion_detect_args
+     }
++
++    // STAR-Fusion recommended parameters, used to generate the Chimeric.out.junction for the junction-input tests
++    withName: 'STAR_ALIGN' {
++        ext.args = '--readFilesCommand zcat --outSAMtype BAM Unsorted --outReadsUnmapped None --twopassMode Basic --outSAMstrandField intronMotif --outSAMunmapped Within --chimSegmentMin 12 --chimJunctionOverhangMin 8 --chimOutJunctionFormat 1 --alignSJDBoverhangMin 10 --alignMatesGapMax 100000 --alignIntronMax 100000 --alignSJstitchMismatchNmax 5 -1 5 5 --chimMultimapScoreRange 3 --chimScoreJunctionNonGTAG -4 --chimMultimapNmax 20 --chimNonchimScoreDropMin 10 --peOverlapNbasesMin 12 --peOverlapMMp 0.1 --alignInsertionFlush Right --alignSplicedMateMapLminOverLmate 0 --alignSplicedMateMapLmin 30'
++    }
+ }

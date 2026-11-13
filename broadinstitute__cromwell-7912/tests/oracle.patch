@@ -1,0 +1,260 @@
+diff --git a/backend/src/main/scala/cromwell/backend/io/JobPaths.scala b/backend/src/main/scala/cromwell/backend/io/JobPaths.scala
+index 05ad6a56dc1..5b2939717f2 100644
+--- a/backend/src/main/scala/cromwell/backend/io/JobPaths.scala
++++ b/backend/src/main/scala/cromwell/backend/io/JobPaths.scala
+@@ -69,9 +69,7 @@ trait JobPaths {
+   lazy val callRoot = callPathBuilder(workflowPaths.workflowRoot, jobKey, isCallCacheCopyAttempt)
+   lazy val callExecutionRoot = callRoot
+ 
+-  // Use default stdout and stderr names by default. This StandardPaths `var` may be reassigned later to
+-  // enable dynamic standard output and error file names for languages like CWL that support this feature.
+-  var standardPaths: StandardPaths = StandardPaths(
++  lazy val standardPaths: StandardPaths = StandardPaths(
+     output = callExecutionRoot.resolve(defaultStdoutFilename),
+     error = callExecutionRoot.resolve(defaultStderrFilename)
+   )
+@@ -81,8 +79,6 @@ trait JobPaths {
+   lazy val returnCode = callExecutionRoot.resolve(returnCodeFilename)
+   lazy val memoryRetryRC = callExecutionRoot.resolve(memoryRetryRCFilename)
+ 
+-  // This is a `def` because `standardPaths` is a `var` that may be reassigned during the calculation of
+-  // standard output and error file names.
+   def standardOutputAndErrorPaths: Map[String, Path] = Map(
+     CallMetadataKeys.Stdout -> standardPaths.output,
+     CallMetadataKeys.Stderr -> standardPaths.error
+@@ -91,9 +87,7 @@ trait JobPaths {
+   private lazy val commonMetadataPaths: Map[String, Path] =
+     standardOutputAndErrorPaths + (CallMetadataKeys.CallRoot -> callRoot)
+ 
+-  // This is a `def` because `standardPaths` is a `var` that may be reassigned during the calculation of
+-  // standard output and error file names.
+-  private def commonDetritusPaths: Map[String, Path] = Map(
++  private lazy val commonDetritusPaths: Map[String, Path] = Map(
+     JobPaths.CallRootPathKey -> callRoot,
+     JobPaths.ScriptPathKey -> script,
+     JobPaths.StdoutPathKey -> standardPaths.output,
+@@ -111,7 +105,7 @@ trait JobPaths {
+   protected lazy val customLogPaths: Map[String, Path] = Map.empty
+ 
+   lazy val metadataPaths = commonMetadataPaths ++ customMetadataPaths
+-  def detritusPaths = commonDetritusPaths ++ customDetritusPaths
++  lazy val detritusPaths = commonDetritusPaths ++ customDetritusPaths
+   lazy val logPaths = commonLogPaths ++ customLogPaths
+ 
+   lazy val callContext = CallContext(callExecutionRoot, standardPaths, isDocker)
+diff --git a/backend/src/main/scala/cromwell/backend/standard/StandardAsyncExecutionActor.scala b/backend/src/main/scala/cromwell/backend/standard/StandardAsyncExecutionActor.scala
+index 05fefb1af46..bed21ae9b56 100644
+--- a/backend/src/main/scala/cromwell/backend/standard/StandardAsyncExecutionActor.scala
++++ b/backend/src/main/scala/cromwell/backend/standard/StandardAsyncExecutionActor.scala
+@@ -39,7 +39,7 @@ import org.apache.commons.lang3.StringUtils
+ import org.apache.commons.lang3.exception.ExceptionUtils
+ import shapeless.Coproduct
+ import wom.callable.Callable.InputDefinition
+-import wom.callable.{AdHocValue, CommandTaskDefinition, ContainerizedInputExpression}
++import wom.callable.{AdHocValue, ContainerizedInputExpression}
+ import wom.expression.WomExpression
+ import wom.graph.LocalName
+ import wom.values._
+@@ -415,11 +415,8 @@ trait StandardAsyncExecutionActor
+   private def absolutizeContainerPath(path: String): String =
+     if (path.startsWith(cwd.pathAsString)) path else cwd.resolve(path).pathAsString
+ 
+-  def executionStdin: Option[String] = instantiatedCommand.evaluatedStdinRedirection map absolutizeContainerPath
+-  def executionStdout: String =
+-    instantiatedCommand.evaluatedStdoutOverride.getOrElse(jobPaths.defaultStdoutFilename) |> absolutizeContainerPath
+-  def executionStderr: String =
+-    instantiatedCommand.evaluatedStderrOverride.getOrElse(jobPaths.defaultStderrFilename) |> absolutizeContainerPath
++  def executionStdout: String = jobPaths.defaultStdoutFilename |> absolutizeContainerPath
++  def executionStderr: String = jobPaths.defaultStderrFilename |> absolutizeContainerPath
+ 
+   /*
+    * Ensures the standard paths are correct w.r.t overridden paths. This is called in two places: when generating the command and
+@@ -430,22 +427,11 @@ trait StandardAsyncExecutionActor
+    */
+   private var jobPathsUpdated: Boolean = false
+   def updateJobPaths(): Unit = if (!jobPathsUpdated) {
+-    // .get's are safe on stdout and stderr after falling back to default names above.
+-    jobPaths.standardPaths = StandardPaths(
+-      output = hostPathFromContainerPath(executionStdout),
+-      error = hostPathFromContainerPath(executionStderr)
+-    )
+     // Re-publish stdout and stderr paths that were possibly just updated.
+     tellMetadata(jobPaths.standardOutputAndErrorPaths)
+     jobPathsUpdated = true
+   }
+ 
+-  def hostPathFromContainerPath(string: String): Path = {
+-    val cwdString = cwd.pathAsString.ensureSlashed
+-    val relativePath = string.stripPrefix(cwdString)
+-    jobPaths.callExecutionRoot.resolve(relativePath)
+-  }
+-
+   /** A bash script containing the custom preamble, the instantiated command, and output globbing behavior. */
+   def commandScriptContents: ErrorOr[String] = {
+     val commandString = instantiatedCommand.commandString
+@@ -457,10 +443,7 @@ trait StandardAsyncExecutionActor
+     val rcPath = cwd./(jobPaths.returnCodeFilename)
+     updateJobPaths()
+ 
+-    // The standard input redirection gets a '<' that standard output and error do not since standard input is only
+-    // redirected if requested. Standard output and error are always redirected but not necessarily to the default
+-    // stdout/stderr file names.
+-    val stdinRedirection = executionStdin.map("< " + _.shellQuote).getOrElse("")
++    // Standard output and error are always redirected to the default stdout/stderr file names.
+     val stdoutRedirection = executionStdout.shellQuote
+     val stderrRedirection = executionStderr.shellQuote
+     val rcTmpPath = rcPath.plusExt("tmp")
+@@ -479,10 +462,6 @@ trait StandardAsyncExecutionActor
+     // Give the out and error FIFO variables names that are unlikely to conflict with anything the user is doing.
+     val (out, err) = (s"out$shortId", s"err$shortId")
+ 
+-    val dockerOutputDir = jobDescriptor.taskCall.callable.dockerOutputDirectory map { d =>
+-      s"ln -s $cwd $d"
+-    } getOrElse ""
+-
+     // Only adjust the temporary directory permissions if this is executing under Docker.
+     val tmpDirPermissionsAdjustment = if (isDockerRun) s"""chmod 777 "$$tmpDir"""" else ""
+ 
+@@ -511,12 +490,12 @@ trait StandardAsyncExecutionActor
+       }
+     }
+ 
+-    // The `tee` trickery below is to be able to redirect to known filenames for CWL while also streaming
+-    // stdout and stderr for PAPI to periodically upload to cloud storage.
++    // The `tee` trickery below lets the command's stdout/stderr land in the known stdout/stderr files while also
++    // streaming to the regular stdout/stderr. For example, in GCP Batch the files are uploaded to GCS, while the
++    // stream is sent to Cloud Logging.
+     // https://stackoverflow.com/questions/692000/how-do-i-write-stderr-to-a-file-while-using-tee-with-a-pipe
+     (errorOrDirectoryOutputs, errorOrGlobFiles, errorOrPreamble).mapN((directoryOutputs, globFiles, preamble) =>
+       s"""|#!$jobShell
+-          |DOCKER_OUTPUT_DIR_LINK
+           |cd ${cwd.pathAsString}
+           |tmpDir=$temporaryDirectory
+           |$tmpDirPermissionsAdjustment
+@@ -535,7 +514,7 @@ trait StandardAsyncExecutionActor
+           |cd ${cwd.pathAsString}
+           |ENVIRONMENT_VARIABLES
+           |INSTANTIATED_COMMAND
+-          |) $stdinRedirection > "$$$out" 2> "$$$err"
++          |) > "$$$out" 2> "$$$err"
+           |echo $$? > $rcTmpPath
+           |$emptyDirectoryFillCommand
+           |(
+@@ -551,7 +530,6 @@ trait StandardAsyncExecutionActor
+         .replace("ENVIRONMENT_VARIABLES", environmentVariables)
+         .replace("INSTANTIATED_COMMAND", commandString)
+         .replace("SCRIPT_EPILOGUE", scriptEpilogue)
+-        .replace("DOCKER_OUTPUT_DIR_LINK", dockerOutputDir)
+         .replace("SCRIPT_CLOSURE", scriptClosure.getOrElse(""))
+     )
+   }
+@@ -740,27 +718,11 @@ trait StandardAsyncExecutionActor
+ 
+       val environmentVariables = callable.environmentExpressions.toList traverse evaluateEnvironmentExpression
+ 
+-      // Build a list of functions from a CommandTaskDefinition to an Option[WomExpression] representing a possible
+-      // redirection or override of the filename of a redirection. Evaluate that expression if present and stringify.
+-      val List(stdinRedirect, stdoutOverride, stderrOverride) =
+-        List[CommandTaskDefinition => Option[WomExpression]](_.stdinRedirection,
+-                                                             _.stdoutOverride,
+-                                                             _.stderrOverride
+-        ) map {
+-          _.apply(callable).traverse[ErrorOr, String] {
+-            _.evaluateValue(valueMappedPreprocessedInputs, backendEngineFunctions) map { _.valueString }
+-          }
+-        }
+-
+-      (adHocFileCreationSideEffectFiles, environmentVariables, stdinRedirect, stdoutOverride, stderrOverride) mapN {
+-        (adHocFiles, env, in, out, err) =>
+-          instantiatedCommand.copy(
+-            createdFiles = instantiatedCommand.createdFiles ++ adHocFiles,
+-            environmentVariables = env.toMap,
+-            evaluatedStdinRedirection = in,
+-            evaluatedStdoutOverride = out,
+-            evaluatedStderrOverride = err
+-          )
++      (adHocFileCreationSideEffectFiles, environmentVariables) mapN { (adHocFiles, env) =>
++        instantiatedCommand.copy(
++          createdFiles = instantiatedCommand.createdFiles ++ adHocFiles,
++          environmentVariables = env.toMap
++        )
+       }: ErrorOr[InstantiatedCommand]
+     }
+ 
+diff --git a/wom/src/main/scala/wom/callable/CommandTaskDefinition.scala b/wom/src/main/scala/wom/callable/CommandTaskDefinition.scala
+index 84ff5e0c9b1..2a66990391e 100644
+--- a/wom/src/main/scala/wom/callable/CommandTaskDefinition.scala
++++ b/wom/src/main/scala/wom/callable/CommandTaskDefinition.scala
+@@ -82,16 +82,12 @@ sealed trait TaskDefinition extends Callable {
+   * Can be Callable only or CallableExecutable
+   */
+ sealed trait CommandTaskDefinition extends TaskDefinition {
+-  def dockerOutputDirectory: Option[String]
+-  def stdoutOverride: Option[WomExpression]
+-  def stderrOverride: Option[WomExpression]
+   def commandTemplateBuilder: WomEvaluatedCallInputs => ErrorOr[Seq[CommandPart]]
+   // TODO ErrorOrify this ? Throw for now
+   def commandTemplate(taskInputs: WomEvaluatedCallInputs): Seq[CommandPart] =
+     commandTemplateBuilder(taskInputs).toTry("Failed to build command").get
+   def prefixSeparator: String
+   def commandPartSeparator: String
+-  def stdinRedirection: Option[WomExpression]
+   def adHocFileCreation: Set[ContainerizedInputExpression]
+   def environmentExpressions: Map[String, WomExpression]
+   def additionalGlob: Option[WomGlobFile]
+@@ -158,13 +154,9 @@ final case class CallableTaskDefinition(name: String,
+                                         environmentExpressions: Map[String, WomExpression],
+                                         prefixSeparator: String = ".",
+                                         commandPartSeparator: String = "",
+-                                        stdinRedirection: Option[WomExpression] = None,
+-                                        stdoutOverride: Option[WomExpression] = None,
+-                                        stderrOverride: Option[WomExpression] = None,
+                                         additionalGlob: Option[WomGlobFile] = None,
+                                         private[wom] val customizedOutputEvaluation: OutputEvaluationFunction =
+                                           OutputEvaluationFunction.none,
+-                                        dockerOutputDirectory: Option[String] = None,
+                                         override val sourceLocation: Option[SourceFileLocation]
+ ) extends CommandTaskDefinition {
+   def toExecutable: ErrorOr[ExecutableTaskDefinition] = TaskCall.graphFromDefinition(this) map {
+@@ -190,15 +182,11 @@ final case class ExecutableTaskDefinition private (callableTaskDefinition: Calla
+   override def parameterMeta = callableTaskDefinition.parameterMeta
+   override def prefixSeparator = callableTaskDefinition.prefixSeparator
+   override def commandPartSeparator = callableTaskDefinition.commandPartSeparator
+-  override def stdinRedirection = callableTaskDefinition.stdinRedirection
+-  override def stdoutOverride = callableTaskDefinition.stdoutOverride
+-  override def stderrOverride = callableTaskDefinition.stderrOverride
+   override def adHocFileCreation = callableTaskDefinition.adHocFileCreation
+   override def environmentExpressions = callableTaskDefinition.environmentExpressions
+   override def additionalGlob = callableTaskDefinition.additionalGlob
+   override private[wom] def customizedOutputEvaluation = callableTaskDefinition.customizedOutputEvaluation
+   override def toExecutable = this.validNel
+-  override def dockerOutputDirectory = callableTaskDefinition.dockerOutputDirectory
+ }
+ 
+ sealed trait ExpressionTaskDefinition extends TaskDefinition {
+diff --git a/wom/src/main/scala/wom/package.scala b/wom/src/main/scala/wom/package.scala
+index d05d60df033..ca5e64caf31 100644
+--- a/wom/src/main/scala/wom/package.scala
++++ b/wom/src/main/scala/wom/package.scala
+@@ -71,11 +71,6 @@ final case class ResolvedImportRecord(importPath: String) extends AnyVal
+   * @param commandString The string representing the instantiation of this command.
+   * @param environmentVariables Key/value environment variable pairs.
+   * @param createdFiles Any files created as side effects of instantiating the command.
+-  * @param evaluatedStdinRedirection An optional redirection of standard input from a stringified filename.
+-  * @param evaluatedStdoutOverride An optional override of standard output to a specified filename. Standard output will
+-  *                       always be redirected to a file, this parameter only controls the name of the file.
+-  * @param evaluatedStderrOverride An optional override of standard error to a specified filename. Standard error will
+-  *                       always be redirected to a file, this parameter only controls the name of the file.
+   * @param preprocessedInputs A List of tuples of preprocessed inputs. This is a List rather than a Map because this class
+   *                   needs to have a monoid instance. If this class contained Maps there would need to be monoid
+   *                   instances for their WomValue values which is unpossible (and the way Cromwell uses this data
+@@ -85,9 +80,6 @@ final case class ResolvedImportRecord(importPath: String) extends AnyVal
+ final case class InstantiatedCommand(commandString: String,
+                                      environmentVariables: Map[String, String] = Map.empty,
+                                      createdFiles: List[CommandSetupSideEffectFile] = List.empty,
+-                                     evaluatedStdinRedirection: Option[String] = None,
+-                                     evaluatedStdoutOverride: Option[String] = None,
+-                                     evaluatedStderrOverride: Option[String] = None,
+                                      preprocessedInputs: List[(LocalName, WomValue)] = List.empty,
+                                      valueMappedPreprocessedInputs: List[(LocalName, WomValue)] = List.empty
+ )

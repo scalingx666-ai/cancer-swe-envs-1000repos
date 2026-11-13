@@ -1,0 +1,353 @@
+diff --git a/bin/cctyper b/bin/cctyper
+index 24b5614..bee79e6 100755
+--- a/bin/cctyper
++++ b/bin/cctyper
+@@ -4,10 +4,11 @@ import argparse
+ import logging
+ import os
+ import sys
+-import pkg_resources
+-
++from importlib.metadata import version
++import inspect
+ from cctyper.controller import Controller
+ from cctyper.prodigal import Prodigal
++from cctyper.gff import GFF
+ from cctyper.hmmer import HMMER
+ from cctyper.castyping import Typer
+ from cctyper.minced import Minced
+@@ -16,8 +17,9 @@ from cctyper.crisprcas import CRISPRCas
+ from cctyper.plot import Map
+ from cctyper.blast import RepeatMatch
+ 
++
+ ########## Arguments ##########
+-ap = argparse.ArgumentParser(description='CRISPRCasTyper version {}'.format(pkg_resources.require("cctyper")[0].version))
++ap = argparse.ArgumentParser(description=f'CRISPRCasTyper version {version("cctyper")}')
+ 
+ # Required
+ ap.add_argument('input', help='Input fasta file')
+@@ -31,11 +33,13 @@ ap.add_argument('--keep_tmp', help='Keep temporary files (prodigal, hmmer, mince
+ ap.add_argument('--log_lvl', help='Logging level [%(default)s].', default='INFO', type=str, choices=['DEBUG','INFO','WARNING','ERROR'])
+ ap.add_argument('--redo_typing', help='Redo the typing. Skip prodigal and HMMER and load the hmmer.tab from the output dir.', action='store_true')
+ ap.add_argument('--simplelog', help='No color or progress bar in log.', action='store_true')
+-
++ap.add_argument('--gff', help='Path to GFF file.', default=None, type=str)
++ap.add_argument('--prot', help='Path to protein FASTA file.', default=None, type=str)
+ # Data
+ apd = ap.add_argument_group('data arguments')
+ apd.add_argument('--db', help='Path to database. Only needed if CCTYPER_DB environment variable is not set.', default='', type=str)
+ 
++
+ # Thresholds
+ apt = ap.add_argument_group('cas arguments')
+ apt.add_argument('--dist', help='Max allowed number of unknown genes between cas genes in operon [%(default)s].', default=3, type=int)
+@@ -69,14 +73,18 @@ app.add_argument('--no_plot', help='Do not draw a map of CRISPR-Cas.', action='s
+ app.add_argument('--no_grid', help='Do not add grid to plot.', action='store_true')
+ 
+ # Workflow starts here
+-
++args = ap.parse_args()
+ 
+ ########## Initialize ##########
+-master = Controller(ap.parse_args())
+-
+-########## Prodigal ##########
+-proteins = Prodigal(master)
+-proteins.run_prod()
++master = Controller(args)
++
++########## Prodigal/GFF read ##########
++if args.gff and args.prot:
++    proteins = GFF(master)
++    proteins.get_genes()
++else:
++    proteins = Prodigal(master)
++    proteins.run_prod()
+ 
+ ########## Hmmer ##########
+ hmmeri = HMMER(proteins)
+diff --git a/cctyper/blast.py b/cctyper/blast.py
+index 6640ec7..760ebaa 100644
+--- a/cctyper/blast.py
++++ b/cctyper/blast.py
+@@ -9,7 +9,6 @@
+ import pandas as pd
+ import statistics as st
+ 
+-from Bio import pairwise2
+ from Bio import SeqIO
+ from Bio.Seq import Seq
+ from joblib import Parallel, delayed
+diff --git a/cctyper/castyping.py b/cctyper/castyping.py
+index d36977e..2c11472 100644
+--- a/cctyper/castyping.py
++++ b/cctyper/castyping.py
+@@ -33,9 +33,9 @@ def type_operon(self, operon):
+         tmpX['Hmm'] = [re.sub("_.*","",x) for x in tmpX['Hmm']]
+         tmpX.drop_duplicates('Hmm', inplace=True)
+ 
+-        start = list(tmp['start'])
+-        end = list(tmp['end'])
+-
++        start = list(tmp['start'].astype(int))
++        end = list(tmp['end'].astype(int))
++        
+         if operon in self.circ_operons:
+             gene_end = np.argmax(np.diff(list(tmp['Pos'])))
+             start_operon = start[gene_end+1]
+@@ -187,6 +187,7 @@ def type_operon(self, operon):
+                        "Best_type": best_type,
+                        "Best_score": best_score,
+                        "Genes": list(tmp['Hmm']),
++                       "Prot_IDs": list(tmp['ORF']),
+                        "Positions": list(tmp['Pos']),
+                        "E-values": ['{:0.2e}'.format(x) for x in list(tmp['Eval'])],
+                        "CoverageSeq": [round(x,3) for x in list(tmp['Cov_seq'])],
+diff --git a/cctyper/controller.py b/cctyper/controller.py
+index d6af6c7..80b1e22 100644
+--- a/cctyper/controller.py
++++ b/cctyper/controller.py
+@@ -18,6 +18,8 @@ def __init__(self, args):
+         self.out = args.output
+         self.threads = args.threads
+         self.dist = args.dist
++        self.gff = args.gff
++        self.prot = args.prot
+         self.prod = args.prodigal
+         self.db = args.db
+         self.circular = args.circular
+@@ -107,6 +109,15 @@ def check_input(self):
+         else:
+             logging.error('Could not find input file')
+             sys.exit()
++        if self.prot and self.gff:
++            shutil.copy(self.prot, self.prot_path)
++            subprocess.run(['sed', '-i', 's/ .*$//', self.prot_path])
++        elif self.gff and (not self.gff):
++            logging.error('Gff file provided but no protein file. Please provide both')
++            sys.exit()
++        elif (not self.gff) and self.gff:
++            logging.error('Protein file provided but no GFF file. Please provide both')
++            sys.exit()
+ 
+     def check_fasta(self):
+         
+@@ -159,7 +170,6 @@ def clean(self):
+                 shutil.rmtree(self.out+'hmmer')
+                 
+                 os.remove(self.out+'minced.out')
+-                os.remove(self.out+'prodigal.log')
+                 os.remove(self.out+'proteins.faa')
+ 
+                 if os.path.exists(self.out+'blast.tab'):
+@@ -168,6 +178,9 @@ def clean(self):
+                     os.remove(self.out+'Flank.nhr')
+                     os.remove(self.out+'Flank.nin')
+                     os.remove(self.out+'Flank.nsq')
++                
++                if os.path.exists(self.out+'prodigal.log'):
++                    os.remove(self.out+'prodigal.log')
+ 
+     def check_db(self):
+         
+diff --git a/cctyper/crisprcas.py b/cctyper/crisprcas.py
+index 9411920..d0efd04 100644
+--- a/cctyper/crisprcas.py
++++ b/cctyper/crisprcas.py
+@@ -84,7 +84,7 @@ def dist_ll(x,ll,ss,co):
+                         circ_op = False
+ 
+                     # Find distances between operon and crisprs
+-                    dists = dist_ll((int(cas_operon['Start']), int(cas_operon['End'])), zip(crispr_sub['Start'], crispr_sub['End']), seq_size, circ_op)
++                    dists = dist_ll((int(cas_operon['Start'].iloc[0]), int(cas_operon['End'].iloc[0])), zip(crispr_sub['Start'], crispr_sub['End']), seq_size, circ_op)
+                     
+                     cc_circs = [x[1] for x in dists]
+                     distances = [x[0] for x in dists]
+diff --git a/cctyper/gff.py b/cctyper/gff.py
+new file mode 100644
+index 0000000..1809d9d
+--- /dev/null
++++ b/cctyper/gff.py
+@@ -0,0 +1,71 @@
++import os
++import subprocess
++import logging
++import sys
++import re
++
++import pandas as pd
++
++class GFF(object):
++    
++    def __init__(self, obj):
++        self.master = obj
++        for key, val in vars(obj).items():
++            setattr(self, key, val)
++
++    def get_genes(self):
++
++        def unwrap_attributes(df):
++            attribute_names = set()
++            for attributes in df['attributes']:
++                attributes_list = [n for n in attributes.split(';') if n and n!='']
++                for attr in attributes_list:
++                    attribute_name = attr.split('=')[0]
++                    attribute_names.add(attribute_name)
++
++            # Create new columns with attribute names and default values
++            for attribute_name in attribute_names:
++                df = df.assign(**{attribute_name: None})
++
++            # Function to extract attribute values and assign them to columns
++            def extract_attribute_values(row):
++                attributes_list = [n for n in row['attributes'].split(';') if n and n!=''] 
++                for attr in attributes_list:
++                    attribute_name, attribute_value = attr.split('=')
++                    row[attribute_name] = attribute_value
++                return row
++
++            # Apply the function to each row
++            df = df.apply(lambda row: extract_attribute_values(row), axis=1)
++
++            # Drop the original "attributes" columns
++            df = df.drop(columns=['attributes'])
++            return df
++
++        custom_header = ['Contig', 'source', 'type','Start','End','score','Strand','phase','attributes']
++
++        gff = pd.read_csv(self.gff,sep="\t",comment="#",names=custom_header,engine="c")
++        gff = gff[gff['type'] == 'CDS']
++        gff['Strand'] = gff['Strand'].map({'+': 1, '-': -1})
++
++        gff=unwrap_attributes(gff)
++        cols = [col for col in gff.columns if col in [n for n in custom_header if n[0].isupper()]]
++        if "ID" in gff.columns:
++            if gff['ID'].str.startswith('cds-').all():
++                gff["protein_id"]=gff["ID"].str.split("-").apply(lambda x: x[1])
++            elif gff["ID"].str.match(r'^\D+_\d+$').all():
++                gff["protein_id"]=gff["ID"]
++            elif gff["ID"].str.match(r'^\d+_\d+$').all():
++                gff["protein_id"] = gff["Contig"] + "_" +gff["ID"].str.split("_").apply(lambda x: x[1])
++            else:
++                prot_ids = subprocess.run(['sed', '-n', 's/^>//p', self.prot_path],capture_output=True).stdout.decode().splitlines()
++                if set(prot_ids).issubset(gff['ID']):
++                    gff["protein_id"]=gff["ID"]
++                else:
++                    logging.error("GFF file does not match expected format. Please check that it meets the format requirements.")
++                    sys.exit()
++        gff=gff[cols+["protein_id"]].dropna(subset=["protein_id"])
++        gff = gff.sort_values(['Contig', 'Start'])
++        gff['Pos'] = gff.groupby('Contig').cumcount() + 1
++        self.genes = gff[cols+["Pos","protein_id"]]
++        self.genes.to_csv(self.out+'genes.tab', index=False, sep='\t')
+\ No newline at end of file
+diff --git a/cctyper/hmmer.py b/cctyper/hmmer.py
+index b8223b6..2407bb2 100644
+--- a/cctyper/hmmer.py
++++ b/cctyper/hmmer.py
+@@ -75,29 +75,37 @@ def load_hmm(self):
+         
+         # Get files
+         hmm_files = glob.glob(os.path.join(self.out+'hmmer', '*.tab'))
+-        
+         # Parse externally
+         with open(self.out+'hmmer.tab', 'w') as hmmer_tab:
+             subprocess.run(['grep', '-v', '^#']+hmm_files, stdout=hmmer_tab)
+             subprocess.run(['sed', '-i', 's/:/ /', self.out+'hmmer.tab'])
+ 
+         # Load
++        usecols = [0,1,3,6,7,
++                    8,16,17,18,19,
++                    20,21,22]
++        names = ['Hmm','ORF','tlen','qlen','Eval',
++                'score','hmm_from','hmm_to','ali_from','ali_to',
++                'env_from','env_to','pprop']
++        if not (self.gff and self.prot):
++            usecols = usecols + [24,26,28]
++            names= names + ['start','end','strand'] 
+         hmm_df = pd.read_csv(self.out+'hmmer.tab', sep='\s+', header=None,
+-            usecols=(0,1,3,6,7,
+-                     8,16,17,18,19,
+-                     20,21,22,24,26,28),
+-            names=('Hmm','ORF','tlen','qlen','Eval',
+-                   'score','hmm_from','hmm_to','ali_from','ali_to',
+-                   'env_from','env_to','pprop','start','end','strand'))
+-
++            usecols=usecols,
++            names=names)
+         # Parse HMM names
+         hmm_df['Hmm'] = [re.sub('\.tab', '', 
+                         re.sub(os.path.join(self.out, 'hmmer', ''), '', x)) 
+                         for x in hmm_df['Hmm']]
+-               
+-        # Add columns
+-        hmm_df['Acc'] = [re.sub("_[0-9]*$","",x) for x in hmm_df['ORF']]
+-        hmm_df['Pos'] = [int(re.sub(".*_","",x)) for x in hmm_df['ORF']]
++        
++        if self.gff and self.prot:
++            self.genes = pd.read_csv(self.out+'genes.tab', sep='\t')
++            hmm_df = pd.merge(hmm_df,self.genes[["Start","End","Strand","Contig","Pos","protein_id"]],
++                                            left_on="ORF",right_on="protein_id",how="left").drop("protein_id",axis=1)
++            hmm_df.rename(columns={'Contig': 'Acc','Strand': 'strand', 'Start': 'start', 'End': 'end'}, inplace=True)
++        else:
++            hmm_df['Acc'] = [re.sub("_[0-9]*$","",x) for x in hmm_df['ORF']]
++            hmm_df['Pos'] = [int(re.sub(".*_","",x)) for x in hmm_df['ORF']]
+ 
+         # Coverages of aligments
+         def covs(df_sub):
+@@ -115,7 +123,6 @@ def covs(df_sub):
+         hmm_df = hmm_df.groupby(['Hmm','ORF']).apply(covs)
+         hmm_df.reset_index(drop=True, inplace=True)
+         self.hmm_df = hmm_df.drop_duplicates()
+-
+     # Write to file
+     def write_hmm(self):
+         self.hmm_df.to_csv(self.out+'hmmer.tab', sep='\t', index=False)
+@@ -182,6 +189,11 @@ def load_custom_hmm(self):
+             self.custom_hmm_df.drop_duplicates('Target', inplace=True)
+ 
+             # New columns
+-            self.custom_hmm_df['Contig'] = [re.sub("_[0-9]*$","",x) for x in self.custom_hmm_df['Target']]
+-            self.custom_hmm_df['Pos'] = [int(re.sub(".*_","",x)) for x in self.custom_hmm_df['Target']]
++            if self.gff and self.prot:
++                self.genes = pd.read_csv(self.out+'genes.tab', sep='\t')
++                self.custom_hmm_df = pd.merge(self.custom_hmm_df,self.genes[["Contig","Pos","protein_id"]],
++                                              left_on="Target",right_on="protein_id",how="left").drop("protein_id",axis=1)
++            else:
++                self.custom_hmm_df['Contig'] = [re.sub("_[0-9]*$","",x) for x in self.custom_hmm_df['Target']]
++                self.custom_hmm_df['Pos'] = [int(re.sub(".*_","",x)) for x in self.custom_hmm_df['Target']]
+ 
+diff --git a/cctyper/minced.py b/cctyper/minced.py
+index 949139d..c3cefb2 100644
+--- a/cctyper/minced.py
++++ b/cctyper/minced.py
+@@ -8,7 +8,7 @@
+ 
+ import statistics as st
+ 
+-from Bio import pairwise2
++from Bio import Align
+ from joblib import Parallel, delayed
+ 
+ # Define the CRISPR class
+@@ -33,8 +33,17 @@ def addSpacer(self, spacer):
+     def getConsensus(self):
+         self.cons = max(set(self.repeats), key = self.repeats.count) 
+     def identity(self, i, j, sqlst):
+-        align = pairwise2.align.globalxx(sqlst[i], sqlst[j])
+-        return(align[0][2]/align[0][4]*100)
++        aligner = Align.PairwiseAligner()
++        aligner.mode = 'global'  # Use global alignment
++        aligner.match_score = 1  # Match score is 1
++        aligner.mismatch_score = 0  # Mismatch score is 0
++        aligner.open_gap_score = 0  # Gap opening score is 0
++        aligner.extend_gap_score = 0  # Gap extension score is 0
++        seq1 = sqlst[i]
++        seq2 = sqlst[j]
++        alignments = aligner.align(seq1, seq2)
++        best_alignment = alignments[0]
++        return best_alignment.score / max(len(seq1), len(seq2)) * 100
+     def identLoop(self, seqs, threads):
+         if self.exact:
+             sqr = range(len(seqs))

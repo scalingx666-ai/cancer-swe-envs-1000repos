@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/logannye__rosalind-100"
+description = "Fix RC contract discovery for analyzer value enums"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "rosalind",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "logannye/rosalind"
+ref = "7d58d42ff5a0dd03183dde833ec75cc40d182528"
+reference = "https://github.com/logannye/rosalind/pull/100"
+source_access = "auto"
+built_at = "2026-11-13T16:41:34.304521+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8a20f2a5d2eaec3f3b53fdfdea3b29f600c69bf6bd72c96d19817b1c82f09f9b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-06T17:07:44Z"
+diff_format = "unified"
+context_files = [
+    "xtask/src/lib.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 172
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

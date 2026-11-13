@@ -1,0 +1,13 @@
+diff --git a/bindings/jdbc/genomicsqlite-jdbc/pom.xml b/bindings/jdbc/genomicsqlite-jdbc/pom.xml
+index a4ef2a0..0b40c9d 100644
+--- a/bindings/jdbc/genomicsqlite-jdbc/pom.xml
++++ b/bindings/jdbc/genomicsqlite-jdbc/pom.xml
+@@ -60,7 +60,7 @@
+     <dependency>
+       <groupId>org.xerial</groupId>
+       <artifactId>sqlite-jdbc</artifactId>
+-      <version>3.53.4.0</version>
++      <version>3.54.1.0</version>
+     </dependency>
+     <dependency>
+       <groupId>junit</groupId>

@@ -1,0 +1,264 @@
+diff --git a/batch/batch/cloud/gcp/instance_config.py b/batch/batch/cloud/gcp/instance_config.py
+index 46ece809979..ea5cc3731ba 100644
+--- a/batch/batch/cloud/gcp/instance_config.py
++++ b/batch/batch/cloud/gcp/instance_config.py
+@@ -6,6 +6,7 @@
+ from .resource_utils import (
+     gcp_boot_disk_type,
+     gcp_data_disk_type,
++    gcp_external_storage_disk_type,
+     gcp_machine_type_to_parts,
+     machine_type_to_gpu,
+     machine_type_to_gpu_num,
+@@ -76,7 +77,9 @@ def create(
+                 product_versions, gcp_boot_disk_type(instance_family), boot_disk_size_gb, region
+             ),
+             data_disk_resource,
+-            GCPDynamicSizedDiskResource.create(product_versions, 'pd-ssd', region),
++            GCPDynamicSizedDiskResource.create(
++                product_versions, gcp_external_storage_disk_type(instance_family), region
++            ),
+             GCPIPFeeResource.create(product_versions, 1024, preemptible),
+             GCPServiceFeeResource.create(product_versions),
+             GCPSupportLogsSpecsAndFirewallFees.create(product_versions),
+diff --git a/batch/batch/cloud/gcp/resource_utils.py b/batch/batch/cloud/gcp/resource_utils.py
+index 72ae0b83f6e..02da85b6d5d 100644
+--- a/batch/batch/cloud/gcp/resource_utils.py
++++ b/batch/batch/cloud/gcp/resource_utils.py
+@@ -427,6 +427,14 @@ def gcp_data_disk_type(machine_family: str) -> str:
+     return 'pd-ssd'
+ 
+ 
++def gcp_external_storage_disk_type(machine_family: str) -> str:
++    """The type of the disk a pool worker creates and attaches for a job whose storage request
++    doesn't fit on the instance's data disk."""
++    if machine_family == 'n4':
++        return 'hyperdisk-balanced'
++    return 'pd-ssd'
++
++
+ def gcp_data_disk_device_name(machine_family: str, machine_type: str) -> str:
+     # Hyperdisk (n4) is NVMe-attached, like g2's local NVMe SSD, rather than the SCSI 'sdb'
+     # device used by classic Persistent Disk.
+@@ -447,7 +455,8 @@ def gcp_data_disk_device_name(machine_family: str, machine_type: str) -> str:
+ 
+ 
+ def gcp_hyperdisk_performance_overrides(disk_type: str) -> Dict[str, str]:
+-    """Extra `disks[].initializeParams` fields to pin a Hyperdisk-family disk at GCP's free
++    """Extra disk fields (in an instance's `disks[].initializeParams`, or in the body of a
++    standalone disk insert) to pin a Hyperdisk-family disk at GCP's free
+     provisioned-IOPS/throughput baseline, to avoid an unintended billing surcharge (see
+     GCP_HYPERDISK_BALANCED_FREE_IOPS above). Returns {} for non-Hyperdisk disk types, since
+     provisionedIops/provisionedThroughput are rejected by the API for e.g. pd-ssd."""
+diff --git a/batch/batch/cloud/gcp/worker/disk.py b/batch/batch/cloud/gcp/worker/disk.py
+index 33c847b8927..a52f7aecab2 100644
+--- a/batch/batch/cloud/gcp/worker/disk.py
++++ b/batch/batch/cloud/gcp/worker/disk.py
+@@ -6,6 +6,7 @@
+ from hailtop.utils import CalledProcessError, LoggingTimer, check_shell_output, retry_all_errors_n_times
+ 
+ from ....worker.disk import CloudDisk
++from ..resource_utils import gcp_hyperdisk_performance_overrides
+ 
+ log = logging.getLogger('disk')
+ 
+@@ -19,6 +20,7 @@ def __init__(
+         instance_name: str,
+         size_in_gb: int,
+         mount_path: str,
++        disk_type: str,
+         compute_client: aiogoogle.GoogleComputeClient,  # BORROWED
+     ):
+         assert size_in_gb >= 10
+@@ -33,6 +35,7 @@ def __init__(
+         self.instance_name = instance_name
+         self.size_in_gb = size_in_gb
+         self.mount_path = mount_path
++        self.disk_type = disk_type
+         self.compute_client = compute_client
+ 
+         self._created = False
+@@ -94,8 +97,9 @@ async def _create(self, labels: Optional[Dict[str, str]] = None):
+             config = {
+                 'name': self.name,
+                 'sizeGb': f'{self.size_in_gb}',
+-                'type': f'zones/{self.zone}/diskTypes/pd-ssd',
++                'type': f'zones/{self.zone}/diskTypes/{self.disk_type}',
+                 'labels': labels,
++                **gcp_hyperdisk_performance_overrides(self.disk_type),
+             }
+ 
+             self.last_response = await self.compute_client.create_disk(f'/zones/{self.zone}/disks', json=config)
+diff --git a/batch/batch/cloud/gcp/worker/worker_api.py b/batch/batch/cloud/gcp/worker/worker_api.py
+index 4e248fdf329..f23d701f31a 100644
+--- a/batch/batch/cloud/gcp/worker/worker_api.py
++++ b/batch/batch/cloud/gcp/worker/worker_api.py
+@@ -14,6 +14,7 @@
+ 
+ from ....worker.worker_api import CloudWorkerAPI, ContainerRegistryCredentials
+ from ..instance_config import GCPSlimInstanceConfig
++from ..resource_utils import gcp_external_storage_disk_type, gcp_machine_type_to_parts
+ from .disk import GCPDisk
+ from .metadata_server import create_app
+ 
+@@ -28,7 +29,12 @@ async def from_env() -> 'GCPWorkerAPI':
+         zone = os.environ['ZONE'].rsplit('/', 1)[1]
+         worker_credentials = aiogoogle.GoogleInstanceMetadataCredentials()
+         http_session = httpx.client_session()
+-        return GCPWorkerAPI(project, zone, worker_credentials, http_session)
++        machine_type = orjson.loads(base64.b64decode(os.environ['INSTANCE_CONFIG']).decode())['machine_type']
++        machine_type_parts = gcp_machine_type_to_parts(machine_type)
++        if machine_type_parts is None:
++            raise ValueError(f'bad machine_type: {machine_type}')
++        disk_type = gcp_external_storage_disk_type(machine_type_parts.machine_family)
++        return GCPWorkerAPI(project, zone, worker_credentials, http_session, disk_type)
+ 
+     def __init__(
+         self,
+@@ -36,9 +42,13 @@ def __init__(
+         zone: str,
+         worker_credentials: aiogoogle.GoogleInstanceMetadataCredentials,
+         http_session: httpx.ClientSession,
++        disk_type: str,
+     ):
+         self.project = project
+         self.zone = zone
++        # The type of the disks created for jobs whose storage doesn't fit on the data disk. It must
++        # be one this instance's machine family can attach: n4 can only attach Hyperdisk.
++        self.disk_type = disk_type
+ 
+         self._exit_stack = AsyncExitStack()
+         self._http_session = http_session
+@@ -67,6 +77,7 @@ def create_disk(self, instance_name: str, disk_name: str, size_in_gb: int, mount
+             name=disk_name,
+             size_in_gb=size_in_gb,
+             mount_path=mount_path,
++            disk_type=self.disk_type,
+             compute_client=self._compute_client,
+         )
+ 
+diff --git a/batch/test/test_utils.py b/batch/test/test_utils.py
+index 0cf7ac81eba..7ed5cbaf813 100644
+--- a/batch/test/test_utils.py
++++ b/batch/test/test_utils.py
+@@ -1,3 +1,5 @@
++from typing import List, Optional
++
+ import pytest
+ 
+ from batch.cloud.azure.resource_utils import MACHINE_TYPE_TO_PARTS as MACHINE_TYPE_TO_PARTS_AZURE
+@@ -8,6 +10,7 @@
+     gcp_boot_disk_type,
+     gcp_data_disk_device_name,
+     gcp_data_disk_type,
++    gcp_external_storage_disk_type,
+     gcp_hyperdisk_performance_overrides,
+     gcp_local_ssd_count,
+     gcp_local_ssd_size,
+@@ -17,7 +20,8 @@
+ from batch.cloud.gcp.resource_utils import (
+     MACHINE_TYPE_TO_PARTS as MACHINE_TYPE_TO_PARTS_GCP,
+ )
+-from batch.cloud.gcp.resources import GCPAcceleratorResource, gcp_resource_from_dict
++from batch.cloud.gcp.resources import GCPAcceleratorResource, GCPDynamicSizedDiskResource, gcp_resource_from_dict
++from batch.cloud.gcp.worker.disk import GCPDisk
+ from batch.cloud.resource_utils import adjust_cores_for_packability
+ from batch.driver.billing_manager import ProductVersions
+ from batch.driver.exceptions import LocalSSDNotSupportedError
+@@ -175,6 +179,10 @@ def test_gcp_disk_type_helpers():
+     assert gcp_data_disk_type('n2') == 'pd-ssd'
+     assert gcp_data_disk_type('n1') == 'pd-ssd'
+ 
++    assert gcp_external_storage_disk_type('n4') == 'hyperdisk-balanced'
++    assert gcp_external_storage_disk_type('n2') == 'pd-ssd'
++    assert gcp_external_storage_disk_type('n1') == 'pd-ssd'
++
+     assert gcp_data_disk_device_name('n4', 'n4-standard-16') == 'nvme0n2'
+     assert gcp_data_disk_device_name('g2', 'g2-standard-4') == 'nvme0n2'
+     assert gcp_data_disk_device_name('n2', 'n2-standard-16') == 'sdb'
+@@ -197,6 +205,85 @@ def test_gcp_hyperdisk_performance_overrides_noop_for_non_hyperdisk():
+     assert not gcp_hyperdisk_performance_overrides('pd-ssd')
+ 
+ 
++class _AllProductsVersions(ProductVersions):
++    """Every product exists at version '1', so instance configs can be built without a database."""
++
++    def __init__(self):
++        super().__init__({})
++
++    def latest_version(self, product: str) -> Optional[str]:
++        return '1'
++
++
++@pytest.mark.parametrize(
++    "machine_type,expected_disk_type",
++    [
++        ('n1-standard-16', 'pd-ssd'),
++        ('n4-standard-16', 'hyperdisk-balanced'),
++    ],
++)
++def test_gcp_instance_config_bills_extra_storage_disk_by_family(machine_type, expected_disk_type):
++    # A pool job whose storage doesn't fit on the data disk gets its own attached disk, which must
++    # be billed as the type the worker actually creates for this machine family.
++    config = GCPSlimInstanceConfig.create(
++        product_versions=_AllProductsVersions(),
++        machine_type=machine_type,
++        preemptible=True,
++        local_ssd_data_disk=False,
++        data_disk_size_gb=375,
++        boot_disk_size_gb=30,
++        job_private=False,
++        location='us-central1-a',
++    )
++    [dynamic_disk] = [r for r in config.resources if isinstance(r, GCPDynamicSizedDiskResource)]
++    assert dynamic_disk.name == f'disk/{expected_disk_type}/us-central1/1'
++
++
++class _RecordingComputeClient:
++    def __init__(self):
++        self.create_disk_bodies: List[dict] = []
++
++    async def create_disk(self, _path: str, *, json: dict):
++        self.create_disk_bodies.append(json)
++
++
++@pytest.mark.parametrize(
++    "disk_type,expected_extra_fields",
++    [
++        ('pd-ssd', {}),
++        (
++            'hyperdisk-balanced',
++            {
++                'provisionedIops': str(GCP_HYPERDISK_BALANCED_FREE_IOPS),
++                'provisionedThroughput': str(GCP_HYPERDISK_BALANCED_FREE_THROUGHPUT_MIB_PER_SEC),
++            },
++        ),
++    ],
++)
++async def test_gcp_disk_creates_configured_disk_type(disk_type, expected_extra_fields):
++    compute_client = _RecordingComputeClient()
++    disk = GCPDisk(
++        name='batch-disk-abc',
++        zone='us-central1-a',
++        project='hail-vdc',
++        instance_name='batch-worker-abc',
++        size_in_gb=100,
++        mount_path='/io',
++        disk_type=disk_type,
++        compute_client=compute_client,  # type: ignore
++    )
++    await disk._create(labels={'batch': '1'})
++    assert compute_client.create_disk_bodies == [
++        {
++            'name': 'batch-disk-abc',
++            'sizeGb': '100',
++            'type': f'zones/us-central1-a/diskTypes/{disk_type}',
++            'labels': {'batch': '1'},
++            **expected_extra_fields,
++        }
++    ]
++
++
+ @pytest.mark.parametrize(
+     "family,cores,expected",
+     [

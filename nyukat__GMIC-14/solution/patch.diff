@@ -1,0 +1,23 @@
+diff --git a/requirements.txt b/requirements.txt
+index bc8ba99..d13ee91 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,4 +1,4 @@
+-torch>=1.1.0
++torch==1.1.0
+ torchvision>=0.2.2
+ numpy>=1.14.3
+ scipy>=1.0.0
+diff --git a/src/scripts/run_model.py b/src/scripts/run_model.py
+index dd4e182..4eccc5d 100644
+--- a/src/scripts/run_model.py
++++ b/src/scripts/run_model.py
+@@ -35,6 +35,8 @@
+ from src.data_loading import loading
+ from src.constants import VIEWS, PERCENT_T_DICT
+ 
++assert torch.__version__ == '1.1.0', "GMIC not tested for pytorch > 1.1.0 (nor python3.8)"
++
+ 
+ def visualize_example(input_img, saliency_maps, true_segs,
+                       patch_locations, patch_img, patch_attentions,

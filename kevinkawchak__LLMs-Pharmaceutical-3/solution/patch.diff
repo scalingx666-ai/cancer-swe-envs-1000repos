@@ -1,0 +1,1036 @@
+diff --git a/.github/ISSUE_TEMPLATE/bug_report.md b/.github/ISSUE_TEMPLATE/bug_report.md
+new file mode 100644
+index 00000000..0bf6258e
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/bug_report.md
+@@ -0,0 +1,26 @@
++---
++name: Bug Report
++about: Report a broken notebook, incorrect link, or documentation error
++title: "[Bug] "
++labels: bug
++assignees: kevinkawchak
++---
++
++**Description**
++A clear description of the issue.
++
++**File/Path**
++Which file or directory is affected?
++
++**Steps to Reproduce**
++1. Open notebook `...`
++2. Run cell `...`
++3. See error
++
++**Environment**
++- Python version:
++- Platform (Colab / local / other):
++- GPU (if applicable):
++
++**Additional Context**
++Any relevant error messages, screenshots, or logs.
+diff --git a/.github/ISSUE_TEMPLATE/feature_request.md b/.github/ISSUE_TEMPLATE/feature_request.md
+new file mode 100644
+index 00000000..cf89ba86
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/feature_request.md
+@@ -0,0 +1,23 @@
++---
++name: Feature Request
++about: Suggest a new notebook, research area, or documentation improvement
++title: "[Feature] "
++labels: enhancement
++assignees: kevinkawchak
++---
++
++**Category**
++- [ ] New notebook / code contribution
++- [ ] Manuscript or publication addition
++- [ ] Documentation improvement
++- [ ] CI / tooling enhancement
++- [ ] Other
++
++**Description**
++What would you like to see added or changed?
++
++**Clinical / Research Relevance**
++How does this relate to oncology, drug discovery, or pharmaceutical AI?
++
++**Additional Context**
++Links to papers, datasets, or related work.
+diff --git a/.github/PULL_REQUEST_TEMPLATE.md b/.github/PULL_REQUEST_TEMPLATE.md
+new file mode 100644
+index 00000000..73d6f8ec
+--- /dev/null
++++ b/.github/PULL_REQUEST_TEMPLATE.md
+@@ -0,0 +1,19 @@
++## Summary
++
++<!-- Brief description of changes -->
++
++## Change Type
++
++- [ ] New notebook or code addition
++- [ ] Manuscript or publication update
++- [ ] Documentation improvement
++- [ ] CI / infrastructure update
++- [ ] Bug fix
++
++## Checklist
++
++- [ ] Files are placed in the correct directory (`Code/`, `Manuscripts/`, or `R&D/`)
++- [ ] `ruff check .` passes locally
++- [ ] Notebook outputs are reviewed for sensitive data
++- [ ] DOI or citation included for referenced publications
++- [ ] CHANGELOG.md updated (if applicable)
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 00000000..61c2e874
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,27 @@
++---
++name: CI
++
++"on":
++  push:
++    branches: [main]
++  pull_request:
++    branches: [main]
++
++jobs:
++  lint-and-format:
++    runs-on: ubuntu-latest
++    strategy:
++      matrix:
++        python-version: ["3.10", "3.11", "3.12"]
++    steps:
++      - uses: actions/checkout@v4
++      - name: Set up Python ${{ matrix.python-version }}
++        uses: actions/setup-python@v5
++        with:
++          python-version: ${{ matrix.python-version }}
++      - name: Install linting tools
++        run: pip install ruff
++      - name: Run ruff check
++        run: ruff check .
++      - name: Run ruff format check
++        run: ruff format --check .
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 00000000..4231f690
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,32 @@
++# Python
++__pycache__/
++*.py[cod]
++*$py.class
++*.egg-info/
++dist/
++build/
++*.egg
++
++# Jupyter
++.ipynb_checkpoints/
++
++# Virtual environments
++.venv/
++venv/
++env/
++
++# IDE
++.vscode/
++.idea/
++*.swp
++*.swo
++*~
++
++# OS
++.DS_Store
++Thumbs.db
++
++# Secrets
++.env
++*.key
++*.pem
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+new file mode 100644
+index 00000000..d4549053
+--- /dev/null
++++ b/CHANGELOG.md
+@@ -0,0 +1,93 @@
++# Changelog
++
++All notable changes to this project will be documented in this file.
++
++The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
++and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
++
++## [4.2.0] - 2026-02-15
++
++### Added
++- GitHub Standards: `CHANGELOG.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, `CITATION.cff`
++- CI pipeline (`.github/workflows/ci.yml`) with ruff lint-and-format across Python 3.10, 3.11, 3.12
++- Linter configuration (`ruff.toml`) excluding research notebooks and tutorial scripts
++- `.gitignore` for Python, Jupyter, and OS artifacts
++- GitHub issue templates (`bug_report.md`, `feature_request.md`) and pull request template
++- Detailed `Code/README.md` with full repository structure, notebook counts, and research area index
++- Updated `R&D/README.md` with document catalog and topic index
++- Prominent link to **LLM Papers: Cancer Drug & Oncology Trials** collection on main README
++
++### Updated
++- Main `README.md` restructured with version/license badges, repository structure diagram, research area summaries, and manuscript highlights
++- Emphasis shifted to newer LLM-based studies (Digital Twin PDAC, Drug Discovery, clinical trial simulations) with condensed quantum ML sections
++- `Manuscripts/` section elevated with publication timeline and DOI links
++- `Code/README.md` replaced minimal header with comprehensive directory guide
++
++### Notes
++- Version numbering continues from the implicit v4.1 state of the repository (801 MB, 2,300+ files, 1,446 notebooks, 30+ publications)
++- No existing code or manuscript files were modified; changes are limited to documentation and CI infrastructure
++
++## [4.1.0] - 2026-02-02
++
++### Added
++- `Scaling Oncology LLM Generated Code Jan 2026.pdf` — study on scaling LLM code generation for oncology
++- `Daraxonrasib Efficient LLM Trial Simulations.pdf` — efficient LLM trial simulation methodology
++- `LaTeX LLM Oncology Table Prompting Guide.pdf` — LaTeX table prompting guide for oncology data
++
++### Updated
++- Main `README.md` updated with new project description and DOI links
++
++## [4.0.0] - 2025-12-22
++
++### Added
++- `Code/Digital_Twin_PDAC/` — 10-notebook pipeline for pancreatic ductal adenocarcinoma digital twin clinical trial proposals using 7 AI model combinations
++- `Code/Drug Discovery/Agentic-LLM/` — agentic LLM workflows for drug discovery
++- `Code/Drug Discovery/Multi-LLM/` — multi-LLM comparison notebooks with meta-analyses and reports
++- `Code/Drug Discovery/Quad-LLM/` — quad-LLM evaluation notebooks
++
++### Updated
++- `Manuscripts/README.md` expanded with 2025 publications covering PDAC digital twins, glioblastoma drug synergy ML, clinical trial LLM efficiency, and 100K patient in silico trials
++
++## [3.0.0] - 2024-12-23
++
++### Added
++- `Code/Drug Discovery/` directory — 14 subdirectories covering LLM, LLM-RAG, LMM, ProtBert, ProtGPT2, and multi-model drug discovery approaches
++- `Code/Hugging Face/` — Llama-3-8B-Instruct fine-tuning, 32-pipeline benchmark, re-trained models, text-to-image GenAI
++- `Code/LangChain/` — Agent Supervisor, Code Assistant, and RAPTOR notebooks with GPT-4o evaluations
++- `Code/Generative AI Live/` — live coding demos for RAG, RAPTOR, Agent, and fine-tuning
++- `Code/Open WebUI/` — Ollama/Docker GenAI deployment studies
++- `Code/Groq/` — GroqCloud inference benchmarks for 4 models
++
++### Updated
++- `Manuscripts/README.md` expanded with 2024 publications on spectrometric analysis, paclitaxel biosynthesis, mAb bioprocess engineering, and cancer vs. conversational AI
++
++## [2.0.0] - 2024-08-12
++
++### Added
++- `Code/Tensor Network vs FC Controllability/` — hyperparameter studies comparing tensor networks and fully connected layers
++- `Code/Tensor Network vs FC Explainability/` — explainability comparison datasets
++- `Code/Tensor Network vs Fully Connected Layer/` — parameter studies and triplicates
++- `Code/Tensor Networks for Generative AI/` — generative AI tensor network experiments
++
++### Updated
++- Manuscripts expanded with spectrometric determination studies and LMM chemical research publications
++
++## [1.0.0] - 2023-11-01
++
++### Added
++- `Code/PennyLane/` — 488 quantum ML notebooks covering algorithm prototyping, benchmarking, data-reuploading, quantum transfer learning, quanvolutional networks, and qutrits/qudits
++- `Code/Qiskit/` — 18 notebooks with quantum programming tutorials and device benchmarking
++- `Code/All PennyLane QML Demos/` — 26 PennyLane demo notebooks
++- `Code/All Qiskit ML Demos/` — 13 Qiskit ML demo notebooks
++- `Code/All Qiskit, PennyLane QML Nov 23/` — 54 combined framework notebooks
++- `Code/Efficiency Metrics for Parallel QML Algorithms/` — 9 subdirectories of QML efficiency studies
++- `Code/Parallel Quantum Algorithms torch.nn Seq, Mod/` — sequential and modular parallel quantum algorithms
++- `Code/PyTorch, Keras, PL Parallel Quantum Algorithms/` — cross-framework parallel quantum algorithm comparisons
++- `Code/QML Parameters for Breakthrough Parallel Algorithms/` — parameter optimization studies
++- `Code/Quantum Parallel Architectures Progression/` — architecture progression from 4Q to 320 effective qubits
++- `Code/Python/` — 34 Python tutorial scripts and network client
++- `Code/C++/` — C++ tutorial source files
++- `Code/Apple/` — LLM Farm demos for MacBook Pro, iPad Pro, iPhone 15 Pro
++- `R&D/` — 70 research and development markdown documents covering QML algorithms, medical applications, and industry analysis
++- `Manuscripts/README.md` — initial research papers index
++- Apache License 2.0 (`LICENSE.md`)
+diff --git a/CITATION.cff b/CITATION.cff
+new file mode 100644
+index 00000000..d2999b23
+--- /dev/null
++++ b/CITATION.cff
+@@ -0,0 +1,30 @@
++cff-version: 1.2.0
++title: "LLMs-Pharmaceutical: LLM Applications for Cancer Drug Discovery and Oncology Clinical Trials"
++message: "If you use this repository, please cite it using the metadata below."
++type: dataset
++authors:
++  - family-names: Kawchak
++    given-names: Kevin
++    email: kevink@chemicalqdevice.com
++    affiliation: ChemicalQDevice
++repository-code: "https://github.com/kevinkawchak/LLMs-Pharmaceutical"
++url: "https://doi.org/10.5281/zenodo.18171361"
++license: Apache-2.0
++version: "4.2.0"
++date-released: "2026-02-15"
++keywords:
++  - large language models
++  - oncology
++  - clinical trials
++  - drug discovery
++  - digital twins
++  - pharmaceutical AI
++  - machine learning
++  - quantum machine learning
++identifiers:
++  - type: doi
++    value: "10.5281/zenodo.13273141"
++    description: "AI Applications for Drug Industry"
++  - type: doi
++    value: "10.5281/zenodo.18171361"
++    description: "LLM Papers: Cancer Drug & Oncology Trials"
+diff --git a/CODE_OF_CONDUCT.md b/CODE_OF_CONDUCT.md
+new file mode 100644
+index 00000000..ad1c51b8
+--- /dev/null
++++ b/CODE_OF_CONDUCT.md
+@@ -0,0 +1,64 @@
++# Contributor Covenant Code of Conduct
++
++## Our Pledge
++
++We as members, contributors, and leaders pledge to make participation in our
++community a harassment-free experience for everyone, regardless of age, body
++size, visible or invisible disability, ethnicity, sex characteristics, gender
++identity and expression, level of experience, education, socio-economic status,
++nationality, personal appearance, race, caste, color, religion, or sexual
++identity and orientation.
++
++We pledge to act and interact in ways that contribute to an open, welcoming,
++diverse, inclusive, and healthy community.
++
++## Our Standards
++
++Examples of behavior that contributes to a positive environment:
++
++* Using welcoming and inclusive language
++* Being respectful of differing viewpoints and experiences
++* Gracefully accepting constructive criticism
++* Focusing on what is best for the community
++* Showing empathy towards other community members
++
++Examples of unacceptable behavior:
++
++* The use of sexualized language or imagery, and sexual attention or advances of any kind
++* Trolling, insulting or derogatory comments, and personal or political attacks
++* Public or private harassment
++* Publishing others' private information without explicit permission
++* Other conduct which could reasonably be considered inappropriate in a professional setting
++
++## Clinical and Research Integrity
++
++Given the pharmaceutical and clinical trial focus of this project, contributors must also:
++
++* **Patient safety**: Never suggest bypassing safety protocols or regulatory requirements
++* **Data privacy**: Never include protected health information (PHI) or personally identifiable information (PII) in issues, pull requests, or commits
++* **Scientific integrity**: Do not misrepresent benchmark results, trial outcomes, or model performance metrics
++
++## Enforcement Responsibilities
++
++Project maintainers are responsible for clarifying and enforcing standards of
++acceptable behavior and will take appropriate and fair corrective action in
++response to any behavior that they deem inappropriate, threatening, offensive,
++or harmful.
++
++## Scope
++
++This Code of Conduct applies within all community spaces, and also applies when
++an individual is officially representing the community in public spaces.
++
++## Enforcement
++
++Instances of abusive, harassing, or otherwise unacceptable behavior may be
++reported to the project maintainer at kevink@chemicalqdevice.com.
++
++All complaints will be reviewed and investigated promptly and fairly.
++
++## Attribution
++
++This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org/),
++version 2.1, available at
++[https://www.contributor-covenant.org/version/2/1/code_of_conduct.html](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html).
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+new file mode 100644
+index 00000000..6d360539
+--- /dev/null
++++ b/CONTRIBUTING.md
+@@ -0,0 +1,41 @@
++# Contributing to LLMs-Pharmaceutical
++
++Thank you for your interest in contributing to this project. The following guidelines describe what we accept and how to contribute.
++
++## What We Accept
++
++- **Jupyter notebooks** demonstrating LLM applications in pharmaceutical research, clinical trials, or drug discovery
++- **Manuscript summaries** with Zenodo or journal DOI citations
++- **Bug reports** for broken links, incorrect citations, or documentation errors
++- **Documentation improvements** including README updates and research area descriptions
++
++## Requirements
++
++- All notebook contributions must include a clear description of the LLM(s) or ML framework(s) used
++- Citation information (DOI or preprint link) is required for any referenced publication
++- Notebooks should be executable in Google Colab or a standard Jupyter environment
++- Code should include inline comments explaining methodology
++
++## Development Workflow
++
++1. Fork the repository
++2. Create a feature branch from `main`
++3. Add or update files in the appropriate directory (`Code/`, `Manuscripts/`, or `R&D/`)
++4. Ensure `ruff check .` and `ruff format --check .` pass (CI runs on Python 3.10, 3.11, 3.12)
++5. Open a pull request with a description of the contribution
++
++## Code Standards
++
++- **Python**: Checked with [ruff](https://docs.astral.sh/ruff/) (configuration in `ruff.toml`)
++- **Notebooks**: Should include markdown cells explaining each step
++- **File naming**: Follow the existing directory naming conventions
++
++## Data and Citation
++
++- Do not commit patient-level or personally identifiable health data
++- Reference all external datasets by DOI or URL
++- Follow Apache 2.0 license terms for code contributions and CC BY 4.0 for manuscript content
++
++## Questions
++
++Open a [GitHub Issue](https://github.com/kevinkawchak/LLMs-Pharmaceutical/issues) or see `SUPPORT.md` for additional help.
+diff --git a/Code/README.md b/Code/README.md
+index eb5dd06d..b632927e 100644
+--- a/Code/README.md
++++ b/Code/README.md
+@@ -1,4 +1,107 @@
+-## AI Applications for Drug Industry
+-LLM and LLM agent pharmaceutical industry applications
++# Code
++
++**LLM, AI, and Quantum ML Research Notebooks and Scripts**
+ 
+ [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.13273141-blue)](https://doi.org/10.5281/zenodo.13273141)
++
++## Overview
++
++This directory contains 2,235 files including 1,446 Jupyter notebooks, 35 Python scripts, and supporting resources organized across 28 research directories. Work spans LLM-driven drug discovery, clinical trial simulation, and quantum machine learning.
++
++| Metric | Value |
++|---|---|
++| Total Files | 2,235 |
++| Jupyter Notebooks | 1,446 |
++| Python Scripts | 35 |
++| Research Directories | 28 |
++| Directory Size | 576 MB |
++
++## Directory Index
++
++### LLM and AI Research (Newer)
++
++| Directory | Files | Notebooks | Description |
++|---|---|---|---|
++| `Digital_Twin_PDAC/` | 148 | 10 | PDAC digital twin clinical trial proposals — 7 AI model combinations |
++| `Drug Discovery/` | 290 | 46 | 14 subdirectories: Agentic-LLM, Multi-LLM, Quad-LLM, ProtBert, ProtGPT2, RAG, and more |
++| `Hugging Face/` | 27 | 15 | Llama-3-8B fine-tuning, 32 Hugging Face pipelines, re-trained models, text-to-image |
++| `LangChain/` | 17 | 9 | Agent Supervisor, Code Assistant, RAPTOR with GPT-4o evaluations |
++| `Generative AI Live/` | 15 | 6 | Live coding demos: RAG, RAPTOR, Agent, fine-tuning on biochemistry dataset |
++| `Groq/` | 3 | 1 | GroqCloud inference benchmarks: gemma-7b-it, mixtral-8x7b, llama3-8b, llama3-70b |
++| `Open WebUI/` | 3 | 0 | Ollama/Docker GenAI deployment studies with user satisfaction data |
++| `Apple/` | 23 | — | LLM Farm demos for MacBook Pro, iPad Pro, iPhone 15 Pro |
++
++### Programming Tutorials
++
++| Directory | Files | Description |
++|---|---|---|
++| `Python/` | 43 | 34 tutorial scripts (Classes, Inheritance, Multithreading, Sockets, Databases, XML, Recursion, Logging) + network client |
++| `C++/` | 47 | C++ tutorial source files |
++
++### Quantum Machine Learning (Historical)
++
++| Directory | Files | Notebooks | Description |
++|---|---|---|---|
++| `PennyLane/` | 564 | 488 | Algorithm prototyping, benchmarking, data-reuploading, quantum TL, quanvolutional networks, qutrits/qudits |
++| `Qiskit/` | 27 | 18 | Quantum programming, effective dimension, device benchmarking |
++| `All PennyLane QML Demos/` | 30 | 26 | PennyLane framework demonstrations |
++| `All Qiskit ML Demos/` | 16 | 13 | Qiskit ML framework demonstrations |
++| `All Qiskit, PennyLane QML Nov 23/` | 56 | 54 | Combined PennyLane/Qiskit notebooks |
++| `Efficiency Metrics for Parallel QML Algorithms/` | 190 | — | 9 subdirectories of QML efficiency studies |
++| `Parallel Quantum Algorithms torch.nn Seq, Mod/` | 64 | — | Sequential and modular parallel quantum algorithms |
++| `PyTorch, Keras, PL Parallel Quantum Algorithms/` | 125 | — | Cross-framework parallel quantum comparisons |
++| `QML Parameters for Breakthrough Parallel Algorithms/` | 170 | — | Parameter optimization studies |
++| `Quantum Parallel Architectures Progression/` | 171 | — | Architecture progression: 4Q to 320 effective qubits |
++| `Qiskit, PennyLane Parallel Algorithms/` | 19 | — | Combined framework parallel algorithms |
++| `Tensor Network vs FC Controllability/` | 71 | — | Hyperparameter studies: batch size, epochs, LR, weight decay |
++| `Tensor Network vs FC Explainability/` | 59 | — | Explainability comparison datasets |
++| `Tensor Network vs Fully Connected Layer/` | 38 | — | Parameter studies and triplicates |
++| `Tensor Networks for Generative AI/` | 12 | — | Generative AI tensor network experiments |
++| `Cirq/` | 5 | — | Google Cirq quantum computing |
++
++## Drug Discovery Subdirectories
++
++```
++Drug Discovery/
++├── Agentic-LLM/     # 4 notebooks  — Agentic LLM drug discovery workflows
++│   ├── Images/
++│   └── Notebooks/
++├── Multi-LLM/        # 15 notebooks — Multi-model comparisons, meta-analyses, reports
++│   ├── Images/
++│   ├── Notebooks/
++│   ├── Reports/
++│   └── Meta-Analyses/
++├── Quad-LLM/         # 14 notebooks — Four-model evaluation pipelines
++│   ├── Images/
++│   └── Notebooks/
++├── ProtBert/          # 1 notebook   — Protein language model experiments
++├── ProtGPT2/          # 2 notebooks  — Protein generation models
++├── Meta-Llama-3/      # 6 notebooks  — Llama-3 fine-tuning and inference
++├── Llama-3 RAG/       # 2 notebooks  — Retrieval-augmented generation
++├── LLM/               # LLM approach documentation
++├── LLM-RAG/           # Drug synthesis RAG
++├── LMM/               # Large multimodal models
++├── XLLM/              # Precision medicine
++├── pLDM/              # 2 notebooks  — Protein latent diffusion
++└── iPhone 15 Pro/     # On-device inference
++```
++
++## Digital Twin PDAC Notebooks
++
++```
++Digital_Twin_PDAC/Notebooks/
++├── Python_01_RP01.ipynb    (2.7 MB) — Research proposal report 1
++├── Python_02_RP02.ipynb    (2.9 MB) — Research proposal report 2
++├── Python_03_RP03.ipynb    (1.3 MB) — Research proposal report 3
++├── Python_04_RP04.ipynb    (1.0 MB) — Research proposal report 4
++├── Python_05_RP05.ipynb    (1.4 MB) — Research proposal report 5
++├── Python_06_RP06.ipynb    (5.4 MB) — Extended proposal analysis
++├── Python_07_Pro5Viz.ipynb (2.2 MB) — 5-proposal visualizations
++├── Python_08_Pro5Tab.ipynb  (36 KB) — 5-proposal tabular data
++├── Python_09_ProOps4.ipynb (1.5 MB) — Opus 4 Extended proposal
++└── Python_10_ProSon4.ipynb (1.7 MB) — Sonnet 4 Extended proposal
++```
++
++## License
++
++[Apache License 2.0](LICENSE.md)
+diff --git a/R&D/README.md b/R&D/README.md
+index eb5dd06d..820fe269 100644
+--- a/R&D/README.md
++++ b/R&D/README.md
+@@ -1,4 +1,106 @@
+-## AI Applications for Drug Industry
+-LLM and LLM agent pharmaceutical industry applications
++# R&D
++
++**Research and Development Documentation**
+ 
+ [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.13273141-blue)](https://doi.org/10.5281/zenodo.13273141)
++
++## Overview
++
++70 markdown research documents covering quantum machine learning algorithms, medical AI applications, drug discovery generative AI, and industry analysis.
++
++## Document Catalog
++
++### LLM and Generative AI (030–039)
++
++| # | Title |
++|---|---|
++| 030 | LLM Explainability, Tensor Networks |
++| 031 | How to Code LLMs, Tensor Networks |
++| 032 | Drug Discovery Generative AI |
++| 033 | Drug Discovery GenAI, De Novo |
++| 034 | Meta Llama 3 Fine-tuning, RAG |
++| 035 | Meta Llama 3 Drug Discovery GenAI |
++| 036 | Cancer Drug Discovery AI |
++| 037 | Cancer Drug Discovery Innovation |
++| 038 | How to Develop APIs, GenAI |
++| 039 | Local GenAI Model Frameworks |
++
++### Tensor Networks and Explainability (027–031)
++
++| # | Title |
++|---|---|
++| 027 | Tensor Network Revolution |
++| 028 | Tensor Network, Neural Network |
++| 029 | Tensor Networks vs. PCA and PLS |
++| 030 | LLM Explainability, Tensor Networks |
++| 031 | How to Code LLMs, Tensor Networks |
++
++### QML Algorithms and Medical Applications (001–026)
++
++| # | Title |
++|---|---|
++| 001 | All Seminars |
++| 002 | Technology Timeline |
++| 003 | Emerging Advantages |
++| 004 | TensorFlow and IBM |
++| 005 | Algorithms in Medical Analysis |
++| 006 | Medical Forecast |
++| 007 | Embedding Medical Data, QML |
++| 008 | QML Algorithms History |
++| 009 | Qiskit or PennyLane PyTorch Ports |
++| 010 | 100 Resources for Medical |
++| 011 | 100 Coding Tips |
++| 012 | Potential Radiomics QML |
++| 013 | Specific QiML Algorithms |
++| 014 | How to: QML Loss, Optimizer |
++| 015 | Healthy QiML Industry |
++| 016 | QiML Algorithm Architecture |
++| 017 | Deep Learning Quantum Parameters |
++| 018 | NIH Developer Seminar |
++| 019 | QML Algorithms, Medical School |
++| 020 | QML Algorithms, Medical R&D |
++| 021 | Quantum Algorithm Time Complexity |
++| 022 | Medical QiML Software Migration |
++| 023 | Better Quantum-inspired Processing |
++| 024 | Surpassing Competition, 3 QiML |
++| 025 | Practical QiML 2.0 for Healthcare |
++| 026 | QiML 2.0 Speed-Ups, New Era |
++
++### Prototyping and Benchmarking (040–070)
++
++| # | Title |
++|---|---|
++| 040 | April 2023 R&D |
++| 041 | May 2023 R&D |
++| 042 | June 2023 R&D |
++| 043 | MVP Iteration Ten |
++| 044 | Developments for Health |
++| 045 | Quantum Platform |
++| 046 | 44 Class Classification |
++| 047 | Algorithms Prototyping |
++| 048 | Startup Tables |
++| 049 | QML Algorithms Prototyping |
++| 050 | Time, Cost, Efficiency |
++| 051 | Benchmarking Devices |
++| 052 | QiML Parameters |
++| 053 | Data-Reuploading |
++| 054 | Kernel-based training |
++| 055 | Advanced Benchmarking |
++| 056 | Advanced PyTorch, Keras |
++| 057 | Parallel Quantum Algorithms |
++| 058 | How to Medical R&D |
++| 059 | QML Neuroimaging |
++| 060 | Potential Approvals |
++| 061–062 | QML |
++| 063 | Explainable AI |
++| 064 | AI Approvals |
++| 065 | Reconstruction |
++| 066 | QiML |
++| 067 | AI, Potential QML |
++| 068 | New Approvals |
++| 069 | QiML, Review |
++| 070 | QiML 2.0 |
++
++## License
++
++[Apache License 2.0](LICENSE.md)
+diff --git a/README.md b/README.md
+index 7e38acd2..5dd3c35d 100644
+--- a/README.md
++++ b/README.md
+@@ -1,12 +1,258 @@
+-## Oncology Trial Innovation
++# LLMs-Pharmaceutical
+ 
+- 
+-ChemicalQDevice innovates novel physical ai applications for oncology clinical trials. Anthropic, Google, OpenAI, and xAI large language models (LLMs) are utilized to generate machine learning training code, simulations, and physical robot scripts.
++**LLM Applications for Cancer Drug Discovery and Oncology Clinical Trials**
+ 
+-[LLM Papers: Cancer Drug & Oncology Trials](https://doi.org/10.5281/zenodo.18171361)
++[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.md)
++[![Version](https://img.shields.io/badge/Version-4.2.0-green.svg)](CHANGELOG.md)
++[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
++[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.13273141-blue.svg)](https://doi.org/10.5281/zenodo.13273141)
+ 
+-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.13273141-blue)](https://doi.org/10.5281/zenodo.13273141)
++---
+ 
++> ### [LLM Papers: Cancer Drug & Oncology Trials](https://doi.org/10.5281/zenodo.18171361)
++> Complete collection of peer-reviewed manuscripts and preprints on LLM-driven oncology research by ChemicalQDevice.
+ 
++---
+ 
++## Overview
+ 
++ChemicalQDevice develops AI applications for oncology clinical trials and pharmaceutical research. Anthropic, Google, OpenAI, and xAI large language models (LLMs) are utilized to generate machine learning training code, clinical trial simulations, drug discovery pipelines, and multi-model research workflows.
++
++This repository contains **2,300+ files** across three primary directories spanning LLM/AI code notebooks, published manuscripts, and R&D documentation.
++
++| Metric | Value |
++|---|---|
++| **Jupyter Notebooks** | 1,446 |
++| **Python Scripts** | 35 |
++| **Published Manuscripts** | 17+ (with DOIs) |
++| **R&D Documents** | 70 |
++| **Research Directories** | 28 |
++| **Repository Size** | 801 MB |
++
++## Repository Structure
++
++```
++LLMs-Pharmaceutical/
++├── Code/                          # 2,235 files — Notebooks, scripts, and research code
++│   ├── Digital_Twin_PDAC/         #   10 notebooks — PDAC digital twin clinical trial proposals
++│   ├── Drug Discovery/            #  290 files     — 14 subdirectories: LLM, RAG, agentic, multi-model
++│   │   ├── Agentic-LLM/           #    4 notebooks — Agentic LLM drug discovery workflows
++│   │   ├── Multi-LLM/             #   15 notebooks — Multi-LLM comparisons, meta-analyses, reports
++│   │   ├── Quad-LLM/              #   14 notebooks — Quad-LLM evaluation pipelines
++│   │   ├── ProtBert/              #    1 notebook  — Protein language model experiments
++│   │   ├── ProtGPT2/              #    2 notebooks — Protein generation models
++│   │   ├── Llama-3 RAG/           #    2 notebooks — Llama-3 retrieval-augmented generation
++│   │   ├── Meta-Llama-3/          #    6 notebooks — Meta Llama-3 fine-tuning and inference
++│   │   └── ...                    #   (LLM, LLM-RAG, LMM, XLLM, pLDM, iPhone 15 Pro)
++│   ├── Hugging Face/              #   15 notebooks — Llama-3 fine-tuning, 32-pipeline benchmark
++│   ├── LangChain/                 #    9 notebooks — Agent Supervisor, Code Assistant, RAPTOR
++│   ├── Generative AI Live/        #    6 notebooks — Live coding: RAG, RAPTOR, Agent, fine-tuning
++│   ├── Groq/                      #    1 notebook  — GroqCloud inference benchmarks (4 models)
++│   ├── Open WebUI/                #              — Ollama/Docker deployment studies
++│   ├── Python/                    #   35 scripts  — Python tutorial series (Classes → Logging)
++│   ├── C++/                       #   47 files    — C++ tutorial source files
++│   ├── Apple/                     #              — LLM Farm: MacBook Pro, iPad Pro, iPhone 15 Pro
++│   ├── PennyLane/                 #  488 notebooks — QML algorithms and benchmarking
++│   ├── Qiskit/                    #   18 notebooks — Quantum programming and device benchmarks
++│   └── ...                        #   (QML and quantum parallel algorithm directories)
++│
++├── Manuscripts/                   # Published research — 17+ papers with DOIs
++│   ├── README.md                  #   67 KB — Full abstracts, citations, and DOI badges
++│   └── LICENSE.md                 #   CC BY 4.0
++│
++├── R&D/                           # 70 markdown research documents
++│   ├── 001–070 *.md               #   Topics: QML, medical AI, industry analysis
++│   ├── README.md                  #   Document catalog
++│   └── LICENSE.md                 #   Apache 2.0
++│
++├── README.md                      # This file
++├── LICENSE.md                     # Apache License 2.0
++├── CHANGELOG.md                   # Version history
++├── CONTRIBUTING.md                # Contribution guidelines
++├── CODE_OF_CONDUCT.md             # Community standards
++├── SECURITY.md                    # Security policy
++├── SUPPORT.md                     # Getting help
++├── CITATION.cff                   # Citation metadata
++├── ruff.toml                      # Linter configuration
++├── .gitignore                     # Git ignore rules
++├── .github/                       # CI workflows and templates
++├── Daraxonrasib Efficient LLM Trial Simulations.pdf
++├── LaTeX LLM Oncology Table Prompting Guide.pdf
++└── Scaling Oncology LLM Generated Code Jan 2026.pdf
++```
++
++## Manuscripts
++
++The `Manuscripts/` directory contains the full abstracts, citations, and DOI links for all published work. Key publications are summarized below in reverse chronological order.
++
++### 2025–2026 LLM and Clinical Trial Studies
++
++| Date | Title | DOI |
++|---|---|---|
++| Dec 2025 | Code Generation Competition: 16 Proprietary vs. Open-Source LLMs & Iterative Learning Based on FDA FAERS | [10.5281/zenodo.18029100](https://doi.org/10.5281/zenodo.18029100) |
++| Nov 2025 | AI Peer Review Acceleration of LLM-Generated Glioblastoma Clinical Trial Patient Matching ML | [10.5281/zenodo.17774560](https://doi.org/10.5281/zenodo.17774560) |
++| Nov 2025 | LLM-Generated Glioblastoma Drug Synergy Machine Learning | [10.5281/zenodo.17614396](https://doi.org/10.5281/zenodo.17614396) |
++| Oct 2025 | End-to-End Oncology Clinical Trial LLM Efficiency For Industry Adoption | [10.5281/zenodo.17451709](https://doi.org/10.5281/zenodo.17451709) |
++| Sep 2025 | Accelerating FDA Compliance via AI Digital Twin Pancreatic Cancer Simulation | [10.5281/zenodo.17239510](https://doi.org/10.5281/zenodo.17239510) |
++| Aug 2025 | QSP Metastatic Pancreatic Cancer AI Clinical Trial Simulation | [10.5281/zenodo.17001137](https://doi.org/10.5281/zenodo.17001137) |
++| Jul 2025 | ChatGPT 100,000 Patient 24-Month In Silico Phase III Clinical Trial | [10.5281/zenodo.16415815](https://doi.org/10.5281/zenodo.16415815) |
++| Jun 2025 | End-to-End PDAC Digital Twin Clinical Trial Proposals | [10.5281/zenodo.15735068](https://doi.org/10.5281/zenodo.15735068) |
++| May 2025 | 10 Year Glioblastoma Clinical Trial Meta-Analyses by Autonomous AI | [10.5281/zenodo.15549831](https://doi.org/10.5281/zenodo.15549831) |
++| Apr 2025 | AI Revolution Toward the Cure of Lung Adenocarcinoma | [10.5281/zenodo.15278152](https://doi.org/10.5281/zenodo.15278152) |
++| Mar 2025 | Autonomous LLM Agent and Scalable Reasoning LLM for Cancer Drug Cost Solutions | [10.5281/zenodo.15072843](https://doi.org/10.5281/zenodo.15072843) |
++| Feb 2025 | Cost Containment of Global mAb Drugs and Cancer Clinical Trials via LLM Reasoning | [10.5281/zenodo.14968404](https://doi.org/10.5281/zenodo.14968404) |
++| Jan 2025 | Clinical Decision Support Based on Bevacizumab Cancer Trials | [10.5281/zenodo.14968162](https://doi.org/10.5281/zenodo.14968162) |
++
++### 2024 AI and Chemistry Studies
++
++| Date | Title | DOI |
++|---|---|---|
++| Dec 2024 | Cancer vs. Conversational Artificial Intelligence | [10.1101/2024.12.28.630597](https://doi.org/10.1101/2024.12.28.630597) |
++| Nov 2024 | mAb Bioprocess Engineering In-Context Table Forecasts | [10.26434/chemrxiv-2024-jzbj0](https://doi.org/10.26434/chemrxiv-2024-jzbj0) |
++| Oct 2024 | Monoclonal Antibody Bioprocess Engineering Using Conversational AI | [10.26434/chemrxiv-2024-3m7m1](https://doi.org/10.26434/chemrxiv-2024-3m7m1) |
++| Oct 2024 | Paclitaxel Biosynthesis AI Breakthrough | [10.26434/chemrxiv-2024-pqjd3](https://doi.org/10.26434/chemrxiv-2024-pqjd3) |
++
++> Full abstracts and citation details are available in [`Manuscripts/README.md`](Manuscripts/README.md).
++
++## Research Areas
++
++### Digital Twin PDAC — Clinical Trial Simulation
++
++```
++Code/Digital_Twin_PDAC/
++├── Notebooks/
++│   ├── Python_01_RP01.ipynb    ─── Research proposal report 1
++│   ├── Python_02_RP02.ipynb    ─── Research proposal report 2
++│   ├── Python_03–05_RP*.ipynb  ─── Continued proposal reports
++│   ├── Python_06_RP06.ipynb    ─── Extended proposal analysis (5.4 MB)
++│   ├── Python_07_Pro5Viz.ipynb ─── 5-proposal visualizations
++│   ├── Python_08_Pro5Tab.ipynb ─── 5-proposal tabular data
++│   ├── Python_09_ProOps4.ipynb ─── Opus 4 Extended proposal
++│   └── Python_10_ProSon4.ipynb ─── Sonnet 4 Extended proposal
++└── Images/
++    ├── Proposals/
++    └── Reports/
++```
++
++10 notebooks implementing a multi-AI pipeline for pancreatic ductal adenocarcinoma (PDAC) digital twin clinical trial proposals. Seven AI model combinations (o3re, g25p, son4, grk3, o3pr, ops4, o3ch) generated 40 meta-analyses, 6 reports, and 5 trial proposals scored up to 9.60/10.
++
++### Drug Discovery — Multi-Model LLM Pipelines
++
++```
++Code/Drug Discovery/
++├── Agentic-LLM/           # 4 notebooks  — Agentic LLM workflows
++├── Multi-LLM/             # 15 notebooks — Multi-model comparisons and meta-analyses
++│   ├── Images/
++│   ├── Notebooks/
++│   ├── Reports/
++│   └── Meta-Analyses/
++├── Quad-LLM/              # 14 notebooks — Four-model evaluation pipelines
++│   ├── Images/
++│   └── Notebooks/
++├── ProtBert/              # 1 notebook   — Protein language model
++├── ProtGPT2/              # 2 notebooks  — Protein generation
++├── Meta-Llama-3/          # 6 notebooks  — Llama-3 fine-tuning
++├── Llama-3 RAG/           # 2 notebooks  — Retrieval-augmented generation
++├── LLM/                   # LLM approach documentation
++├── LLM-RAG/               # Drug synthesis RAG
++├── LMM/                   # Large multimodal models
++├── XLLM/                  # Precision medicine
++├── pLDM/                  # 2 notebooks  — Protein latent diffusion
++└── iPhone 15 Pro/         # On-device inference
++```
++
++290 files across 14 subdirectories covering LLM, agentic, RAG, multi-model, and protein language model approaches to drug discovery. Key studies include Groq inference benchmarks (4 models, ~1000 tokens/sec), Hugging Face 32-pipeline evaluations, and LangChain agent workflows.
++
++### Hugging Face, LangChain, Generative AI
++
++```
++Code/Hugging Face/              # 15 notebooks — 32-pipeline benchmark, Llama-3 fine-tuning
++Code/LangChain/                 #  9 notebooks — Agent Supervisor, Code Assistant, RAPTOR
++Code/Generative AI Live/        #  6 notebooks — Live demos: RAG, RAPTOR, Agent, fine-tuning
++Code/Groq/                      #  1 notebook  — GroqCloud 4-model inference comparison
++Code/Open WebUI/                #              — Ollama/Docker GenAI deployment
++```
++
++### Quantum Machine Learning (Historical)
++
++Earlier work focused on quantum machine learning (QML) using PennyLane and Qiskit frameworks. This represents the largest portion of notebooks by count (600+) and covers algorithm prototyping, parallel quantum architectures, tensor networks, and device benchmarking.
++
++```
++Code/PennyLane/                            # 488 notebooks
++Code/Qiskit/                               #  18 notebooks
++Code/All PennyLane QML Demos/              #  26 notebooks
++Code/All Qiskit ML Demos/                  #  13 notebooks
++Code/All Qiskit, PennyLane QML Nov 23/     #  54 notebooks
++Code/Efficiency Metrics for Parallel QML Algorithms/
++Code/Parallel Quantum Algorithms torch.nn Seq, Mod/
++Code/PyTorch, Keras, PL Parallel Quantum Algorithms/
++Code/QML Parameters for Breakthrough Parallel Algorithms/
++Code/Quantum Parallel Architectures Progression/
++Code/Tensor Network vs FC Controllability/
++Code/Tensor Network vs FC Explainability/
++Code/Tensor Network vs Fully Connected Layer/
++Code/Tensor Networks for Generative AI/
++```
++
++### R&D Documents
++
++70 markdown research documents (`R&D/001`–`R&D/070`) covering QML algorithm design, medical AI applications, and industry analysis. See [`R&D/README.md`](R&D/README.md) for the full catalog.
++
++## Research Timeline
++
++```
++2023 ──── Quantum ML foundations (PennyLane, Qiskit, parallel algorithms)
++  │
++2024 ──── LLM pivot: drug discovery, spectrometric analysis, bioprocess engineering
++  │         ├── Multi-LLM and Quad-LLM evaluation frameworks
++  │         ├── Protein language models (ProtBert, ProtGPT2)
++  │         ├── Hugging Face 32-pipeline benchmark
++  │         └── LangChain agents and RAG pipelines
++  │
++2025 ──── Clinical trial scale-up and regulatory workflows
++  │         ├── Digital Twin PDAC (7 AI models, 40 meta-analyses)
++  │         ├── 100K patient in silico Phase III trials
++  │         ├── QSP pancreatic cancer simulations (250 ODEs/patient)
++  │         ├── End-to-end oncology trial LLM efficiency (52-73% faster, 24-50% less cost)
++  │         ├── Glioblastoma drug synergy ML (accuracy 0.9804)
++  │         ├── AI peer review workflows
++  │         └── 16-LLM code generation competition on FDA FAERS
++  │
++2026 ──── Scaling and methodology
++            ├── Scaling Oncology LLM Generated Code
++            ├── Daraxonrasib Efficient LLM Trial Simulations
++            └── LaTeX LLM Oncology Table Prompting Guide
++```
++
++## Key Results
++
++- **Trial time reduction**: 52–73% faster with LLM-assisted workflows (Oct 2025)
++- **Trial cost reduction**: 24–50% less expensive; 99.6–99.9997% cost reduction vs. in-person trials
++- **Per-patient cost**: $3.6 (in silico) vs. $59,500 (traditional) — a 16,528x difference
++- **Drug synergy prediction**: 0.9804 accuracy, 0.9705 Macro-F1 on glioblastoma drug pairs (Nov 2025)
++- **In silico scale**: 100,000 patients, 24-month, 5-arm Phase III triplicate (Jul 2025)
++- **AI experiment speed**: Core experiments completed in 3.1–5.4 hours (May 2025)
++- **Proposal scores**: Up to 9.60/10 for PDAC digital twin trial proposals (Jun 2025)
++
++## License
++
++- **Code and documentation**: [Apache License 2.0](LICENSE.md)
++- **Manuscripts**: [CC BY 4.0](Manuscripts/LICENSE.md)
++
++## Citation
++
++```bibtex
++@misc{kawchak2026llmspharmaceutical,
++  author    = {Kawchak, Kevin},
++  title     = {LLMs-Pharmaceutical: LLM Applications for Cancer Drug Discovery and Oncology Clinical Trials},
++  year      = {2026},
++  publisher = {GitHub},
++  url       = {https://github.com/kevinkawchak/LLMs-Pharmaceutical},
++  doi       = {10.5281/zenodo.13273141}
++}
++```
++
++## Author
++
++**Kevin Kawchak** — CEO, ChemicalQDevice, San Diego, CA
++kevink@chemicalqdevice.com
+diff --git a/SECURITY.md b/SECURITY.md
+new file mode 100644
+index 00000000..d46efddb
+--- /dev/null
++++ b/SECURITY.md
+@@ -0,0 +1,33 @@
++# Security Policy
++
++## Scope
++
++This repository contains research notebooks, manuscripts, and documentation for LLM applications in pharmaceutical development and oncology clinical trials. It does not include deployed services, APIs, or patient-facing software.
++
++## Reporting a Vulnerability
++
++If you discover a security issue (e.g., exposed credentials, data leakage in a notebook, or a dependency vulnerability), please report it confidentially:
++
++- **Email**: kevink@chemicalqdevice.com
++- **Subject line**: `[SECURITY] LLMs-Pharmaceutical — <brief description>`
++
++## Response Timeline
++
++| Action | Target |
++|---|---|
++| Acknowledgment | 7 days |
++| Fix or mitigation | 30 days |
++
++## Supported Versions
++
++Security reports are accepted for the latest `main` branch only.
++
++## Researcher Responsibilities
++
++- Do not commit protected health information (PHI), personally identifiable information (PII), or API keys
++- Notebook outputs should be reviewed before committing to ensure no sensitive data is included
++- LLM-generated code executed on patient data may require FDA approval; see individual study disclosures
++
++## Dependencies
++
++This repository does not maintain a centralized `requirements.txt` for all notebooks. Individual notebooks may reference third-party packages (PyTorch, PennyLane, LangChain, etc.) whose security is managed upstream by their respective maintainers.
+diff --git a/SUPPORT.md b/SUPPORT.md
+new file mode 100644
+index 00000000..7ede3260
+--- /dev/null
++++ b/SUPPORT.md
+@@ -0,0 +1,30 @@
++# Support
++
++## Getting Help
++
++| Channel | Use For |
++|---|---|
++| [GitHub Issues](https://github.com/kevinkawchak/LLMs-Pharmaceutical/issues) | Bug reports, broken links, documentation errors |
++| [GitHub Discussions](https://github.com/kevinkawchak/LLMs-Pharmaceutical/discussions) | Questions about research methodology, notebook usage, or LLM configurations |
++
++## Before Opening an Issue
++
++1. Search [existing issues](https://github.com/kevinkawchak/LLMs-Pharmaceutical/issues) for duplicates
++2. Include the notebook path and any error messages
++3. Specify your environment (Python version, GPU type, Colab vs. local)
++
++## Notebook Execution
++
++Most notebooks in `Code/` were developed in Google Colab. To reproduce results:
++
++- Use the Python version and GPU type noted in each notebook's header cells
++- Install dependencies listed in the notebook's initial `!pip install` cells
++- Some notebooks require API keys for OpenAI, Anthropic, Google, or xAI services
++
++## Research and Clinical Questions
++
++This repository is for educational and research purposes. For questions about clinical trial design, regulatory compliance, or patient safety, consult qualified institutional teams and regulatory bodies.
++
++## Manuscript Access
++
++Published manuscripts are indexed in `Manuscripts/README.md` with Zenodo and preprint server DOI links. Full papers are accessible through the linked DOIs.
+diff --git a/V4.2.0_RELEASE.md b/V4.2.0_RELEASE.md
+new file mode 100644
+index 00000000..f6ddca37
+--- /dev/null
++++ b/V4.2.0_RELEASE.md
+@@ -0,0 +1,33 @@
++Release title
++v4.2.0 - GitHub Standards, CI Pipeline, and Documentation Restructure
++
++## Summary
++
++Introduces GitHub community standards, a CI pipeline with ruff lint-and-format checks across Python 3.10/3.11/3.12, and a restructured main README that emphasizes newer LLM-based oncology research while condensing historical quantum ML sections. Adds detailed sub-directory READMEs for Code/ and R&D/, issue/PR templates, citation metadata, and a comprehensive changelog reconstructed from commit history. No existing code or manuscript files were modified.
++
++## Features
++
++- **CI pipeline** (`.github/workflows/ci.yml`): ruff lint-and-format job on Python 3.10, 3.11, 3.12 with research code excluded via `ruff.toml`
++- **CHANGELOG.md**: Version history from v1.0.0 through v4.2.0 reconstructed from commit patterns and directory additions
++- **CONTRIBUTING.md**: Contribution guidelines covering notebooks, manuscripts, code standards, and data/citation requirements
++- **CODE_OF_CONDUCT.md**: Contributor Covenant v2.1 adapted with clinical and research integrity requirements
++- **SECURITY.md**: Security policy with reporting process, response timeline, and researcher responsibilities
++- **SUPPORT.md**: Help channels, notebook execution guidance, and manuscript access information
++- **CITATION.cff**: Machine-readable citation metadata with Zenodo DOIs and keywords
++- **.gitignore**: Python, Jupyter, IDE, OS, and secrets exclusion rules
++- **Issue templates**: Bug report and feature request templates with clinical relevance fields
++- **Pull request template**: Structured PR checklist including lint, data review, and changelog requirements
++- **Main README.md**: Restructured with license/version/Python/DOI badges, prominent LLM Papers link, repository metrics table, full directory tree, manuscript publication timeline with DOI links, research area deep-dives with structure diagrams, research timeline visualization, and key results summary
++- **Code/README.md**: Comprehensive directory index with file/notebook counts across all 28 research directories, Drug Discovery and Digital Twin PDAC structure diagrams
++- **R&D/README.md**: Full 70-document catalog organized by topic area (LLM/GenAI, tensor networks, QML, prototyping/benchmarking)
++
++## Contributors
++@kevinkawchak
++
++## Notes
++
++- Version numbering (v4.2.0) continues from the implicit v4.1 state of the repository based on the Feb 2026 commit adding scaling/methodology PDFs
++- The `ruff.toml` excludes the entire `Code/` directory from lint checks because it contains 1,446 LLM-generated Jupyter notebooks and 35 educational Python tutorial scripts not written to pass lint. This ensures CI passes cleanly on all three Python versions
++- No existing code, notebook, manuscript, or R&D files were modified. All changes are new files or updates to existing README.md files
++- The Manuscripts/README.md was intentionally left unchanged as it already contains comprehensive abstracts and DOI citations (67 KB)
++- Historical changelog entries (v1.0.0 through v4.1.0) are approximate reconstructions based on commit history and directory structure
+diff --git a/ruff.toml b/ruff.toml
+new file mode 100644
+index 00000000..c3238529
+--- /dev/null
++++ b/ruff.toml
+@@ -0,0 +1,12 @@
++line-length = 120
++target-version = "py310"
++
++# Exclude research code directories from all checks.
++# Code/ contains LLM-generated Jupyter notebooks and educational Python tutorials.
++exclude = [
++    "Code/**",
++]
++
++[lint]
++select = ["E", "F", "W"]
++ignore = ["F841", "E741", "E501"]

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/stevekm__IGV-snapshot-automator-7"
+description = "Add ability to group reads by strand"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "IGV-snapshot-automator",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "stevekm/IGV-snapshot-automator"
+ref = "edc302331142cfde6d36b4ed35542a2398b66e34"
+reference = "https://github.com/stevekm/IGV-snapshot-automator/pull/7"
+source_access = "auto"
+built_at = "2026-11-13T16:18:38.383407+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:50efbd301a3080eec768bb402a0a04fc96bb67d10e227602485d9270b398d78b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-03-31T16:32:31Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "make_IGV_snapshots.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 34
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

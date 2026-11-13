@@ -1,0 +1,57 @@
+# Issue
+
+**Title:** Fix SV priority when using single caller
+
+## Description
+
+<!--
+# nf-core/raredisease pull request
+
+Many thanks for contributing to nf-core/raredisease!
+
+Please fill in the appropriate checklist below (delete whatever is not relevant).
+These are the most common things requested on pull requests (PRs).
+
+Remember that PRs should be made against the dev branch, unless you're preparing a pipeline release.
+
+Learn more about contributing: [CONTRIBUTING.md](https://github.com/nf-core/raredisease/tree/master/.github/CONTRIBUTING.md)
+-->
+
+## Description
+
+Described in the Issue, #1066
+
+## Changes
+
+- `main.nf`: always pass the full list of active nuclear SV callers as `ch_svcaller_priority`.
+- `workflows/raredisease.nf`: just before `MERGE_NUCLEAR_AND_MT_SVS`, only pass the priority when it has more than one entry, i.e. when more than one VCF is merged.
+- `CHANGELOG.md`: add an entry under `Fixed`.
+
+## Testing
+
+Tested by resuming the failing run on our cluster, with only manta active and mitosalt enabled:
+
+```
+skip_tools: fastp,gens,germlinecnvcaller,vep_sv,vcf2cytosure,tiddit,cnvnator
+```
+
+`MERGE_NUCLEAR_AND_MT_SVS` now runs with `--priority manta,mitosalt` and completes. The default `test` profile has several SV callers active, so its behaviour, and therefore the existing snapshots, should not change.
+
+## PR checklist
+
+- [x] This comment contains a description of changes (with reason).
+- [ ] If you've fixed a bug or added code that should be tested, add tests!
+- [ ] If you've added a new tool - have you followed the pipeline conventions in the [contribution docs](https://github.com/nf-core/raredisease/tree/master/.github/CONTRIBUTING.md)
+- [ ] If necessary, also make a PR on the nf-core/raredisease _branch_ on the [nf-core/test-datasets](https://github.com/nf-core/test-datasets) repository.
+- [ ] Make sure your code lints (`nf-core pipelines lint`).
+- [ ] Ensure the test suite passes (`nextflow run . -profile test,docker --outdir <OUTDIR>`).
+- [ ] Ensure the test suite passes (`nextflow run . -profile test_singleton,docker --outdir <OUTDIR>`).
+- [ ] Check for unexpected warnings in debug mode (`nextflow run . -profile debug,test,docker --outdir <OUTDIR>`).
+- [ ] Usage Documentation in `docs/usage.md` is updated.
+- [ ] Output Documentation in `docs/output.md` is updated.
+- [x] `CHANGELOG.md` is updated.
+- [ ] `README.md` is updated (including new tool citations and authors/contributors).
+
+## Task
+
+Modify the repository so that the issue described above is resolved. The repository is checked out at base commit `7e6599d70339`. Edit files in place; the verifier captures your changes via `git diff` and scores them against an oracle patch using SWE-RL-style diff-similarity reward.

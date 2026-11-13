@@ -1,0 +1,435 @@
+diff --git a/src/genomicsqlite.cc b/src/genomicsqlite.cc
+index 97e15af..9bd2693 100644
+--- a/src/genomicsqlite.cc
++++ b/src/genomicsqlite.cc
+@@ -620,6 +620,90 @@ static pair<int, int> DetectLevelRange(sqlite3 *dbconn, const string &schema_tab
+     return std::pair<int, int>(min_lvl, max_lvl);
+ }
+ 
++/*
++ * Check the catalog for a table or view using sqlite3_stricmp(), SQLite's own
++ * identifier comparison. SQL collations are connection-local and applications
++ * can replace them, so they cannot reliably reproduce identifier matching.
++ *
++ * Throw on catalog errors: treating a failed probe as "not found" could make
++ * resolution incorrectly continue to a lower-priority schema.
++ *
++ * Example: main.T has levels (4, 4), temp.t has (1, 1). With a case-sensitive
++ * NOCASE override, a SQL catalog probe for 'T' misses temp.t and finds main.T.
++ * SQLite still resolves levels('T') to temp.t; caching that result under main.T
++ * makes levels('main.T') return (1, 1) instead of (4, 4).
++ */
++static bool CatalogHasTableOrView(sqlite3 *dbconn, const char *catalog, const string &table) {
++    string sql = string("SELECT name FROM ") + catalog + " WHERE type IN ('table','view')";
++    sqlite3_stmt *stmt = nullptr;
++    if (sqlite3_prepare_v2(dbconn, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
++        throw runtime_error(sqlite3_errmsg(dbconn));
++    }
++    shared_ptr<sqlite3_stmt> stmtp(stmt, sqlite3_finalize);
++    int rc;
++    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
++        const unsigned char *name = sqlite3_column_text(stmt, 0);
++        if (name && sqlite3_stricmp((const char *)name, table.c_str()) == 0) {
++            return true;
++        }
++    }
++    if (rc != SQLITE_DONE) {
++        throw runtime_error(sqlite3_errmsg(dbconn));
++    }
++    return false;
++}
++
++/*
++ * SQLite resolves unqualified names by searching temp, then main, then attached
++ * schemas. Only main-resolved names qualify for caching, so checking temp and
++ * main is sufficient; no attached-schema probe is needed.
++ *
++ * Example: main.t has levels (3, 0), temp.t has (0, 0). Calling levels('t')
++ * first reads temp.t. Filing that result under main's key makes the next
++ * levels('main.t') return (0, 0). A range query using those bounds then skips
++ * main's level-3 rows.
++ *
++ * An attached database can be detached and a different file attached under the
++ * same schema name between calls. Cached levels could then silently belong to
++ * the previous file. Main cannot be detached and rebound this way, so its
++ * database identity has no such ambiguity.
++ *
++ * Example: main has no t. Cache levels('t') from file A attached as aux, then
++ * detach aux and attach file B as aux. Reusing that entry serves A's bounds
++ * for B's t, even if the two tables have different levels.
++ */
++static bool UnqualifiedNameResolvesToMain(sqlite3 *dbconn, const string &table) {
++    return !CatalogHasTableOrView(dbconn, "sqlite_temp_master", table) &&
++           CatalogHasTableOrView(dbconn, "sqlite_master", table);
++}
++
++/*
++ * A levels query inside a writable statement, such as an AFTER DELETE trigger,
++ * can see the statement's uncommitted changes. In autocommit mode,
++ * sqlite3_get_autocommit() remains 1 during execution, so the autocommit store
++ * gate does not exclude this snapshot.
++ *
++ * A statement rollback, such as RAISE(ABORT), can restore the rows without
++ * advancing either cache validity counter. Storing those levels could therefore
++ * serve bounds for rolled-back changes later. Existing cached bounds can also
++ * predate the ongoing writes, so bypass both lookup and storage while any
++ * writable statement is active.
++ *
++ * Example: an autocommit DELETE removes t's only level-3 row, leaving a level-0
++ * row. Its AFTER DELETE trigger reads levels('t') = (0, 0), then calls
++ * RAISE(ABORT, 'boom'). The deleted row returns without advancing either counter,
++ * so a stored (0, 0) would still pass validation after the statement rolls back.
++ */
++static bool HasActiveWritableStatement(sqlite3 *dbconn) {
++    sqlite3_stmt *stmt = nullptr;
++    while ((stmt = sqlite3_next_stmt(dbconn, stmt)) != nullptr) {
++        if (sqlite3_stmt_busy(stmt) && !sqlite3_stmt_readonly(stmt)) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ string GenomicRangeRowidsSQL(sqlite3 *dbconn, const string &indexed_table, const string &qrid,
+                              const string &qbeg, const string &qend, int ceiling, int floor) {
+     if (ceiling < 0) {
+@@ -896,12 +980,24 @@ class GenomicRangeIndexLevelsCursor : public SQLiteVirtualTableCursor {
+ 
+             uint32_t data_version = UINT32_MAX;
+             int db_total_changes = INT_MAX;
+-            bool main = schema.empty() || schema == "main.";
++            // Use a main-qualified key so bare and explicitly qualified calls share an entry.
++            string cache_key;
++            if (schema == "main.") {
++                cache_key = "main." + schema_table.second;
++            } else if (schema.empty()) {
++                try {
++                    if (UnqualifiedNameResolvesToMain(db_, schema_table.second)) {
++                        cache_key = "main." + schema_table.second;
++                    }
++                } catch (std::exception &) {
++                    // A failed catalog probe disables caching; DetectLevelRange still runs and
++                    // reports any error in the levels query.
++                }
++            }
++            bool main = !cache_key.empty() && !HasActiveWritableStatement(db_);
+             if (main) {
+-                // cache levels for tables of the main database, invalidated when database changes
+-                // are indicated by SQLITE_FCNTL_DATA_VERSION and/or sqlite3_total_changes().
+-                // Exclude attached databases because we can't know if a schema name could have
+-                // been reattached to a different file between invocations.
++                // Invalidate on changes reported by SQLITE_FCNTL_DATA_VERSION or
++                // sqlite3_total_changes().
+                 int rc =
+                     sqlite3_file_control(db_, nullptr, SQLITE_FCNTL_DATA_VERSION, &data_version);
+                 if (rc != SQLITE_OK) {
+@@ -909,7 +1005,7 @@ class GenomicRangeIndexLevelsCursor : public SQLiteVirtualTableCursor {
+                     return rc;
+                 }
+                 db_total_changes = sqlite3_total_changes(db_);
+-                auto cached = cache_.find(schema_table.second);
++                auto cached = cache_.find(cache_key);
+                 if (cached != cache_.end() && data_version == cached->second.data_version &&
+                     db_total_changes == cached->second.db_total_changes) {
+                     floor_ = cached->second.floor;
+@@ -930,11 +1026,19 @@ class GenomicRangeIndexLevelsCursor : public SQLiteVirtualTableCursor {
+             }
+             assert(floor_ >= 0 && ceiling_ >= floor_ && ceiling_ <= 15);
+ 
+-            if (main) {
+-                auto cached = cache_.find(schema_table.second);
++            if (main && sqlite3_get_autocommit(db_)) {
++                // Never memoize levels computed over uncommitted writes. Neither a full rollback
++                // nor ROLLBACK TO a savepoint advances these counters, so bounds from undone
++                // writes could still pass cache validation.
++                //
++                // Example: t has one level-3 row at beg=0 and one level-0 row.
++                // BEGIN; SAVEPOINT s; DELETE FROM t WHERE beg=0; leaves levels('t') = (0, 0).
++                // ROLLBACK TO s restores levels (3, 0) without advancing either counter, so a
++                // cached (0, 0) would still pass validation after the rollback.
++                auto cached = cache_.find(cache_key);
+                 if (cached == cache_.end()) {
+-                    cache_[schema_table.second] = cached_levels();
+-                    cached = cache_.find(schema_table.second);
++                    cache_[cache_key] = cached_levels();
++                    cached = cache_.find(cache_key);
+                     assert(cached != cache_.end());
+                 }
+                 cached->second.data_version = data_version;
+diff --git a/test/test_gri.py b/test/test_gri.py
+index 4ea62dc..42a2b8f 100644
+--- a/test/test_gri.py
++++ b/test/test_gri.py
+@@ -385,6 +385,272 @@ def test_gri_levels_in_sql(tmp_path):
+     assert results == [(15, 0)]
+ 
+ 
++def _levels(con, name="t"):
++    return next(iter(con.execute(f"SELECT * FROM genomic_range_index_levels('{name}')")))
++
++
++def _levels_indexed(con, name="t"):
++    # the documented levels-fed pattern: bounds from genomic_range_index_levels() fed into
++    # genomic_range_rowids()
++    ceiling, floor = _levels(con, name)
++    return sorted(
++        row[0]
++        for row in con.execute(
++            f"SELECT * FROM genomic_range_rowids('{name}','chr1',500,501,?,?)", (ceiling, floor)
++        )
++    )
++
++
++def _levels_control(con, name="t"):
++    return sorted(
++        row[0]
++        for row in con.execute(
++            f"SELECT rowid FROM {name} NOT INDEXED"
++            " WHERE rid='chr1' AND NOT (end < 500 OR beg > 501)"
++        )
++    )
++
++
++def _fill_levels_fixture(con, qname="t"):
++    # two rows whose genomic range index levels are (ceiling, floor) = (3, 0); the range query
++    # chr1:500-501 overlaps only the first row
++    con.execute(f"CREATE TABLE {qname}(rid TEXT, beg INTEGER, end INTEGER)")
++    con.executescript(genomicsqlite.create_genomic_range_index_sql(con, qname, "rid", "beg", "end"))
++    con.execute(f"INSERT INTO {qname} VALUES('chr1',0,1000)")
++    con.execute(f"INSERT INTO {qname} VALUES('chr1',5000,5001)")
++
++
++def _fill_temp_levels_fixture(con):
++    # temp table with the same name as the fixture's main table, holding only a level-0 row
++    con.execute("CREATE TEMP TABLE t(rid TEXT, beg INTEGER, end INTEGER)")
++    con.executescript(
++        genomicsqlite.create_genomic_range_index_sql(con, "temp.t", "rid", "beg", "end")
++    )
++    con.execute("INSERT INTO temp.t VALUES('chr1',100,101)")
++
++
++def test_gri_levels_cache_rollback(tmp_path):
++    # Levels computed over uncommitted writes must never be served after those writes are
++    # rolled back, whether by ROLLBACK TO a savepoint or by a full ROLLBACK.
++    con = genomicsqlite.connect(str(tmp_path / "test.gsql"), isolation_level=None)
++    _fill_levels_fixture(con)
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++
++    con.execute("BEGIN")
++    con.execute("SAVEPOINT s")
++    con.execute("DELETE FROM t WHERE beg=0")
++    assert _levels(con) == (0, 0)  # levels of the in-transaction snapshot
++    con.execute("ROLLBACK TO SAVEPOINT s")
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++    con.execute("RELEASE s")
++    assert _levels(con) == (3, 0)
++    con.execute("COMMIT")
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++
++    con.execute("BEGIN")
++    con.execute("DELETE FROM t WHERE beg=0")
++    assert _levels(con) == (0, 0)
++    con.execute("ROLLBACK")
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++    con.close()
++
++
++def test_gri_levels_cache_bare_savepoint(tmp_path):
++    # A bare SAVEPOINT starts a transaction that RELEASE commits. Its uncommitted
++    # levels must not be served after ROLLBACK TO restores the rows.
++    con = genomicsqlite.connect(str(tmp_path / "test.gsql"), isolation_level=None)
++    _fill_levels_fixture(con)
++    assert _levels(con) == (3, 0)
++
++    con.execute("SAVEPOINT s")
++    con.execute("DELETE FROM t WHERE beg=0")
++    assert _levels(con) == (0, 0)
++    con.execute("ROLLBACK TO SAVEPOINT s")
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++    con.execute("RELEASE s")
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++    con.close()
++
++
++def test_gri_levels_cache_cross_connection(tmp_path):
++    # Another connection's committed writes still invalidate this connection's cached levels.
++    # (Plain connections: a GenomicSQLite database file admits only one writer connection.)
++    dbfile = str(tmp_path / "test.db")
++    con1 = sqlite3.connect(dbfile, isolation_level=None)
++    _fill_levels_fixture(con1)
++    assert _levels(con1) == (3, 0)
++
++    con2 = sqlite3.connect(dbfile, isolation_level=None)
++    con2.execute("DELETE FROM t WHERE beg=0")
++    assert _levels(con1) == (0, 0)
++    assert _levels_indexed(con1) == _levels_control(con1) == []
++    con1.close()
++    con2.close()
++
++
++def test_gri_levels_cache_temp_table(tmp_path):
++    # An unqualified name resolves to a same-named temp table; consulting it must not disturb
++    # the main table's levels.
++    con = genomicsqlite.connect(str(tmp_path / "test.gsql"), isolation_level=None)
++    _fill_levels_fixture(con)
++    _fill_temp_levels_fixture(con)
++
++    assert _levels(con, "t") == (0, 0)  # resolves to temp.t; temp's own levels
++    assert _levels(con, "temp.t") == (0, 0)
++    assert _levels(con, "main.t") == (3, 0)
++    assert _levels_indexed(con, "main.t") == _levels_control(con, "main.t") == [1]
++    con.close()
++
++
++def test_gri_levels_cache_temp_shadowing(tmp_path):
++    # Mirror image: main's levels are consulted first, then a temp table shadows the name.
++    con = genomicsqlite.connect(str(tmp_path / "test.gsql"), isolation_level=None)
++    _fill_levels_fixture(con)
++    assert _levels(con) == (3, 0)
++    _fill_temp_levels_fixture(con)
++
++    assert _levels(con, "t") == (0, 0)  # now resolves to temp.t
++    assert _levels(con, "main.t") == (3, 0)
++    assert _levels_indexed(con, "main.t") == _levels_control(con, "main.t") == [1]
++    con.close()
++
++
++def test_gri_levels_cache_attached(tmp_path):
++    # Levels for an attached database's table, consulted through the unqualified name, must
++    # not be served for a different file later attached under the same schema name.
++    aux1 = str(tmp_path / "aux1.gsql")
++    con = genomicsqlite.connect(aux1, isolation_level=None)
++    con.execute("CREATE TABLE t(rid TEXT, beg INTEGER, end INTEGER)")
++    con.executescript(genomicsqlite.create_genomic_range_index_sql(con, "t", "rid", "beg", "end"))
++    con.execute("INSERT INTO t VALUES('chr1',100,101)")  # levels (0, 0)
++    con.close()
++
++    aux2 = str(tmp_path / "aux2.gsql")
++    con = genomicsqlite.connect(aux2, isolation_level=None)
++    _fill_levels_fixture(con)  # levels (3, 0)
++    con.close()
++
++    con = genomicsqlite.connect(str(tmp_path / "test.gsql"), isolation_level=None)
++    con.execute(f"ATTACH '{aux1}' AS aux")
++    assert _levels(con, "t") == (0, 0)  # main has no t; resolves to aux.t
++    con.execute("DETACH aux")
++    con.execute(f"ATTACH '{aux2}' AS aux")
++    assert _levels(con, "aux.t") == (3, 0)
++    assert _levels(con, "t") == (3, 0)
++    assert _levels_indexed(con, "aux.t") == _levels_control(con, "aux.t") == [1]
++    con.close()
++
++
++def test_gri_levels_cache_trigger_abort(tmp_path):
++    # Trigger queries see the DELETE's uncommitted snapshot even in autocommit mode.
++    # Repeated reads must not cache it: RAISE(ABORT) restores the rows without
++    # advancing either validity counter.
++    con = sqlite3.connect(str(tmp_path / "test.db"), isolation_level=None)
++    _fill_levels_fixture(con)
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++
++    # The trigger-creation commit invalidates the warmed entry, forcing an in-trigger computation.
++    con.execute(
++        "CREATE TRIGGER trg AFTER DELETE ON t BEGIN"
++        " SELECT * FROM genomic_range_index_levels('t');"
++        " SELECT * FROM genomic_range_index_levels('t');"
++        " SELECT RAISE(ABORT, 'boom');"
++        " END"
++    )
++    with pytest.raises(sqlite3.Error, match="boom"):
++        con.execute("DELETE FROM t WHERE beg=0")
++    assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 2  # DELETE rolled back
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++    con.close()
++
++
++@pytest.mark.skipif(sqlite3.sqlite_version_info < (3, 35), reason="RETURNING requires SQLite 3.35+")
++def test_gri_levels_cache_trigger_abort_returning(tmp_path):
++    # This DELETE ... RETURNING aborts in its trigger before returning any rows.
++    # Its trigger queries must still bypass the cache.
++    con = sqlite3.connect(str(tmp_path / "test.db"), isolation_level=None)
++    _fill_levels_fixture(con)
++    assert _levels(con) == (3, 0)
++
++    con.execute(
++        "CREATE TRIGGER trg AFTER DELETE ON t BEGIN"
++        " SELECT * FROM genomic_range_index_levels('t');"
++        " SELECT * FROM genomic_range_index_levels('t');"
++        " SELECT RAISE(ABORT, 'boom');"
++        " END"
++    )
++    with pytest.raises(sqlite3.Error, match="boom"):
++        con.execute("DELETE FROM t WHERE beg=0 RETURNING rowid").fetchall()
++    assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 2
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++    con.close()
++
++
++def test_gri_levels_cache_trigger_abort_view(tmp_path):
++    # Reading the levels through a view must still detect the enclosing DELETE
++    # and bypass the cache inside its trigger.
++    con = sqlite3.connect(str(tmp_path / "test.db"), isolation_level=None)
++    _fill_levels_fixture(con)
++    con.execute("CREATE VIEW gri_levels AS SELECT * FROM genomic_range_index_levels('t')")
++    assert _levels(con) == (3, 0)
++
++    con.execute(
++        "CREATE TRIGGER trg AFTER DELETE ON t BEGIN"
++        " SELECT * FROM gri_levels;"
++        " SELECT * FROM gri_levels;"
++        " SELECT RAISE(ABORT, 'boom');"
++        " END"
++    )
++    with pytest.raises(sqlite3.Error, match="boom"):
++        con.execute("DELETE FROM t WHERE beg=0")
++    assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 2
++    assert _levels(con) == (3, 0)
++    assert _levels_indexed(con) == _levels_control(con) == [1]
++    con.close()
++
++
++def test_gri_levels_cache_nocase_override(tmp_path):
++    # SQLite's identifier comparison is fixed; the SQL NOCASE collation is replaceable.
++    # With case-sensitive NOCASE, a SQL name comparison would miss temp.t for 'T',
++    # misclassify it as main.T, and cache temp's levels under main's key.
++    con = sqlite3.connect(str(tmp_path / "test.db"), isolation_level=None)
++    con.create_collation("NOCASE", lambda a, b: (a > b) - (a < b))  # case-sensitive
++    _fill_levels_fixture(con, "T")
++    _fill_temp_levels_fixture(con)
++
++    assert _levels(con, "T") == (0, 0)  # unqualified: resolves to temp.t, as SQLite resolves it
++    assert _levels(con, "main.T") == (3, 0)
++    assert _levels_indexed(con, "main.T") == _levels_control(con, "main.T") == [1]
++    con.close()
++
++
++def test_gri_levels_cache_temp_shadow_after_warm(tmp_path):
++    # Creating a same-named temp table moves neither validity counter (DDL is not DML, and
++    # the temp schema lives in a different file), so only re-resolving the name when the
++    # cache is consulted keeps the unqualified call from serving main's warmed entry.
++    con = sqlite3.connect(str(tmp_path / "test.db"), isolation_level=None)
++    _fill_levels_fixture(con)
++    assert _levels(con) == (3, 0)  # warms main's cache entry
++
++    con.execute("CREATE TEMP TABLE t(rid TEXT, beg INTEGER, end INTEGER)")
++    con.executescript(
++        genomicsqlite.create_genomic_range_index_sql(con, "temp.t", "rid", "beg", "end")
++    )
++    assert _levels(con, "t") == (15, 0)  # the empty temp table's levels, not main's (3, 0)
++    assert _levels(con, "main.t") == (3, 0)
++    assert _levels_indexed(con, "main.t") == _levels_control(con, "main.t") == [1]
++    con.close()
++
++
+ def test_query_in_sql(tmp_path):
+     dbfile = str(tmp_path / "test.gsql")
+     con = genomicsqlite.connect(dbfile, unsafe_load=True)

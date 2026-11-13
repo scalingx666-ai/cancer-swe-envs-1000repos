@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/sanger-pathogens__Roary-566"
+description = "Fix create_pan_genome_plots.R script"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "Roary",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "sanger-pathogens/Roary"
+ref = "12a726e9ef87bb73a19ed4d22fe7e6b3551d6da1"
+reference = "https://github.com/sanger-pathogens/Roary/pull/566"
+source_access = "auto"
+built_at = "2026-11-13T15:57:27.530119+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6d174c9b95c49077464ac1d033bf5f600af529923048a23aaf957408c2514858"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-04-21T06:08:51Z"
+diff_format = "unified"
+context_files = [
+    "bin/create_pan_genome_plots.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 18
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

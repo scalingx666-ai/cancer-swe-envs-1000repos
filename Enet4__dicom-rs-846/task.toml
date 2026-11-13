@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/Enet4__dicom-rs-846"
+description = "Update dependencies"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "dicom-rs",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Enet4/dicom-rs"
+ref = "b232df36c66d128530f91e307fab3b1d6e320409"
+reference = "https://github.com/Enet4/dicom-rs/pull/846"
+source_access = "auto"
+built_at = "2026-11-13T15:52:37.522800+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ab4c31c3eaefc960b2b120106378462a0d4cf38aed88bbfe905921b2295b86b8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-24T09:37:34Z"
+diff_format = "unified"
+context_files = [
+    "Cargo.lock",
+    "core/Cargo.toml",
+    "json/Cargo.toml",
+    "object/Cargo.toml",
+    "object/fuzz/Cargo.lock",
+    "pixeldata/Cargo.toml",
+    "pixeldata/fuzz/Cargo.lock",
+    "ul/Cargo.toml",
+    "ul/fuzz/Cargo.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1840
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

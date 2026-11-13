@@ -1,0 +1,16 @@
+diff --git a/CPU/common/juicer_postprocessing.sh b/CPU/common/juicer_postprocessing.sh
+index 458413e..2d4b422 100755
+--- a/CPU/common/juicer_postprocessing.sh
++++ b/CPU/common/juicer_postprocessing.sh
+@@ -71,6 +71,11 @@ while getopts "h:g:j:i:m:t:" opt; do
+     esac
+ done
+ 
++## Provide reasonable default value for --threads, if not given
++if [ -z ${threads} ] ; then
++    threads=1;
++fi
++
+ ## Check that juicer_tools exists
+ if [ ! -e "${juicer_tools_path}" ]; then
+     echo "***! Can't find juicer tools in ${juicer_tools_path}";

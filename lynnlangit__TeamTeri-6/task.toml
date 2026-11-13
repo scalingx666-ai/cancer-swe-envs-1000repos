@@ -1,0 +1,75 @@
+version = "1.0"
+
+[task]
+name = "default/lynnlangit__TeamTeri-6"
+description = "Script updates"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "TeamTeri",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lynnlangit/TeamTeri"
+ref = "ddb846074de578c593d311b59edfeeab4bb0ca85"
+reference = "https://github.com/lynnlangit/TeamTeri/pull/6"
+source_access = "auto"
+built_at = "2026-11-13T16:38:10.858917+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0b6fd68148cbb7db8491926bc749ba68f4247821cd617ae15b577e049270a461"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-01-30T18:50:01Z"
+diff_format = "unified"
+context_files = [
+    ".idea/bashsupport_project.xml",
+    "Galaxy/kubernetes/00-standup.sh",
+    "Galaxy/kubernetes/01-disks.sh",
+    "Galaxy/kubernetes/99-teardown.sh",
+    "Galaxy/kubernetes/kubernetes-steps.md",
+    "Galaxy/kubernetes/primary-deployment.yaml",
+    "Galaxy/kubernetes/primary-service.yaml",
+    "Galaxy/setupScriptsForGalaxy/0_cli.rc",
+    "Galaxy/setupScriptsForGalaxy/1_gce-standup.sh",
+    "Galaxy/setupScriptsForGalaxy/1a_gce-standup.sh",
+    "Galaxy/setupScriptsForGalaxy/1b_gce-standup_and_run_boot-script.sh",
+    "Galaxy/setupScriptsForGalaxy/2_gce-cleanup.sh",
+    "Galaxy/setupScriptsForGalaxy/add-galaxy-tools-and-use.sh",
+    "Galaxy/setupScriptsForGalaxy/boot.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 219
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

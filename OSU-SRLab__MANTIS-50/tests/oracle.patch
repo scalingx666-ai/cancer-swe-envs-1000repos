@@ -1,0 +1,4560 @@
+diff --git a/Output_File_Formats.md b/Output_File_Formats.md
+index 6a00ed7..7bbe62c 100644
+--- a/Output_File_Formats.md
++++ b/Output_File_Formats.md
+@@ -1,43 +1,43 @@
+-Output Files
+-============
+-
+-For each run, MANTIS generates four output files. The file ending in .status contains the final MANTIS result and MSI call. The other three files contain microsatellite locus-specific information used in the process. File formats are described below.
+-
+-*_kmer_counts.txt
+------------------
+-
+-This file contains, for each locus with sufficient coverage in normal and tumor, the number of reads in the tumor and normal sample which support different numbers of k-mer repeats. Columns are as follows:
+-
+-|Column Number|Column Name|Description|
+-|---|---|---|
+-|1|Locus|Position of the microsatellite locus within the genome|
+-|2|Repeats|Number of k-mer repeats supported by the reads summarized in this line|
+-|3|Normal|Number of reads in the normal sample which support this number of repeats at this locus|
+-|4|Tumor|Number of reads in the tumor sample which support this number of repeats at this locus|
+-
+-Note that minimum quality and coverage filters have been enforced, but outliners have not been filtered in this file.
+-
+-*_kmer_counts_filtered.txt
+---------------------------
+-
+-Similarly to kmer\_counts.txt, this file summarizes the numbers of reads in the tumor and normal sample which support different numbers of k-mer repeats. However, the contents of this file reflect outlier filtering, and therefore consist of all reads that were used to compute the MANTIS score.  
+-File format is identical to that of kmer\_counts.txt.
+-
+-*.txt
+------
+-
+-This file contains the locus-specific scores computed by MANTIS with the difference, distance, and dissimilarity metrics used to compare them. The last line contains the average score for each metric. The average difference is used by MANTIS to call a sample MSS or MSI. Columns are as follows:
+-
+-|Column Number|Column Name|Description|
+-|---|---|---|
+-|1|Locus|Position of the microsatellite locus within the genome|
+-|2|Normal_Reads|Number of reads in the normal sample passing all filters used to compute this locus-specific score|
+-|3|Tumor_Reads|Number of reads in the tumor sample passing all filters used to compute this locus-specific score|
+-|4|Difference|Locus-specific score computed by the stepwise difference metric (see the [MANTIS publication](https://www.ncbi.nlm.nih.gov/pubmed/?term=27980218) for algorithmic details)|
+-|5|Distance|Locus-specific score computed by the Euclidean distance metric|
+-|6|Dissimilarity|Locus-specific score computed by the cosine dissimilarity metric|
+-
+-*.status
+---------
+-
++Output Files
++============
++
++For each run, MANTIS generates four output files. The file ending in .status contains the final MANTIS result and MSI call. The other three files contain microsatellite locus-specific information used in the process. File formats are described below.
++
++*_kmer_counts.txt
++-----------------
++
++This file contains, for each locus with sufficient coverage in normal and tumor, the number of reads in the tumor and normal sample which support different numbers of k-mer repeats. Columns are as follows:
++
++|Column Number|Column Name|Description|
++|---|---|---|
++|1|Locus|Position of the microsatellite locus within the genome|
++|2|Repeats|Number of k-mer repeats supported by the reads summarized in this line|
++|3|Normal|Number of reads in the normal sample which support this number of repeats at this locus|
++|4|Tumor|Number of reads in the tumor sample which support this number of repeats at this locus|
++
++Note that minimum quality and coverage filters have been enforced, but outliners have not been filtered in this file.
++
++*_kmer_counts_filtered.txt
++--------------------------
++
++Similarly to kmer\_counts.txt, this file summarizes the numbers of reads in the tumor and normal sample which support different numbers of k-mer repeats. However, the contents of this file reflect outlier filtering, and therefore consist of all reads that were used to compute the MANTIS score.  
++File format is identical to that of kmer\_counts.txt.
++
++*.txt
++-----
++
++This file contains the locus-specific scores computed by MANTIS with the difference, distance, and dissimilarity metrics used to compare them. The last line contains the average score for each metric. The average difference is used by MANTIS to call a sample MSS or MSI. Columns are as follows:
++
++|Column Number|Column Name|Description|
++|---|---|---|
++|1|Locus|Position of the microsatellite locus within the genome|
++|2|Normal_Reads|Number of reads in the normal sample passing all filters used to compute this locus-specific score|
++|3|Tumor_Reads|Number of reads in the tumor sample passing all filters used to compute this locus-specific score|
++|4|Difference|Locus-specific score computed by the stepwise difference metric (see the [MANTIS publication](https://www.ncbi.nlm.nih.gov/pubmed/?term=27980218) for algorithmic details)|
++|5|Distance|Locus-specific score computed by the Euclidean distance metric|
++|6|Dissimilarity|Locus-specific score computed by the cosine dissimilarity metric|
++
++*.status
++--------
++
+ This file contains the final MANTIS scores for the tumor-normal pair with each of the three distance metrics computed, along with the recommended thresholds for MSI calls. The MSI status per these recommendations is also included, along with a notice that we recommend usage of the stepwise difference call.
+\ No newline at end of file
+diff --git a/README.md b/README.md
+index 5829172..f6c5b84 100644
+--- a/README.md
++++ b/README.md
+@@ -161,6 +161,9 @@ RepeatFinder
+ Included with MANTIS is a tool, RepeatFinder, for finding microsatellites
+ within a reference genome. RepeatFinder is written in C++, and should
+ compile with GCC using the included Makefile on almost any Linux system.
++
++To compile RepeatFinder, first cd to the `tools` directory, and run `make`.
++
+ RepeatFinder can be run with default parameters by executing:
+ 
+ ./RepeatFinder -i /path/to/genome.fasta -o /path/to/loci.bed
+diff --git a/defaults.py b/defaults.py
+index d804a40..cea4c55 100644
+--- a/defaults.py
++++ b/defaults.py
+@@ -1,94 +1,94 @@
+-# @file defaults.py
+-# @author Esko Kautto (esko.kautto@osumc.edu)
+-# @updated 2016-07-06
+-#
+-# Contains helpers for using the three-tier priority loading of configuration
+-# settings that the main MANTIS script utilizes.
+-
+-import os
+-
+-"""
+-Helper class that stores data needed for the parameter loading.
+-"""
+-class Parameter(object):
+-    def __init__(self, key=None, arg_key=None, required=False, default=None):
+-        self.__key = key
+-        self.__arg_key = arg_key
+-        if arg_key is None:
+-            self.__arg_key = key
+-        self.__required = required
+-        self.__default = default
+-        # end .__init__()
+-
+-    def key(self):
+-        return self.__key
+-
+-    def arg_key(self):
+-        return self.__arg_key
+-
+-    def required(self):
+-        return self.__required
+-
+-    def default(self):
+-        return self.__default
+-
+-    # end Parameter class definition.
+-
+-
+-"""
+-Loads any configured values from the config file and
+-returns them as a dict object.
+-"""
+-def load_config_file(filepath):
+-    config = {}
+-    with open(filepath, 'Ur') as f:
+-        for line in f:
+-            line = line.strip()
+-            if len(line) and line[0] != '#':
+-                if '=' not in line:
+-                    print('Invalid line in config file!')
+-                    print(line)
+-                    exit(1)
+-                line = line.split('=', 2)
+-                key = line[0].strip()
+-                value = line[1].strip()
+-                config[key] = value
+-        f.close()
+-    return config
+-    # end load_config_file()
+-
+-"""
+-Performs the three-tier priority loading of config settings,
+-where command line arguments get the highest priority, followed
+-by config file settings, and finally followed by the default
+-values for the parameters.
+-"""
+-def load_settings(params, config_file_path, args):
+-    settings = {}
+-
+-    config_values = {}
+-    if os.path.isfile(config_file_path):
+-        config_values = load_config_file(config_file_path)
+-    
+-    for param in params:
+-        key = param.key()
+-        required = param.required()
+-        arg_key = param.arg_key()
+-
+-        if hasattr(args, arg_key) and getattr(args, arg_key) is not None:
+-            # Command line args take precedence.
+-            settings[key] = getattr(args, arg_key)
+-        elif key in config_values:
+-            # Configuration file takes second priorty.
+-            settings[key] = config_values[key]
+-        elif param.default() is not None:
+-            # Default values take third priority.
+-            settings[key] = param.default()
+-
+-        if required and (key not in settings or settings[key] is None):
+-            # required value was not set
+-            print('Error: Required parameter \'{0}\' not set!'.format(key))
+-            exit(1)
+-
+-    return settings
++# @file defaults.py
++# @author Esko Kautto (esko.kautto@osumc.edu)
++# @updated 2016-07-06
++#
++# Contains helpers for using the three-tier priority loading of configuration
++# settings that the main MANTIS script utilizes.
++
++import os
++
++"""
++Helper class that stores data needed for the parameter loading.
++"""
++class Parameter(object):
++    def __init__(self, key=None, arg_key=None, required=False, default=None):
++        self.__key = key
++        self.__arg_key = arg_key
++        if arg_key is None:
++            self.__arg_key = key
++        self.__required = required
++        self.__default = default
++        # end .__init__()
++
++    def key(self):
++        return self.__key
++
++    def arg_key(self):
++        return self.__arg_key
++
++    def required(self):
++        return self.__required
++
++    def default(self):
++        return self.__default
++
++    # end Parameter class definition.
++
++
++"""
++Loads any configured values from the config file and
++returns them as a dict object.
++"""
++def load_config_file(filepath):
++    config = {}
++    with open(filepath, 'Ur') as f:
++        for line in f:
++            line = line.strip()
++            if len(line) and line[0] != '#':
++                if '=' not in line:
++                    print('Invalid line in config file!')
++                    print(line)
++                    exit(1)
++                line = line.split('=', 2)
++                key = line[0].strip()
++                value = line[1].strip()
++                config[key] = value
++        f.close()
++    return config
++    # end load_config_file()
++
++"""
++Performs the three-tier priority loading of config settings,
++where command line arguments get the highest priority, followed
++by config file settings, and finally followed by the default
++values for the parameters.
++"""
++def load_settings(params, config_file_path, args):
++    settings = {}
++
++    config_values = {}
++    if os.path.isfile(config_file_path):
++        config_values = load_config_file(config_file_path)
++    
++    for param in params:
++        key = param.key()
++        required = param.required()
++        arg_key = param.arg_key()
++
++        if hasattr(args, arg_key) and getattr(args, arg_key) is not None:
++            # Command line args take precedence.
++            settings[key] = getattr(args, arg_key)
++        elif key in config_values:
++            # Configuration file takes second priorty.
++            settings[key] = config_values[key]
++        elif param.default() is not None:
++            # Default values take third priority.
++            settings[key] = param.default()
++
++        if required and (key not in settings or settings[key] is None):
++            # required value was not set
++            print('Error: Required parameter \'{0}\' not set!'.format(key))
++            exit(1)
++
++    return settings
+     # end load_settings()
+\ No newline at end of file
+diff --git a/helpers.py b/helpers.py
+index e1fd020..11c9dd7 100644
+--- a/helpers.py
++++ b/helpers.py
+@@ -1,130 +1,130 @@
+-# @file helpers.py
+-# @author Esko Kautto (esko.kautto@osumc.edu)
+-# @updated 2016-06-16
+-
+-import time
+-
+-"""
+-Since the functionality of .iteritems() has changed between 
+-Python 2 and 3, this function attempts to bridge the gap and
+-provide similar functionality regardless of Python version.
+-"""
+-def iteritems(d):
+-    if hasattr(d, 'iteritems'):
+-        return d.iteritems()
+-    else:
+-        return list(d.items())
+-    # end .iteritems()
+-
+-"""
+-Returns the current time in a m/d/y H:M:S format.
+-"""
+-def timestamp():
+-    return time.strftime('%m/%d/%y %H:%M:%S')
+-    # end .timestamp()
+-
+-"""
+-Prints the input string's line(s) with prepended timestamp(s).
+-"""
+-def tprint(string):
+-    output = string.split('\t')
+-    for line in output:
+-        print('[{0}] {1}'.format(timestamp(), line))
+-    # end .tprint()
+-
+-"""
+-Checks to make sure the BED file has the expected 6-column
+-format. The fourth column is expected to be a formatted
+-kmer repeat unit and count string. The fifth and sixth
+-column are not currently utilized, but are required to
+-maintain the BED 6-col format.
+-e.g.
+-chr1  10357206    10357223    (T)17   0   +
+-"""
+-def check_bedfile_format(filepath):
+-    with open(filepath, 'Ur') as f:
+-        line_number = 0
+-        for line in f:
+-            line = line.strip()
+-            line_number += 1
+-            if len(line):
+-                line = line.split('\t')
+-                if len(line) != 6:
+-                    print('Error: MANTIS expects a 6-column BED file with' + 
+-                        ' the 4th column containing the kmer repeat' + 
+-                        ' sequence and count (e.g. (T)15 or (CAC)5 ).')
+-                    print('\nOffending line (line {0}) has:'.format(line_number))
+-                    for n, value in enumerate(line):
+-                        print('[{0}]\t{1}'.format(n, value))
+-
+-                    return False
+-                else:
+-                    # Check the k-mer column
+-                    kmer_format_ok = True
+-                    kmer = line[3]
+-                    if '(' in kmer and ')' in kmer:
+-                        kmer = kmer.split(')')
+-                        if '(' in kmer[0]:
+-                            kmer_unit = kmer[0].split('(')[1]
+-                            kmer_count = kmer[1]
+-                            if not kmer_count.isdigit():
+-                                kmer_format_ok = False
+-                            # Make sure only valid ATCG characters were used.
+-                            for c in list('ATCG'):
+-                                kmer_unit = kmer_unit.replace(c, '')
+-                            if len(kmer_unit) > 0:
+-                                kmer_format_ok = False
+-                        else:
+-                            kmer_format_ok = False
+-                    else:
+-                        kmer_format_ok = False
+-
+-
+-                    if not kmer_format_ok:
+-                        print('Error: MANTIS expects the kmer column in the' + 
+-                            ' BED file to follow a (XX)NN type format, with' +
+-                            ' the repeat unit wrapped in parentheses,' +
+-                            ' followed by the expected number of repeats.')
+-                        return False
+-        return True
+-    # end .check_bedfile_format()
+-
+-
+-"""
+-Determines how many times the k-mer repeats in a row
+-within the given sequence.
+-"""
+-def kmer_repeat_count(kmer, sequence, offset = 0):
+-    repeats = 0
+-    klen = len(kmer)
+-    while True:
+-        if sequence[offset:offset+klen] != kmer:
+-            # End of repeat sequence
+-            break
+-        repeats += 1
+-        offset += klen
+-        if offset > len(sequence):
+-            # End of sequence
+-            break
+-    return repeats
+-# end kmer_repeat_count()
+-
+-# Checks to make sure required modules are present in environment
+-def required_modules_present(modules):
+-    missing = []
+-    for module in modules:
+-        try:
+-            __import__('imp').find_module(module.lower())
+-            # Everything is fine; module is available
+-        except ImportError:
+-            # Module not found
+-            missing.append(module)
+-
+-    if len(missing):
+-        for module in modules:            
+-            print('Error: You must have {0} available in your environment!'.format(module))
+-        print('Please check your $PYTHONPATH to make sure you have properly ' +
+-            'included required moudles/libraries in it.')
+-        exit(1)
+-    return True
+-    # end required_modules_present()
++# @file helpers.py
++# @author Esko Kautto (esko.kautto@osumc.edu)
++# @updated 2016-06-16
++
++import time
++
++"""
++Since the functionality of .iteritems() has changed between 
++Python 2 and 3, this function attempts to bridge the gap and
++provide similar functionality regardless of Python version.
++"""
++def iteritems(d):
++    if hasattr(d, 'iteritems'):
++        return d.iteritems()
++    else:
++        return list(d.items())
++    # end .iteritems()
++
++"""
++Returns the current time in a m/d/y H:M:S format.
++"""
++def timestamp():
++    return time.strftime('%m/%d/%y %H:%M:%S')
++    # end .timestamp()
++
++"""
++Prints the input string's line(s) with prepended timestamp(s).
++"""
++def tprint(string):
++    output = string.split('\t')
++    for line in output:
++        print('[{0}] {1}'.format(timestamp(), line))
++    # end .tprint()
++
++"""
++Checks to make sure the BED file has the expected 6-column
++format. The fourth column is expected to be a formatted
++kmer repeat unit and count string. The fifth and sixth
++column are not currently utilized, but are required to
++maintain the BED 6-col format.
++e.g.
++chr1  10357206    10357223    (T)17   0   +
++"""
++def check_bedfile_format(filepath):
++    with open(filepath, 'Ur') as f:
++        line_number = 0
++        for line in f:
++            line = line.strip()
++            line_number += 1
++            if len(line):
++                line = line.split('\t')
++                if len(line) != 6:
++                    print('Error: MANTIS expects a 6-column BED file with' + 
++                        ' the 4th column containing the kmer repeat' + 
++                        ' sequence and count (e.g. (T)15 or (CAC)5 ).')
++                    print('\nOffending line (line {0}) has:'.format(line_number))
++                    for n, value in enumerate(line):
++                        print('[{0}]\t{1}'.format(n, value))
++
++                    return False
++                else:
++                    # Check the k-mer column
++                    kmer_format_ok = True
++                    kmer = line[3]
++                    if '(' in kmer and ')' in kmer:
++                        kmer = kmer.split(')')
++                        if '(' in kmer[0]:
++                            kmer_unit = kmer[0].split('(')[1]
++                            kmer_count = kmer[1]
++                            if not kmer_count.isdigit():
++                                kmer_format_ok = False
++                            # Make sure only valid ATCG characters were used.
++                            for c in list('ATCG'):
++                                kmer_unit = kmer_unit.replace(c, '')
++                            if len(kmer_unit) > 0:
++                                kmer_format_ok = False
++                        else:
++                            kmer_format_ok = False
++                    else:
++                        kmer_format_ok = False
++
++
++                    if not kmer_format_ok:
++                        print('Error: MANTIS expects the kmer column in the' + 
++                            ' BED file to follow a (XX)NN type format, with' +
++                            ' the repeat unit wrapped in parentheses,' +
++                            ' followed by the expected number of repeats.')
++                        return False
++        return True
++    # end .check_bedfile_format()
++
++
++"""
++Determines how many times the k-mer repeats in a row
++within the given sequence.
++"""
++def kmer_repeat_count(kmer, sequence, offset = 0):
++    repeats = 0
++    klen = len(kmer)
++    while True:
++        if sequence[offset:offset+klen] != kmer:
++            # End of repeat sequence
++            break
++        repeats += 1
++        offset += klen
++        if offset > len(sequence):
++            # End of sequence
++            break
++    return repeats
++# end kmer_repeat_count()
++
++# Checks to make sure required modules are present in environment
++def required_modules_present(modules):
++    missing = []
++    for module in modules:
++        try:
++            __import__('imp').find_module(module.lower())
++            # Everything is fine; module is available
++        except ImportError:
++            # Module not found
++            missing.append(module)
++
++    if len(missing):
++        for module in modules:            
++            print('Error: You must have {0} available in your environment!'.format(module))
++        print('Please check your $PYTHONPATH to make sure you have properly ' +
++            'included required moudles/libraries in it.')
++        exit(1)
++    return True
++    # end required_modules_present()
+diff --git a/kmer_count_filter.py b/kmer_count_filter.py
+index 29c5e8c..166c8a1 100644
+--- a/kmer_count_filter.py
++++ b/kmer_count_filter.py
+@@ -1,354 +1,354 @@
+-# @file kmer_count_filter.py
+-# @author Esko Kautto (esko.kautto@osumc.edu)
+-# @updated 2018-05-23
+-
+-import os
+-import argparse
+-import math
+-import numpy
+-from datetime import datetime, timedelta
+-from helpers import iteritems, timestamp, tprint
+-
+-
+-class MANTIS_Filter(object):
+-    class Locus(object):
+-        def __init__(self):
+-            self.locus = ''
+-            self.k = set()
+-            self.n = {}
+-            self.t = {}
+-
+-        def add(self, line):
+-            if type(line) is str:
+-                line = line.strip().split('\t')
+-            if self.locus == '':
+-                self.locus = line[0]
+-            elif line[0] != self.locus:
+-                tprint('MANTIS_Filter.Locus error: Fed data for ' + 
+-                    '{0} to locus {1}!'.format(line[0], self.locus))
+-                return False
+-            k = int(line[1])
+-            n = int(line[2])
+-            t = int(line[3])
+-            if k in self.k:
+-                tprint('MANTIS_Filter.Locus error: Duplicate entry for ' + 
+-                    'repeat count {0}!'.format(k))
+-                return False
+-
+-            self.k.add(k)
+-            self.n[k] = n
+-            self.t[k] = t
+-            return True
+-            # end .add()
+-
+-        """
+-        Generates output data so locus can be written into output file.
+-        """
+-        def generate_output(self):
+-            output = []
+-            for k in sorted(self.k):
+-                n = 0
+-                t = 0
+-                if k in self.n:
+-                    n = self.n[k]
+-                if k in self.t:
+-                    t = self.t[k]
+-                if (n + t) > 0:
+-                    line = [self.locus, str(k), str(n), str(t)]
+-                    output.append(line)
+-            
+-            if len(output) == 0:
+-                # Nothing to output.
+-                return False
+-            return output
+-            # end .generate_output()
+-
+-
+-        """
+-        Checks if both the normal and tumor data have 
+-        the minimum required coverage.
+-        """
+-        def has_min_coverage(self, min_coverage):
+-            if (sum(self.n.values()) < min_coverage) \
+-                or (sum(self.t.values()) < min_coverage):
+-                return False
+-            return True
+-            # end .has_min_coverage()
+-
+-
+-        """
+-        Generates a list of values from the repeat counts and
+-        support for each repeat count.
+-        """
+-        def generate_value_list(self,data):
+-            values = []
+-
+-            # Iterate through the data and only record values
+-            # for k-repeats that have some support
+-            for k, count in iteritems(data):
+-                if count > 0:
+-                    values += [k] * count
+-            return sorted(values)
+-            # end .generate_value_list()
+-
+-        """
+-        Filters the data for outliers. The normal and tumor
+-        data are treated as separate sets for the outlier 
+-        calculations, since each will likely have a different
+-        mean if the locus is unstable.
+-        """
+-        def outlier_filter(self, sds):
+-            # Process each subset of data separately.
+-            self.n = self.subset_outlier_filter(self.n, sds)
+-            self.t = self.subset_outlier_filter(self.t, sds)
+-            self.remove_unsupported_ks()
+-            self.regenerate_k_set()
+-            return True
+-            # end .outlier_filter()
+-
+-        """
+-        Zeroes out any k-value repeat counts that don't meet the 
+-        minimum amount of supported reads; mainly gets rid of
+-        one-off values that are likely to only exist due to
+-        sequencing or alignment errors in the reads.
+-        """
+-        def support_filter(self, min_support):
+-            for k in self.k:
+-                n_support = False
+-                t_support = False
+-                if k in self.n and self.n[k] >= min_support:
+-                    n_support = True
+-                if k in self.t and self.t[k] >= min_support:
+-                    t_support = True
+-
+-                if not n_support and not t_support:
+-                    # Neither subset had required support.
+-                    self.n[k] = 0                    
+-                    self.t[k] = 0
+-            self.remove_unsupported_ks()
+-            self.regenerate_k_set()
+-            # end .support_filter()
+-
+-        """
+-        Regenerates the set of k-repeat values based on the
+-        existing normal and tumor data.
+-        """
+-        def regenerate_k_set(self):
+-            self.k = set()
+-            for k in self.n.keys():
+-                self.k.add(k)
+-            for k in self.t.keys():
+-                self.k.add(k)
+-            return True
+-            # end .regenerate_k_set()
+-
+-        """
+-        Removes any k-repeat values that no longer have any support.
+-        """
+-        def remove_unsupported_ks(self):
+-            unsupported = set()
+-            for k in self.k:
+-                n = 0
+-                t = 0
+-                if k in self.n:
+-                    n = self.n[k]
+-                if k in self.t:
+-                    t = self.t[k]
+-                if (n + t) == 0:
+-                    # Has no support
+-                    unsupported.add(k)
+-            if len(unsupported):
+-                for k in unsupported:
+-                    self.k.discard(k)
+-            return True
+-            # end .remove_unsupported_ks()
+-
+-        """
+-        Keeps only the values that fall within the acceptable
+-        window, removing outliers.
+-        """
+-        def subset_outlier_filter(self, data, sds):
+-            values = self.generate_value_list(data)
+-            output = {}
+-            if len(values):
+-                mean = numpy.mean(values)
+-                std = numpy.std(values)
+-                # Round the min and max for the window to allow for
+-                # some leniency in the filter.
+-                min_k = int(math.floor(mean - (sds * std)))
+-                max_k = int(math.ceil(mean + (sds * std)))
+-
+-                for k, count in iteritems(data):
+-                    if min_k <= k <= max_k:
+-                        # Acceptable
+-                        output[k] = count
+-            return output
+-            # end .subset_outlier_filter()
+-
+-        # end MANTIS_Filter.Locus subclass definition
+-
+-
+-
+-
+-
+-    def __init__(self, config):
+-        self.min_locus_coverage = config['min_locus_coverage']
+-        self.min_repeat_reads = config['min_repeat_reads']
+-        self.standard_deviations = config['standard_deviations']
+-        # end .__init__()
+-
+-    """
+-    Main filtering function that calls all other methods
+-    required by the filter.
+-    """
+-    def filter(self, input_filepath, output_filepath):
+-        self.load_loci(input_filepath)
+-        self.filtered_loci = {}
+-        for locus_name, locus in iteritems(self.loci):
+-            locus = self.filter_locus(locus)
+-            if locus is not False:
+-                self.filtered_loci[locus_name] = locus
+-        self.write_output(output_filepath)
+-        # end .filter()
+-
+-    """
+-    Runs the different locus filters on the locus instance.
+-    """
+-    def filter_locus(self, locus):
+-        locus.outlier_filter(self.standard_deviations)
+-        locus.support_filter(self.min_repeat_reads)
+-        if not locus.has_min_coverage(self.min_locus_coverage):
+-            return False
+-        return locus
+-        # end .filter_locus()
+-
+-
+-    """
+-    Writes output data into specified file, iterating
+-    through each (filtered) locus, generating the output
+-    data for it and writing it out.
+-    """
+-    def write_output(self, output_filepath):
+-        fileout = open(output_filepath, 'w')
+-        header = ['Locus', 'Repeats', 'Normal', 'Tumor']
+-        fileout.write('\t'.join(header) + '\n')
+-        for l in self.ordered_loci:
+-            if l in self.filtered_loci:
+-                locus = self.filtered_loci[l]
+-                output = locus.generate_output()
+-                for line in output:
+-                    fileout.write('\t'.join(line) + '\n')
+-        fileout.close()
+-        return True
+-        # end .write_output()
+-
+-
+-    """
+-    Loads the data from the input file and stores the per-locus
+-    data for filtering.
+-    """
+-    def load_loci(self, input_filepath):
+-        self.loci = {}
+-        self.ordered_loci = []
+-        with open(input_filepath, 'Ur') as f:
+-            header = True
+-            for line in f:
+-                if header:
+-                    # Make sure this is a header line so we don't
+-                    # discard valid data.
+-                    if self.line_is_header(line):
+-                        # Line is header line, skip
+-                        continue
+-                line = line.strip().split('\t')
+-                if line[0] not in self.loci:
+-                    self.loci[line[0]] = MANTIS_Filter.Locus()
+-                    self.ordered_loci.append(line[0])
+-                self.loci[line[0]].add(line)
+-        # end .load_loci()
+-
+-    """
+-    Tries to determine if line is a header line based on column values.
+-    """
+-    def line_is_header(self, line):
+-        line = line.upper().strip().split('\t')
+-        if len(line) != 4:
+-            # Malformed line, definitely not data.
+-            return True
+-        header = ['LOCUS', 'REPEATS', 'NORMAL', 'TUMOR']
+-        is_header = True
+-        for i in range(0, 4):
+-            if line[i] != header[i]:
+-                # Unexpected token.
+-                is_header = False
+-                break
+-        return is_header
+-        # end .line_is_header()
+-
+-
+-    # end MANTIS_Filter class definition
+-
+-"""
+-Attempts to filter out undesirable noise in the filter, in
+-an attempt to compare results with more confidence. The filter
+-will try to get rid of reads that are obvious outliers, loci that
+-don't meet a minimum coverage depth requirement, and repeat counts
+-that don't have enough supporting reads.
+-"""
+-if __name__ == "__main__":
+-    prog_name = 'MSI Locus Kmer Counter Filter'
+-    tprint(prog_name)
+-
+-    parser = argparse.ArgumentParser(description=prog_name)
+-
+-    parser.add_argument('-i', '--input', dest='input', type=str, required=True,
+-        help='Input file (.kmer_counts)')
+-
+-    parser.add_argument('-o', '--output', dest='output', type=str, required=True,
+-        help='Output filename.')
+-
+-    parser.add_argument('-mlc', '--min-locus-coverage', dest='mlc', type=int,
+-        default=20, help='Minimum coverage required for each of the normal ' +
+-        'and tumor results.')
+-
+-    parser.add_argument('-mrr', '--min-repeat-reads', dest='mrr', type=int,
+-        default=5, help='Minimum reads supporting a specific repeat count.')
+-
+-    parser.add_argument('-sd', '--standard-deviations', dest='sd', type=float,
+-        default=3.0, help='Standard deviations from mean before repeat count is ' +
+-        'considered an outlier')
+-
+-    args = parser.parse_args()
+-
+-
+-
+-        
+-    input_filepath = os.path.abspath(args.input)
+-    if not os.path.isfile(input_filepath):
+-        tprint('Error: Input file {0} does not exist!'.format(input_filepath))
+-        exit(1)
+-
+-    output_filepath = os.path.abspath(args.output)
+-
+-    if args.mlc < 0:
+-        tprint('Error: Minimum locus coverage cannot be below 0.')
+-        exit(1)
+-
+-    if args.mrr < 0:
+-        tprint('Error: Minimum read count cannot be below 0.')
+-        exit(1)        
+-
+-    if args.sd < 0.0:
+-        tprint('Error: Standard deviation count cannot be below 0.')
+-        exit(1)        
+-
+-
+-    config = {
+-        'min_locus_coverage': int(args.mlc),
+-        'min_repeat_reads': int(args.mrr),
+-        'standard_deviations': float(args.sd)
+-    }
+-
+-    locus_filter = MANTIS_Filter(config)
+-    locus_filter.filter(input_filepath, output_filepath)
+-    # Done.
+-    exit(0)
++# @file kmer_count_filter.py
++# @author Esko Kautto (esko.kautto@osumc.edu)
++# @updated 2018-05-23
++
++import os
++import argparse
++import math
++import numpy
++from datetime import datetime, timedelta
++from helpers import iteritems, timestamp, tprint
++
++
++class MANTIS_Filter(object):
++    class Locus(object):
++        def __init__(self):
++            self.locus = ''
++            self.k = set()
++            self.n = {}
++            self.t = {}
++
++        def add(self, line):
++            if type(line) is str:
++                line = line.strip().split('\t')
++            if self.locus == '':
++                self.locus = line[0]
++            elif line[0] != self.locus:
++                tprint('MANTIS_Filter.Locus error: Fed data for ' + 
++                    '{0} to locus {1}!'.format(line[0], self.locus))
++                return False
++            k = int(line[1])
++            n = int(line[2])
++            t = int(line[3])
++            if k in self.k:
++                tprint('MANTIS_Filter.Locus error: Duplicate entry for ' + 
++                    'repeat count {0}!'.format(k))
++                return False
++
++            self.k.add(k)
++            self.n[k] = n
++            self.t[k] = t
++            return True
++            # end .add()
++
++        """
++        Generates output data so locus can be written into output file.
++        """
++        def generate_output(self):
++            output = []
++            for k in sorted(self.k):
++                n = 0
++                t = 0
++                if k in self.n:
++                    n = self.n[k]
++                if k in self.t:
++                    t = self.t[k]
++                if (n + t) > 0:
++                    line = [self.locus, str(k), str(n), str(t)]
++                    output.append(line)
++            
++            if len(output) == 0:
++                # Nothing to output.
++                return False
++            return output
++            # end .generate_output()
++
++
++        """
++        Checks if both the normal and tumor data have 
++        the minimum required coverage.
++        """
++        def has_min_coverage(self, min_coverage):
++            if (sum(self.n.values()) < min_coverage) \
++                or (sum(self.t.values()) < min_coverage):
++                return False
++            return True
++            # end .has_min_coverage()
++
++
++        """
++        Generates a list of values from the repeat counts and
++        support for each repeat count.
++        """
++        def generate_value_list(self,data):
++            values = []
++
++            # Iterate through the data and only record values
++            # for k-repeats that have some support
++            for k, count in iteritems(data):
++                if count > 0:
++                    values += [k] * count
++            return sorted(values)
++            # end .generate_value_list()
++
++        """
++        Filters the data for outliers. The normal and tumor
++        data are treated as separate sets for the outlier 
++        calculations, since each will likely have a different
++        mean if the locus is unstable.
++        """
++        def outlier_filter(self, sds):
++            # Process each subset of data separately.
++            self.n = self.subset_outlier_filter(self.n, sds)
++            self.t = self.subset_outlier_filter(self.t, sds)
++            self.remove_unsupported_ks()
++            self.regenerate_k_set()
++            return True
++            # end .outlier_filter()
++
++        """
++        Zeroes out any k-value repeat counts that don't meet the 
++        minimum amount of supported reads; mainly gets rid of
++        one-off values that are likely to only exist due to
++        sequencing or alignment errors in the reads.
++        """
++        def support_filter(self, min_support):
++            for k in self.k:
++                n_support = False
++                t_support = False
++                if k in self.n and self.n[k] >= min_support:
++                    n_support = True
++                if k in self.t and self.t[k] >= min_support:
++                    t_support = True
++
++                if not n_support and not t_support:
++                    # Neither subset had required support.
++                    self.n[k] = 0                    
++                    self.t[k] = 0
++            self.remove_unsupported_ks()
++            self.regenerate_k_set()
++            # end .support_filter()
++
++        """
++        Regenerates the set of k-repeat values based on the
++        existing normal and tumor data.
++        """
++        def regenerate_k_set(self):
++            self.k = set()
++            for k in self.n.keys():
++                self.k.add(k)
++            for k in self.t.keys():
++                self.k.add(k)
++            return True
++            # end .regenerate_k_set()
++
++        """
++        Removes any k-repeat values that no longer have any support.
++        """
++        def remove_unsupported_ks(self):
++            unsupported = set()
++            for k in self.k:
++                n = 0
++                t = 0
++                if k in self.n:
++                    n = self.n[k]
++                if k in self.t:
++                    t = self.t[k]
++                if (n + t) == 0:
++                    # Has no support
++                    unsupported.add(k)
++            if len(unsupported):
++                for k in unsupported:
++                    self.k.discard(k)
++            return True
++            # end .remove_unsupported_ks()
++
++        """
++        Keeps only the values that fall within the acceptable
++        window, removing outliers.
++        """
++        def subset_outlier_filter(self, data, sds):
++            values = self.generate_value_list(data)
++            output = {}
++            if len(values):
++                mean = numpy.mean(values)
++                std = numpy.std(values)
++                # Round the min and max for the window to allow for
++                # some leniency in the filter.
++                min_k = int(math.floor(mean - (sds * std)))
++                max_k = int(math.ceil(mean + (sds * std)))
++
++                for k, count in iteritems(data):
++                    if min_k <= k <= max_k:
++                        # Acceptable
++                        output[k] = count
++            return output
++            # end .subset_outlier_filter()
++
++        # end MANTIS_Filter.Locus subclass definition
++
++
++
++
++
++    def __init__(self, config):
++        self.min_locus_coverage = config['min_locus_coverage']
++        self.min_repeat_reads = config['min_repeat_reads']
++        self.standard_deviations = config['standard_deviations']
++        # end .__init__()
++
++    """
++    Main filtering function that calls all other methods
++    required by the filter.
++    """
++    def filter(self, input_filepath, output_filepath):
++        self.load_loci(input_filepath)
++        self.filtered_loci = {}
++        for locus_name, locus in iteritems(self.loci):
++            locus = self.filter_locus(locus)
++            if locus is not False:
++                self.filtered_loci[locus_name] = locus
++        self.write_output(output_filepath)
++        # end .filter()
++
++    """
++    Runs the different locus filters on the locus instance.
++    """
++    def filter_locus(self, locus):
++        locus.outlier_filter(self.standard_deviations)
++        locus.support_filter(self.min_repeat_reads)
++        if not locus.has_min_coverage(self.min_locus_coverage):
++            return False
++        return locus
++        # end .filter_locus()
++
++
++    """
++    Writes output data into specified file, iterating
++    through each (filtered) locus, generating the output
++    data for it and writing it out.
++    """
++    def write_output(self, output_filepath):
++        fileout = open(output_filepath, 'w')
++        header = ['Locus', 'Repeats', 'Normal', 'Tumor']
++        fileout.write('\t'.join(header) + '\n')
++        for l in self.ordered_loci:
++            if l in self.filtered_loci:
++                locus = self.filtered_loci[l]
++                output = locus.generate_output()
++                for line in output:
++                    fileout.write('\t'.join(line) + '\n')
++        fileout.close()
++        return True
++        # end .write_output()
++
++
++    """
++    Loads the data from the input file and stores the per-locus
++    data for filtering.
++    """
++    def load_loci(self, input_filepath):
++        self.loci = {}
++        self.ordered_loci = []
++        with open(input_filepath, 'Ur') as f:
++            header = True
++            for line in f:
++                if header:
++                    # Make sure this is a header line so we don't
++                    # discard valid data.
++                    if self.line_is_header(line):
++                        # Line is header line, skip
++                        continue
++                line = line.strip().split('\t')
++                if line[0] not in self.loci:
++                    self.loci[line[0]] = MANTIS_Filter.Locus()
++                    self.ordered_loci.append(line[0])
++                self.loci[line[0]].add(line)
++        # end .load_loci()
++
++    """
++    Tries to determine if line is a header line based on column values.
++    """
++    def line_is_header(self, line):
++        line = line.upper().strip().split('\t')
++        if len(line) != 4:
++            # Malformed line, definitely not data.
++            return True
++        header = ['LOCUS', 'REPEATS', 'NORMAL', 'TUMOR']
++        is_header = True
++        for i in range(0, 4):
++            if line[i] != header[i]:
++                # Unexpected token.
++                is_header = False
++                break
++        return is_header
++        # end .line_is_header()
++
++
++    # end MANTIS_Filter class definition
++
++"""
++Attempts to filter out undesirable noise in the filter, in
++an attempt to compare results with more confidence. The filter
++will try to get rid of reads that are obvious outliers, loci that
++don't meet a minimum coverage depth requirement, and repeat counts
++that don't have enough supporting reads.
++"""
++if __name__ == "__main__":
++    prog_name = 'MSI Locus Kmer Counter Filter'
++    tprint(prog_name)
++
++    parser = argparse.ArgumentParser(description=prog_name)
++
++    parser.add_argument('-i', '--input', dest='input', type=str, required=True,
++        help='Input file (.kmer_counts)')
++
++    parser.add_argument('-o', '--output', dest='output', type=str, required=True,
++        help='Output filename.')
++
++    parser.add_argument('-mlc', '--min-locus-coverage', dest='mlc', type=int,
++        default=20, help='Minimum coverage required for each of the normal ' +
++        'and tumor results.')
++
++    parser.add_argument('-mrr', '--min-repeat-reads', dest='mrr', type=int,
++        default=5, help='Minimum reads supporting a specific repeat count.')
++
++    parser.add_argument('-sd', '--standard-deviations', dest='sd', type=float,
++        default=3.0, help='Standard deviations from mean before repeat count is ' +
++        'considered an outlier')
++
++    args = parser.parse_args()
++
++
++
++        
++    input_filepath = os.path.abspath(args.input)
++    if not os.path.isfile(input_filepath):
++        tprint('Error: Input file {0} does not exist!'.format(input_filepath))
++        exit(1)
++
++    output_filepath = os.path.abspath(args.output)
++
++    if args.mlc < 0:
++        tprint('Error: Minimum locus coverage cannot be below 0.')
++        exit(1)
++
++    if args.mrr < 0:
++        tprint('Error: Minimum read count cannot be below 0.')
++        exit(1)        
++
++    if args.sd < 0.0:
++        tprint('Error: Standard deviation count cannot be below 0.')
++        exit(1)        
++
++
++    config = {
++        'min_locus_coverage': int(args.mlc),
++        'min_repeat_reads': int(args.mrr),
++        'standard_deviations': float(args.sd)
++    }
++
++    locus_filter = MANTIS_Filter(config)
++    locus_filter.filter(input_filepath, output_filepath)
++    # Done.
++    exit(0)
+diff --git a/kmer_repeat_counter.py b/kmer_repeat_counter.py
+index d16c9f0..86287d2 100755
+--- a/kmer_repeat_counter.py
++++ b/kmer_repeat_counter.py
+@@ -1,879 +1,881 @@
+-# @file kmer_repeat_counter.py
+-# @author Esko Kautto (esko.kautto@osumc.edu)
+-# @updated 2017-12-18
+-
+-import os
+-import argparse
+-import functools
+-import subprocess
+-import time
+-from datetime import datetime, timedelta
+-from multiprocessing import Process, Queue, BoundedSemaphore, Semaphore
+-import pysam
+-import numpy
+-from structures import SAMRead, CIGAR, Locus, MSILocus
+-from offset_finder import OffsetFinder
+-from helpers import iteritems, tprint, timestamp
+-from defaults import Parameter, load_settings
+-import re
+-import sys
+-
+-
+-class MSILocusLoader:
+-    def __init__(self, config):
+-        self.genome_path = None
+-
+-        if 'genome' in config:
+-            self.genome_path = config['genome']
+-        else:
+-            tprint('MSILocusLoader warning: You need to specify a path' +
+-                ' to the reference genome!')
+-        # end .__init__()
+-
+-
+-    """
+-    Loads BED file into a list of Locus objects.
+-    """
+-    def load_loci(self, bedfile):
+-        loci = []
+-        bedfile = os.path.abspath(bedfile)
+-        if not os.path.isfile(bedfile):
+-            tprint('MSILocusLoader error: File {0}'.format(bedfile) + 
+-                ' does not exist!')
+-        else:
+-            with open(bedfile, 'r') as filein:
+-                for line in filein.readlines():
+-                    if line[0] != '@':
+-                        locus = MSILocus(line)
+-                        if locus.chromosome[0:3] != 'chr':
+-                            # Force-prepend the chr prefix
+-                            locus.chromosome = 'chr{0}'.format(locus.chromosome)
+-
+-                        # Correct any off-by-one errors that may occur because of 
+-                        # unstandardized open- and closed-endedness of bed file coordinates.
+-                        self.correct_off_by_one_errors(locus)                    
+-                        loci.append(locus)
+-            filein.close()
+-        return loci
+-        # end .load_loci()
+-
+-    strip_coord_re = re.compile(r'^[\d\-]+')
+-    """
+-    Fixes any off-by-one errors for the locus that could result from
+-    different interpretations of the open and closed ends of the BED
+-    format regions.
+-    """
+-    def correct_off_by_one_errors(self, locus):
+-        # Generate the locus position by adding a 1 basepair padding around the locus
+-        # coordinates, which accounts for the off-by-one errors.
+-        position = '{0}:{1}-{2}'.format(locus.chromosome, 
+-            locus.start - 1, 
+-            locus.end + 1)
+-        
+-        raw_sequence = self.get_sequence(position)
+-        #accommodate newer versions of PySam, which causes this to return chromosome and position
+-        raw_sequence = raw_sequence.split(":")[-1]
+-        sequence = MSILocusLoader.strip_coord_re.sub("", raw_sequence)
+-        if sequence[1:1+locus.kmer_length] != locus.kmer:
+-            # Sequence doesn't start where expected; shift accordingly.
+-            if sequence[0:locus.kmer_length] == locus.kmer:
+-                # Shift back by one
+-                locus.start -= 1
+-                locus.end -= 1
+-            elif sequence[2:2+locus.kmer_length] == locus.kmer:
+-                # Shift forward by one
+-                locus.start += 1
+-                locus.end += 1
+-            else:
+-                tprint('Error: Specified locus does not appear '
+-                    + ' to be the starting point for kmer {kmer}.'.format(
+-                        kmer=locus.kmer))
+-        # end .correct_off_by_one_errors()
+-
+-    """
+-    Helper method that uses SAM tools to fetch the sequence of the 
+-    locus from the reference genome.
+-    """
+-    def get_sequence(self, locus):
+-        if self.genome_path is None:
+-            tprint('MSILocusLoader error: Can not use .get_sequence() without' 
+-                + ' specifying the path to the reference genome!')
+-            exit(1)
+-    
+-        sequence = []
+-        for subseq in pysam.faidx(self.genome_path, locus)[1:]:
+-            sequence.append(subseq.strip())
+-        return ''.join(sequence).upper()
+-        # end .get_sequence()    
+-
+-    # end MSILocusLoader class definition.
+-
+-
+-
+-
+-
+-
+-
+-class KmerRepeatCounter:
+-    def __init__(self, config):
+-        self.min_read_quality = config['min_read_quality']
+-        self.min_read_length = config['min_read_length']
+-        self.min_locus_quality = config['min_locus_quality']
+-        self.debug_output = config['debug_output']
+-        self.__reset()
+-        # end .__init__()
+-
+-    def __reset(self):
+-        self.__consumers = list()
+-        self.__producer = None
+-        # end .__reset()
+-
+-
+-    """
+-    Estimates if the read is likely to be truncated within the target
+-    locus, which would indicate the repeat count will be too low.
+-    """
+-    def read_has_truncation(self, read, locus, offset, repeat_count):
+-        truncated = False
+-        if read.length - (offset + (repeat_count * locus.kmer_length)) < locus.kmer_length:
+-            # Possible 3' truncation
+-            diff = read.length - (offset + (repeat_count * locus.kmer_length))
+-            if read.seq[-1 * diff:] == locus.kmer[0:diff]:
+-                # Partial copy of the kmer; almost certainly truncated
+-                truncated = True
+-
+-        elif offset < locus.kmer_length:
+-            # Possible 5' truncation
+-            if (offset is 0) or read.seq[0:offset] == locus.kmer[offset:]:
+-                # No offset OR offset matches fragment of kmer; likely truncation
+-                truncated = True
+-        return truncated
+-        # end .read_has_truncation()
+-
+-
+-    """
+-    Checks if the read passes the minimum QC requirements; currently
+-    consists of a minimum average read quality and read length.
+-    """
+-    def passes_qc_filter(self, read):
+-        passes = True
+-        if read.quality < self.min_read_quality:
+-            # Read quality too low.
+-            passes = False
+-        elif read.length < self.min_read_length:
+-            # Read sequence too short.
+-            passes = False
+-        return passes
+-        # end .passes_qc_filter()
+-
+-    """
+-    Calculates the mean quality for the subset of the read.
+-    """
+-    @staticmethod
+-    def subset_mean_quality(read, start, end):
+-        scores = []
+-        for i in range(start, end):
+-            score = KmerRepeatCounter.symbol_to_quality_score(read.qual[i])
+-            scores.append(score)
+-        if len(scores):
+-            return numpy.mean(scores)
+-        return 0.0
+-        # end .subset_mean_quality()
+-
+-    """
+-    Converts the symbolic quality score to a numeric (int) value.
+-    """
+-    @staticmethod
+-    def symbol_to_quality_score(symbol):
+-        symbols = '!"#$%&' + "'" + '()*+,-./0123456789:;<=>?@ABCDEFGHIJK'
+-        score = 0
+-        if symbol in symbols:
+-            score = symbols.find(symbol)
+-        return score
+-        # End .symbol_to_quality_score()
+-
+-
+-    """
+-    Checks if the repeating locus (as opposed to the entire read)
+-    has sufficient quality to pass the QC filter.
+-    """
+-    def passes_locus_qc_filter(self, read, offset_start, offset_end):
+-        locus_mean_quality = KmerRepeatCounter.subset_mean_quality(read, 
+-            offset_start, offset_end)
+-        if locus_mean_quality < self.min_locus_quality:
+-            # failed locus QC filter
+-            return False 
+-        return True
+-        # end .passes_locus_qc_filter()
+-
+-    """
+-    Checks if any of the threads are still live.
+-    """
+-    def has_live_threads(self):
+-        live = False
+-        if self.has_live_producer():
+-            # The producer thread is still alive.
+-            live = True
+-        elif self.has_live_consumers():
+-            # Has at least one live consumer thread.
+-            live = True
+-        return live
+-        # end .has_live_threads()
+-
+-    """
+-    Checks if the producer thread is still live.
+-    """
+-    def has_live_producer(self):
+-        return self.__producer.is_alive()
+-        # end .has_live_producer()
+-
+-    """
+-    Checks if any of the consumer threads are still live.
+-    """
+-    def has_live_consumers(self):
+-        live = False
+-        for c in self.__consumers:
+-            if c.is_alive():
+-                live = True
+-                break
+-        return live
+-        # end .has_live_consumers()
+-
+-    """
+-    Converts the numeric quality scores to the respective
+-    phred scale character values.
+-    """
+-    @staticmethod
+-    def quality_scores_to_symbols(scores):
+-        if type(scores) is int:
+-            return KmerRepeatCounter.score_to_symbol(scores)
+-        elif type(scores) is str:
+-            return KmerRepeatCounter.score_to_symbol(int(scores))
+-        else:
+-            symbols = []
+-            for score in scores:
+-                symbols.append(KmerRepeatCounter.score_to_symbol(int(score)))
+-            return ''.join(symbols)
+-        # end .quality_scores_to_symbols
+-
+-    """
+-    Returns the character corresponding to the quality score.
+-    """
+-    @staticmethod
+-    def score_to_symbol(score):
+-        values = '!"#$%&' + "'" + '()*+,-./0123456789:;<=>?@ABCDEFGHIJK'
+-        if score >= len(values):
+-            symbol = values[-1]
+-        else:
+-            symbol = values[score]
+-        return symbol
+-        # end .score_to_symbol().
+-
+-    """
+-    Determines how many times the k-mer repeats in a row
+-    within the given sequence.
+-    """
+-    @staticmethod
+-    def kmer_repeat_count(kmer, sequence, offset = 0):
+-        repeats = 0
+-        klen = len(kmer)
+-        while True:
+-            if sequence[offset:offset+klen] != kmer:
+-                # End of repeat sequence
+-                break
+-            repeats += 1
+-            offset += klen
+-            if offset > len(sequence):
+-                # End of sequence
+-                break
+-        return repeats
+-    # end .kmer_repeat_count()
+-
+-    """
+-    Calculates the repeat count of the targeted k-mer (defined by the locus)
+-    within the read.
+-    """
+-    def locus_repeat_count(self, read, locus):
+-        repeat_count = -1
+-        offset = 0
+-
+-        if read.start <= locus.start and read.end >= locus.end:
+-            offset = OffsetFinder.find_offset(read, locus)
+-            if offset < read.length:
+-                # Read covers locus; get repeat count
+-                repeat_count = KmerRepeatCounter.kmer_repeat_count(locus.kmer, read.seq, offset)
+-
+-                # Check if the read might be truncated either on the 5' or 3'
+-                # end by comparing the offset and length of kmer to the length
+-                # of the read sequence.
+-                if self.read_has_truncation(read, locus, offset, repeat_count):
+-                    # Exclude this read
+-                    repeat_count = -1
+-        return (repeat_count, offset,)
+-        # end .locus_repeat_count()
+-
+-    """
+-    Helper method utilizing PySam to determine if reads in the BAM file
+-    use a 'chr' prefix as part of the chromosomes or not.
+-    """
+-    @staticmethod
+-    def bam_uses_chr_prefixes(filename, loci):
+-        found_with_chr = False
+-        found_without_chr = False
+-        # Iterate through the loci and check for reads in each locus,
+-        # with and without the 'chr' prefix, until we get a match for one.
+-        # Using a 5-base buffer to allow better matching due to potentially
+-        # misspecified genomic coordinates.
+-
+-        source = pysam.AlignmentFile(filename, 'rb')  
+-
+-        for locus in loci:
+-            with_chr = locus.chromosome
+-            if with_chr[0:3] != 'chr':
+-                with_chr = 'chr{0}'.format(with_chr)
+-            without_chr = with_chr[3:]
+-
+-
+-            # Make sure the start coordinate isn't below 1
+-            start_pos = locus.start - 5
+-            if start_pos < 1:
+-                start_pos = 1
+-            end_pos = locus.end + 5
+-
+-            # First check if we can find one WITH the 'chr' prefix.
+-            try:
+-                reads = source.fetch(with_chr, start_pos, end_pos)
+-                # If we proceed beyond this line, we found matches
+-                found_with_chr = True
+-                break
+-            except ValueError:
+-                found_with_chr = False
+-
+-            if not found_with_chr:
+-                # Check if we can find reads WITHOUT the 'chr' prefix.
+-                try:
+-                    reads = source.fetch(without_chr, start_pos, end_pos)
+-                    # If we proceed beyond this line, we found matches
+-                    found_without_chr = True
+-                    break
+-                except ValueError:
+-                    found_without_chr = False
+-
+-            if found_with_chr or found_without_chr:
+-                break
+-
+-        if found_with_chr:
+-            return True
+-        elif found_without_chr:
+-            return False
+-        else:
+-            # No matches for anything!
+-            return None
+-        # end .bam_uses_chr_prefixes()
+-
+-
+-    """
+-    Producer thread that reads data from the BAM file and populates the queue
+-    with matched reads using pysam; uses semaphores to prevent loss of 
+-    synchronization state or overwhelming the read buffer.
+-    """
+-    def extract_reads(self, filename, loci, full, empty, mutex, queue, consumers):
+-        use_chr_prefix = KmerRepeatCounter.bam_uses_chr_prefixes(filename, loci)
+-        if use_chr_prefix is None:
+-            tprint('Fatal error! Could not find any matched reads.')
+-            exit(1)
+-
+-        if self.debug_output:
+-            tprint('Extractor> Thread starting for {0}'.format(filename))
+-        source = pysam.AlignmentFile(filename, 'rb')   
+-
+-        available_chromosomes = set([hash(str(x)) for x in source.references])
+-        for locus in loci:
+-
+-            # Format the chromosome to be compatible with how the reads are
+-            # stored in the BAM file (i.e. with or without 'chr' prefix).
+-            chromosome = locus.chromosome
+-            if use_chr_prefix and chromosome[0:3] != 'chr':
+-                # Prepend the 'chr' prefix.
+-                chromosome = 'chr{0}'.format(chromosome)
+-            elif not use_chr_prefix and chromosome[0:3] == 'chr':
+-                # Remove the 'chr' prefix.
+-                chromosome = chromosome[3:]
+-
+-            if hash(chromosome) in available_chromosomes:
+-
+-                # Make sure the start coordinate isn't below 1
+-                start_pos = locus.start - 5
+-                if start_pos < 1:
+-                    start_pos = 1
+-                end_pos = locus.end + 5
+-
+-
+-                for read in source.fetch(chromosome, start_pos, end_pos):
+-                    # Use AlignedSegment object to create a list, which is
+-                    # then used in the creation of the SAMRead object,
+-                    # since the AlignedSegment objects are C-structs and cannot
+-                    # be passed to the consumer threads.
+-                    data = [
+-                        read.query_name,
+-                        read.flag,
+-                        chromosome,
+-                        read.reference_start,
+-                        read.mapping_quality,
+-                        read.cigarstring,
+-                        '', 
+-                        '',
+-                        '',
+-                        read.query_sequence,
+-                        KmerRepeatCounter.quality_scores_to_symbols(read.query_qualities)
+-                    ]
+-                    # CIGAR of None means it was likely an asterisk (*), so the read
+-                    # will get ignored since something was wrong with the alignment.
+-                    if read.cigarstring is not None:
+-                        read = SAMRead('\t'.join([str(x) for x in data]))
+-                        item = [locus, read]
+-
+-                        # Use semaphores to handle proper writing into the queue.
+-                        empty.acquire()
+-                        mutex.acquire()
+-                        queue.put(item)
+-                        mutex.release()
+-                        full.release()
+-
+-        source.close()
+-
+-        if self.debug_output:
+-            tprint('Extractor> Extracted all reads for all target loci.')
+-        # Add set amount of end signals to queue to end consumers
+-        for i in range(0, consumers * 2):
+-            empty.acquire()
+-            mutex.acquire()
+-            queue.put([False,False])
+-            mutex.release()
+-            full.release()
+-        if self.debug_output:
+-            tprint('Extractor> Queued up {0} termination signals.'.format(consumers))
+-        return True
+-        # end .extract_reads()
+-
+-
+-
+-    """
+-    Consumer thread that reads data put on the queue by the BAM reading thread; 
+-    processes each read to get the repeat count for the repeat unit (k-mer).
+-    """
+-    def read_analyzer(self, queue_in, queue_out, full, empty, mutex_in, mutex_out, queue_full):
+-        query_delay = 0.100 # in seconds
+-        n = 0
+-        if self.debug_output:
+-            tprint('Analyzer> Thread {0} started.'.format(os.getpid()))
+-        while True:
+-            n += 1
+-            if self.debug_output and (n % 10000 is 0):
+-                tprint('Analyzer> Thread {0}'.format(os.getpid()) +
+-                    ' still ALIVE, loop {0}'.format(n))
+-
+-
+-            full.acquire()
+-            mutex_in.acquire()
+-            item = queue_in.get()
+-            locus = item[0]
+-            read = item[1]
+-            mutex_in.release()
+-            empty.release()   
+-
+-            if not locus:
+-                # Element was set to FALSE; signals thread termination.
+-                if self.debug_output:
+-                    tprint('Analyzer> Thread {0}'.format(os.getpid()) +
+-                    ' received termination signal.')
+-                break
+-
+-            if self.passes_qc_filter(read):
+-                # Get the repeat count for the repeat unit, along with the
+-                # internal offset (how many bases into the read the locus
+-                # actually starts at).
+-                repeat_count, repeat_start = self.locus_repeat_count(read, locus)
+-                    
+-                # A repeat_count of -1 would mean the read did not contain
+-                # the target locus, or the locus position within the read
+-                # could not be determined.
+-                if repeat_count >= 0:
+-                    # Figure out where the repeat region ends (offset-wise).
+-                    repeat_end = repeat_start + (repeat_count * locus.kmer_length)
+-
+-                    # Make sure the locus itself has sufficient quality.
+-                    if self.passes_locus_qc_filter(read, repeat_start, repeat_end):
+-                        # Passed locus QC filter; read is processed. Acquire semaphore
+-                        # to return repeat count as output.
+-                        queue_full.acquire()
+-                        mutex_out.acquire()
+-                        queue_out.put([locus.locus(), repeat_count])
+-                        mutex_out.release()
+-
+-        if self.debug_output:
+-            tprint('Analyzer> Ending thread {0}'.format(os.getpid()))
+-        return True   
+-        # end .read_analyzer()
+-
+-    """
+-    Performs a status check on the producer (extractor), consumer (analyzer),
+-    and shared queue structures to make sure the program hasn't lost proper
+-    multiprocessing functionality.
+-    """
+-    def status_check(self, qsize):
+-        ok = '\033[92m'
+-        reset = '\033[0m'
+-        fail = '\033[91m'
+-        if qsize is 0:
+-            queue_status = 'EMPTY'
+-        else:
+-            queue_status = '{0} ITEMS'.format(qsize)
+-
+-        if self.has_live_producer() and not self.has_live_consumers():
+-                tprint(fail + 'Main> Analyzer(s) LIVE, Extractor DEAD, Queue ' + 
+-                    queue_status + '. ' + reset)
+-                tprint(fail + 'Main> Teriminating process due to ' + 
+-                    'multiprocessing failure.' + reset)
+-                exit(1)
+-
+-        # end .status_check()    
+-
+-    """
+-    Inspects the reads, finds corresponding MSI loci,
+-    and returns data on the locus size/length distributions.
+-    """
+-    def process(self, input_filepath, msi_loci, config):
+-        self.__reset()
+-
+-        # Generate dictionary read counts for loci
+-        counts = {}
+-        loci = []
+-        for locus in msi_loci:
+-            counts[locus.locus()] = {}
+-            loci.append(locus)
+-
+-        # Generate input and output queues and (mutex) semaphores
+-        # for each.
+-        queue_out = Queue()
+-        queue_in = Queue()
+-        queue_full = BoundedSemaphore(100)
+-        full = Semaphore(0)
+-        empty = BoundedSemaphore(40)
+-        mutex_out = Semaphore(1)
+-        mutex_in = Semaphore(1)
+-
+-        # Set amount of consumer threads; minimum one.
+-        consumer_threads = config['threads'] - 1
+-        if consumer_threads < 1:
+-            consumer_threads = 1
+-
+-        # Create producer thread; currently only using single thread
+-        # since I/O is more of the limiter than CPU bound processes.
+-        self.__producer = Process(target=self.extract_reads, args=(
+-            input_filepath, 
+-            msi_loci, 
+-            full, 
+-            empty, 
+-            mutex_out, 
+-            queue_in, 
+-            consumer_threads))
+-        self.__producer.start()
+-
+-
+-        # Spawn the set amount of threads/processes
+-        if self.debug_output:
+-            tprint('Main> Generating {0} analyzer process(es).'.format(consumer_threads))
+-        for i in range(0, consumer_threads):
+-            p = Process(target=self.read_analyzer, args=(
+-                queue_in, 
+-                queue_out, 
+-                full, 
+-                empty, 
+-                mutex_in, 
+-                mutex_out,
+-                queue_full))
+-            self.__consumers.append(p)
+-            self.__consumers[-1].start()
+-
+-        # Iterate through the loci, fetching any reads and pushing them to 
+-        # the pool of threads, collecting the output as they process it.
+-        query_delay = 0.050 # In seconds
+-       
+-        loop_counter = 0
+-        proc_check_interval = 100
+-        while (not queue_out.empty() or self.has_live_threads()):
+-            # Sleep for the set amount of time so the queue isn't constantly
+-            # getting hammered with queries
+-            time.sleep(query_delay)
+-            loop_counter += 1
+-            if loop_counter % proc_check_interval is 0:
+-                # Time to check that the consumers
+-                # didn't die while the producer is still producing
+-                mutex_out.acquire()
+-                self.status_check(queue_out.qsize())
+-                mutex_out.release()
+-
+-            while not queue_out.empty():
+-                # There is data on the queue to be processed;
+-                # the return from the queue should be a tuple
+-                # with (locus, repeat_count)
+-                mutex_out.acquire()
+-                result = queue_out.get()
+-                locus = result[0]
+-                repeat_count = result[1]
+-                if repeat_count >= 0:
+-                    if locus not in counts:
+-                        counts[locus] = {}
+-                    if repeat_count not in counts[locus]:
+-                        counts[locus][repeat_count] = 0
+-                    counts[locus][repeat_count] += 1
+-                mutex_out.release()
+-                queue_full.release()
+-
+-            if not self.has_live_threads():
+-                # All processes should have terminated.
+-                if self.debug_output:
+-                    tprint('Main> All processes complete.')
+-                break
+-        # end while loop
+-
+-        return counts
+-        # end .process()
+-    
+-    # end KmerRepeatCounter class definition.
+-
+- 
+-
+-
+-
+-
+-"""
+-Use arguments from the command line parameters (input: args)
+-to generate a config setting dict.
+-"""
+-def generate_config(args):
+-    config = {}
+-
+-    config['genome'] = os.path.abspath(args.genome)
+-    if not os.path.isfile(config['genome']):
+-        tprint('Error: {0} does not exist!'.format(config['genome']))
+-        exit(1)
+-
+-    config['threads'] = int(args.threads)
+-    if config['threads'] < 1:
+-        tprint('Error: Cannot specify less than one thread. '
+-            + '(Provided {0}).'.format(config['threads']))
+-        exit(1)
+-
+-    config['bedfile'] = os.path.abspath(args.bedfile)
+-    if args.bedfile is None:
+-        tprint('Error: BED file not provided!')
+-        exit(1)
+-    else:
+-        bedfile = os.path.abspath(args.bedfile)
+-        if not os.path.isfile(bedfile):
+-            tprint('Error: {0} does not exist!'.format(bedfile))
+-            exit(1)
+-
+-    if args.normal is None:
+-        tprint('Error: Normal BAM/SAM file not provided!')
+-        exit(1)
+-    else:
+-        config['normal_filepath'] = os.path.abspath(args.normal)
+-        if not os.path.isfile(config['normal_filepath']):
+-            tprint('Error: {0} does not exist!'.format(config['normal_filepath']))
+-            exit(1)
+-    
+-    if args.tumor is None:
+-        tprint('Error: Tumor BAM/SAM file not provided!')
+-        exit(1)
+-    else:
+-        config['tumor_filepath'] = os.path.abspath(args.tumor)
+-        if not os.path.isfile(config['tumor_filepath']):
+-            tprint('Error: {0} does not exist!'.format(config['tumor_filepath']))
+-            exit(1)
+-
+-
+-    if args.output is None:
+-        tprint('Error: Output filepath must be specified!')
+-    else:
+-        config['output_filepath'] = os.path.abspath(args.output)
+-        # Make sure output folder exists
+-        output_dir = os.path.dirname(config['output_filepath'])
+-        if not os.path.isdir(output_dir):
+-            os.makedirs(output_dir)
+-
+-
+-    config['min_read_quality'] = float(args.mrq)
+-    config['min_read_length'] = int(args.mrl)
+-    config['min_locus_quality'] = float(args.mlq)
+-    config['debug_output'] = args.debug_output
+-    return config
+-    # end .generate_config()
+-
+-strip_chr_re = re.compile(r'^chr')
+-#Helper method for ordering loci
+-def cmp_loci(x, y):
+-    def parse_locus(l):
+-        pieces = l.split(':')
+-        chr = strip_chr_re.sub("", pieces[0])
+-        pieces = pieces[1].split('-')
+-        start = int(pieces[0])
+-        end = int(pieces[1])
+-        return (chr, start, end)
+-    x_chr, x_start, x_end = parse_locus(x)
+-    y_chr, y_start, y_end = parse_locus(y)
+-    if (x_chr.isdigit() and not y_chr.isdigit()):
+-        return -1
+-    elif (y_chr.isdigit() and not x_chr.isdigit()):
+-        return 1
+-    elif x_chr.isdigit():
+-        x_chr = int(x_chr)
+-        y_chr = int(y_chr)
+-    if (x_chr < y_chr):
+-        return -1
+-    elif (x_chr > y_chr):
+-        return 1
+-    if (x_start < y_start):
+-        return -1
+-    elif (x_start > y_start):
+-        return 1
+-    elif (x_end < y_end):
+-        return -1
+-    elif (x_end > y_end):
+-        return 1
+-    else:
+-        return 0
+-
+-"""
+-Write the output of the program into the target file.
+-The output consists of tab-separated values, with each line having:
+-- locus
+-- k-value
+-- supporting reads for k-value in normal BAM
+-- supporting reads for k-value in tumor BAM
+-"""
+-def write_output(filepath, normal, tumor):
+-    fileout = open(filepath, 'w')
+-
+-    loci = set(normal.keys())
+-    loci = loci.union(tumor.keys())
+-    if (sys.version_info > (3, 0)):
+-        loci = sorted(loci, key=functools.cmp_to_key(cmp_loci))
+-    else:
+-        loci = sorted(loci, cmp=cmp_loci)
+-    header = '\t'.join(['Locus','Repeats','Normal','Tumor'])
+-    fileout.write(header + '\n')
+-    for locus in loci:
+-        locus_output = generate_locus_output(normal[locus], tumor[locus])
+-        for line in locus_output:
+-            # Prepend locus
+-            line = [locus] + line
+-            line = '\t'.join([str(x) for x in line])
+-            fileout.write(line + '\n')
+-    fileout.close()
+-    # end .write_output()
+-
+-
+-"""
+-Helper method for generating the output lines to be written.
+-"""
+-def generate_locus_output(normal, tumor):
+-    output = []
+-    # Get repeat lengths to use as keys for accessing
+-    # both the normal and tumor data.
+-    lengths = set(normal.keys())
+-    for length in tumor.keys():
+-        lengths.add(length)
+-    lengths = sorted(lengths)
+-    for length in lengths:
+-        n_repeats = 0
+-        t_repeats = 0
+-        if length in normal:
+-            n_repeats = normal[length]
+-        if length in tumor:
+-            t_repeats = tumor[length]
+-        output.append([length, n_repeats, t_repeats])
+-    return output
+-    # end .generate_locus_output()
+-
+-"""
+-Uses PySAM to generate index for BAM file if one doesn't exist.
+-"""
+-def generate_index_if_needed(filepath):
+-    index_file = os.path.abspath(filepath) + '.bai'
+-    if not os.path.isfile(index_file):
+-        # Index file doesn't exist; generate it
+-        pysam.index(filepath, index_file)
+-    return True
+-    # end .generate_index_if_needed()
+-
+-if __name__ == "__main__":
+-    prog_name = 'MANTIS K-Mer Repeat Counter'
+-    tprint(prog_name)
+-
+-    parser = argparse.ArgumentParser(description=prog_name)
+-
+-    parser.add_argument('-n', '--normal', dest='normal', type=str, 
+-        required=True, help='Normal input (SAM/BAM) file.')
+-
+-    parser.add_argument('-t', '--tumor', dest='tumor', type=str, 
+-        required=True, help='Tumor input (SAM/BAM) file.')
+-
+-    parser.add_argument('-b', '--bedfile', dest='bedfile', type=str,
+-        required=True, help='Input BED file.')
+-
+-    parser.add_argument('-o', '--output', dest='output', type=str, 
+-        help='Output BED filename.')
+-
+-    parser.add_argument('-mrq', '--min-read-quality', dest='mrq',
+-        type=float, default=10.0, help='Minimum average read quality.')
+-
+-    parser.add_argument('-mlq', '--min-locus-quality', dest='mlq',
+-        type=float, default=20.0, help='Minimum average locus quality.')
+-
+-    parser.add_argument('-mrl', '--min-read-length', dest='mrl',
+-        type=int, default=35, 
+-        help='Minimum (unclipped/unmasked) read length.')
+-
+-    parser.add_argument('--threads', dest='threads', type=int,
+-        default=1, help='Number of threads/proceseses to use.')
+-
+-    parser.add_argument('--genome', dest='genome', type=str,
+-        help='Path to reference genome (FASTA).')
+-
+-    parser.add_argument('--debug', dest='debug_output', action='store_true',
+-        help='Print debug output from multithreading.')
+-
+-    args = parser.parse_args()
+-
+-    # Use helper method for checking args and creating config dict.
+-    config = generate_config(args)
+-
+-    # Load MSI loci from the BED line.
+-    tprint('Loading target MSI loci from BED file ...')
+-    mll = MSILocusLoader(config)
+-    msi_loci = mll.load_loci(config['bedfile'])
+-    tprint('Loaded {0} loci.'.format(len(msi_loci)))
+-
+-    # Generate instance of the Kmer Repeat Counter
+-    krc = KmerRepeatCounter(config)
+-
+-    tprint('Processing normal input file with ' +
+-        '{0} thread(s) ...'.format(config['threads']))
+-    generate_index_if_needed(config['normal_filepath'])
+-    normal = krc.process(config['normal_filepath'], msi_loci, config)
+-    tprint('Done processing normal.')
+-
+-    krc = KmerRepeatCounter(config)
+-    tprint('Processing tumor input file with ' +
+-        '{0} thread(s) ...'.format(config['threads']))
+-    generate_index_if_needed(config['tumor_filepath'])    
+-    tumor = krc.process(config['tumor_filepath'], msi_loci, config)  
+-    tprint('Done processing tumor.')
+-
+-    write_output(config['output_filepath'], normal, tumor)
+-    print('Saved output in {0}'.format(config['output_filepath']))
+-    # Done.
+-    exit(0)
++#!/usr/bin/env python
++
++# @file kmer_repeat_counter.py
++# @author Esko Kautto (esko.kautto@osumc.edu)
++# @updated 2017-12-18
++
++import os
++import argparse
++import functools
++import subprocess
++import time
++from datetime import datetime, timedelta
++from multiprocessing import Process, Queue, BoundedSemaphore, Semaphore
++import pysam
++import numpy
++from structures import SAMRead, CIGAR, Locus, MSILocus
++from offset_finder import OffsetFinder
++from helpers import iteritems, tprint, timestamp
++from defaults import Parameter, load_settings
++import re
++import sys
++
++
++class MSILocusLoader:
++    def __init__(self, config):
++        self.genome_path = None
++
++        if 'genome' in config:
++            self.genome_path = config['genome']
++        else:
++            tprint('MSILocusLoader warning: You need to specify a path' +
++                ' to the reference genome!')
++        # end .__init__()
++
++
++    """
++    Loads BED file into a list of Locus objects.
++    """
++    def load_loci(self, bedfile):
++        loci = []
++        bedfile = os.path.abspath(bedfile)
++        if not os.path.isfile(bedfile):
++            tprint('MSILocusLoader error: File {0}'.format(bedfile) + 
++                ' does not exist!')
++        else:
++            with open(bedfile, 'r') as filein:
++                for line in filein.readlines():
++                    if line[0] != '@':
++                        locus = MSILocus(line)
++                        if locus.chromosome[0:3] != 'chr':
++                            # Force-prepend the chr prefix
++                            locus.chromosome = 'chr{0}'.format(locus.chromosome)
++
++                        # Correct any off-by-one errors that may occur because of 
++                        # unstandardized open- and closed-endedness of bed file coordinates.
++                        self.correct_off_by_one_errors(locus)                    
++                        loci.append(locus)
++            filein.close()
++        return loci
++        # end .load_loci()
++
++    strip_coord_re = re.compile(r'^[\d\-]+')
++    """
++    Fixes any off-by-one errors for the locus that could result from
++    different interpretations of the open and closed ends of the BED
++    format regions.
++    """
++    def correct_off_by_one_errors(self, locus):
++        # Generate the locus position by adding a 1 basepair padding around the locus
++        # coordinates, which accounts for the off-by-one errors.
++        position = '{0}:{1}-{2}'.format(locus.chromosome, 
++            locus.start - 1, 
++            locus.end + 1)
++        
++        raw_sequence = self.get_sequence(position)
++        #accommodate newer versions of PySam, which causes this to return chromosome and position
++        raw_sequence = raw_sequence.split(":")[-1]
++        sequence = MSILocusLoader.strip_coord_re.sub("", raw_sequence)
++        if sequence[1:1+locus.kmer_length] != locus.kmer:
++            # Sequence doesn't start where expected; shift accordingly.
++            if sequence[0:locus.kmer_length] == locus.kmer:
++                # Shift back by one
++                locus.start -= 1
++                locus.end -= 1
++            elif sequence[2:2+locus.kmer_length] == locus.kmer:
++                # Shift forward by one
++                locus.start += 1
++                locus.end += 1
++            else:
++                tprint('Error: Specified locus does not appear '
++                    + ' to be the starting point for kmer {kmer}.'.format(
++                        kmer=locus.kmer))
++        # end .correct_off_by_one_errors()
++
++    """
++    Helper method that uses SAM tools to fetch the sequence of the 
++    locus from the reference genome.
++    """
++    def get_sequence(self, locus):
++        if self.genome_path is None:
++            tprint('MSILocusLoader error: Can not use .get_sequence() without' 
++                + ' specifying the path to the reference genome!')
++            exit(1)
++    
++        sequence = []
++        for subseq in pysam.faidx(self.genome_path, locus)[1:]:
++            sequence.append(subseq.strip())
++        return ''.join(sequence).upper()
++        # end .get_sequence()    
++
++    # end MSILocusLoader class definition.
++
++
++
++
++
++
++
++class KmerRepeatCounter:
++    def __init__(self, config):
++        self.min_read_quality = config['min_read_quality']
++        self.min_read_length = config['min_read_length']
++        self.min_locus_quality = config['min_locus_quality']
++        self.debug_output = config['debug_output']
++        self.__reset()
++        # end .__init__()
++
++    def __reset(self):
++        self.__consumers = list()
++        self.__producer = None
++        # end .__reset()
++
++
++    """
++    Estimates if the read is likely to be truncated within the target
++    locus, which would indicate the repeat count will be too low.
++    """
++    def read_has_truncation(self, read, locus, offset, repeat_count):
++        truncated = False
++        if read.length - (offset + (repeat_count * locus.kmer_length)) < locus.kmer_length:
++            # Possible 3' truncation
++            diff = read.length - (offset + (repeat_count * locus.kmer_length))
++            if read.seq[-1 * diff:] == locus.kmer[0:diff]:
++                # Partial copy of the kmer; almost certainly truncated
++                truncated = True
++
++        elif offset < locus.kmer_length:
++            # Possible 5' truncation
++            if (offset is 0) or read.seq[0:offset] == locus.kmer[offset:]:
++                # No offset OR offset matches fragment of kmer; likely truncation
++                truncated = True
++        return truncated
++        # end .read_has_truncation()
++
++
++    """
++    Checks if the read passes the minimum QC requirements; currently
++    consists of a minimum average read quality and read length.
++    """
++    def passes_qc_filter(self, read):
++        passes = True
++        if read.quality < self.min_read_quality:
++            # Read quality too low.
++            passes = False
++        elif read.length < self.min_read_length:
++            # Read sequence too short.
++            passes = False
++        return passes
++        # end .passes_qc_filter()
++
++    """
++    Calculates the mean quality for the subset of the read.
++    """
++    @staticmethod
++    def subset_mean_quality(read, start, end):
++        scores = []
++        for i in range(start, end):
++            score = KmerRepeatCounter.symbol_to_quality_score(read.qual[i])
++            scores.append(score)
++        if len(scores):
++            return numpy.mean(scores)
++        return 0.0
++        # end .subset_mean_quality()
++
++    """
++    Converts the symbolic quality score to a numeric (int) value.
++    """
++    @staticmethod
++    def symbol_to_quality_score(symbol):
++        symbols = '!"#$%&' + "'" + '()*+,-./0123456789:;<=>?@ABCDEFGHIJK'
++        score = 0
++        if symbol in symbols:
++            score = symbols.find(symbol)
++        return score
++        # End .symbol_to_quality_score()
++
++
++    """
++    Checks if the repeating locus (as opposed to the entire read)
++    has sufficient quality to pass the QC filter.
++    """
++    def passes_locus_qc_filter(self, read, offset_start, offset_end):
++        locus_mean_quality = KmerRepeatCounter.subset_mean_quality(read, 
++            offset_start, offset_end)
++        if locus_mean_quality < self.min_locus_quality:
++            # failed locus QC filter
++            return False 
++        return True
++        # end .passes_locus_qc_filter()
++
++    """
++    Checks if any of the threads are still live.
++    """
++    def has_live_threads(self):
++        live = False
++        if self.has_live_producer():
++            # The producer thread is still alive.
++            live = True
++        elif self.has_live_consumers():
++            # Has at least one live consumer thread.
++            live = True
++        return live
++        # end .has_live_threads()
++
++    """
++    Checks if the producer thread is still live.
++    """
++    def has_live_producer(self):
++        return self.__producer.is_alive()
++        # end .has_live_producer()
++
++    """
++    Checks if any of the consumer threads are still live.
++    """
++    def has_live_consumers(self):
++        live = False
++        for c in self.__consumers:
++            if c.is_alive():
++                live = True
++                break
++        return live
++        # end .has_live_consumers()
++
++    """
++    Converts the numeric quality scores to the respective
++    phred scale character values.
++    """
++    @staticmethod
++    def quality_scores_to_symbols(scores):
++        if type(scores) is int:
++            return KmerRepeatCounter.score_to_symbol(scores)
++        elif type(scores) is str:
++            return KmerRepeatCounter.score_to_symbol(int(scores))
++        else:
++            symbols = []
++            for score in scores:
++                symbols.append(KmerRepeatCounter.score_to_symbol(int(score)))
++            return ''.join(symbols)
++        # end .quality_scores_to_symbols
++
++    """
++    Returns the character corresponding to the quality score.
++    """
++    @staticmethod
++    def score_to_symbol(score):
++        values = '!"#$%&' + "'" + '()*+,-./0123456789:;<=>?@ABCDEFGHIJK'
++        if score >= len(values):
++            symbol = values[-1]
++        else:
++            symbol = values[score]
++        return symbol
++        # end .score_to_symbol().
++
++    """
++    Determines how many times the k-mer repeats in a row
++    within the given sequence.
++    """
++    @staticmethod
++    def kmer_repeat_count(kmer, sequence, offset = 0):
++        repeats = 0
++        klen = len(kmer)
++        while True:
++            if sequence[offset:offset+klen] != kmer:
++                # End of repeat sequence
++                break
++            repeats += 1
++            offset += klen
++            if offset > len(sequence):
++                # End of sequence
++                break
++        return repeats
++    # end .kmer_repeat_count()
++
++    """
++    Calculates the repeat count of the targeted k-mer (defined by the locus)
++    within the read.
++    """
++    def locus_repeat_count(self, read, locus):
++        repeat_count = -1
++        offset = 0
++
++        if read.start <= locus.start and read.end >= locus.end:
++            offset = OffsetFinder.find_offset(read, locus)
++            if offset < read.length:
++                # Read covers locus; get repeat count
++                repeat_count = KmerRepeatCounter.kmer_repeat_count(locus.kmer, read.seq, offset)
++
++                # Check if the read might be truncated either on the 5' or 3'
++                # end by comparing the offset and length of kmer to the length
++                # of the read sequence.
++                if self.read_has_truncation(read, locus, offset, repeat_count):
++                    # Exclude this read
++                    repeat_count = -1
++        return (repeat_count, offset,)
++        # end .locus_repeat_count()
++
++    """
++    Helper method utilizing PySam to determine if reads in the BAM file
++    use a 'chr' prefix as part of the chromosomes or not.
++    """
++    @staticmethod
++    def bam_uses_chr_prefixes(filename, loci):
++        found_with_chr = False
++        found_without_chr = False
++        # Iterate through the loci and check for reads in each locus,
++        # with and without the 'chr' prefix, until we get a match for one.
++        # Using a 5-base buffer to allow better matching due to potentially
++        # misspecified genomic coordinates.
++
++        source = pysam.AlignmentFile(filename, 'rb')  
++
++        for locus in loci:
++            with_chr = locus.chromosome
++            if with_chr[0:3] != 'chr':
++                with_chr = 'chr{0}'.format(with_chr)
++            without_chr = with_chr[3:]
++
++
++            # Make sure the start coordinate isn't below 1
++            start_pos = locus.start - 5
++            if start_pos < 1:
++                start_pos = 1
++            end_pos = locus.end + 5
++
++            # First check if we can find one WITH the 'chr' prefix.
++            try:
++                reads = source.fetch(with_chr, start_pos, end_pos)
++                # If we proceed beyond this line, we found matches
++                found_with_chr = True
++                break
++            except ValueError:
++                found_with_chr = False
++
++            if not found_with_chr:
++                # Check if we can find reads WITHOUT the 'chr' prefix.
++                try:
++                    reads = source.fetch(without_chr, start_pos, end_pos)
++                    # If we proceed beyond this line, we found matches
++                    found_without_chr = True
++                    break
++                except ValueError:
++                    found_without_chr = False
++
++            if found_with_chr or found_without_chr:
++                break
++
++        if found_with_chr:
++            return True
++        elif found_without_chr:
++            return False
++        else:
++            # No matches for anything!
++            return None
++        # end .bam_uses_chr_prefixes()
++
++
++    """
++    Producer thread that reads data from the BAM file and populates the queue
++    with matched reads using pysam; uses semaphores to prevent loss of 
++    synchronization state or overwhelming the read buffer.
++    """
++    def extract_reads(self, filename, loci, full, empty, mutex, queue, consumers):
++        use_chr_prefix = KmerRepeatCounter.bam_uses_chr_prefixes(filename, loci)
++        if use_chr_prefix is None:
++            tprint('Fatal error! Could not find any matched reads.')
++            exit(1)
++
++        if self.debug_output:
++            tprint('Extractor> Thread starting for {0}'.format(filename))
++        source = pysam.AlignmentFile(filename, 'rb')   
++
++        available_chromosomes = set([hash(str(x)) for x in source.references])
++        for locus in loci:
++
++            # Format the chromosome to be compatible with how the reads are
++            # stored in the BAM file (i.e. with or without 'chr' prefix).
++            chromosome = locus.chromosome
++            if use_chr_prefix and chromosome[0:3] != 'chr':
++                # Prepend the 'chr' prefix.
++                chromosome = 'chr{0}'.format(chromosome)
++            elif not use_chr_prefix and chromosome[0:3] == 'chr':
++                # Remove the 'chr' prefix.
++                chromosome = chromosome[3:]
++
++            if hash(chromosome) in available_chromosomes:
++
++                # Make sure the start coordinate isn't below 1
++                start_pos = locus.start - 5
++                if start_pos < 1:
++                    start_pos = 1
++                end_pos = locus.end + 5
++
++
++                for read in source.fetch(chromosome, start_pos, end_pos):
++                    # Use AlignedSegment object to create a list, which is
++                    # then used in the creation of the SAMRead object,
++                    # since the AlignedSegment objects are C-structs and cannot
++                    # be passed to the consumer threads.
++                    data = [
++                        read.query_name,
++                        read.flag,
++                        chromosome,
++                        read.reference_start,
++                        read.mapping_quality,
++                        read.cigarstring,
++                        '', 
++                        '',
++                        '',
++                        read.query_sequence,
++                        KmerRepeatCounter.quality_scores_to_symbols(read.query_qualities)
++                    ]
++                    # CIGAR of None means it was likely an asterisk (*), so the read
++                    # will get ignored since something was wrong with the alignment.
++                    if read.cigarstring is not None:
++                        read = SAMRead('\t'.join([str(x) for x in data]))
++                        item = [locus, read]
++
++                        # Use semaphores to handle proper writing into the queue.
++                        empty.acquire()
++                        mutex.acquire()
++                        queue.put(item)
++                        mutex.release()
++                        full.release()
++
++        source.close()
++
++        if self.debug_output:
++            tprint('Extractor> Extracted all reads for all target loci.')
++        # Add set amount of end signals to queue to end consumers
++        for i in range(0, consumers * 2):
++            empty.acquire()
++            mutex.acquire()
++            queue.put([False,False])
++            mutex.release()
++            full.release()
++        if self.debug_output:
++            tprint('Extractor> Queued up {0} termination signals.'.format(consumers))
++        return True
++        # end .extract_reads()
++
++
++
++    """
++    Consumer thread that reads data put on the queue by the BAM reading thread; 
++    processes each read to get the repeat count for the repeat unit (k-mer).
++    """
++    def read_analyzer(self, queue_in, queue_out, full, empty, mutex_in, mutex_out, queue_full):
++        query_delay = 0.100 # in seconds
++        n = 0
++        if self.debug_output:
++            tprint('Analyzer> Thread {0} started.'.format(os.getpid()))
++        while True:
++            n += 1
++            if self.debug_output and (n % 10000 is 0):
++                tprint('Analyzer> Thread {0}'.format(os.getpid()) +
++                    ' still ALIVE, loop {0}'.format(n))
++
++
++            full.acquire()
++            mutex_in.acquire()
++            item = queue_in.get()
++            locus = item[0]
++            read = item[1]
++            mutex_in.release()
++            empty.release()   
++
++            if not locus:
++                # Element was set to FALSE; signals thread termination.
++                if self.debug_output:
++                    tprint('Analyzer> Thread {0}'.format(os.getpid()) +
++                    ' received termination signal.')
++                break
++
++            if self.passes_qc_filter(read):
++                # Get the repeat count for the repeat unit, along with the
++                # internal offset (how many bases into the read the locus
++                # actually starts at).
++                repeat_count, repeat_start = self.locus_repeat_count(read, locus)
++                    
++                # A repeat_count of -1 would mean the read did not contain
++                # the target locus, or the locus position within the read
++                # could not be determined.
++                if repeat_count >= 0:
++                    # Figure out where the repeat region ends (offset-wise).
++                    repeat_end = repeat_start + (repeat_count * locus.kmer_length)
++
++                    # Make sure the locus itself has sufficient quality.
++                    if self.passes_locus_qc_filter(read, repeat_start, repeat_end):
++                        # Passed locus QC filter; read is processed. Acquire semaphore
++                        # to return repeat count as output.
++                        queue_full.acquire()
++                        mutex_out.acquire()
++                        queue_out.put([locus.locus(), repeat_count])
++                        mutex_out.release()
++
++        if self.debug_output:
++            tprint('Analyzer> Ending thread {0}'.format(os.getpid()))
++        return True   
++        # end .read_analyzer()
++
++    """
++    Performs a status check on the producer (extractor), consumer (analyzer),
++    and shared queue structures to make sure the program hasn't lost proper
++    multiprocessing functionality.
++    """
++    def status_check(self, qsize):
++        ok = '\033[92m'
++        reset = '\033[0m'
++        fail = '\033[91m'
++        if qsize is 0:
++            queue_status = 'EMPTY'
++        else:
++            queue_status = '{0} ITEMS'.format(qsize)
++
++        if self.has_live_producer() and not self.has_live_consumers():
++                tprint(fail + 'Main> Analyzer(s) LIVE, Extractor DEAD, Queue ' + 
++                    queue_status + '. ' + reset)
++                tprint(fail + 'Main> Teriminating process due to ' + 
++                    'multiprocessing failure.' + reset)
++                exit(1)
++
++        # end .status_check()    
++
++    """
++    Inspects the reads, finds corresponding MSI loci,
++    and returns data on the locus size/length distributions.
++    """
++    def process(self, input_filepath, msi_loci, config):
++        self.__reset()
++
++        # Generate dictionary read counts for loci
++        counts = {}
++        loci = []
++        for locus in msi_loci:
++            counts[locus.locus()] = {}
++            loci.append(locus)
++
++        # Generate input and output queues and (mutex) semaphores
++        # for each.
++        queue_out = Queue()
++        queue_in = Queue()
++        queue_full = BoundedSemaphore(100)
++        full = Semaphore(0)
++        empty = BoundedSemaphore(40)
++        mutex_out = Semaphore(1)
++        mutex_in = Semaphore(1)
++
++        # Set amount of consumer threads; minimum one.
++        consumer_threads = config['threads'] - 1
++        if consumer_threads < 1:
++            consumer_threads = 1
++
++        # Create producer thread; currently only using single thread
++        # since I/O is more of the limiter than CPU bound processes.
++        self.__producer = Process(target=self.extract_reads, args=(
++            input_filepath, 
++            msi_loci, 
++            full, 
++            empty, 
++            mutex_out, 
++            queue_in, 
++            consumer_threads))
++        self.__producer.start()
++
++
++        # Spawn the set amount of threads/processes
++        if self.debug_output:
++            tprint('Main> Generating {0} analyzer process(es).'.format(consumer_threads))
++        for i in range(0, consumer_threads):
++            p = Process(target=self.read_analyzer, args=(
++                queue_in, 
++                queue_out, 
++                full, 
++                empty, 
++                mutex_in, 
++                mutex_out,
++                queue_full))
++            self.__consumers.append(p)
++            self.__consumers[-1].start()
++
++        # Iterate through the loci, fetching any reads and pushing them to 
++        # the pool of threads, collecting the output as they process it.
++        query_delay = 0.050 # In seconds
++       
++        loop_counter = 0
++        proc_check_interval = 100
++        while (not queue_out.empty() or self.has_live_threads()):
++            # Sleep for the set amount of time so the queue isn't constantly
++            # getting hammered with queries
++            time.sleep(query_delay)
++            loop_counter += 1
++            if loop_counter % proc_check_interval is 0:
++                # Time to check that the consumers
++                # didn't die while the producer is still producing
++                mutex_out.acquire()
++                self.status_check(queue_out.qsize())
++                mutex_out.release()
++
++            while not queue_out.empty():
++                # There is data on the queue to be processed;
++                # the return from the queue should be a tuple
++                # with (locus, repeat_count)
++                mutex_out.acquire()
++                result = queue_out.get()
++                locus = result[0]
++                repeat_count = result[1]
++                if repeat_count >= 0:
++                    if locus not in counts:
++                        counts[locus] = {}
++                    if repeat_count not in counts[locus]:
++                        counts[locus][repeat_count] = 0
++                    counts[locus][repeat_count] += 1
++                mutex_out.release()
++                queue_full.release()
++
++            if not self.has_live_threads():
++                # All processes should have terminated.
++                if self.debug_output:
++                    tprint('Main> All processes complete.')
++                break
++        # end while loop
++
++        return counts
++        # end .process()
++    
++    # end KmerRepeatCounter class definition.
++
++ 
++
++
++
++
++"""
++Use arguments from the command line parameters (input: args)
++to generate a config setting dict.
++"""
++def generate_config(args):
++    config = {}
++
++    config['genome'] = os.path.abspath(args.genome)
++    if not os.path.isfile(config['genome']):
++        tprint('Error: {0} does not exist!'.format(config['genome']))
++        exit(1)
++
++    config['threads'] = int(args.threads)
++    if config['threads'] < 1:
++        tprint('Error: Cannot specify less than one thread. '
++            + '(Provided {0}).'.format(config['threads']))
++        exit(1)
++
++    config['bedfile'] = os.path.abspath(args.bedfile)
++    if args.bedfile is None:
++        tprint('Error: BED file not provided!')
++        exit(1)
++    else:
++        bedfile = os.path.abspath(args.bedfile)
++        if not os.path.isfile(bedfile):
++            tprint('Error: {0} does not exist!'.format(bedfile))
++            exit(1)
++
++    if args.normal is None:
++        tprint('Error: Normal BAM/SAM file not provided!')
++        exit(1)
++    else:
++        config['normal_filepath'] = os.path.abspath(args.normal)
++        if not os.path.isfile(config['normal_filepath']):
++            tprint('Error: {0} does not exist!'.format(config['normal_filepath']))
++            exit(1)
++    
++    if args.tumor is None:
++        tprint('Error: Tumor BAM/SAM file not provided!')
++        exit(1)
++    else:
++        config['tumor_filepath'] = os.path.abspath(args.tumor)
++        if not os.path.isfile(config['tumor_filepath']):
++            tprint('Error: {0} does not exist!'.format(config['tumor_filepath']))
++            exit(1)
++
++
++    if args.output is None:
++        tprint('Error: Output filepath must be specified!')
++    else:
++        config['output_filepath'] = os.path.abspath(args.output)
++        # Make sure output folder exists
++        output_dir = os.path.dirname(config['output_filepath'])
++        if not os.path.isdir(output_dir):
++            os.makedirs(output_dir)
++
++
++    config['min_read_quality'] = float(args.mrq)
++    config['min_read_length'] = int(args.mrl)
++    config['min_locus_quality'] = float(args.mlq)
++    config['debug_output'] = args.debug_output
++    return config
++    # end .generate_config()
++
++strip_chr_re = re.compile(r'^chr')
++#Helper method for ordering loci
++def cmp_loci(x, y):
++    def parse_locus(l):
++        pieces = l.split(':')
++        chr = strip_chr_re.sub("", pieces[0])
++        pieces = pieces[1].split('-')
++        start = int(pieces[0])
++        end = int(pieces[1])
++        return (chr, start, end)
++    x_chr, x_start, x_end = parse_locus(x)
++    y_chr, y_start, y_end = parse_locus(y)
++    if (x_chr.isdigit() and not y_chr.isdigit()):
++        return -1
++    elif (y_chr.isdigit() and not x_chr.isdigit()):
++        return 1
++    elif x_chr.isdigit():
++        x_chr = int(x_chr)
++        y_chr = int(y_chr)
++    if (x_chr < y_chr):
++        return -1
++    elif (x_chr > y_chr):
++        return 1
++    if (x_start < y_start):
++        return -1
++    elif (x_start > y_start):
++        return 1
++    elif (x_end < y_end):
++        return -1
++    elif (x_end > y_end):
++        return 1
++    else:
++        return 0
++
++"""
++Write the output of the program into the target file.
++The output consists of tab-separated values, with each line having:
++- locus
++- k-value
++- supporting reads for k-value in normal BAM
++- supporting reads for k-value in tumor BAM
++"""
++def write_output(filepath, normal, tumor):
++    fileout = open(filepath, 'w')
++
++    loci = set(normal.keys())
++    loci = loci.union(tumor.keys())
++    if (sys.version_info > (3, 0)):
++        loci = sorted(loci, key=functools.cmp_to_key(cmp_loci))
++    else:
++        loci = sorted(loci, cmp=cmp_loci)
++    header = '\t'.join(['Locus','Repeats','Normal','Tumor'])
++    fileout.write(header + '\n')
++    for locus in loci:
++        locus_output = generate_locus_output(normal[locus], tumor[locus])
++        for line in locus_output:
++            # Prepend locus
++            line = [locus] + line
++            line = '\t'.join([str(x) for x in line])
++            fileout.write(line + '\n')
++    fileout.close()
++    # end .write_output()
++
++
++"""
++Helper method for generating the output lines to be written.
++"""
++def generate_locus_output(normal, tumor):
++    output = []
++    # Get repeat lengths to use as keys for accessing
++    # both the normal and tumor data.
++    lengths = set(normal.keys())
++    for length in tumor.keys():
++        lengths.add(length)
++    lengths = sorted(lengths)
++    for length in lengths:
++        n_repeats = 0
++        t_repeats = 0
++        if length in normal:
++            n_repeats = normal[length]
++        if length in tumor:
++            t_repeats = tumor[length]
++        output.append([length, n_repeats, t_repeats])
++    return output
++    # end .generate_locus_output()
++
++"""
++Uses PySAM to generate index for BAM file if one doesn't exist.
++"""
++def generate_index_if_needed(filepath):
++    index_file = os.path.abspath(filepath) + '.bai'
++    if not os.path.isfile(index_file):
++        # Index file doesn't exist; generate it
++        pysam.index(filepath, index_file)
++    return True
++    # end .generate_index_if_needed()
++
++if __name__ == "__main__":
++    prog_name = 'MANTIS K-Mer Repeat Counter'
++    tprint(prog_name)
++
++    parser = argparse.ArgumentParser(description=prog_name)
++
++    parser.add_argument('-n', '--normal', dest='normal', type=str, 
++        required=True, help='Normal input (SAM/BAM) file.')
++
++    parser.add_argument('-t', '--tumor', dest='tumor', type=str, 
++        required=True, help='Tumor input (SAM/BAM) file.')
++
++    parser.add_argument('-b', '--bedfile', dest='bedfile', type=str,
++        required=True, help='Input BED file.')
++
++    parser.add_argument('-o', '--output', dest='output', type=str, 
++        help='Output BED filename.')
++
++    parser.add_argument('-mrq', '--min-read-quality', dest='mrq',
++        type=float, default=10.0, help='Minimum average read quality.')
++
++    parser.add_argument('-mlq', '--min-locus-quality', dest='mlq',
++        type=float, default=20.0, help='Minimum average locus quality.')
++
++    parser.add_argument('-mrl', '--min-read-length', dest='mrl',
++        type=int, default=35, 
++        help='Minimum (unclipped/unmasked) read length.')
++
++    parser.add_argument('--threads', dest='threads', type=int,
++        default=1, help='Number of threads/proceseses to use.')
++
++    parser.add_argument('--genome', dest='genome', type=str,
++        help='Path to reference genome (FASTA).')
++
++    parser.add_argument('--debug', dest='debug_output', action='store_true',
++        help='Print debug output from multithreading.')
++
++    args = parser.parse_args()
++
++    # Use helper method for checking args and creating config dict.
++    config = generate_config(args)
++
++    # Load MSI loci from the BED line.
++    tprint('Loading target MSI loci from BED file ...')
++    mll = MSILocusLoader(config)
++    msi_loci = mll.load_loci(config['bedfile'])
++    tprint('Loaded {0} loci.'.format(len(msi_loci)))
++
++    # Generate instance of the Kmer Repeat Counter
++    krc = KmerRepeatCounter(config)
++
++    tprint('Processing normal input file with ' +
++        '{0} thread(s) ...'.format(config['threads']))
++    generate_index_if_needed(config['normal_filepath'])
++    normal = krc.process(config['normal_filepath'], msi_loci, config)
++    tprint('Done processing normal.')
++
++    krc = KmerRepeatCounter(config)
++    tprint('Processing tumor input file with ' +
++        '{0} thread(s) ...'.format(config['threads']))
++    generate_index_if_needed(config['tumor_filepath'])    
++    tumor = krc.process(config['tumor_filepath'], msi_loci, config)  
++    tprint('Done processing tumor.')
++
++    write_output(config['output_filepath'], normal, tumor)
++    print('Saved output in {0}'.format(config['output_filepath']))
++    # Done.
++    exit(0)
+diff --git a/mantis.py b/mantis.py
+index 283caff..b3c9d14 100755
+--- a/mantis.py
++++ b/mantis.py
+@@ -1,287 +1,289 @@
+-# @file mantis.py
+-# @author Esko Kautto (esko.kautto@osumc.edu)
+-# @updated 2016-07-05
+-
+-import os
+-import sys
+-import argparse
+-import operator
+-import subprocess
+-from helpers import iteritems, check_bedfile_format, required_modules_present
+-from defaults import load_settings, Parameter
+-
+-
+-
+-if __name__ == "__main__":
+-    prog_name = 'Microsatellite Analysis for Normal-Tumor InStability (v1.0.4)'
+-    print(prog_name)
+-
+-    # Make sure Pysam and NumPy are available in environment
+-    required_modules_present(['Pysam', 'NumPy'])
+-
+-
+-    parser = argparse.ArgumentParser(description=prog_name)
+-
+-    parser.add_argument('-cfg', '--config', dest='cfg', type=str,
+-        help='Configuration file.')
+-
+-    parser.add_argument('-n', '--normal', dest='normal', type=str, required=True,
+-        help='Normal input BAM file.')
+-
+-    parser.add_argument('-t', '--tumor', dest='tumor', type=str,  required=True,
+-        help='Tumor input BAM file.')
+-
+-    parser.add_argument('--threads', dest='threads', type=int,
+-        help='How many threads (processes) to use.')
+-
+-    parser.add_argument('-b', '--bedfile', dest='bedfile', type=str, help='Input BED file.')
+-
+-    parser.add_argument('-o', '--output', dest='output', type=str, help='Output filename.')
+-
+-    parser.add_argument('-mrq', '--min-read-quality', dest='mrq', type=float, 
+-        help='Minimum average read quality.')
+-
+-    parser.add_argument('-mlq', '--min-locus-quality', dest='mlq', type=float,
+-        help='Minimum average locus quality.')
+-
+-    parser.add_argument('-mrl', '--min-read-length', dest='mrl', type=int, 
+-        help='Minimum (unclipped/unmasked) read length.')
+-
+-    parser.add_argument('-mlc', '--min-locus-coverage', dest='mlc', type=int, 
+-        help='Minimum coverage required for each of the normal ' +
+-        'and tumor results.')
+-
+-    parser.add_argument('-mrr', '--min-repeat-reads', dest='mrr', type=int, 
+-        help='Minimum reads supporting a specific repeat count.')
+-
+-    parser.add_argument('-sd', '--standard-deviations', dest='sd', type=float,
+-        help='Standard deviations from mean before repeat count is ' +
+-        'considered an outlier')
+-
+-    parser.add_argument('--genome', dest='genome', type=str, 
+-        help='Path to reference genome (FASTA).')
+-
+-    parser.add_argument('--difference-threshold', dest='dif_threshold', type=float,
+-        help='Default difference threshold value for calling a sample unstable.')
+-
+-    parser.add_argument('--distance-threshold', dest='euc_threshold', type=float,
+-        help='Default distance threshold value for calling a sample unstable.')
+-
+-    parser.add_argument('--dissimilarity-threshold', dest='cos_threshold', type=float,
+-        help='Default dissimilarity threshold value for calling a sample unstable.')
+-
+-    args = parser.parse_args()
+-
+-
+-    if args.cfg is not None:
+-        config_file_path = os.path.abspath(args.cfg)
+-        if not os.path.isfile(config_file_path):
+-            print('Error! Config file {0} not found!'.format(config_file_path))
+-            exit()
+-    else:
+-        config_file_path = os.path.join(os.path.dirname(
+-            os.path.realpath(__file__)), 'mantis_config.cfg')
+-
+-    # List of configuration parameters/arguments used by the three-tier
+-    # config priority loader.
+-    params = [
+-        Parameter(key='bedfile', required=True),
+-        Parameter(key='normal_filepath', arg_key='normal', required=True),
+-        Parameter(key='tumor_filepath', arg_key='tumor', required=True),
+-        Parameter(key='output_filepath', arg_key='output', required=True),
+-        Parameter(key='genome', required=True),
+-        Parameter(key='mrq', default=25.0),
+-        Parameter(key='mlq', default=30.0),
+-        Parameter(key='mrl', default=35),
+-        Parameter(key='mlc', default=30),
+-        Parameter(key='mrr', default=3),
+-        Parameter(key='sd', default=3.0),
+-        Parameter(key='threads', default=1),
+-        Parameter(key='dif_threshold', default=0.4),
+-        Parameter(key='euc_threshold', default=0.187),
+-        Parameter(key='cos_threshold', default=0.07),
+-    ]
+-
+-    # Use config/setting loader.
+-    config = load_settings(params, config_file_path, args)
+-
+-    # Convert any variables that should be filepaths into the absolute
+-    # filepaths of the values.
+-    filepath_vars = [
+-        'bedfile', 
+-        'normal_filepath', 
+-        'tumor_filepath', 
+-        'output_filepath', 
+-        'genome',
+-        ]
+-
+-    for key in filepath_vars:
+-        if key in config and config[key] is not None:
+-            config[key] = os.path.abspath(config[key])
+-
+-
+-        
+-    if 'bedfile' not in config:
+-        print('Error: BED file not provided!')
+-        exit(1)
+-    else:
+-        bedfile = os.path.abspath(config['bedfile'])
+-        if not os.path.isfile(bedfile):
+-            print('Error: {0} does not exist!'.format(bedfile))
+-            exit(1)
+-        else:
+-            config['bedfile'] = bedfile
+-            if not check_bedfile_format(config['bedfile']):
+-                exit(1)
+-
+-    if 'normal_filepath' not in config:
+-        print('Error: Normal BAM file not provided!')
+-        exit(1)
+-    else:
+-        normal_filepath = os.path.abspath(config['normal_filepath'])
+-        if not os.path.isfile(normal_filepath):
+-            print('Error: {0} does not exist!'.format(normal_filepath))
+-            exit(1)
+-        else:
+-            # Make sure a corresponding .BAI index file exists
+-            if not os.path.isfile('{0}.bai'.format(normal_filepath)):
+-                print('Error: {0} needs corresponding .bai index file!'.format(normal_filepath))
+-                exit(1)
+-            config['normal_filepath'] = normal_filepath
+-    
+-    if 'tumor_filepath' not in config:
+-        print('Error: Tumor BAM file not provided!')
+-        exit(1)
+-    else:
+-        tumor_filepath = os.path.abspath(config['tumor_filepath'])
+-        if not os.path.isfile(tumor_filepath):
+-            print('Error: {0} does not exist!'.format(tumor_filepath))
+-            exit(1)
+-        else:
+-            # Make sure a corresponding .BAI index file exists
+-            if not os.path.isfile('{0}.bai'.format(tumor_filepath)):
+-                print('Error: {0} needs corresponding .bai index file!'.format(tumor_filepath))
+-                exit(1)            
+-            config['tumor_filepath'] = tumor_filepath
+-    
+-    if 'genome' not in config:
+-        print('Error: Genome not provided!')
+-        exit(1)
+-    else:
+-        genome_filepath = os.path.abspath(config['genome'])
+-        if not os.path.isfile(genome_filepath):
+-            print('Error: {0} does not exist!'.format(genome_filepath))
+-            exit(1)
+-        
+-
+-    if args.output is None:
+-        print('Error: Output filename not specified!')
+-        exit(1)
+-    else:
+-        config['output_filepath'] = os.path.abspath(args.output)
+-        # Create output directory if it doesn't exist.
+-        output_dir = os.path.dirname(config['output_filepath'])
+-        if not os.path.isdir(output_dir):
+-            os.makedirs(output_dir)         
+-
+-    output_filepath = os.path.abspath(args.output)
+-
+-
+-    """
+-    Nothing below this line should need to be edited, as the code below
+-    handles the execution of the MANTIS program.
+-    """
+-
+-    mantis_folder = os.path.dirname(os.path.realpath(__file__))
+-    kmer_repeat_counter = os.path.join(mantis_folder, 'kmer_repeat_counter.py')
+-    kmer_count_filter = os.path.join(mantis_folder, 'kmer_count_filter.py')
+-    instability_calculator = os.path.join(mantis_folder, 'calculate_instability.py')
+-
+-
+-    # First, use the k-mer repeat counter to count how many repeats of each
+-    # repeat unit (k-mer) each locus has, both in the normal and tumor file.
+-    # Results will be saved into a file for passing to the next phase.
+-    if '.' in output_filepath:
+-        kmer_count_output = output_filepath.split('.')
+-        kmer_count_output[-1] = '{0}.{1}'.format('kmer_counts', kmer_count_output[-1])
+-        kmer_count_output = '.'.join(kmer_count_output)
+-    else:
+-        kmer_count_output = output_filepath + '.kmer_counts'
+-
+-    # First job - generate file with repeat counts for each n-multiple of kmers
+-    kmer_count_filepath = output_filepath + '.kmer_counts'
+-    command = [
+-        'python {0} '.format(kmer_repeat_counter),
+-        '-b {0} '.format(os.path.abspath(config['bedfile'])),
+-        '-n {0} '.format(os.path.abspath(config['normal_filepath'])),
+-        '-t {0} '.format(os.path.abspath(config['tumor_filepath'])),
+-        '-o {0} '.format(os.path.abspath(kmer_count_output)),
+-        '--min-read-quality {0} '.format(config['mrq']),
+-        '--min-locus-quality {0} '.format(config['mlq']),
+-        '--min-read-length {0} '.format(config['mrl']),
+-        '--genome {0} '.format(config['genome']),
+-        '--threads {0} '.format(config['threads']),
+-    ]
+-
+-    print('\\\n'.join(command))
+-
+-    print('Getting repeat counts for repeat units (k-mers) ...')
+-    sp = subprocess.Popen([' '.join(command)], stdout=subprocess.PIPE, shell=True)
+-    response = sp.communicate()[0]
+-    if sp.returncode != 0:
+-        print('Error with k-mer repeat count calculations; terminating program.')
+-        exit(1)
+-    print(response)        
+-    print('done.')
+-    
+-
+-    # Run the outlier filter to get rid of outliers that are likely caused
+-    # due to sequencing artifacts or one-off biological events.
+-
+-    filtered_kmer_counts = kmer_count_output.replace('kmer_counts', 'kmer_counts_filtered')
+-
+-    command = [
+-        'python {0} '.format(kmer_count_filter),
+-        '-i {0} '.format(os.path.abspath(kmer_count_output)),
+-        '-o {0} '.format(os.path.abspath(filtered_kmer_counts)),
+-        '-mlc {0} '.format(config['mlc']),
+-        '-mrr {0} '.format(config['mrr']),
+-        '-sd {0}'.format(config['sd']),
+-    ]
+-
+-    print('\\\n'.join(command))
+-
+-    print('Filtering out outliers ... ')
+-    sp = subprocess.Popen([' '.join(command)], stdout=subprocess.PIPE, shell=True)
+-    response = sp.communicate()[0]
+-    if sp.returncode != 0:
+-        print('Error with k-mer repeat count filter; terminating program.')
+-        exit(1)
+-    print(response)        
+-    print('done.')
+-
+-
+-    # Calculate instability scores.
+-    # Analyze locus instability
+-    command = [
+-        'python {0} '.format(instability_calculator),
+-        '-i {0} '.format(filtered_kmer_counts),
+-        '-o {0} '.format(output_filepath),
+-        '--difference-threshold {0}'.format(config['dif_threshold']),
+-        '--distance-threshold {0}'.format(config['euc_threshold']),
+-        '--dissimilarity-threshold {0}'.format(config['cos_threshold']),
+-        ]
+-
+-    print('\\\n'.join(command))
+-
+-    print('Calculating instability scores ... ')
+-    sp = subprocess.Popen([' '.join(command)], stdout=subprocess.PIPE, shell=True)
+-    response = sp.communicate()[0]
+-    if sp.returncode != 0:
+-        print('Error with instability score calculations; terminating program.')
+-        exit(1)
+-    print(response)
+-    print('done.')
+-
+-    print('\nMANTIS complete.')
+-
++#!/usr/bin/env python
++
++# @file mantis.py
++# @author Esko Kautto (esko.kautto@osumc.edu)
++# @updated 2016-07-05
++
++import os
++import sys
++import argparse
++import operator
++import subprocess
++from helpers import iteritems, check_bedfile_format, required_modules_present
++from defaults import load_settings, Parameter
++
++
++
++if __name__ == "__main__":
++    prog_name = 'Microsatellite Analysis for Normal-Tumor InStability (v1.0.4)'
++    print(prog_name)
++
++    # Make sure Pysam and NumPy are available in environment
++    required_modules_present(['Pysam', 'NumPy'])
++
++
++    parser = argparse.ArgumentParser(description=prog_name)
++
++    parser.add_argument('-cfg', '--config', dest='cfg', type=str,
++        help='Configuration file.')
++
++    parser.add_argument('-n', '--normal', dest='normal', type=str, required=True,
++        help='Normal input BAM file.')
++
++    parser.add_argument('-t', '--tumor', dest='tumor', type=str,  required=True,
++        help='Tumor input BAM file.')
++
++    parser.add_argument('--threads', dest='threads', type=int,
++        help='How many threads (processes) to use.')
++
++    parser.add_argument('-b', '--bedfile', dest='bedfile', type=str, help='Input BED file.')
++
++    parser.add_argument('-o', '--output', dest='output', type=str, help='Output filename.')
++
++    parser.add_argument('-mrq', '--min-read-quality', dest='mrq', type=float, 
++        help='Minimum average read quality.')
++
++    parser.add_argument('-mlq', '--min-locus-quality', dest='mlq', type=float,
++        help='Minimum average locus quality.')
++
++    parser.add_argument('-mrl', '--min-read-length', dest='mrl', type=int, 
++        help='Minimum (unclipped/unmasked) read length.')
++
++    parser.add_argument('-mlc', '--min-locus-coverage', dest='mlc', type=int, 
++        help='Minimum coverage required for each of the normal ' +
++        'and tumor results.')
++
++    parser.add_argument('-mrr', '--min-repeat-reads', dest='mrr', type=int, 
++        help='Minimum reads supporting a specific repeat count.')
++
++    parser.add_argument('-sd', '--standard-deviations', dest='sd', type=float,
++        help='Standard deviations from mean before repeat count is ' +
++        'considered an outlier')
++
++    parser.add_argument('--genome', dest='genome', type=str, 
++        help='Path to reference genome (FASTA).')
++
++    parser.add_argument('--difference-threshold', dest='dif_threshold', type=float,
++        help='Default difference threshold value for calling a sample unstable.')
++
++    parser.add_argument('--distance-threshold', dest='euc_threshold', type=float,
++        help='Default distance threshold value for calling a sample unstable.')
++
++    parser.add_argument('--dissimilarity-threshold', dest='cos_threshold', type=float,
++        help='Default dissimilarity threshold value for calling a sample unstable.')
++
++    args = parser.parse_args()
++
++
++    if args.cfg is not None:
++        config_file_path = os.path.abspath(args.cfg)
++        if not os.path.isfile(config_file_path):
++            print('Error! Config file {0} not found!'.format(config_file_path))
++            exit()
++    else:
++        config_file_path = os.path.join(os.path.dirname(
++            os.path.realpath(__file__)), 'mantis_config.cfg')
++
++    # List of configuration parameters/arguments used by the three-tier
++    # config priority loader.
++    params = [
++        Parameter(key='bedfile', required=True),
++        Parameter(key='normal_filepath', arg_key='normal', required=True),
++        Parameter(key='tumor_filepath', arg_key='tumor', required=True),
++        Parameter(key='output_filepath', arg_key='output', required=True),
++        Parameter(key='genome', required=True),
++        Parameter(key='mrq', default=25.0),
++        Parameter(key='mlq', default=30.0),
++        Parameter(key='mrl', default=35),
++        Parameter(key='mlc', default=30),
++        Parameter(key='mrr', default=3),
++        Parameter(key='sd', default=3.0),
++        Parameter(key='threads', default=1),
++        Parameter(key='dif_threshold', default=0.4),
++        Parameter(key='euc_threshold', default=0.187),
++        Parameter(key='cos_threshold', default=0.07),
++    ]
++
++    # Use config/setting loader.
++    config = load_settings(params, config_file_path, args)
++
++    # Convert any variables that should be filepaths into the absolute
++    # filepaths of the values.
++    filepath_vars = [
++        'bedfile', 
++        'normal_filepath', 
++        'tumor_filepath', 
++        'output_filepath', 
++        'genome',
++        ]
++
++    for key in filepath_vars:
++        if key in config and config[key] is not None:
++            config[key] = os.path.abspath(config[key])
++
++
++        
++    if 'bedfile' not in config:
++        print('Error: BED file not provided!')
++        exit(1)
++    else:
++        bedfile = os.path.abspath(config['bedfile'])
++        if not os.path.isfile(bedfile):
++            print('Error: {0} does not exist!'.format(bedfile))
++            exit(1)
++        else:
++            config['bedfile'] = bedfile
++            if not check_bedfile_format(config['bedfile']):
++                exit(1)
++
++    if 'normal_filepath' not in config:
++        print('Error: Normal BAM file not provided!')
++        exit(1)
++    else:
++        normal_filepath = os.path.abspath(config['normal_filepath'])
++        if not os.path.isfile(normal_filepath):
++            print('Error: {0} does not exist!'.format(normal_filepath))
++            exit(1)
++        else:
++            # Make sure a corresponding .BAI index file exists
++            if not os.path.isfile('{0}.bai'.format(normal_filepath)):
++                print('Error: {0} needs corresponding .bai index file!'.format(normal_filepath))
++                exit(1)
++            config['normal_filepath'] = normal_filepath
++    
++    if 'tumor_filepath' not in config:
++        print('Error: Tumor BAM file not provided!')
++        exit(1)
++    else:
++        tumor_filepath = os.path.abspath(config['tumor_filepath'])
++        if not os.path.isfile(tumor_filepath):
++            print('Error: {0} does not exist!'.format(tumor_filepath))
++            exit(1)
++        else:
++            # Make sure a corresponding .BAI index file exists
++            if not os.path.isfile('{0}.bai'.format(tumor_filepath)):
++                print('Error: {0} needs corresponding .bai index file!'.format(tumor_filepath))
++                exit(1)            
++            config['tumor_filepath'] = tumor_filepath
++    
++    if 'genome' not in config:
++        print('Error: Genome not provided!')
++        exit(1)
++    else:
++        genome_filepath = os.path.abspath(config['genome'])
++        if not os.path.isfile(genome_filepath):
++            print('Error: {0} does not exist!'.format(genome_filepath))
++            exit(1)
++        
++
++    if args.output is None:
++        print('Error: Output filename not specified!')
++        exit(1)
++    else:
++        config['output_filepath'] = os.path.abspath(args.output)
++        # Create output directory if it doesn't exist.
++        output_dir = os.path.dirname(config['output_filepath'])
++        if not os.path.isdir(output_dir):
++            os.makedirs(output_dir)         
++
++    output_filepath = os.path.abspath(args.output)
++
++
++    """
++    Nothing below this line should need to be edited, as the code below
++    handles the execution of the MANTIS program.
++    """
++
++    mantis_folder = os.path.dirname(os.path.realpath(__file__))
++    kmer_repeat_counter = os.path.join(mantis_folder, 'kmer_repeat_counter.py')
++    kmer_count_filter = os.path.join(mantis_folder, 'kmer_count_filter.py')
++    instability_calculator = os.path.join(mantis_folder, 'calculate_instability.py')
++
++
++    # First, use the k-mer repeat counter to count how many repeats of each
++    # repeat unit (k-mer) each locus has, both in the normal and tumor file.
++    # Results will be saved into a file for passing to the next phase.
++    if '.' in os.path.basename(output_filepath):
++        kmer_count_output = output_filepath.split('.')
++        kmer_count_output[-1] = '{0}.{1}'.format('kmer_counts', kmer_count_output[-1])
++        kmer_count_output = '.'.join(kmer_count_output)
++    else:
++        kmer_count_output = output_filepath + '.kmer_counts'
++
++    # First job - generate file with repeat counts for each n-multiple of kmers
++    kmer_count_filepath = output_filepath + '.kmer_counts'
++    command = [
++        '{0} {1} '.format(sys.executable, kmer_repeat_counter),
++        '-b {0} '.format(os.path.abspath(config['bedfile'])),
++        '-n {0} '.format(os.path.abspath(config['normal_filepath'])),
++        '-t {0} '.format(os.path.abspath(config['tumor_filepath'])),
++        '-o {0} '.format(os.path.abspath(kmer_count_output)),
++        '--min-read-quality {0} '.format(config['mrq']),
++        '--min-locus-quality {0} '.format(config['mlq']),
++        '--min-read-length {0} '.format(config['mrl']),
++        '--genome {0} '.format(config['genome']),
++        '--threads {0} '.format(config['threads']),
++    ]
++
++    print('\\\n'.join(command))
++
++    print('Getting repeat counts for repeat units (k-mers) ...')
++    sp = subprocess.Popen([' '.join(command)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
++    response = sp.communicate()[0]
++    print(response)        
++    if sp.returncode != 0:
++        print('Error with k-mer repeat count calculations; terminating program.')
++        exit(1)
++    print('done.')
++    
++
++    # Run the outlier filter to get rid of outliers that are likely caused
++    # due to sequencing artifacts or one-off biological events.
++
++    filtered_kmer_counts = kmer_count_output.replace('kmer_counts', 'kmer_counts_filtered')
++
++    command = [
++        '{0} {1} '.format(sys.executable, kmer_count_filter),
++        '-i {0} '.format(os.path.abspath(kmer_count_output)),
++        '-o {0} '.format(os.path.abspath(filtered_kmer_counts)),
++        '-mlc {0} '.format(config['mlc']),
++        '-mrr {0} '.format(config['mrr']),
++        '-sd {0}'.format(config['sd']),
++    ]
++
++    print('\\\n'.join(command))
++
++    print('Filtering out outliers ... ')
++    sp = subprocess.Popen([' '.join(command)], stdout=subprocess.PIPE, shell=True)
++    response = sp.communicate()[0]
++    if sp.returncode != 0:
++        print('Error with k-mer repeat count filter; terminating program.')
++        exit(1)
++    print(response)        
++    print('done.')
++
++
++    # Calculate instability scores.
++    # Analyze locus instability
++    command = [
++        'python {0} '.format(instability_calculator),
++        '-i {0} '.format(filtered_kmer_counts),
++        '-o {0} '.format(output_filepath),
++        '--difference-threshold {0}'.format(config['dif_threshold']),
++        '--distance-threshold {0}'.format(config['euc_threshold']),
++        '--dissimilarity-threshold {0}'.format(config['cos_threshold']),
++        ]
++
++    print('\\\n'.join(command))
++
++    print('Calculating instability scores ... ')
++    sp = subprocess.Popen([' '.join(command)], stdout=subprocess.PIPE, shell=True)
++    response = sp.communicate()[0]
++    if sp.returncode != 0:
++        print('Error with instability score calculations; terminating program.')
++        exit(1)
++    print(response)
++    print('done.')
++
++    print('\nMANTIS complete.')
++
+diff --git a/offset_finder.py b/offset_finder.py
+index 2deab05..6fe8cc4 100644
+--- a/offset_finder.py
++++ b/offset_finder.py
+@@ -1,280 +1,280 @@
+-# @file offset_finder.py
+-# @author Esko Kautto (esko.kautto@osumc.edu)
+-# @updated 2016-06-16
+-
+-from copy import deepcopy
+-from structures import CIGAR
+-import time
+-
+-class OffsetFinder:
+-    max_iterations = 10
+-
+-    @staticmethod
+-    def message(msg):
+-        if type(msg) is str:
+-            msg = msg.split('\n')
+-
+-        for line in msg:
+-            timestamp = time.strftime('%m/%d/%y %H:%M:%S')        
+-            print('[{0}] OffsetFinder: {1}'.format(timestamp, line))
+-    # end .message()
+-
+-    """
+-    Determine the offset for starting to read the read's
+-    sequence, based on the read's start position, the
+-    CIGAR string, and the msi locus start. Since there
+-    could be potential insertions or deletions before
+-    the MSI locus, the offset has to take those into account
+-    from the CIGAR.
+-    """
+-    @staticmethod
+-    def find_offset(read, locus):
+-        # First, get the best-effort estimate for the offset,
+-        # based on the read's expected genomic start position,
+-        # the locus start, and the read's CIGAR string.
+-        offset = OffsetFinder.estimate_offset(read, locus)
+-
+-        # Check the boundary to make sure the entire read isn't
+-        # slightly offset; this can happen if the aligner shifts
+-        # the read.pos when an indel is very close to the edge of
+-        # the read sequence.
+-        offset_change = OffsetFinder.adjust_for_shifts(
+-            read,
+-            locus,
+-            offset)
+-
+-        offset += offset_change
+-        return offset
+-        # end .find_offset()
+-
+-    """
+-    Estimate the offset of the read sequence in relation to the 
+-    target locus start. The returned offset will be an integer in
+-    the range of [0, |sequence|]. An offset of 0 will indicate the
+-    read starts right at the locus boundary; an offset of |sequence|
+-    indicates the read doesn't cover the locus.
+-    """
+-    @staticmethod 
+-    def estimate_offset(read, locus):
+-        offset = 0
+-        genomic_pos = read.pos
+-        cigar = CIGAR.to_array(read.cigar)
+-
+-        if cigar[0][0] == 'S':
+-            # Soft clipped. Pop the element off the list so that the soft
+-            # clipped region isn't double-processed later in the method. 
+-            # Ideally the SAMRead preprocessing will have removed any
+-            # preceding soft clipping so this won't be needed.
+-            offset += cigar[0][1]
+-            cigar.pop(0)                            
+-
+-        if genomic_pos == locus.start:
+-            # Genomic position of the start of the read is the start
+-            # of the MSI locus. Alignment might have resulted in position
+-            # being slightly off; make sure the sequence starts with the 
+-            # target kmmer. If it doesn't, shift to the right (increment
+-            # offset) until the right kmer is encountered.
+-            # No (further) offset required.
+-            if not OffsetFinder.at_target_kmer(read, locus, offset):
+-                offset += OffsetFinder.adjust_reading_frame(read, locus, offset)
+-            return offset
+-
+-        # Iterate through the cigar string until we find the
+-        # start of the locus
+-        while cigar:
+-            token = cigar[0][0]
+-            size = cigar[0][1]
+-            cigar.pop(0) # Remove this CIGAR segment.
+-
+-            if token == 'S':
+-                # Soft clipped segment. This should not happen in the middle 
+-                # of a CIGAR string; since the SAMRead preprocessor gets rid
+-                # of prepended soft clippings, and there is a previous check
+-                # for it within this method, the only time this should be 
+-                # encountered is at the end of a sequence, at which point the
+-                # read likely did not cover the MSI locus.
+-                genomic_pos += size
+-                offset += size
+-
+-            elif token == 'D':
+-                # A deletion in the sequence. The genomic position will be 
+-                # incremented by the size of the deletion, but the offset
+-                # will not be affected since the deleted bases are not in
+-                # the read sequence.
+-                genomic_pos += size
+-
+-            elif token == 'I':
+-                # An insertion of one or more bases into the sequence. 
+-                # Since the insertion is not part of the original (reference)
+-                # sequence, the genomic position will not be incremented, but
+-                # the offset will be to essentially skip over the insertion.
+-                offset += size
+-
+-            elif token == 'M':
+-                if genomic_pos + size > locus.start:
+-                    # Matched sequence crosses locus boundary; increment
+-                    # the offset only be the difference so that bases are
+-                    # not accidentally skipped.
+-                    offset += locus.start - genomic_pos
+-                    genomic_pos = locus.start
+-                
+-                elif genomic_pos + size == locus.start:
+-                    # Matched sequence reaches the exact boundary of the
+-                    # MSI locus. If the next CIGAR string segment is an 
+-                    # indel, run an additional calculation to check if
+-                    # further offset is necessary.
+-                    offset += size
+-                    genomic_pos = locus.start
+-
+-                    if len(cigar) and cigar[0][0] in ['D', 'I']:
+-                        offset += OffsetFinder.boundary_indel_offset(
+-                            read, locus, cigar, offset, genomic_pos)
+-
+-
+-                elif genomic_pos + size == locus.start - 1:
+-                    # Right before the locus boundary. As with the previous
+-                    # case, make sure an indel in the next CIGAR segment
+-                    # is accounted for if necessary.
+-                    offset += size
+-                    genomic_pos = locus.start - 1
+-                    if len(cigar) and cigar[0][0] in ['D', 'I']:
+-                        offset += OffsetFinder.boundary_indel_offset(
+-                            read, locus, cigar, offset, genomic_pos)
+-                else:
+-                    # Not at the locus boundary yet; increment offset and
+-                    # genomic position normally.
+-                    offset += size
+-
+-                    genomic_pos += size
+-
+-
+-            if genomic_pos >= locus.start:
+-                # MSI locus reached
+-                break
+-
+-
+-        # Return the estimate offset. 
+-        return offset
+-
+-        # end .estimate_offset()
+-
+-
+-    """
+-    Handles cases where an indel exists right at the locus boundary.
+-    This is relatively likely if the aligner accounted for any repeat 
+-    count changes by placing the added or removed k-mers at the start
+-    of the MSI locus.
+-    """
+-    @staticmethod
+-    def boundary_indel_offset(read, locus, cigar, offset, genomic_pos):
+-        offset_change = 0
+-        if genomic_pos == locus.start and False:
+-            # Only checks insertions at the locus boundary.
+-            insertion_seq = read.seq[seq_pos:seq_pos+insert_size]
+-            if insertion_seq[0:locus.kmer_length] != locus.kmer:
+-                # The insertion appers to be a random insertion, not
+-                # part of the repeat count change for the MSI locus.
+-                # Shift the offset accordingly.
+-                offset += insert_size
+-        return offset_change
+-        # end .boundary_indel_offset()
+-
+-    """
+-    Checks the boundary position to make sure the entire read before the MSI locus
+-    isn't slightly shifted; this could happen if the aligner shifts the 'start' 
+-    position of the entire read when the locus is close to the edge of the read
+-    sequence (e.g. the start position for caTTTTT.. might get decremented by N
+-    if there are N extra T's in the locus, despite the read starting with 'ca'.)
+-    """
+-    @staticmethod
+-    def adjust_for_shifts(read, locus, offset):
+-        # First try to get sequence into the proper reading frame (if it
+-        # isn't already) by left- or right-shifting it.
+-
+-        offset_change = OffsetFinder.adjust_reading_frame(read, locus, offset)
+-        
+-        if offset_change < 0:
+-            # Encountered problem adjusting reading frame.
+-            return 0
+-
+-        # Check if we can adjust the offset to an earlier position to
+-        # capture an earlier (continuous) start for the repeat sequence.
+-        offset_change += OffsetFinder.shift_start_left(read, locus, offset + offset_change)
+-        return offset_change
+-        # end .adjust_for_shifts()
+-
+-    """
+-    Tries to adjust the read sequence into the proper reading frame.
+-    """
+-    @staticmethod
+-    def adjust_reading_frame(read, locus, offset):
+-        if OffsetFinder.at_target_kmer(read, locus, offset):
+-            # Already in proper reading frame, no adjusting required.
+-            return 0
+-
+-        # Try to adjust the reading frame until the read is within
+-        # the correct frame.
+-        offset_change = 0
+-        in_frame = False
+-        for i in range(1, OffsetFinder.max_iterations + 1):
+-            if OffsetFinder.at_target_kmer(read, locus, offset - i):
+-                # Left-shifting read moved it into the proper reading frame.
+-                in_frame = True
+-                offset_change = -1 * i
+-            elif OffsetFinder.at_target_kmer(read, locus, offset + i):
+-                # Right-shifting read moved it into the proper reading frame.
+-                in_frame = True
+-                offset_change = i
+-            if in_frame:
+-                # Read is now in the proper reading frame.
+-                break
+-
+-        if not in_frame:
+-            # Couldn't get the read into the right reading frame.
+-            offset_change = -1
+-        return offset_change
+-        # end of .adjust_reading_frame()
+-
+-
+-    """
+-    Tries to find an 'earlier' start for the repeat sequence
+-    by checking left (before) of the current offset. Assumes
+-    the read is already in the proper reading frame.
+-    """
+-    @staticmethod
+-    def shift_start_left(read, locus, offset = 0):
+-        # Start by assuming no change will occur.
+-        offset_change = 0
+-
+-        # Kmer length acts as the shift unit (-/neg since we're shifting left).
+-        shift_unit = -1 * locus.kmer_length
+-
+-        for i in range(1, OffsetFinder.max_iterations + 1):
+-            start = offset + (i * shift_unit)
+-            stop = offset + (i * shift_unit) + locus.kmer_length
+-            if start < 0 or stop > read.length:
+-                # Going out of boundaries on the read; stop.
+-                break
+-
+-            if read.seq[start:stop] == locus.kmer:
+-                # Found the kmer at the earlier offset position
+-                offset_change = (i * shift_unit)
+-            else:
+-                # No longer within repeat sequence
+-                break
+-
+-        return offset_change
+-        # end of .shift_start_left()
+-
+-
+-    """
+-    Basic helper method that checks if the current offset in the read
+-    sequence matches the targeted k-mer sequence.
+-    """
+-    @staticmethod
+-    def at_target_kmer(read, locus, offset = 0):
+-        return (read.seq[offset:offset+locus.kmer_length] == locus.kmer)
+-        # end .at_target_kmer()
+-
+-    # end OffsetFinder class definition.
+-
++# @file offset_finder.py
++# @author Esko Kautto (esko.kautto@osumc.edu)
++# @updated 2016-06-16
++
++from copy import deepcopy
++from structures import CIGAR
++import time
++
++class OffsetFinder:
++    max_iterations = 10
++
++    @staticmethod
++    def message(msg):
++        if type(msg) is str:
++            msg = msg.split('\n')
++
++        for line in msg:
++            timestamp = time.strftime('%m/%d/%y %H:%M:%S')        
++            print('[{0}] OffsetFinder: {1}'.format(timestamp, line))
++    # end .message()
++
++    """
++    Determine the offset for starting to read the read's
++    sequence, based on the read's start position, the
++    CIGAR string, and the msi locus start. Since there
++    could be potential insertions or deletions before
++    the MSI locus, the offset has to take those into account
++    from the CIGAR.
++    """
++    @staticmethod
++    def find_offset(read, locus):
++        # First, get the best-effort estimate for the offset,
++        # based on the read's expected genomic start position,
++        # the locus start, and the read's CIGAR string.
++        offset = OffsetFinder.estimate_offset(read, locus)
++
++        # Check the boundary to make sure the entire read isn't
++        # slightly offset; this can happen if the aligner shifts
++        # the read.pos when an indel is very close to the edge of
++        # the read sequence.
++        offset_change = OffsetFinder.adjust_for_shifts(
++            read,
++            locus,
++            offset)
++
++        offset += offset_change
++        return offset
++        # end .find_offset()
++
++    """
++    Estimate the offset of the read sequence in relation to the 
++    target locus start. The returned offset will be an integer in
++    the range of [0, |sequence|]. An offset of 0 will indicate the
++    read starts right at the locus boundary; an offset of |sequence|
++    indicates the read doesn't cover the locus.
++    """
++    @staticmethod 
++    def estimate_offset(read, locus):
++        offset = 0
++        genomic_pos = read.pos
++        cigar = CIGAR.to_array(read.cigar)
++
++        if cigar[0][0] == 'S':
++            # Soft clipped. Pop the element off the list so that the soft
++            # clipped region isn't double-processed later in the method. 
++            # Ideally the SAMRead preprocessing will have removed any
++            # preceding soft clipping so this won't be needed.
++            offset += cigar[0][1]
++            cigar.pop(0)                            
++
++        if genomic_pos == locus.start:
++            # Genomic position of the start of the read is the start
++            # of the MSI locus. Alignment might have resulted in position
++            # being slightly off; make sure the sequence starts with the 
++            # target kmmer. If it doesn't, shift to the right (increment
++            # offset) until the right kmer is encountered.
++            # No (further) offset required.
++            if not OffsetFinder.at_target_kmer(read, locus, offset):
++                offset += OffsetFinder.adjust_reading_frame(read, locus, offset)
++            return offset
++
++        # Iterate through the cigar string until we find the
++        # start of the locus
++        while cigar:
++            token = cigar[0][0]
++            size = cigar[0][1]
++            cigar.pop(0) # Remove this CIGAR segment.
++
++            if token == 'S':
++                # Soft clipped segment. This should not happen in the middle 
++                # of a CIGAR string; since the SAMRead preprocessor gets rid
++                # of prepended soft clippings, and there is a previous check
++                # for it within this method, the only time this should be 
++                # encountered is at the end of a sequence, at which point the
++                # read likely did not cover the MSI locus.
++                genomic_pos += size
++                offset += size
++
++            elif token == 'D':
++                # A deletion in the sequence. The genomic position will be 
++                # incremented by the size of the deletion, but the offset
++                # will not be affected since the deleted bases are not in
++                # the read sequence.
++                genomic_pos += size
++
++            elif token == 'I':
++                # An insertion of one or more bases into the sequence. 
++                # Since the insertion is not part of the original (reference)
++                # sequence, the genomic position will not be incremented, but
++                # the offset will be to essentially skip over the insertion.
++                offset += size
++
++            elif token == 'M':
++                if genomic_pos + size > locus.start:
++                    # Matched sequence crosses locus boundary; increment
++                    # the offset only be the difference so that bases are
++                    # not accidentally skipped.
++                    offset += locus.start - genomic_pos
++                    genomic_pos = locus.start
++                
++                elif genomic_pos + size == locus.start:
++                    # Matched sequence reaches the exact boundary of the
++                    # MSI locus. If the next CIGAR string segment is an 
++                    # indel, run an additional calculation to check if
++                    # further offset is necessary.
++                    offset += size
++                    genomic_pos = locus.start
++
++                    if len(cigar) and cigar[0][0] in ['D', 'I']:
++                        offset += OffsetFinder.boundary_indel_offset(
++                            read, locus, cigar, offset, genomic_pos)
++
++
++                elif genomic_pos + size == locus.start - 1:
++                    # Right before the locus boundary. As with the previous
++                    # case, make sure an indel in the next CIGAR segment
++                    # is accounted for if necessary.
++                    offset += size
++                    genomic_pos = locus.start - 1
++                    if len(cigar) and cigar[0][0] in ['D', 'I']:
++                        offset += OffsetFinder.boundary_indel_offset(
++                            read, locus, cigar, offset, genomic_pos)
++                else:
++                    # Not at the locus boundary yet; increment offset and
++                    # genomic position normally.
++                    offset += size
++
++                    genomic_pos += size
++
++
++            if genomic_pos >= locus.start:
++                # MSI locus reached
++                break
++
++
++        # Return the estimate offset. 
++        return offset
++
++        # end .estimate_offset()
++
++
++    """
++    Handles cases where an indel exists right at the locus boundary.
++    This is relatively likely if the aligner accounted for any repeat 
++    count changes by placing the added or removed k-mers at the start
++    of the MSI locus.
++    """
++    @staticmethod
++    def boundary_indel_offset(read, locus, cigar, offset, genomic_pos):
++        offset_change = 0
++        if genomic_pos == locus.start and False:
++            # Only checks insertions at the locus boundary.
++            insertion_seq = read.seq[seq_pos:seq_pos+insert_size]
++            if insertion_seq[0:locus.kmer_length] != locus.kmer:
++                # The insertion appers to be a random insertion, not
++                # part of the repeat count change for the MSI locus.
++                # Shift the offset accordingly.
++                offset += insert_size
++        return offset_change
++        # end .boundary_indel_offset()
++
++    """
++    Checks the boundary position to make sure the entire read before the MSI locus
++    isn't slightly shifted; this could happen if the aligner shifts the 'start' 
++    position of the entire read when the locus is close to the edge of the read
++    sequence (e.g. the start position for caTTTTT.. might get decremented by N
++    if there are N extra T's in the locus, despite the read starting with 'ca'.)
++    """
++    @staticmethod
++    def adjust_for_shifts(read, locus, offset):
++        # First try to get sequence into the proper reading frame (if it
++        # isn't already) by left- or right-shifting it.
++
++        offset_change = OffsetFinder.adjust_reading_frame(read, locus, offset)
++        
++        if offset_change < 0:
++            # Encountered problem adjusting reading frame.
++            return 0
++
++        # Check if we can adjust the offset to an earlier position to
++        # capture an earlier (continuous) start for the repeat sequence.
++        offset_change += OffsetFinder.shift_start_left(read, locus, offset + offset_change)
++        return offset_change
++        # end .adjust_for_shifts()
++
++    """
++    Tries to adjust the read sequence into the proper reading frame.
++    """
++    @staticmethod
++    def adjust_reading_frame(read, locus, offset):
++        if OffsetFinder.at_target_kmer(read, locus, offset):
++            # Already in proper reading frame, no adjusting required.
++            return 0
++
++        # Try to adjust the reading frame until the read is within
++        # the correct frame.
++        offset_change = 0
++        in_frame = False
++        for i in range(1, OffsetFinder.max_iterations + 1):
++            if OffsetFinder.at_target_kmer(read, locus, offset - i):
++                # Left-shifting read moved it into the proper reading frame.
++                in_frame = True
++                offset_change = -1 * i
++            elif OffsetFinder.at_target_kmer(read, locus, offset + i):
++                # Right-shifting read moved it into the proper reading frame.
++                in_frame = True
++                offset_change = i
++            if in_frame:
++                # Read is now in the proper reading frame.
++                break
++
++        if not in_frame:
++            # Couldn't get the read into the right reading frame.
++            offset_change = -1
++        return offset_change
++        # end of .adjust_reading_frame()
++
++
++    """
++    Tries to find an 'earlier' start for the repeat sequence
++    by checking left (before) of the current offset. Assumes
++    the read is already in the proper reading frame.
++    """
++    @staticmethod
++    def shift_start_left(read, locus, offset = 0):
++        # Start by assuming no change will occur.
++        offset_change = 0
++
++        # Kmer length acts as the shift unit (-/neg since we're shifting left).
++        shift_unit = -1 * locus.kmer_length
++
++        for i in range(1, OffsetFinder.max_iterations + 1):
++            start = offset + (i * shift_unit)
++            stop = offset + (i * shift_unit) + locus.kmer_length
++            if start < 0 or stop > read.length:
++                # Going out of boundaries on the read; stop.
++                break
++
++            if read.seq[start:stop] == locus.kmer:
++                # Found the kmer at the earlier offset position
++                offset_change = (i * shift_unit)
++            else:
++                # No longer within repeat sequence
++                break
++
++        return offset_change
++        # end of .shift_start_left()
++
++
++    """
++    Basic helper method that checks if the current offset in the read
++    sequence matches the targeted k-mer sequence.
++    """
++    @staticmethod
++    def at_target_kmer(read, locus, offset = 0):
++        return (read.seq[offset:offset+locus.kmer_length] == locus.kmer)
++        # end .at_target_kmer()
++
++    # end OffsetFinder class definition.
++
+diff --git a/structures.py b/structures.py
+index 3187bef..6f36476 100755
+--- a/structures.py
++++ b/structures.py
+@@ -1,3 +1,5 @@
++#!/usr/bin/env python
++
+ # @file structures.py
+ # @author Esko Kautto (esko.kautto@osumc.edu)
+ # @updated 2016-06-16
+diff --git a/tools/fix_RF_bed_output.py b/tools/fix_RF_bed_output.py
+index 6aaf297..64edfda 100644
+--- a/tools/fix_RF_bed_output.py
++++ b/tools/fix_RF_bed_output.py
+@@ -1,179 +1,179 @@
+-# @file fix_RF_bed_output.py
+-# @author Esko Kautto (esko.kautto@osumc.edu)
+-# @updated 2017-01-26
+-#
+-# The script reads in the 6-column BED file output generated
+-# by the RepeatFinder program and parses through it to fix
+-# any incorrect annotations that might have been created due
+-# to unexpected formats of data in the reference genome.
+-# An example are the alternate haplotype reference ("chromosome")
+-# entries from HG38, which can result in the reference spanning
+-# two columns, causing the 6-column output to incorrectly
+-# become 7 columns and cause MANTIS to reject the input BED file.
+-
+-import os
+-import sys
+-import argparse
+-
+-"""
+-Attempts to determine if the input string follows the correct
+-format for the motif repeat column in the bedfile, i.e.
+-(A|C|T|G)XX
+-"""
+-def valid_motif_string(string):
+-	valid = True
+-	if string[0] == '(' and ')' in string:
+-		check = string[1:].split(')')
+-		if len(check) != 2:
+-			# Split improperly on parenthesis.
+-			valid = False
+-		else:
+-			if len(check[0]) < 1:
+-				# No motif specified
+-				valid = False
+-			else:
+-				for c in check[0].upper():
+-					if c not in ['A', 'T', 'C', 'G']:
+-						# Invalid base/character
+-						valid = False
+-						break
+-				if not check[1].isdigit():
+-					# Improper repeat count.
+-					valid = False
+-	else:
+-		valid = False
+-	return valid
+-	# end valid_motif_string()
+-
+-
+-"""
+-Checks if the input line appears to follow the expected
+-6-column BED format being used. If the input appears to
+-match the format, True is returned; if not, False.
+-"""
+-def check_line_validity(line):
+-	valid = True
+-	if len(line) != 6:
+-		# Wrong number of columns
+-		valid = False
+-	else:
+-		if len(line[0].strip()) is 0:
+-			# Reference/chromosome appears empty.
+-			valid = False
+-		elif not line[1].isdigit() or not line[2].isdigit():
+-			# The start and/or stop coordinates appear incorrect.
+-			valid = False
+-		else:
+-			# We only need to check the 4th column, since the
+-			# values 5th and 6th columns are ignored at this time.
+-			if not valid_motif_string(line[3]):
+-				valid = False
+-
+-	return valid
+-	# end check_line_validity()
+-
+-"""
+-Attempts to fix the line values. If successful,
+-returns the line as a list of the corrected values. If 
+-not, returns False to signify failure.
+-"""
+-def fix_line(line):
+-	output = []
+-	if len(line) is 6:
+-		# Not attempting to fix, return unchanged.
+-		output = line
+-	elif len(line) < 6:
+-		# Insufficient fields.
+-		print('Cannot fix line "{0}": insufficient columns'.format(
+-			'\t'.join(line)))
+-		output = False
+-	else:
+-		proceed = True
+-		if line[-1] in ['+', '-']:
+-			output.append(line[-1])
+-		else:
+-			proceed = False
+-
+-		if proceed and line[-2].isdigit():
+-			output.append(line[-2])
+-		else:
+-			proceed = False
+-
+-		if proceed and valid_motif_string(line[-3]):
+-			output.append(line[-3])
+-		else:
+-			proceed = False
+-
+-		if proceed and line[-4].isdigit():
+-			output.append(line[-4])
+-		else:
+-			proceed = False
+-
+-		if proceed and line[-5].isdigit():
+-			output.append(line[-5])
+-		else:
+-			proceed = False
+-
+-		if proceed:
+-			output.append(line[0])
+-
+-		if not proceed:
+-			output = False
+-		else:
+-			output = output[::-1]
+-			print('Fixed line "{0}" => "{1}"'.format(
+-				'\t'.join(line),
+-				'\t'.join(output),
+-				))
+-
+-	return output
+-	# end fix_line()
+-
+-if __name__ == '__main__':
+-	program_name = 'MANTIS RepeatFinder BED file fixer'
+-	parser = argparse.ArgumentParser(description=program_name)
+-	parser.add_argument('-i', '--input', dest='input', type=str, 
+-	    required=True, help='Input filepath.')
+-	parser.add_argument('-o', '--output', dest='output', type=str, 
+-	    required=True, help='Output filepath.')
+-	parser.add_argument('--overwrite', dest='overwrite', action='store_true')
+-	args = parser.parse_args()
+-
+-	input_filepath = os.path.abspath(args.input)
+-	if not os.path.isfile(input_filepath):
+-		print('Error: Input filepath {0} does not exist!'.format(input_filepath))
+-		exit(1)
+-
+-	output_filepath = os.path.abspath(args.output)
+-	if os.path.isfile(output_filepath):
+-		if args.overwrite:
+-			print('Warning: Output file is being overwritten.')
+-		else:
+-			print('Error: Output file {0} already exists!'.format(output_filepath))
+-			print('To overwrite the output, use the --overwrite argument.')
+-			exit(1)
+-	else:
+-		output_folder = os.path.dirname(output_filepath)
+-		if not os.path.isdir(output_folder):
+-			os.makedirs(output_folder)
+-
+-	with open(output_filepath, 'w') as fileout:
+-		with open(input_filepath, 'Ur') as filein:
+-			for line in filein:
+-				line = line.strip()
+-				if len(line):
+-					line = line.split('\t')
+-					if check_line_validity(line):
+-						# Nothing to fix.
+-						pass
+-					else:
+-						# Attempts to fix line data.
+-						line = fix_line(line)
+-
+-					if line:
+-						fileout.write('{0}\n'.format('\t'.join(line)))
+-			filein.close()
+-		fileout.close()
+-	# done with __main__
+-
+-
++# @file fix_RF_bed_output.py
++# @author Esko Kautto (esko.kautto@osumc.edu)
++# @updated 2017-01-26
++#
++# The script reads in the 6-column BED file output generated
++# by the RepeatFinder program and parses through it to fix
++# any incorrect annotations that might have been created due
++# to unexpected formats of data in the reference genome.
++# An example are the alternate haplotype reference ("chromosome")
++# entries from HG38, which can result in the reference spanning
++# two columns, causing the 6-column output to incorrectly
++# become 7 columns and cause MANTIS to reject the input BED file.
++
++import os
++import sys
++import argparse
++
++"""
++Attempts to determine if the input string follows the correct
++format for the motif repeat column in the bedfile, i.e.
++(A|C|T|G)XX
++"""
++def valid_motif_string(string):
++	valid = True
++	if string[0] == '(' and ')' in string:
++		check = string[1:].split(')')
++		if len(check) != 2:
++			# Split improperly on parenthesis.
++			valid = False
++		else:
++			if len(check[0]) < 1:
++				# No motif specified
++				valid = False
++			else:
++				for c in check[0].upper():
++					if c not in ['A', 'T', 'C', 'G']:
++						# Invalid base/character
++						valid = False
++						break
++				if not check[1].isdigit():
++					# Improper repeat count.
++					valid = False
++	else:
++		valid = False
++	return valid
++	# end valid_motif_string()
++
++
++"""
++Checks if the input line appears to follow the expected
++6-column BED format being used. If the input appears to
++match the format, True is returned; if not, False.
++"""
++def check_line_validity(line):
++	valid = True
++	if len(line) != 6:
++		# Wrong number of columns
++		valid = False
++	else:
++		if len(line[0].strip()) is 0:
++			# Reference/chromosome appears empty.
++			valid = False
++		elif not line[1].isdigit() or not line[2].isdigit():
++			# The start and/or stop coordinates appear incorrect.
++			valid = False
++		else:
++			# We only need to check the 4th column, since the
++			# values 5th and 6th columns are ignored at this time.
++			if not valid_motif_string(line[3]):
++				valid = False
++
++	return valid
++	# end check_line_validity()
++
++"""
++Attempts to fix the line values. If successful,
++returns the line as a list of the corrected values. If 
++not, returns False to signify failure.
++"""
++def fix_line(line):
++	output = []
++	if len(line) is 6:
++		# Not attempting to fix, return unchanged.
++		output = line
++	elif len(line) < 6:
++		# Insufficient fields.
++		print('Cannot fix line "{0}": insufficient columns'.format(
++			'\t'.join(line)))
++		output = False
++	else:
++		proceed = True
++		if line[-1] in ['+', '-']:
++			output.append(line[-1])
++		else:
++			proceed = False
++
++		if proceed and line[-2].isdigit():
++			output.append(line[-2])
++		else:
++			proceed = False
++
++		if proceed and valid_motif_string(line[-3]):
++			output.append(line[-3])
++		else:
++			proceed = False
++
++		if proceed and line[-4].isdigit():
++			output.append(line[-4])
++		else:
++			proceed = False
++
++		if proceed and line[-5].isdigit():
++			output.append(line[-5])
++		else:
++			proceed = False
++
++		if proceed:
++			output.append(line[0])
++
++		if not proceed:
++			output = False
++		else:
++			output = output[::-1]
++			print('Fixed line "{0}" => "{1}"'.format(
++				'\t'.join(line),
++				'\t'.join(output),
++				))
++
++	return output
++	# end fix_line()
++
++if __name__ == '__main__':
++	program_name = 'MANTIS RepeatFinder BED file fixer'
++	parser = argparse.ArgumentParser(description=program_name)
++	parser.add_argument('-i', '--input', dest='input', type=str, 
++	    required=True, help='Input filepath.')
++	parser.add_argument('-o', '--output', dest='output', type=str, 
++	    required=True, help='Output filepath.')
++	parser.add_argument('--overwrite', dest='overwrite', action='store_true')
++	args = parser.parse_args()
++
++	input_filepath = os.path.abspath(args.input)
++	if not os.path.isfile(input_filepath):
++		print('Error: Input filepath {0} does not exist!'.format(input_filepath))
++		exit(1)
++
++	output_filepath = os.path.abspath(args.output)
++	if os.path.isfile(output_filepath):
++		if args.overwrite:
++			print('Warning: Output file is being overwritten.')
++		else:
++			print('Error: Output file {0} already exists!'.format(output_filepath))
++			print('To overwrite the output, use the --overwrite argument.')
++			exit(1)
++	else:
++		output_folder = os.path.dirname(output_filepath)
++		if not os.path.isdir(output_folder):
++			os.makedirs(output_folder)
++
++	with open(output_filepath, 'w') as fileout:
++		with open(input_filepath, 'Ur') as filein:
++			for line in filein:
++				line = line.strip()
++				if len(line):
++					line = line.split('\t')
++					if check_line_validity(line):
++						# Nothing to fix.
++						pass
++					else:
++						# Attempts to fix line data.
++						line = fix_line(line)
++
++					if line:
++						fileout.write('{0}\n'.format('\t'.join(line)))
++			filein.close()
++		fileout.close()
++	# done with __main__
++
++

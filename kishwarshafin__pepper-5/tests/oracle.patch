@@ -1,0 +1,68 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fee420be..ce4e0d4a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-CMAKE_MINIMUM_REQUIRED(VERSION 3.11)
++CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
+ 
+ # name of the project is PEPPER
+ PROJECT(pepper)
+diff --git a/build.sh b/build.sh
+index 1ee5791c..cfae7694 100755
+--- a/build.sh
++++ b/build.sh
+@@ -1,6 +1,6 @@
+ #!/bin/bash
+ 
+-# rm -rf build
++ rm -rf build
+ mkdir build
+ cd build
+ 
+diff --git a/modules/pybind11.cmake b/modules/pybind11.cmake
+index 8e82e190..5becbc71 100644
+--- a/modules/pybind11.cmake
++++ b/modules/pybind11.cmake
+@@ -1,12 +1,14 @@
+-include(FetchContent)
+-FetchContent_Declare(
+-        pybind11
+-        GIT_REPOSITORY https://github.com/pybind/pybind11
+-        GIT_TAG        v2.2.4
+-)
++set(PYBIND11_VERSION "2.2.4")
++set(PYBIND11_URL "https://github.com/pybind/pybind11/archive/v${PYBIND11_VERSION}.tar.gz")
++set(PYBIND11_DOWNLOAD_PATH "${CMAKE_BINARY_DIR}/pybind11-${PYBIND11_VERSION}.tar.gz")
++set(PYBIND11_EXTRACTED_PATH "${CMAKE_BINARY_DIR}/pybind11-${PYBIND11_VERSION}")
+ 
+-FetchContent_GetProperties(pybind11)
+-if(NOT pybind11_POPULATED)
+-    FetchContent_Populate(pybind11)
+-    add_subdirectory(${pybind11_SOURCE_DIR} ${pybind11_BINARY_DIR})
+-endif()
+\ No newline at end of file
++if (NOT EXISTS ${PYBIND11_DOWNLOAD_PATH})
++    file(DOWNLOAD ${PYBIND11_URL} ${PYBIND11_DOWNLOAD_PATH})
++endif()
++
++execute_process(COMMAND ${CMAKE_COMMAND} -E tar xfz ${PYBIND11_DOWNLOAD_PATH}
++        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
++        RESULT_VARIABLE pybind11)
++
++add_subdirectory(${PYBIND11_EXTRACTED_PATH})
+diff --git a/setup.py b/setup.py
+index 4224be46..ca108e18 100644
+--- a/setup.py
++++ b/setup.py
+@@ -24,8 +24,8 @@ def run(self):
+             cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)',
+                                                    out.decode()).group(1))
+             print("CMAKE VERSION: ", cmake_version)
+-            if cmake_version < '3.11':
+-                raise RuntimeError("CMake >= 3.1.0 is required on Windows")
++            if cmake_version < '3':
++                raise RuntimeError("CMake >= 3 is required.")
+         except OSError:
+             raise RuntimeError(
+                 "CMake must be installed to build the following extensions: " +

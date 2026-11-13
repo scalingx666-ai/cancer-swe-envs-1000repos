@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/yuchaojiang__Canopy-5"
+description = "Update Links"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "Canopy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "yuchaojiang/Canopy"
+ref = "70526ed015b2677f1678d24e2d50575023f830f3"
+reference = "https://github.com/yuchaojiang/Canopy/pull/5"
+source_access = "auto"
+built_at = "2026-11-13T15:44:24.779561+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:043f6aebb9aca8194fcc8610ed0c407c643962304515671a75be2287a7ecbdc5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-04-13T19:26:43Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "package/vignettes/Canopy_vignettes.Rnw",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

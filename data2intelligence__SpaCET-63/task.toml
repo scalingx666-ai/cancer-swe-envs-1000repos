@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/data2intelligence__SpaCET-63"
+description = "Add SpaCET.deconvolution.bulk.matched.scRNAseq for unmatched bulk RNA-seq"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "SpaCET",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "data2intelligence/SpaCET"
+ref = "e8aee9069ebda3e5447615d30e04b672fc9b5b18"
+reference = "https://github.com/data2intelligence/SpaCET/pull/63"
+source_access = "auto"
+built_at = "2026-11-13T15:39:16.330613+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8f4ec8d08b8bb83362d731991b35f9fcdce0a98a73aef8f11254a5655f028ef6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-26T16:25:00Z"
+diff_format = "unified"
+context_files = [
+    "NAMESPACE",
+    "R/extensions.R",
+    "man/SpaCET.deconvolution.bulk.matched.scRNAseq.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 239
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

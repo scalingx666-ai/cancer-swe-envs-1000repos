@@ -1,0 +1,20 @@
+diff --git a/Example_on_BRATS2018.ipynb b/Example_on_BRATS2018.ipynb
+index 8eaa462..79fea00 100644
+--- a/Example_on_BRATS2018.ipynb
++++ b/Example_on_BRATS2018.ipynb
+@@ -478,7 +478,7 @@
+         }
+       },
+       "source": [
+-        "model.fit(data, labels, batch_size=1, epochs=1)"
++        "model.fit(data, [labels, data], batch_size=1, epochs=1)"
+       ],
+       "execution_count": 100,
+       "outputs": [
+@@ -849,4 +849,4 @@
+       ]
+     }
+   ]
+-}
+\ No newline at end of file
++}

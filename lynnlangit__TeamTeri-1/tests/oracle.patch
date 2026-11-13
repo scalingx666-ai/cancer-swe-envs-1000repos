@@ -1,0 +1,278 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..65f9e45
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,45 @@
++# Created by .ignore support plugin (hsz.mobi)
++### JetBrains template
++# Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio and Webstorm
++# Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
++
++# User-specific stuff:
++.idea/workspace.xml
++.idea/tasks.xml
++
++# Sensitive or high-churn files:
++.idea/dataSources/
++.idea/dataSources.ids
++.idea/dataSources.xml
++.idea/dataSources.local.xml
++.idea/sqlDataSources.xml
++.idea/dynamic.xml
++.idea/uiDesigner.xml
++
++# Gradle:
++.idea/gradle.xml
++.idea/libraries
++
++# Mongo Explorer plugin:
++.idea/mongoSettings.xml
++
++## File-based project format:
++*.iws
++
++## Plugin-specific files:
++
++# IntelliJ
++/out/
++
++# mpeltonen/sbt-idea plugin
++.idea_modules/
++
++# JIRA plugin
++atlassian-ide-plugin.xml
++
++# Crashlytics plugin (for Android Studio and IntelliJ)
++com_crashlytics_export_strings.xml
++crashlytics.properties
++crashlytics-build.properties
++fabric.properties
++
+diff --git a/.idea/TeamTeri.iml b/.idea/TeamTeri.iml
+new file mode 100644
+index 0000000..24643cc
+--- /dev/null
++++ b/.idea/TeamTeri.iml
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<module type="WEB_MODULE" version="4">
++  <component name="NewModuleRootManager">
++    <content url="file://$MODULE_DIR$">
++      <excludeFolder url="file://$MODULE_DIR$/.tmp" />
++      <excludeFolder url="file://$MODULE_DIR$/temp" />
++      <excludeFolder url="file://$MODULE_DIR$/tmp" />
++    </content>
++    <orderEntry type="inheritedJdk" />
++    <orderEntry type="sourceFolder" forTests="false" />
++  </component>
++</module>
+\ No newline at end of file
+diff --git a/.idea/encodings.xml b/.idea/encodings.xml
+new file mode 100644
+index 0000000..97626ba
+--- /dev/null
++++ b/.idea/encodings.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="Encoding">
++    <file url="PROJECT" charset="UTF-8" />
++  </component>
++</project>
+\ No newline at end of file
+diff --git a/.idea/modules.xml b/.idea/modules.xml
+new file mode 100644
+index 0000000..695e9ac
+--- /dev/null
++++ b/.idea/modules.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="ProjectModuleManager">
++    <modules>
++      <module fileurl="file://$PROJECT_DIR$/.idea/TeamTeri.iml" filepath="$PROJECT_DIR$/.idea/TeamTeri.iml" />
++    </modules>
++  </component>
++</project>
+\ No newline at end of file
+diff --git a/.idea/vcs.xml b/.idea/vcs.xml
+new file mode 100644
+index 0000000..94a25f7
+--- /dev/null
++++ b/.idea/vcs.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="VcsDirectoryMappings">
++    <mapping directory="$PROJECT_DIR$" vcs="Git" />
++  </component>
++</project>
+\ No newline at end of file
+diff --git a/Galaxy/setupScriptsForGalaxy/GCE-cli-cleanup.sh b/Galaxy/setupScriptsForGalaxy/GCE-cli-cleanup.sh
+new file mode 100644
+index 0000000..45a5d4f
+--- /dev/null
++++ b/Galaxy/setupScriptsForGalaxy/GCE-cli-cleanup.sh
+@@ -0,0 +1,25 @@
++#!/usr/bin/env bash
++
++source ./cli.rc
++
++# ------------------- CLEAN UP  -----------------------
++
++# DELETE IMAGE
++echo "Deleting VM image..."
++gcloud compute images delete ${TEAMTERI_IMAGE}
++
++# DELETE ALL INSTANCES
++echo "Deleting VM instances..."
++gcloud compute instances delete --quiet ${GCLOUD_ARGS} ${CLIENT_INSTANCES}
++
++# DELETE DISKS (Optional - you may wish to save these disks for reuse with new VM instances)
++if [ ${USE_PERSISTENT_DISK} -eq 1 ]
++then
++    /bin/echo "Detaching persistent disks..."
++    for i in $(seq 1 ${NUM_AS_CLIENTS}); do
++      /bin/echo -n "  galaxy-persistent-disk-$i"
++      gcloud compute instances detach-disk ${GCLOUD_ARGS} galaxy-client-${i} --disk galaxy-persistent-disk-${i}
++    done
++    /bin/echo "  deleting disks..."
++    gcloud compute disks delete ${GCLOUD_ARGS} ${CLIENT_DISKS} -q
++fi
+diff --git a/Galaxy/setupScriptsForGalaxy/GCE-cli-steps.sh b/Galaxy/setupScriptsForGalaxy/GCE-cli-steps.sh
+index 65b2504..41c72fb 100644
+--- a/Galaxy/setupScriptsForGalaxy/GCE-cli-steps.sh
++++ b/Galaxy/setupScriptsForGalaxy/GCE-cli-steps.sh
+@@ -1,24 +1,17 @@
+ #!/bin/bash
+ 
++source ./cli.rc
++
+ # ---------------STARTING WITH GOOGLE CLOUD: STEP 0------------
+-ACCOUNT=<your GCE user email>
+-gcloud auth login $ACCOUNT --brief              # authenticate to GCP from your working directory via Terminal
+-                                                # will not launch if $ACCOUNT already has credentials
++echo "authenticate to GCP from your working directory via Terminal"
++echo "will not launch if ${ACCOUNT} already has credentials"
++
++gcloud auth login ${ACCOUNT} --brief
++
++CLIENT_DISKS=`for i in $(seq 1 ${NUM_AS_CLIENTS}); do echo galaxy-persistent-disk-${i}; done`
+ 
+-# ------------------- SETUP: STEPS 1-3 -----------------------
+-# 1a. SET VARIABLES
+-NUM_AS_CLIENTS=1                        # set the number of GCE VM instances of Galaxy
+-ZONE=us-west1-a                         # set your zone, i.e 'us-central1-b', etc....
+-PROJECT=<your GCE project>              # set your GCP project name
+-CLIENT_INSTANCE_TYPE=n1-standard-1      # set your VM instance type / size
+-USE_PERSISTENT_DISK=0                   # set to 0 for no extra disk, 1 for extra persistent disk
+-TEAMTERI_IMAGE=galaxy-image-1           # the Galaxy image you create & store in GCE Images
+-BOOT_DISK_SIZE=30GB                     # set to 30 GB or greater for ability to 'dockerize'
+ 
+-CLIENT_DISKS=`for i in $(seq 1 $NUM_AS_CLIENTS); do echo galaxy-persistent-disk-$i; done`
+-CLIENT_INSTANCES=`for i in $(seq 1 $NUM_AS_CLIENTS); do echo galaxy-client-$i; done`
+ 
+-GCLOUD_ARGS="--zone $ZONE --project $PROJECT"
+ 
+ # 1a. CREATE NETWORK / FIREWALL RULES
+ # //TODO - Create non-default network, add firewall rules to allow http/https traffic (to reach Galaxy)
+@@ -27,49 +20,36 @@ GCLOUD_ARGS="--zone $ZONE --project $PROJECT"
+ 
+ # 1b. CREATE IMAGE to be used as a basis for your GCE instance (includes Galaxy install)
+ /bin/echo "Creating client image, please wait..."
+-gcloud compute images create $GCLOUD_ARGS  \
+-     --tags "Galaxy_client" --image $TEAMTERI_IMAGE \
+-     --source-uri "galaxyproject_images/planemo_machine_smc.06.image.tar.gz"
++#gcloud compute images create ${GCLOUD_ARGS}  \
++#     --tags "Galaxy_client" --image ${TEAMTERI_IMAGE} \
++#     --source-uri "galaxyproject_images/planemo_machine_smc.06.image.tar.gz"
++gcloud compute images create ${TEAMTERI_IMAGE} \
++    --description="Galaxy_client" \
++    --source-uri="http://storage.googleapis.com/galaxyproject_images/planemo_machine_smc.06.image.tar.gz"
++
+ /bin/echo " galaxy GCE / VM image created..."
+ 
+ # 2a. CREATE CLIENT VMS & DISKS
+ /bin/echo "Creating client instances, please wait..."
+-gcloud compute instances create $GCLOUD_ARGS $CLIENT_INSTANCES \
+-    --machine-type $CLIENT_INSTANCE_TYPE --tags "Galaxy_client" \
+-    --image $TEAMTERI_IMAGE --image-project $PROJECT \
+-    --boot-disk-size $BOOT_DISK_SIZE
++gcloud compute instances create ${GCLOUD_ARGS} ${CLIENT_INSTANCES} \
++    --machine-type ${CLIENT_INSTANCE_TYPE} --tags "galaxy-client" \
++    --image ${TEAMTERI_IMAGE} --image-project ${PROJECT} \
++    --boot-disk-size ${BOOT_DISK_SIZE}
+ 
+ # 2b. SETUP PERSISTENT DISKS (optional)
+-if [ $USE_PERSISTENT_DISK -eq 1 ]
++if [ ${USE_PERSISTENT_DISK} -eq 1 ]
+ then
+     /bin/echo "Creating persistent disks..."
+-    gcloud compute disks create $GCLOUD_ARGS $CLIENT_DISKS --size "300GB"
+-    for i in $(seq 1 $NUM_AS_CLIENTS); do
++    gcloud compute disks create ${GCLOUD_ARGS} ${CLIENT_DISKS} --size "300GB"
++    for i in $(seq 1 ${NUM_AS_CLIENTS}); do
+         /bin/echo -n "  attaching galaxy-persistent-disk-$i to galaxy-client-$i:"
+-        gcloud compute instances $GCLOUD_ARGS attach-disk galaxy-client-$i --disk galaxy-persistent-disk-$i
++        gcloud compute instances ${GCLOUD_ARGS} attach-disk galaxy-client-${i} --disk galaxy-persistent-disk-${i}
+     done
+ fi
+ /bin/echo " persistent disks created..."
+ 
+ # 3. CONNECT TO GALAXY on your GCE VM ('hello-gene')
+ # - Edit your VM to allow http/https traffic on the network for that VM (click in the GCP console)
++#
+ # - Find the public IP of 'hello-gene', open http://<public ip of 'hello-gene'>, you should see Galaxy in your browser
+ # - Galaxy login is Username: planemo and Password: planemo
+-
+-# ------------------- CLEAN UP  -----------------------
+-
+-# DELETE ALL INSTANCES
+-echo "Deleting VM instances..."
+-gcloud compute instances delete --quiet $GCLOUD_ARGS $CLIENT_INSTANCES
+-
+-# DELETE DISKS (Optional - you may wish to save these disks for reuse with new VM instances)
+-if [ $USE_PERSISTENT_DISK -eq 1 ]
+-then
+-    /bin/echo "Detaching persistent disks..."
+-    for i in $(seq 1 $NUM_AS_CLIENTS); do
+-      /bin/echo -n "  galaxy-persistent-disk-$i"
+-      gcloud compute instances detach-disk $GCLOUD_ARGS galaxy-client-$i --disk galaxy-persistent-disk-$i
+-    done
+-    /bin/echo "  deleting disks..."
+-    gcloud compute disks delete $GCLOUD_ARGS $CLIENT_DISKS -q
+-fi
+diff --git a/Galaxy/setupScriptsForGalaxy/add-galaxy-tools.sh b/Galaxy/setupScriptsForGalaxy/add-galaxy-tools.sh
+index f9fa96d..5eccd4f 100644
+--- a/Galaxy/setupScriptsForGalaxy/add-galaxy-tools.sh
++++ b/Galaxy/setupScriptsForGalaxy/add-galaxy-tools.sh
+@@ -6,7 +6,7 @@
+ sudo su ubuntu
+ cd /opt/galaxy/tools
+ git clone https://github.com/Sage-Bionetworks/SMC-Het-Challenge-Examples.git
+-cd SMC-Het-Challenge-Examples
++# cd SMC-Het-Challenge-Examples
+ 
+ sudo service docker restart
+ restart_galaxy
+diff --git a/Galaxy/setupScriptsForGalaxy/cli.rc b/Galaxy/setupScriptsForGalaxy/cli.rc
+new file mode 100644
+index 0000000..217ca55
+--- /dev/null
++++ b/Galaxy/setupScriptsForGalaxy/cli.rc
+@@ -0,0 +1,13 @@
++ACCOUNT=<GOOGLE EMAIL>
++PROJECT=<PROJECT ID>
++
++NUM_AS_CLIENTS=1                        # set the number of GCE VM instances of Galaxy
++ZONE=us-west1-a                         # set your zone, i.e 'us-central1-b', etc....
++CLIENT_INSTANCE_TYPE=n1-standard-1      # set your VM instance type / size
++USE_PERSISTENT_DISK=0                   # set to 0 for no extra disk, 1 for extra persistent disk
++TEAMTERI_IMAGE=galaxy-image-1           # the Galaxy image you create & store in GCE Images
++BOOT_DISK_SIZE=200GB                    # set to 30 GB or greater for ability to 'dockerize'
++
++
++CLIENT_INSTANCES=`for i in $(seq 2 ${NUM_AS_CLIENTS}); do echo galaxy-client-${i}; done`
++GCLOUD_ARGS="--zone ${ZONE} --project ${PROJECT}"
+\ No newline at end of file

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/ivmartel__dwv-2380"
+description = "Bump webpack-cli from 7.2.3 to 7.3.1"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "dwv",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ivmartel/dwv"
+ref = "c87d2045aacffca449b31ed56abb22c3c5ea6df9"
+reference = "https://github.com/ivmartel/dwv/pull/2380"
+source_access = "auto"
+built_at = "2026-11-13T15:46:20.951382+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f14b2d4035dbe951fd5d0d5b631edc8bf5c8a411c57cf7b7437eaf49ba6e0771"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-09T08:35:51Z"
+diff_format = "unified"
+context_files = [
+    "yarn.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 108
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

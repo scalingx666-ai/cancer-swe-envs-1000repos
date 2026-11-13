@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/rcedgar__usearch12-29"
+description = "Add -threads support to unoise3/uchime3_denovo chimera stage"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "usearch12",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "rcedgar/usearch12"
+ref = "304cce68f19a21f4ccb1bc48c6896f784a33d052"
+reference = "https://github.com/rcedgar/usearch12/pull/29"
+source_access = "auto"
+built_at = "2026-11-13T16:18:39.398343+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9243434e041ac61fe062572769e2258655033be5039d9c73c4ebd240521e77ba"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-23T17:06:03Z"
+diff_format = "unified"
+context_files = [
+    "src/deparser.cpp",
+    "src/deparser.h",
+    "src/uchime3denovo.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 386
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

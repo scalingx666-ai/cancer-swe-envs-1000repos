@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/bioinform__varsim-264"
+description = "update"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "varsim",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bioinform/varsim"
+ref = "74c40244cdb6a2c1b15585b734517dc643f13abb"
+reference = "https://github.com/bioinform/varsim/pull/264"
+source_access = "auto"
+built_at = "2026-11-13T15:37:32.281716+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a4eb23ad1df99e67b3127e056e5dff6f3c3f1f9881294563dc6a3d81e14cb9ab"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-09-20T17:16:53Z"
+diff_format = "unified"
+context_files = [
+    "docker/Dockerfile",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,293 @@
+diff --git a/content/14_appendix_data_sources/14_Appendix_Data_Sources.ipynb b/content/14_appendix_data_sources/14_Appendix_Data_Sources.ipynb
+index 415b340..3720632 100644
+--- a/content/14_appendix_data_sources/14_Appendix_Data_Sources.ipynb
++++ b/content/14_appendix_data_sources/14_Appendix_Data_Sources.ipynb
+@@ -90,7 +90,7 @@
+    "source": [
+     "## Viral Genomes\n",
+     "\n",
+-    "<img src=\"https://www.jcvi.org/sites/default/files/assets/projects/virus-pathogen-resource-vipr/446x446xsidebar-vipr.png.pagespeed.ic.LJS230Zt47.webp\"\n",
++    "<img src=\"./resources/ViPR_logo.png\"\n",
+     "     alt=\"VIPR logo showing a diagram of several viruses\"\n",
+     "     style=\"float: left; margin-right: 10px;\" width=\"100\"/>\n",
+     "\n",
+@@ -99,21 +99,51 @@
+     "The ViPR database (https://www.viprbrc.org/) holds information for about 14 families of viruses. More information, and links to many papers in the literature using or describing the resource can be found here: https://www.jcvi.org/research/virus-pathogen-resource-vipr\n"
+    ]
+   },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "<img src=\"https://www.ncbi.nlm.nih.gov/core/assets/sars_cov_2/images/data-submission-640.jpg\"\n",
++    "     alt=\"NCBI coronavirus graphic, showing a hand with tweezers pulling DNA out of a coronavirus\"\n",
++    "     style=\"float: left; margin-right: 10px;\" width=\"150\"/>\n",
++    "\n",
++    "\n",
++    "## The NCBI SARS-CoV2 Resource Page\n",
++    "\n",
++    "This page contains multiple resources from the NCBI pertaining to SARS-CoV2 viruses: https://www.ncbi.nlm.nih.gov/sars-cov-2/"
++   ]
++  },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+     "# Data on Mutations and Polymorphisms\n",
+     "\n",
+-    "<img src=\"https://opensnp.org/assets/opensnp-logo-cd861e3b8abe225a78c83e41a8b34d78c450fa0041a8e7cb0d97f55ac1d3a1eb.png\"\n",
+-    "     alt=\"The OpenSNP logo with the words OpenSNP\"\n",
++    "\n",
++    "<img src=\"./resources/pgp_logo.png\"\n",
++    "     alt=\"PGP logo showing a human icon with DNA superimposed, in green and blue.\"\n",
+     "     style=\"float: left; margin-right: 10px;\" width=\"100\"/>\n",
++    "## Personal Genome Projects - Global\n",
++    "\n",
++    "This site links to personal genome projects for several countries (only some of which are available). Instead of trying to protect privacy, these projects rely on users openly and identifiably sharing genome and trait information. Because of this, they can be openly shared. Note that several different data types and file formats are available. \n",
++    "\n",
++    "https://www.personalgenomes.org/\n",
+     "\n",
+     "\n",
+     "## Open SNP Single Nucleotide Polymorphism (SNP) Data in Humans \n",
+     "\n",
+-    "OpenSNP has an ~15 GB download of user SNP data and a CSV file of associated phenotypes (eye color, handedness,etc). Download the raw data here:\n",
+-    "https://www.opensnp.org/genotypes"
++    "OpenSNP had an ~15 GB download of user SNP data and a CSV file of associated phenotypes (eye color, handedness,etc). Download the raw data here:\n",
++    "https://www.opensnp.org/genotypes\n",
++    "\n",
++    "**Update** In 2025, OpenSNP shut down and deleted genomic data to protect about 13,000 people, [citing privacy concerns and concerns of misuse by an increasingly authoritarian US government](https://techcrunch.com/2025/04/01/genetic-sharing-site-opensnp-to-shut-down-citing-concerns-of-data-privacy-and-rise-in-authoritarian-governments/).  \n",
++    "\n",
++    "<img src=\"./resources/ClinVar_logo.svg\"\n",
++    "     alt=\"PGP logo showing a human icon with DNA superimposed, in green and blue.\"\n",
++    "     style=\"float: left; margin-right: 10px;\" width=\"100\"/>\n",
++    "## ClinVar Database\n",
++    "\n",
++    "While not exactly a dataset of genomic data, this resource provides *metadata* about links between specific genetic variants and disease.\n",
++    "https://www.ncbi.nlm.nih.gov/clinvar/"
+    ]
+   },
+   {
+@@ -127,8 +157,8 @@
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+-    "<img src=\"https://portal.gdc.cancer.gov/static/media/NHI_GDC_DataPortal-logo.23e6ca47.svg\"\n",
+-    "     alt=\"The OpenSNP logo with the words OpenSNP\"\n",
++    "<img src=\"./resources/GDC_logo.png\"\n",
++    "     alt=\"A logo labeled National Cancer Institute Genomic Data Commons\"\n",
+     "     style=\"float: left; margin-right: 10px;\" width=\"200\"/>\n",
+     "\n",
+     "## Epigenetics Data from the National Institute of Health Genomics Data Commons Cancer Data\n",
+@@ -148,31 +178,49 @@
+     "\n",
+     "\n",
+     "\n",
+-    "<img src=\"https://www.ebi.ac.uk/arrayexpress/assets/images/ae-logo-64.svg\"\n",
++    "<img src=\"./resources/ArrayExpress_logo.png\"\n",
+     "     alt=\"A circular ArrayExpress logo with the letters A and E in bright colors\"\n",
+-    "     style=\"float: left; margin-right: 10px;\" width=\"100\"/>\n",
++    "     style=\"float: left; margin-right: 10px;\" width=\"300\"/>\n",
+     "     \n",
+     "## ArrayExpress\n",
+     "The [ArrayExpress](https://www.ebi.ac.uk/arrayexpress/) database has both raw microarray and RNA-seq data and metadata files that say what each sample is (e.g. treatment vs. control). This is important because it is often easier to get the molecular (e.g. RNA sequence) data, than the metadata (which sample is from a sick patient and which is from a healthy one?) that make that molecular data make sense. Look for sdrf (sample-data relationship files) files and download them along with your fasta files. They will be .tsv files that open in Microsoft Excel. https://www.ebi.ac.uk/arrayexpress/\n",
+     "\n",
+-    "Getting the data: head to Browse, then click the orange filter button in the upper left to apply filters (e.g. I just want corn so I click Zea mays under organisms). This gives a list of studies filtered by your criteria. Clicking on study ids will let you download the raw data.\n",
++    "Getting the data: head to Browse, then click the orange filter button in the upper left to apply filters (e.g. I just want corn so I click Zea mays under organisms). This gives a list of studies filtered by your criteria. Clicking on study ids will let you download the raw data."
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "## Ma'ayan Lab Advanced RNA-seq tutorial\n",
++    "Not precisely a data source, but potentially of use if working on RNA seq data. This paper and associated GitHub project has a Jupyter Notebook in python that draws on a Docker container to analyze a Zika virus dataset. (Docker containers hold software in its own 'environment' separate from your system - that let's you run software within the Docker container without installing it onto your system). I haven't used it personally but it looks promising.\n",
+     "\n",
+-    "**Advanced RNA-seq tutorial:** this paper (Links to an external site.) has a Jupyter Notebook in python that draws on a Docker container to analyze a Zika virus dataset. (Docker containers hold software in its own 'environment' separate from your system - that let's you run software within the Docker container without installing it onto your system). I haven't used it personally but it looks promising\n",
++    "Paper: Wang Z and Ma'ayan A. An open RNA-Seq data analysis pipeline tutorial with an example of reprocessing data from a recent Zika virus study [version 1; referees: 2 approved]. F1000Research 2016, 5:1574 (doi: 10.12688/f1000research.9110.1)\n",
+     "\n",
++    "GitHub: https://github.com/MaayanLab/Zika-RNAseq-Pipeline"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
+     "# Circular RNAs\n",
+     "\n",
+-    "<img src=\"http://159.226.67.237:8080/new/img/header_database.png\"\n",
++    "<img src=\"./resources/circAtlas3_logo.png\"\n",
+     "     alt=\"The circAtlas logo\"\n",
+     "     style=\"float: left; margin-right: 10px;\" width=\"100\"/>\n",
+     "\n",
+-    "## circAtlas 2.0\n",
++    "## circAtlas 3.0\n",
+     "\n",
+-    "Some RNAs are circularized. CircAtlas 2.0 has resources listing and studying these circular RNAs.\n",
++    "Some RNAs are circularized. CircAtlas 3.0 has resources listingthese circular RNAs and their expression across species and tissues.\n",
+     "\n",
+     "A paper describing the resource can be found [here](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02018-y):\n",
+     "\n",
+     "Wu, W., Ji, P., & Zhao, F. (2020). CircAtlas: An integrated resource of one million highly accurate circular RNAs from 1070 vertebrate transcriptomes.\n",
+     "\n",
++    "The database (updated to version 3.0 as of 2026) can be found here: https://ngdc.cncb.ac.cn/circatlas/index.php\n",
++    "\n",
++    "\n",
+     "*hat tip to Sadin Safi & collaborators for finding this resource and bringing it to my attention*"
+    ]
+   },
+@@ -180,46 +228,49 @@
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+-    "# Microbial Community Data\n",
+-    "\n",
+-    "<img src=\"https://qiita.ucsd.edu/static/img/logo-clear.png\"\n",
+-    "     alt=\"The QIITA logo, formed by the word QIITA with a Cheetah behind it\"\n",
+-    "     style=\"float: left; margin-right: 10px;\" width=\"100\"/>\n",
+-    "\n",
+-    "\n",
+-    "## The QIITA microbiome data resource\n",
+-    "QIITA has feature tables and metadata for many microbial ecology projects publicly available. One advantage of QIITA for class projects is that the 'feature table' that describe which microbes are in which samples are already pre-calculated, making it easier to jump right in to analysis. These can then be imported into the `qiime2` software package, which has a python interface. https://qiita.ucsd.edu/. **Fun fact:** although not widely popularized, the name QIITA stands for 'Quantitative Insights into Totally Awesome', a play on the name of the QIIME microbiome analysis software, which stands for 'Quantitative Insights into Microbial Ecology'.\n",
+-    "\n",
+-    "\n",
+-    "\n"
++    "# Protein Structure Data"
+    ]
+   },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+-    "# Protein Structure Data"
++    "<img src=\"https://cdn.rcsb.org/wwpdb/img/core/wwpdb-logo.png\"\n",
++    "     alt=\"The Worldwide Protein Data Bank logo\"\n",
++    "     style=\"float: left; margin-right: 10px;\" width=\"150\"/>"
+    ]
+   },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+-    "<img src=\"https://cdn.rcsb.org/wwpdb/img/core/wwpdb-logo.png\"\n",
+-    "     alt=\"The Worldwide Protein Data Bank logo\"\n",
++    "## The Worldwide Protein Databank  (PDB)\n",
++    "\n",
++    "The Worldwide Protein Databank (wwPDB or just PDB) allows for download of coordinate files describing protein's 3D shape, as well as the shape of RNAs and complex assemblies of multiple protein and RNA components: https://www.wwpdb.org/ftp/pdb-ftp-sites. You can also download directly from the FTP sites in different countries, such as the us Research Centers in Structural Biology (RCSB) FTP site: https://www.rcsb.org/#Category-download"
++   ]
++  },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "<img src=\"./resources/STRING.png\"\n",
++    "     alt=\"The STRING logo\"\n",
+     "     style=\"float: left; margin-right: 10px;\" width=\"150\"/>\n",
+     "\n",
++    "## Protein Interaction Data\n",
+     "\n",
+-    "## The Worldwide Protein Databank  (wwPDB)\n",
++    "STRING (Search Tool for Retrieval of Interacting Genes/Proteins). \n",
++    "While the search capability might be less useful as a basis for a custom bioinformatics project, the full raw protein interaction data from STRING are also available. Go to Download. The full protein-protein interaction network is *quite* large (about 200+ GB compressed), but limiting to links backed by physical evidence allows for a large but not impossible to work with 11 GB file. Links between clusters of COG (clusters of orthologous genes) groups are very managable (only a few hundred MB compressed). \n",
+     "\n",
+-    "The Worldwide Protein Databank (wwPDB or just PDB) allows for download of coordinate files describing protein's 3D shape, as well as the shape of RNAs and complex assemblies of multiple protein and RNA components: https://www.wwpdb.org/ftp/pdb-ftp-sites. You can also download directly from the FTP sites in different countries, such as the us Research Centers in Structural Biology (RCSB) FTP site: https://www.rcsb.org/#Category-download"
++    "The STRING data can be found here: https://string-db.org/cgi/download?sessionId=b6oYEj2fMP70\n",
++    "\n"
+    ]
+   },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+-    "# Coronavirus Structure & Sequence"
++    "## Coronavirus Protein Structure "
+    ]
+   },
+   {
+@@ -243,14 +294,18 @@
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+-    "<img src=\"https://www.ncbi.nlm.nih.gov/core/assets/sars_cov_2/images/data-submission-640.jpg\"\n",
+-    "     alt=\"NCBI coronavirus graphic, showing a hand with tweezers pulling DNA out of a coronavirus\"\n",
+-    "     style=\"float: left; margin-right: 10px;\" width=\"150\"/>\n",
++    "# Microbial Community Data\n",
+     "\n",
++    "<img src=\"https://qiita.ucsd.edu/static/img/logo-clear.png\"\n",
++    "     alt=\"The QIITA logo, formed by the word QIITA with a Cheetah behind it\"\n",
++    "     style=\"float: left; margin-right: 10px;\" width=\"100\"/>\n",
+     "\n",
+-    "## The NCBI SARS-CoV2 Resource Page\n",
+     "\n",
+-    "This page contains multiple resources from the NCBI pertaining to SARS-CoV2 viruses: https://www.ncbi.nlm.nih.gov/sars-cov-2/"
++    "## The QIITA microbiome data resource\n",
++    "QIITA has feature tables and metadata for many microbial ecology projects publicly available. One advantage of QIITA for class projects is that the 'feature table' that describe which microbes are in which samples are already pre-calculated, making it easier to jump right in to analysis. These can then be imported into the `qiime2` software package, which has a python interface. https://qiita.ucsd.edu/. **Fun fact:** although not widely popularized, the name QIITA stands for 'Quantitative Insights into Totally Awesome', a play on the name of the QIIME microbiome analysis software, which stands for 'Quantitative Insights into Microbial Ecology'.\n",
++    "\n",
++    "\n",
++    "\n"
+    ]
+   },
+   {
+@@ -273,6 +328,17 @@
+     "https://paleobiodb.org/#/"
+    ]
+   },
++  {
++   "cell_type": "markdown",
++   "metadata": {},
++   "source": [
++    "# Ecological and Physiological Trait Data\n",
++    "\n",
++    "## PanTHERIA trait data\n",
++    "The PanTHERIA dataset of mammal traits is an easy to use table of known parameters of mammal species.\n",
++    "[PanTHERIA](https://esapubs.org/archive/ecol/E090/184/#data)\n"
++   ]
++  },
+   {
+    "cell_type": "markdown",
+    "metadata": {},
+@@ -307,7 +373,7 @@
+  ],
+  "metadata": {
+   "kernelspec": {
+-   "display_name": "Python 3",
++   "display_name": "Python 3 (ipykernel)",
+    "language": "python",
+    "name": "python3"
+   },
+@@ -321,7 +387,7 @@
+    "name": "python",
+    "nbconvert_exporter": "python",
+    "pygments_lexer": "ipython3",
+-   "version": "3.7.2"
++   "version": "3.9.19"
+   }
+  },
+  "nbformat": 4,
+diff --git a/content/14_appendix_data_sources/resources/ArrayExpress_logo.png b/content/14_appendix_data_sources/resources/ArrayExpress_logo.png
+new file mode 100644
+index 0000000..38900ee
+Binary files /dev/null and b/content/14_appendix_data_sources/resources/ArrayExpress_logo.png differ
+diff --git a/content/14_appendix_data_sources/resources/GDC_logo.png b/content/14_appendix_data_sources/resources/GDC_logo.png
+new file mode 100644
+index 0000000..b9b5a9a
+Binary files /dev/null and b/content/14_appendix_data_sources/resources/GDC_logo.png differ
+diff --git a/content/14_appendix_data_sources/resources/STRING.png b/content/14_appendix_data_sources/resources/STRING.png
+new file mode 100644
+index 0000000..cf0da0d
+Binary files /dev/null and b/content/14_appendix_data_sources/resources/STRING.png differ
+diff --git a/content/14_appendix_data_sources/resources/ViPR_logo.png b/content/14_appendix_data_sources/resources/ViPR_logo.png
+new file mode 100644
+index 0000000..d494d25
+Binary files /dev/null and b/content/14_appendix_data_sources/resources/ViPR_logo.png differ
+diff --git a/content/14_appendix_data_sources/resources/circAtlas3_logo.png b/content/14_appendix_data_sources/resources/circAtlas3_logo.png
+new file mode 100644
+index 0000000..4ca4de0
+Binary files /dev/null and b/content/14_appendix_data_sources/resources/circAtlas3_logo.png differ
+diff --git a/content/14_appendix_data_sources/resources/circAtlas_logo.png b/content/14_appendix_data_sources/resources/circAtlas_logo.png
+new file mode 100644
+index 0000000..4ca4de0
+Binary files /dev/null and b/content/14_appendix_data_sources/resources/circAtlas_logo.png differ
+diff --git a/content/14_appendix_data_sources/resources/pgp_logo.png b/content/14_appendix_data_sources/resources/pgp_logo.png
+new file mode 100644
+index 0000000..020e7fa
+Binary files /dev/null and b/content/14_appendix_data_sources/resources/pgp_logo.png differ

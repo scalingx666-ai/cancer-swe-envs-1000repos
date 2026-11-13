@@ -1,0 +1,15 @@
+diff --git a/tbprofiler/rules.py b/tbprofiler/rules.py
+index 5dbbf28..8c7c6af 100644
+--- a/tbprofiler/rules.py
++++ b/tbprofiler/rules.py
+@@ -160,8 +160,8 @@ def process_result(self, args: argparse.Namespace, result: ProfileResult):
+             
+             for drug in var.gene_associated_drugs:
+                 if drug not in confidence:
+-                    if var.type=='synonymous_mutation':
+-                        confidence[drug] = 'Not Assoc W R - Interim'
++                    if var.type=='synonymous_variant':
++                        confidence[drug] = 'Not assoc w R - Interim'
+                     else:
+                         confidence[drug] = 'Uncertain significance'
+                     ann = {

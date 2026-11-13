@@ -1,0 +1,95 @@
+diff --git a/changes/add_allow_samples_in_array.md b/changes/add_allow_samples_in_array.md
+new file mode 100644
+index 0000000000..8ef78e1c26
+--- /dev/null
++++ b/changes/add_allow_samples_in_array.md
+@@ -0,0 +1 @@
++Samples of any category except identity can now be added to arrays (detailed sample)
+\ No newline at end of file
+diff --git a/docs/user_manual/arrays.md b/docs/user_manual/arrays.md
+index 83ec30a522..1e36fdb75e 100644
+--- a/docs/user_manual/arrays.md
++++ b/docs/user_manual/arrays.md
+@@ -30,10 +30,9 @@ added. Grey circles are empty positions. Select a position by clicking on its ci
+ *Array contents diagram*
+ 
+ Once a position is selected, the search controls become available. Enter the name, alias, or barcode of a sample into
+-the search box and click the Lookup button to perform the search. If your site uses
+-[detailed sample mode](../site_configuration/#detailed-sample-mode), only aliquot samples will be searched. The search
+-results will appear in the Results dropdown. Ensure that the correct sample is selected and then click the Update
+-Position button to add the sample to the array position.
++the search box and click the Lookup button to perform the search. Any sample except identity samples can be added to an
++array. The search results will appear in the Results dropdown. Ensure that the correct sample is selected and then
++click the Update Position button to add the sample to the array position.
+ 
+ ## Removing a Sample from an Array
+ 
+diff --git a/miso-service/src/main/java/uk/ac/bbsrc/tgac/miso/service/impl/DefaultArrayService.java b/miso-service/src/main/java/uk/ac/bbsrc/tgac/miso/service/impl/DefaultArrayService.java
+index 890d3963e6..614e8be750 100644
+--- a/miso-service/src/main/java/uk/ac/bbsrc/tgac/miso/service/impl/DefaultArrayService.java
++++ b/miso-service/src/main/java/uk/ac/bbsrc/tgac/miso/service/impl/DefaultArrayService.java
+@@ -195,8 +195,8 @@ private void validateSamples(Array array, List<ValidationError> errors) {
+       if (sam == null) {
+         // wasn't found during #loadChildEntities
+         errors.add(new ValidationError("Invalid Sample in position " + pos));
+-      } else if (isDetailedSample(sam) && !isAliquotSample(sam)) {
+-        errors.add(new ValidationError("Sample in position " + pos + " must be an aliquot"));
++      } else if (isIdentitySample(sam)) {
++        errors.add(new ValidationError("Sample in position " + pos + " cannot be an identity"));
+       }
+     });
+   }
+diff --git a/sqlstore/src/it/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDaoIT.java b/sqlstore/src/it/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDaoIT.java
+index 7478844a31..9ac8c45023 100644
+--- a/sqlstore/src/it/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDaoIT.java
++++ b/sqlstore/src/it/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDaoIT.java
+@@ -126,7 +126,7 @@ public void testSampleSearchByNamePlainSample() throws Exception {
+   }
+ 
+   @Test
+-  public void testSampleSearchByNameDetailedSample() throws Exception {
++  public void testSampleSearchByNameAliquot() throws Exception {
+     List<Sample> results = sut.getArrayableSamplesBySearch("SAM19");
+     assertNotNull(results);
+     assertEquals(1, results.size());
+@@ -134,7 +134,15 @@ public void testSampleSearchByNameDetailedSample() throws Exception {
+   }
+ 
+   @Test
+-  public void testSampleSearchByNameDetailedSampleNotAliquot() throws Exception {
++  public void testSampleSearchByNameTissueProcessing() throws Exception {
++    List<Sample> results = sut.getArrayableSamplesBySearch("SAM25");
++    assertNotNull(results);
++    assertEquals(1, results.size());
++    assertEquals("SAM25", results.get(0).getName());
++  }
++
++  @Test
++  public void testSampleSearchByNameIdentity() throws Exception {
+     List<Sample> results = sut.getArrayableSamplesBySearch("SAM15");
+     assertNotNull(results);
+     assertEquals(0, results.size());
+diff --git a/sqlstore/src/main/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDao.java b/sqlstore/src/main/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDao.java
+index 5ba2d5e3f1..4080231bcc 100644
+--- a/sqlstore/src/main/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDao.java
++++ b/sqlstore/src/main/java/uk/ac/bbsrc/tgac/miso/persistence/impl/HibernateArrayDao.java
+@@ -17,7 +17,7 @@
+ import uk.ac.bbsrc.tgac.miso.core.data.ArrayModel_;
+ import uk.ac.bbsrc.tgac.miso.core.data.Array_;
+ import uk.ac.bbsrc.tgac.miso.core.data.Sample;
+-import uk.ac.bbsrc.tgac.miso.core.data.SampleAliquot;
++import uk.ac.bbsrc.tgac.miso.core.data.SampleIdentity;
+ import uk.ac.bbsrc.tgac.miso.core.data.impl.DetailedSampleImpl;
+ import uk.ac.bbsrc.tgac.miso.core.data.impl.DetailedSampleImpl_;
+ import uk.ac.bbsrc.tgac.miso.core.data.impl.SampleClassImpl;
+@@ -83,8 +83,8 @@ public List<Sample> getArrayableSamplesBySearch(String search) throws IOExceptio
+       Root<DetailedSampleImpl> detailedSampleRoot = builder.getRoot(DetailedSampleImpl.class);
+       Join<DetailedSampleImpl, SampleClassImpl> sampleJoin =
+           builder.getJoin(detailedSampleRoot, DetailedSampleImpl_.sampleClass);
+-      builder.addPredicate(builder.getCriteriaBuilder().equal(sampleJoin.get(SampleClassImpl_.sampleCategory),
+-          SampleAliquot.CATEGORY_NAME));
++      builder.addPredicate(builder.getCriteriaBuilder().notEqual(sampleJoin.get(SampleClassImpl_.sampleCategory),
++          SampleIdentity.CATEGORY_NAME));
+     }
+ 
+     builder.addPredicate(builder.getCriteriaBuilder().equal(root.get(SampleImpl_.discarded), false));

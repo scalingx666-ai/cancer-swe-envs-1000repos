@@ -1,0 +1,41 @@
+diff --git a/docs/VcfStatsJfx.md b/docs/VcfStatsJfx.md
+index 040419e38..8df8c0b70 100644
+--- a/docs/VcfStatsJfx.md
++++ b/docs/VcfStatsJfx.md
+@@ -8,6 +8,7 @@ VCF statistics
+ ## Usage
+ 
+ ```
++Usage: java -jar dist/vcfstatsjfx.jar  [options] Files
+ Usage: vcfstatsjfx [options] Files
+   Options:
+     --altering, --damaging
+diff --git a/src/main/java/com/github/lindenb/jvarkit/chart/XYChart.java b/src/main/java/com/github/lindenb/jvarkit/chart/XYChart.java
+index 9923f6d40..340355865 100644
+--- a/src/main/java/com/github/lindenb/jvarkit/chart/XYChart.java
++++ b/src/main/java/com/github/lindenb/jvarkit/chart/XYChart.java
+@@ -75,7 +75,7 @@ public String toString() {
+ private Axis<X> xAxis;
+ private Axis<Y> yAxis;
+ private List<XYChart.Series<X,Y>> data;
+-private boolean verticalGridLinesVisible​ = false;
++private boolean verticalGridLinesVisible = false;
+ 
+ protected XYChart(final Axis<X> xAxis,final Axis<Y> yAxis, final List<XYChart.Series<X,Y>> data) {
+ 	this.xAxis = xAxis;
+@@ -117,11 +117,11 @@ public void update() {
+ 		}
+ 	}
+ 
+-public void setVerticalGridLinesVisible(boolean verticalGridLinesVisible​) {
+-	this.verticalGridLinesVisible​ = verticalGridLinesVisible​;
++public void setVerticalGridLinesVisible(boolean verticalGridLinesVisible) {
++	this.verticalGridLinesVisible = verticalGridLinesVisible;
+ }
+-public boolean isVerticalGridLinesVisible​() {
+-	return verticalGridLinesVisible​;
++public boolean isVerticalGridLinesVisible() {
++	return verticalGridLinesVisible;
+ }
+ 
+ @Override

@@ -1,0 +1,212 @@
+diff --git a/Makefile b/Makefile
+index 0983539..b188447 100644
+--- a/Makefile
++++ b/Makefile
+@@ -21,7 +21,7 @@
+ # along with this program; If not, see <http://www.gnu.org/licenses/>.                                     #
+ ############################################################################################################
+ 
+-SHELL = /usr/bin/bash
++SHELL = /usr/bin/env bash
+ 
+ 
+ DESTDIR              ?=
+@@ -58,7 +58,8 @@ DOCUMENTATIONS       := $(shell find License.txt changeLog.txt commandLineOption
+ VC_FLAG              := $(DESTDIR)$(PYTHONDIR)/variantconvert/pipinstall.flag
+ VC_VERSION           := 2.0.1
+ VC_CONFIGDIR         := $(DESTDIR)$(PYTHONDIR)/variantconvert/src/variantconvert/configs
+-
++USEANNODIR           := #flag whether separate annotation resources directory needed (e.g. for HPC environvment)
++EXRP_FILE            := #optional filepath for previously downloaded rest-prioritiser
+ 
+ # make install
+ .PHONY: install
+@@ -82,8 +83,8 @@ install-display:
+ 
+ install-documentationlight: $(DOCUMENTATIONS)
+ 	@echo ""
+-	$(MV) $^ $(DESTDIR)$(DOCDIR)/$(ANNOTSV)
+-	$(MV) $(TCLDIRDISTRIBUTED) $(TCLDIR)
++	$(CP) $^ $(DESTDIR)$(DOCDIR)/$(ANNOTSV)
++	$(CPDIR) $(TCLDIRDISTRIBUTED) $(TCLDIR)
+ 
+ install-configfile: $(CONFIGFILE)
+ 	@echo ""
+@@ -116,7 +117,13 @@ install-variantconvert:
+ 	@echo ""
+ 	@echo "variantconvert installation"
+ 	@echo "---------------------------"
++	
++	@if [ -d $(DESTDIR)$(PYTHONDIR)/variantconvert ]; then \
++		echo "variantconvert directory found; purging locally before re-installing."; \
++		rm -rf $(DESTDIR)$(PYTHONDIR)/variantconvert/; \
++	fi
+ 	git clone --branch $(VC_VERSION) https://github.com/SamuelNicaise/variantconvert.git $(DESTDIR)$(PYTHONDIR)/variantconvert/
++
+ 	touch $(VC_FLAG)
+ 	chmod 777 $(VC_FLAG)
+ 	pip3 install -e $(DESTDIR)$(PYTHONDIR)/variantconvert/. > ./tmp.variantconvert.txt 2>&1 \
+@@ -179,7 +186,8 @@ install-done:
+ # make install_organism_annotations
+ install-all-annotations: install-human-annotation install-mouse-annotation                                     
+ 
+-install-human-annotation: Annotations_Human_$(HUMANVERSION).tar.gz install-exomiser
++install-human-annotation: install-exomiser $(if $(USEANNODIR),,Annotations_Human_$(HUMANVERSION).tar.gz)
++ifndef USEANNODIR
+ 	@echo ""
+ 	@echo "Installation of human annotation:"
+ 	@echo ""
+@@ -188,18 +196,36 @@ install-human-annotation: Annotations_Human_$(HUMANVERSION).tar.gz install-exomi
+ 	$(CHMOD) $(DESTDIR)$(SHAREDIR)/$(ANNOTSV)/Annotations_*
+ 	@echo ""
+ 	@echo "--> Human annotation installed"
++else
++	@echo ""
++	@echo "Flag for custom annotationDir; skipping local install of human annotations"
++	@echo ""
++endif
+ 
+-install-exomiser-1: 2406_phenotype.zip
++install-exomiser-1: $(if $(USEANNODIR),,2406_phenotype.zip)
+ 	@echo ""
+ 	@echo "Installation of Exomiser data:"
+ 	@echo ""
++	
++ifndef USEANNODIR
+ 	$(MKDIR) -p $(DESTDIR)$(SHAREDIR)/$(ANNOTSV)/Annotations_Exomiser/2406
+ 	unzip 2406_phenotype.zip -d $(DESTDIR)$(SHAREDIR)/$(ANNOTSV)/Annotations_Exomiser/2406/
+ 	$(RM) -rf 2406_phenotype.zip
+-	curl -C - -LO https://github.com/exomiser/Exomiser/releases/download/14.1.0/exomiser-rest-prioritiser-14.1.0.jar
++else
++	@echo ""
++	@echo "Flag for custom annotationDir; skipped Exomiser phenotypes local installation"
++	@echo ""
++endif
++	
+ 	$(MKDIR) -p $(DESTDIR)$(JARDIR)
++ifndef EXRP_FILE
++	curl -C - -LO https://github.com/exomiser/Exomiser/releases/download/14.1.0/exomiser-rest-prioritiser-14.1.0.jar
+ 	install -p -m 0755 exomiser-rest-prioritiser-14.1.0.jar $(DESTDIR)$(JARDIR)/
+ 	$(RM) exomiser-rest-prioritiser-14.1.0.jar
++else
++	@echo "Custom rest-priotiser path provided; creating symlink"
++	ln -sf $(EXRP_FILE) $(DESTDIR)$(JARDIR)/$(notdir $(EXRP_FILE))
++endif
+ 
+ install-exomiser-2:
+ 	install -D -p -m 0755 $(PROPERTIES) $(DESTDIR)$(ETCDIR)/$(ANNOTSV)
+@@ -208,15 +234,22 @@ install-exomiser-3:
+ 	@echo ""
+ 	@echo "--> Exomiser data installed"
+ 
+-install-mouse-annotation: Annotations_Mouse_$(MOUSEVERSION).tar.gz 
++install-mouse-annotation: $(if $(USEANNODIR),,Annotations_Mouse_$(MOUSEVERSION).tar.gz) 
++ifndef USEANNODIR
+ 	@echo ""
+ 	@echo "Installation of mouse annotation:"
+-	@echo ""
++	@echo ""	
+ 	$(MKDIR) $(DESTDIR)$(SHAREDIR)/$(ANNOTSV)/
+ 	tar -xf Annotations_Mouse_$(MOUSEVERSION).tar.gz -C $(DESTDIR)$(SHAREDIR)/$(ANNOTSV)/
+ 	$(RM) -rf Annotations_Mouse_$(MOUSEVERSION).tar.gz
+ 	@echo ""
+ 	@echo "--> Mouse annotation installed"
++else
++	@echo ""
++	@echo "Flag for custom annotationDir; skipping local install of mouse annotations"
++	@echo ""
++endif
++
+ 
+ Annotations_%.tar.gz:
+ 	@echo ""
+diff --git a/bin/INSTALL_annotations.sh b/bin/INSTALL_annotations.sh
+index 7c65d1f..4233a83 100644
+--- a/bin/INSTALL_annotations.sh
++++ b/bin/INSTALL_annotations.sh
+@@ -6,7 +6,7 @@
+ 
+ # AIM:
+ ######
+-# To be used with the "-annotationsDir" option
++# Download Exomiser and AnnotSV annotations to be used with the "-annotationsDir" option
+ 
+ # CONTEXT:
+ ##########
+@@ -15,30 +15,31 @@
+ 
+ # USAGE:
+ ########
+-# INSTALL_annotations.sh "Tag of the AnnotSV version to be cloned"
++# INSTALL_annotations.sh "Version of AnnotSV human annotation" "Version of Exomiser phenotype annotations"
+ 
+-
+-# CLONE:
+ ########
+ 
+-# cd /path/to/install/annotsv/annotations
+ mkdir AnnotSV_annotations
+ cd AnnotSV_annotations
+ 
+-if [ $# -lt 1 ]; then
+-    echo "Cloning AnnotSV (latest version)"
+-    git clone https://github.com/lgmgeo/AnnotSV.git
+-else
+-    TAG=$1
+-    echo "Cloning AnnotSV (version $TAG)"
+-    git clone --branch "$TAG" https://github.com/lgmgeo/AnnotSV.git
+-fi
+-
+-cd AnnotSV
+-make PREFIX=. install
+-make PREFIX=. install-human-annotation
+-mv share/AnnotSV/Annotations_Exomiser ..
+-mv share/AnnotSV/Annotations_Human ..
+-cd ..
+-rm -r AnnotSV
++# AnnotSV annotations
++echo ""
++echo "Download AnnotSV supporting data files:"
++echo ""
++curl -C - -LO https://www.lbgi.fr/~geoffroy/Annotations/Annotations_Human_$1.tar.gz
++tar -xf Annotations_Human_$1.tar.gz -C ./
++rm -rf Annotations_Human_$1.tar.gz
++
++#Exomiser
++echo ""
++echo "Download Exomiser supporting data files:"
++echo ""
++curl -C - -LO https://data.monarchinitiative.org/exomiser/data/$2_phenotype.zip
++unzip $2_phenotype.zip -d Annotations_Exomiser/$2/
++rm -rf 2406_phenotype.zip
++
++chmod -R 777 ./Annotations_*
++
++
++
+ 
+diff --git a/etc/AnnotSV/application.properties b/etc/AnnotSV/application.properties
+index 1c41ef1..fcbcc54 100644
+--- a/etc/AnnotSV/application.properties
++++ b/etc/AnnotSV/application.properties
+@@ -26,7 +26,7 @@ server.servlet.application-display-name=Exomiser Prioritiser Server
+ #Absolute system path where the exomiser data is installed
+ #exomiser.data-directory=${project.build.testOutputDirectory}
+ exomiser.data-directory=YYYY
+-exomiser.phenotype.data-version=2406
++exomiser.phenotype.data-version=ZZZZ
+ exomiser.phenotype.random-walk-preload=true
+ 
+ #Actuator configuration
+diff --git a/share/tcl/AnnotSV/AnnotSV-exomiser.tcl b/share/tcl/AnnotSV/AnnotSV-exomiser.tcl
+index 5ecc24e..0241961 100644
+--- a/share/tcl/AnnotSV/AnnotSV-exomiser.tcl
++++ b/share/tcl/AnnotSV/AnnotSV-exomiser.tcl
+@@ -192,6 +192,7 @@ proc runExomiser {L_Genes L_HPO} {
+     }
+     regsub "XXXX" $infos "$port" infos
+     regsub "YYYY" $infos "$g_AnnotSV(annotationsDir)/Annotations_Exomiser/$hpoVersion" infos
++	regsub "ZZZZ" $infos "$hpoVersion" infos
+     WriteTextInFile $infos $applicationPropertiesTmpFile
+     
+     # Start the REST service

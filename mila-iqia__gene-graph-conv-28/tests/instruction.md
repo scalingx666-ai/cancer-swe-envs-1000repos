@@ -1,0 +1,11 @@
+# Issue
+
+**Title:** Refactor graph loading
+
+## Description
+
+I added the adjlists to the repo and make a demo notebook.
+
+## Task
+
+Modify the repository so that the issue described above is resolved. The repository is checked out at base commit `e1a94aaa28f1`. Edit files in place; the verifier captures your changes via `git diff` and scores them against an oracle patch using SWE-RL-style diff-similarity reward.

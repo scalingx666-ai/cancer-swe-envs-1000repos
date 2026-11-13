@@ -1,0 +1,634 @@
+diff --git a/src/cogent3/core/alignment.py b/src/cogent3/core/alignment.py
+index 3481ad08a4..41056b55dd 100644
+--- a/src/cogent3/core/alignment.py
++++ b/src/cogent3/core/alignment.py
+@@ -445,7 +445,6 @@ def __init__(
+         self._annotation_db: list[AnnotationDbABC] = self._init_annot_db_value(
+             annotation_db
+         )
+-        # after _annotation_db, which __del__ reads if invalid metadata raises
+         self._metadata = _owned_metadata(metadata, seqs_data.metadata)
+         self._seqs: _IndexableSeqs[TSequenceOrAligned]
+         self._post_init()
+@@ -636,7 +635,7 @@ def __ne__(self, other: object) -> bool:
+         return not self == other
+ 
+     def __del__(self):
+-        if self._annotation_db:
++        if getattr(self, "_annotation_db", None):
+             self._annotation_db = None
+ 
+     @property
+diff --git a/src/cogent3/core/sequence.py b/src/cogent3/core/sequence.py
+index ef741e132d..0224bb2604 100644
+--- a/src/cogent3/core/sequence.py
++++ b/src/cogent3/core/sequence.py
+@@ -307,7 +307,7 @@ def __setstate__(self, state: tuple[dict[str, Any] | None, dict[str, Any]]) -> N
+         self._metadata = _owned_metadata(metadata)
+ 
+     def __del__(self):
+-        if self._annotation_db:
++        if getattr(self, "_annotation_db", None):
+             self._annotation_db = None
+ 
+     def __str__(self) -> str:
+diff --git a/tests/test_align/test_align.py b/tests/test_align/test_align.py
+index c5954feb3f..f720e99756 100644
+--- a/tests/test_align/test_align.py
++++ b/tests/test_align/test_align.py
+@@ -168,10 +168,10 @@ def _test_aln_standard(seqs, model=dna_model, param_vals=None, **kw):
+     assert aln.moltype is model.moltype
+ 
+     # assert the returned alignment has the correct parameter values in the
+-    # align.info object.
++    # aln.metadata object.
+     if param_vals:
+         for param, val in param_vals:
+-            assert aln.info.align_params[param] == val
++            assert aln.metadata.align_params[param] == val
+ 
+ 
+ def _test_aln_hirschberg(seqs, **kw):
+@@ -240,12 +240,12 @@ def test_progressive_est_tree():
+     assert aln.to_dict() == expect
+ 
+ 
+-def test_align_info():
+-    """alignment info object has parameter values"""
++def test_align_metadata():
++    """alignment metadata has parameter values"""
+     aln = make_aln(
+         {"A": "GCCTCGG", "B": "GCCTCGG", "C": "GCCTCGGAAACGT", "D": "AAACGT"},
+     )
+-    assert aln.info["align_params"]["lnL"] < 0
++    assert aln.metadata["align_params"]["lnL"] < 0
+ 
+ 
+ def test_progressive_params(_test_aln):
+diff --git a/tests/test_app/test_align.py b/tests/test_app/test_align.py
+index 247534f4a2..11d8b17b55 100644
+--- a/tests/test_app/test_align.py
++++ b/tests/test_app/test_align.py
+@@ -569,9 +569,9 @@ def test_cogent3_score(aln):
+ def test_cogent3_score_missing(aln, del_all_params):
+     get_score = get_app("cogent3_score")
+     if del_all_params:
+-        aln.info.pop("align_params")
++        aln.metadata.pop("align_params")
+     else:
+-        aln.info["align_params"].pop("lnL")
++        aln.metadata["align_params"].pop("lnL")
+     score = get_score(aln)  # pylint: disable=not-callable
+     assert isinstance(score, NotCompleted)
+ 
+@@ -799,7 +799,7 @@ def test_smith_waterman_score(seqs):
+         moltype="dna",
+     )
+     aln = aligner(coll)  # pylint: disable=not-callable
+-    got = aln.info["align_params"]["sw_score"]
++    got = aln.metadata["align_params"]["sw_score"]
+     s = make_dna_scoring_dict(10, -1, -8)
+     insertion = 20
+     extension = 2
+@@ -817,12 +817,12 @@ def test_smith_waterman_score(seqs):
+ def test_smith_waterman_result_json_round_trip(seqs):
+     aln = smith_waterman()(seqs.take_seqs(["Human", "Bandicoot"]))
+     got = deserialise_object(aln.to_json())
+-    assert got.info["align_params"] == aln.info["align_params"]
++    assert got.metadata["align_params"] == aln.metadata["align_params"]
+ 
+ 
+ def test_smith_waterman_records_nested_score_matrix(seqs):
+     aln = smith_waterman()(seqs.take_seqs(["Human", "Bandicoot"]))
+-    matrix = aln.info["align_params"]["score_matrix"]
++    matrix = aln.metadata["align_params"]["score_matrix"]
+     assert matrix["A"]["T"] == -8
+     assert matrix["A"]["G"] == -1
+     assert matrix["A"]["A"] == 10
+@@ -886,14 +886,14 @@ def test_align_to_ref_records_own_params(seqs, ref_seq):
+     hky = align_app.progressive_align(model="HKY85")(seqs)
+     degapped = hky.degap()
+     aln = align_app.align_to_ref(ref_seq=ref_seq)(degapped)
+-    params = aln.info["align_params"]
++    params = aln.metadata["align_params"]
+     assert "model" not in params
+     assert params["ref_seq"] == "Human"
+     assert params["insertion_penalty"] == 20.0
+     assert params["extension_penalty"] == 2.0
+     assert params["score_matrix"]["A"]["T"] == -8
+-    assert aln.info is not degapped.info
+-    assert degapped.info["align_params"]["model"] == "HKY85"
++    assert aln.metadata is not degapped.metadata
++    assert degapped.metadata["align_params"]["model"] == "HKY85"
+     # the input's lnL belongs to a different alignment
+     assert isinstance(get_app("cogent3_score")(aln), NotCompleted)
+ 
+diff --git a/tests/test_app/test_evo.py b/tests/test_app/test_evo.py
+index 524c041294..1f7c4b53bb 100644
+--- a/tests/test_app/test_evo.py
++++ b/tests/test_app/test_evo.py
+@@ -126,7 +126,7 @@ def test_model_collection_init_sequential(self):
+             "Mouse": "ATGCCCGGCGCCAAGGCAGCGCTGGCGGAG",
+             "Opossum": "ATGCCAGTGAAAGTGGCGGCGGTGGCTGAG",
+         }
+-        aln = make_aligned_seqs(_data, moltype="dna", info={"source": "blah"})
++        aln = make_aligned_seqs(_data, moltype="dna", metadata={"source": "blah"})
+         result = mod_coll(aln)
+         assert result["F81"].lf.lnL < result["HKY85"].lf.lnL < result["GTR"].lf.lnL
+ 
+diff --git a/tests/test_app/test_io.py b/tests/test_app/test_io.py
+index bacd41f984..8dd67b53d6 100644
+--- a/tests/test_app/test_io.py
++++ b/tests/test_app/test_io.py
+@@ -408,7 +408,7 @@ def test_write_tabular_table(w_dir_dstore):
+     assert table.to_dict() == new.to_dict()
+ 
+ 
+-def test_write_json_with_info(w_dir_dstore):
++def test_write_json_with_source(w_dir_dstore):
+     """correctly writes an object with source attribute from json"""
+     w_dir_dstore.suffix = "json"
+     # create a mock object that pretends like it's been derived from
+@@ -514,7 +514,7 @@ def test_load_db_prefer_source_attr(tmp_dir):
+     seqs = cogent3.make_unaligned_seqs(
+         {"a": "ACGG", "b": "GGC"},
+         moltype="dna",
+-        info={"demo": "dummy"},
++        metadata={"demo": "dummy"},
+         source="blah.1.2.fa",
+     )
+     writer = io_app.write_db(data_store=data_store)
+@@ -660,7 +660,7 @@ def seqs():
+     return make_unaligned_seqs(
+         {"a": "ACGG", "b": "GGC"},
+         moltype="dna",
+-        info={"source": "dummy/blah.1.2.fa"},
++        metadata={"source": "dummy/blah.1.2.fa"},
+     )
+ 
+ 
+@@ -709,24 +709,20 @@ def uniqid(source):
+     out_dstore.close()
+ 
+ 
+-src_attr = "source"
+-
+-
+ @pytest.mark.parametrize(
+-    ("writer", "data", "attr", "dstore"),
++    ("writer", "data", "dstore"),
+     [
+-        ("write_seqs", seqs(), src_attr, dir_dstore),
+-        ("write_db", seqs(), src_attr, db_dstore),
+-        ("write_json", seqs(), src_attr, dir_dstore),
+-        ("write_tabular", table(), "source", dir_dstore),
++        ("write_seqs", seqs(), dir_dstore),
++        ("write_db", seqs(), db_dstore),
++        ("write_json", seqs(), dir_dstore),
++        ("write_tabular", table(), dir_dstore),
+     ],
+ )
+-def test_writer_no_unique_id(tmp_dir, writer, data, attr, dstore):
++def test_writer_no_unique_id(tmp_dir, writer, data, dstore):
+     out_dstore = dstore(tmp_dir)
+     writer = get_app(writer, data_store=out_dstore)
+     # no unique id possible, so m will be NotCompleted error
+-    value = {} if attr == "info" else None
+-    setattr(data, attr, value)
++    data.source = None
+     with pytest.raises(ValueError, match="cannot name a record"):
+         _ = writer(data)
+ 
+diff --git a/tests/test_app/test_result.py b/tests/test_app/test_result.py
+index 300ada6d42..5f18d03d4d 100644
+--- a/tests/test_app/test_result.py
++++ b/tests/test_app/test_result.py
+@@ -72,7 +72,7 @@ def test_infers_source():
+     source = pathlib.Path("path/blah.fasta")
+     aln = cogent3.make_aligned_seqs(
+         {"A": "ACGT"},
+-        info={"random_key": 1234},
++        metadata={"random_key": 1234},
+         moltype="dna",
+         source=str(source),
+     )
+diff --git a/tests/test_app/test_translate.py b/tests/test_app/test_translate.py
+index b5a6f9c459..7bbffd67d5 100644
+--- a/tests/test_app/test_translate.py
++++ b/tests/test_app/test_translate.py
+@@ -150,11 +150,11 @@ def framed_seqs(DATA_DIR, request):
+     frame = None if request.param is None else request.param + 1
+     for k, s in data.items():
+         data[k] = prefix + s
+-    return cogent3.make_unaligned_seqs(data, moltype="dna", info={"frame": frame})
++    return cogent3.make_unaligned_seqs(data, moltype="dna", metadata={"frame": frame})
+ 
+ 
+ def test_select_translatable_with_frame_terminal_stop(framed_seqs):
+-    frame = framed_seqs.info.frame
++    frame = framed_seqs.metadata.frame
+     sl = slice(None, None) if frame is None else slice(frame - 1, None)
+     expect = {s.name: str(s[sl]) for s in framed_seqs.seqs}
+     app = select_translatable(frame=frame, trim_terminal_stop=False)
+@@ -163,7 +163,7 @@ def test_select_translatable_with_frame_terminal_stop(framed_seqs):
+ 
+ 
+ def test_select_translatable_with_frame_no_stop(framed_seqs):
+-    frame = framed_seqs.info.frame
++    frame = framed_seqs.metadata.frame
+     sl = slice(None, -3) if frame is None else slice(frame - 1, -3)
+     expect = {s.name: str(s[sl]) for s in framed_seqs.seqs}
+     app = select_translatable(frame=frame, trim_terminal_stop=True)
+diff --git a/tests/test_core/test_alignment.py b/tests/test_core/test_alignment.py
+index 33769b0bc9..cf3154fa44 100644
+--- a/tests/test_core/test_alignment.py
++++ b/tests/test_core/test_alignment.py
+@@ -1136,15 +1136,15 @@ def test_sequence_collection_take_seqs_str(ragged_padded_dict, mk_cls):
+     "mk_cls",
+     [c3_alignment.make_unaligned_seqs, c3_alignment.make_aligned_seqs],
+ )
+-def test_sequence_collection_take_seqs_info(ragged_padded_dict, mk_cls):
+-    """take_seqs should preserve info attribute"""
++def test_sequence_collection_take_seqs_metadata(ragged_padded_dict, mk_cls):
++    """take_seqs should preserve metadata"""
+     orig = mk_cls(
+         ragged_padded_dict,
+         moltype="dna",
+-        info={"key": "value"},
++        metadata={"key": "value"},
+     )
+     subset = orig.take_seqs(list("ab"))
+-    assert set(subset.info) == set(orig.info)
++    assert set(subset.metadata) == set(orig.metadata)
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -1315,12 +1315,12 @@ def test_sequence_collection_degap(mk_cls, gap_ambig_seqs, rced):
+     "mk_cls",
+     [c3_alignment.make_unaligned_seqs, c3_alignment.make_aligned_seqs],
+ )
+-def test_sequence_collection_degap_info(mk_cls, gap_ambig_seqs):
+-    """.degap should preserve info attributes"""
++def test_sequence_collection_degap_metadata(mk_cls, gap_ambig_seqs):
++    """.degap should preserve metadata"""
+     aln = mk_cls(gap_ambig_seqs, moltype="dna")
+-    aln.info.path = "blah"
++    aln.metadata.path = "blah"
+     got = aln.degap()
+-    assert got.info.path == "blah"
++    assert got.metadata.path == "blah"
+ 
+ 
+ def test_alignment_degap_sliced(gap_ambig_seqs):
+@@ -1426,9 +1426,9 @@ def test_get_degapped_relative_to_sliced(rc):
+     assert result.to_dict() == expect
+ 
+ 
+-def test_get_degapped_relative_to_info():
++def test_get_degapped_relative_to_metadata():
+     """should remove all columns with a gap in sequence with given name
+-    while preserving info attribute"""
++    while preserving metadata"""
+     aln = c3_alignment.make_aligned_seqs(
+         [
+             ["name1", "-AC-DEFGHI---"],
+@@ -1437,7 +1437,7 @@ def test_get_degapped_relative_to_info():
+             ["name4", "-KL---MNPR---"],
+         ],
+         moltype="protein",
+-        info={"key": "foo"},
++        metadata={"key": "foo"},
+     )
+     c3_alignment.make_aligned_seqs(
+         [
+@@ -1447,10 +1447,10 @@ def test_get_degapped_relative_to_info():
+             ["name4", "KL--MNPR"],
+         ],
+         moltype="protein",
+-        info={"key": "bar"},
++        metadata={"key": "bar"},
+     )
+     gdrt = aln.get_degapped_relative_to("name1")
+-    assert gdrt.info["key"] == "foo"
++    assert gdrt.metadata["key"] == "foo"
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -1669,11 +1669,11 @@ def test_get_translation_error(data, mk_cls):
+         {"seq1": "GAT-T-", "seq2": "GATCTT"},
+     ],
+ )
+-def test_get_translation_info(data, mk_cls):
+-    """SequenceCollection.get_translation preserves info attribute"""
+-    seqs = mk_cls(data, moltype="dna", info={"key": "value"})
++def test_get_translation_metadata(data, mk_cls):
++    """SequenceCollection.get_translation preserves metadata"""
++    seqs = mk_cls(data, moltype="dna", metadata={"key": "value"})
+     got = seqs.get_translation(incomplete_ok=True)
+-    assert got.info["key"] == "value"
++    assert got.metadata["key"] == "value"
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -1753,16 +1753,16 @@ def test_trim_stop_codons_strict(data, mk_cls):
+     "mk_cls",
+     [c3_alignment.make_unaligned_seqs, c3_alignment.make_aligned_seqs],
+ )
+-def test_trim_stop_codons_info(mk_cls):
+-    """trim_stop_codons should preserve info attribute"""
++def test_trim_stop_codons_metadata(mk_cls):
++    """trim_stop_codons should preserve metadata"""
+     data = {"seq1": "ACGTAA", "seq2": "ACGACG", "seq3": "ACGCGT"}
+     seqs = mk_cls(
+         data,
+         moltype="dna",
+-        info={"key": "value"},
++        metadata={"key": "value"},
+     )
+     seqs = seqs.trim_stop_codons()
+-    assert seqs.info["key"] == "value"
++    assert seqs.metadata["key"] == "value"
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -1770,13 +1770,9 @@ def test_trim_stop_codons_info(mk_cls):
+     [c3_alignment.make_unaligned_seqs, c3_alignment.make_aligned_seqs],
+ )
+ def test_trim_stop_codons_annotation_db(gff_db, mk_cls):
+-    """trim_stop_codons should preserve info attribute"""
++    """trim_stop_codons should preserve annotation_db"""
+     data = {"seq_1": "ACGTAA", "seq_2": "ACGACG", "seq_3": "ACGCGT"}
+-    seqs = mk_cls(
+-        data,
+-        moltype="dna",
+-        info={"key": "value"},
+-    )
++    seqs = mk_cls(data, moltype="dna")
+     seqs.annotation_db = gff_db
+     trimmed = seqs.trim_stop_codons()
+     assert trimmed.annotation_db == seqs.annotation_db
+@@ -2335,12 +2331,12 @@ def test_sequence_collection_to_moltype_with_gaps(mk_cls):
+     "mk_cls",
+     [c3_alignment.make_unaligned_seqs, c3_alignment.make_aligned_seqs],
+ )
+-def test_sequence_collection_to_moltype_info(mk_cls):
++def test_sequence_collection_to_moltype_metadata(mk_cls):
+     """correctly convert to specified moltype"""
+     data = {"seq1": "ACGTACGTA", "seq2": "ACCGAA---", "seq3": "ACGTACGTT"}
+-    seqs = mk_cls(data, moltype="text", info={"key": "value"})
++    seqs = mk_cls(data, moltype="text", metadata={"key": "value"})
+     dna = seqs.to_moltype("dna")
+-    assert dna.info["key"] == "value"
++    assert dna.metadata["key"] == "value"
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -2398,12 +2394,14 @@ def test_to_dna():
+         _ = paln.to_dna()
+ 
+ 
+-def test_to_dna_info():
+-    """alignment cast to DNA preserves info attribute"""
++def test_to_dna_metadata():
++    """alignment cast to DNA preserves metadata"""
+     data = {"seq1": "ACGTACGTA", "seq2": "ACCGAA---", "seq3": "ACGTACGTT"}
+-    aln = c3_alignment.make_aligned_seqs(data, info={"key": "value"}, moltype="text")
++    aln = c3_alignment.make_aligned_seqs(
++        data, metadata={"key": "value"}, moltype="text"
++    )
+     dna = aln.to_dna()
+-    assert dna.info["key"] == "value"
++    assert dna.metadata["key"] == "value"
+ 
+ 
+ def test_to_rna():
+@@ -2415,12 +2413,14 @@ def test_to_rna():
+     assert rna.moltype.label == "rna"
+ 
+ 
+-def test_to_rna_info():
+-    """alignment cast to RNA preserves info attribute"""
++def test_to_rna_metadata():
++    """alignment cast to RNA preserves metadata"""
+     data = {"seq1": "ACGUACGUA", "seq2": "ACCGAA---", "seq3": "ACGUACGUU"}
+-    aln = c3_alignment.make_aligned_seqs(data, info={"key": "value"}, moltype="text")
++    aln = c3_alignment.make_aligned_seqs(
++        data, metadata={"key": "value"}, moltype="text"
++    )
+     rna = aln.to_rna()
+-    assert rna.info["key"] == "value"
++    assert rna.metadata["key"] == "value"
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -2453,7 +2453,7 @@ def test_sequence_collection_to_rna(mk_cls):
+ def test_sequence_collection_add_seqs(mk_cls):
+     data = {"name1": "AAA", "name2": "A--", "name3": "AAA", "name4": "AAA"}
+     data2 = {"name5": "TTT", "name6": "---"}
+-    aln = mk_cls(data, moltype="dna", info={"key": "foo"})
++    aln = mk_cls(data, moltype="dna", metadata={"key": "foo"})
+     out_aln = aln.add_seqs(data2)
+     assert len(out_aln.names) == 6
+ 
+@@ -2465,7 +2465,7 @@ def test_sequence_collection_add_seqs(mk_cls):
+ def test_sequence_collection_add_seqs_reversed(mk_cls):
+     data = {"name1": "AAA", "name2": "A--", "name3": "AAA", "name4": "AAA"}
+     data2 = {"name5": "TTT", "name6": "---"}
+-    aln = mk_cls(data, moltype="dna", info={"key": "foo"})
++    aln = mk_cls(data, moltype="dna", metadata={"key": "foo"})
+     out_aln = aln.add_seqs(data2)
+     assert len(out_aln.names) == 6
+ 
+@@ -2478,7 +2478,7 @@ def test_sequence_collection_add_seqs_duplicate_raises(mk_cls):
+     """add_seqs should raise an error if duplicate names"""
+     data = {"name1": "AAA", "name2": "AAA", "name3": "AAA", "name4": "AAA"}
+     data2 = {"name5": "BBB", "name1": "CCC"}
+-    aln = mk_cls(data, moltype="text", info={"key": "foo"})
++    aln = mk_cls(data, moltype="text", metadata={"key": "foo"})
+     with pytest.raises(ValueError):
+         _ = aln.add_seqs(data2)
+ 
+@@ -2491,14 +2491,14 @@ def test_sequence_collection_add_seqs_duplicate_raises(mk_cls):
+     "mk_cls",
+     [c3_alignment.make_unaligned_seqs, c3_alignment.make_aligned_seqs],
+ )
+-def test_sequence_collection_add_seqs_info(mk_cls):
+-    """add_seqs should preserve info attribute"""
++def test_sequence_collection_add_seqs_metadata(mk_cls):
++    """add_seqs should preserve metadata"""
+     data = {"name1": "AAA", "name2": "AAA", "name3": "AAA", "name4": "AAA"}
+     data2 = {"name5": "BBB", "name6": "CCC"}
+-    aln = mk_cls(data, moltype="text", info={"key": "foo"})
+-    aln2 = mk_cls(data2, moltype="text", info={"key": "bar"})
++    aln = mk_cls(data, moltype="text", metadata={"key": "foo"})
++    aln2 = mk_cls(data2, moltype="text", metadata={"key": "bar"})
+     out_aln = aln.add_seqs(aln2)
+-    assert out_aln.info["key"] == "foo"
++    assert out_aln.metadata["key"] == "foo"
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -4263,17 +4263,17 @@ def test_slice_align():
+     assert sub_align.to_dict() == expect
+ 
+ 
+-def test_slice_align_info():
+-    """slicing alignment preserves info attribute"""
++def test_slice_align_metadata():
++    """slicing alignment preserves metadata"""
+     data = {"seq1": "ACGACGACG", "seq2": "ACGACGACG", "seq3": "ACGACGACG"}
+     alignment = c3_alignment.make_aligned_seqs(
+         data,
+-        info={"key": "value"},
++        metadata={"key": "value"},
+         moltype="dna",
+     )
+     sub_align = alignment[2:5]
+     assert len(sub_align) == 3
+-    assert sub_align.info["key"] == "value"
++    assert sub_align.metadata["key"] == "value"
+ 
+ 
+ @pytest.mark.parametrize("method", ["ic_score", "cogent3_score", "sp_score"])
+@@ -4291,7 +4291,7 @@ def test_alignment_quality_methods(method):
+     aln = c3_alignment.make_aligned_seqs(
+         data,
+         moltype="dna",
+-        info={"align_params": {"lnL": -123.0}},
++        metadata={"align_params": {"lnL": -123.0}},
+     )
+     app = get_app(method)
+     score = app(aln)
+@@ -4969,14 +4969,14 @@ def test_alignment_take_positions_sliced():
+     assert got == expect
+ 
+ 
+-def test_alignment_take_positions_info():
++def test_alignment_take_positions_metadata():
+     aln = c3_alignment.make_aligned_seqs(
+         {"a": "AAAAAAA", "b": "A--A-AA", "c": "AA-----"},
+         moltype="dna",
+-        info={"key": "value"},
++        metadata={"key": "value"},
+     )
+     tps = aln.take_positions([5, 4, 0])
+-    assert tps.info["key"] == "value"
++    assert tps.metadata["key"] == "value"
+ 
+ 
+ def test_take_positions_if():
+@@ -5021,7 +5021,7 @@ def is_list(x):
+ 
+ def _make_and_filter(raw, expected, motif_length, drop_remainder):
+     # a simple filter func
+-    aln = c3_alignment.make_aligned_seqs(raw, moltype="dna", info={"key": "value"})
++    aln = c3_alignment.make_aligned_seqs(raw, moltype="dna", metadata={"key": "value"})
+ 
+     def func(x):
+         return "-" not in "".join([str(s) for s in x])
+@@ -5033,7 +5033,7 @@ def func(x):
+         drop_remainder=drop_remainder,
+     )
+     assert result.to_dict() == expected
+-    assert result.info["key"] == "value"
++    assert result.metadata["key"] == "value"
+ 
+ 
+ def test_filtered():
+@@ -5703,7 +5703,7 @@ def test_alignment_copy(simple_aln):
+     got = simple_aln.copy(copy_annotations=True)
+     # mutable data structures should be different IDs
+     assert got.name_map is not simple_aln.name_map
+-    assert got.info is not simple_aln.info
++    assert got.metadata is not simple_aln.metadata
+     assert got.annotation_db is not simple_aln.annotation_db
+     # immutable data structures should be the same object
+     assert got._slice_record is simple_aln._slice_record
+@@ -5733,7 +5733,7 @@ def test_alignment_deepcopy(simple_aln):
+     got = simple_aln.deepcopy()
+     # all data structures should be different IDs
+     assert got.name_map is not simple_aln.name_map
+-    assert got.info is not simple_aln.info
++    assert got.metadata is not simple_aln.metadata
+     assert got._slice_record is not simple_aln._slice_record
+     assert got._seqs_data is not simple_aln._seqs_data
+ 
+@@ -5893,16 +5893,16 @@ def test_alignment_to_rich_dict_round_trip_offset(mk_cls):
+     "mk_cls",
+     [c3_alignment.make_unaligned_seqs, c3_alignment.make_aligned_seqs],
+ )
+-def test_alignment_to_rich_dict_round_trip_info(mk_cls):
+-    # info is preserved
++def test_alignment_to_rich_dict_round_trip_metadata(mk_cls):
++    # metadata is preserved
+     data = {
+         "seq1": "ATG",
+         "seq2": "TGA",
+     }
+-    aln = mk_cls(data, moltype="dna", info={"key": "value"})
++    aln = mk_cls(data, moltype="dna", metadata={"key": "value"})
+     rd = aln.to_rich_dict()
+     got = deserialise_object(rd)
+-    assert got.info["key"] == "value"
++    assert got.metadata["key"] == "value"
+     assert got.to_dict() == aln.to_dict()
+     assert got is not aln
+ 
+@@ -7233,6 +7233,7 @@ def test_source_in_plain_metadata_is_str(mk_cls):
+         (c3_alignment.Alignment, c3_seq_storage.AlignedSeqsData),
+     ],
+ )
++@pytest.mark.filterwarnings("error::pytest.PytestUnraisableExceptionWarning")
+ def test_constructor_takes_no_source(cls, store_cls):
+     mt = c3_moltype.get_moltype("dna")
+     store = store_cls.from_seqs(data=_CODON_SEQS, alphabet=mt.most_degen_alphabet())
+diff --git a/tests/test_core/test_sequence.py b/tests/test_core/test_sequence.py
+index ccfafb3a81..1c1e81ee19 100644
+--- a/tests/test_core/test_sequence.py
++++ b/tests/test_core/test_sequence.py
+@@ -3594,3 +3594,10 @@ def test_old_pickle_state_with_info_slot():
+     assert str(old) == "ACGT"
+     assert old.name == "s"
+     assert old.metadata.to_dict() == {"k": 1}
++
++
++@pytest.mark.filterwarnings("error::pytest.PytestUnraisableExceptionWarning")
++def test_failed_construction_del_is_silent():
++    dna = c3_moltype.get_moltype("dna")
++    with pytest.raises(TypeError):
++        c3_sequence.DnaSequence(dna, "ACGT", source="x.fa")
+diff --git a/tests/test_parse/test_genbank.py b/tests/test_parse/test_genbank.py
+index 60d2d5616d..0fa2e9600e 100644
+--- a/tests/test_parse/test_genbank.py
++++ b/tests/test_parse/test_genbank.py
+@@ -511,10 +511,10 @@ def test_moltype_overrides(moltype, rich_gb):
+     close_dbs(rich_gb, got_2)
+ 
+ 
+-def test_rich_parser_info(rich_gb):
+-    """seq.info stores genbank_record"""
+-    assert "genbank_record" in rich_gb.info
+-    assert rich_gb.info.genbank_record["locus"] == rich_gb.name
++def test_rich_parser_metadata_record(rich_gb):
++    """seq.metadata stores genbank_record"""
++    assert "genbank_record" in rich_gb.metadata
++    assert rich_gb.metadata.genbank_record["locus"] == rich_gb.name
+     close_dbs(rich_gb)
+ 
+ 
+diff --git a/tests/test_util/test_deserialise.py b/tests/test_util/test_deserialise.py
+index cfaadbf594..1801693bbc 100644
+--- a/tests/test_util/test_deserialise.py
++++ b/tests/test_util/test_deserialise.py
+@@ -557,9 +557,9 @@ def test_roundtrip_TN93_model_result():
+ def test_roundtrip_seq(mtype):
+     """seq to_json enables roundtrip"""
+     mtype = get_moltype(mtype)
+-    seq = mtype.make_seq(seq="ACGGTCGG", name="label", info={"something": 3})
++    seq = mtype.make_seq(seq="ACGGTCGG", name="label", metadata={"something": 3})
+     got = deserialise_object(seq.to_json())
+-    assert got.info.something == 3
++    assert got.metadata.something == 3
+     assert got.name == "label"
+     assert got.moltype == seq.moltype
+     assert str(got) == str(seq)

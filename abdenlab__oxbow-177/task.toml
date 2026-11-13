@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/abdenlab__oxbow-177"
+description = "typing: DataSource.to_polars and .to_pandas"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "oxbow",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "abdenlab/oxbow"
+ref = "92cfc98841aa232c56f516b7de924607edd5e3a8"
+reference = "https://github.com/abdenlab/oxbow/pull/177"
+source_access = "auto"
+built_at = "2026-11-13T16:14:27.302933+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a09fca311eba849bf42dd12c25d25fa469c61b26ab9a8bd18e1fe872e49c33ff"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-29T19:19:29Z"
+diff_format = "unified"
+context_files = [
+    "py-oxbow/oxbow/_core/base.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 15
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

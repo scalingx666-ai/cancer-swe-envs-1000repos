@@ -1,0 +1,1172 @@
+diff --git a/biowasm.json b/biowasm.json
+index 0f2dce5..b18fea4 100644
+--- a/biowasm.json
++++ b/biowasm.json
+@@ -176,6 +176,19 @@
+ 				}
+ 			]
+ 		},
++		{
++			"name": "diamond",
++			"url": "https://github.com/bbuchfink/diamond.git",
++			"programs": ["diamond", "diamond-simd"],
++			"description": "Accelerated protein sequence aligner (BLASTP/BLASTX)",
++			"categories": ["alignment", "proteins"],
++			"versions": [
++				{
++					"version": "2.2.8",
++					"branch": "v2.2.8"
++				}
++			]
++		},
+ 		{
+ 			"name": "fastp",
+ 			"url": "https://github.com/OpenGene/fastp.git",
+@@ -325,6 +338,20 @@
+ 				}
+ 			]
+ 		},
++		{
++			"name": "infernal",
++			"url": "https://github.com/EddyRivasLab/infernal",
++			"sources": [{ "path": "easel", "url": "https://github.com/EddyRivasLab/easel.git", "branch": "infernal-1.1.5" }, { "path": "hmmer", "url": "https://github.com/EddyRivasLab/hmmer.git", "branch": "infernal-1.1.5" }, { "path": "simde", "url": "https://github.com/simd-everywhere/simde.git", "branch": "v0.8.2" }],
++			"programs": ["cmalign", "cmbuild", "cmcalibrate", "cmemit", "cmfetch", "cmscan", "cmsearch", "cmstat", "cmconvert", "cmpress"],
++			"description": "Searches DNA sequence databases for RNA structure and sequence similarities using covariance models",
++			"categories": ["alignment"],
++			"versions": [
++				{
++					"version": "1.1.5",
++					"branch": "infernal-1.1.5"
++				}
++			]
++		},
+ 		{
+ 			"name": "ivar",
+ 			"url": "https://github.com/andersen-lab/ivar.git",
+diff --git a/biowasm.manifest.stg.json b/biowasm.manifest.stg.json
+index eb76bc7..2df8c12 100644
+--- a/biowasm.manifest.stg.json
++++ b/biowasm.manifest.stg.json
+@@ -125,6 +125,10 @@
+   "coreutils/8.32/uniq.wasm": "coreutils/8.32/uniq.wasm:bb5dafca082fa0ee8ecb144f409f0b10",
+   "coreutils/8.32/wc.js": "coreutils/8.32/wc.js:9a569ea6aa49c63879f7dc65134a83bd",
+   "coreutils/8.32/wc.wasm": "coreutils/8.32/wc.wasm:cd092b0bdd3f0286a2eed9f41f1dce6e",
++  "diamond/2.2.8/diamond-simd.js": "diamond/2.2.8/diamond-simd.js:20c4a15b34750775b22bf908d719267d",
++  "diamond/2.2.8/diamond-simd.wasm": "diamond/2.2.8/diamond-simd.wasm:165476f0f6a8ca56c3351bb2c18b1e80",
++  "diamond/2.2.8/diamond.js": "diamond/2.2.8/diamond.js:97d3f4b8077293ab129319ecbee42de1",
++  "diamond/2.2.8/diamond.wasm": "diamond/2.2.8/diamond.wasm:e56a005ac36ddc180bf1f7ccd2cc98f1",
+   "fastp/0.20.1/fastp.data": "fastp/0.20.1/fastp.data:f6110eee1b5bee63fa7539632a4bce9b",
+   "fastp/0.20.1/fastp.js": "fastp/0.20.1/fastp.js:070014d0d3331cd030528761bdf1ae2d",
+   "fastp/0.20.1/fastp.wasm": "fastp/0.20.1/fastp.wasm:6abe7e438d607f901afc58d035e88190",
+@@ -193,6 +197,26 @@
+   "hyphy/2.5.57/hyphy.data": "hyphy/2.5.57/hyphy.data:075fbd2d11cfc33e370ef991cb7353dd",
+   "hyphy/2.5.57/hyphy.js": "hyphy/2.5.57/hyphy.js:a16b80bbeacd38cadb1c72a82b5a14d0",
+   "hyphy/2.5.57/hyphy.wasm": "hyphy/2.5.57/hyphy.wasm:87ce6ac75c149b6067d75c3c6f132132",
++  "infernal/1.1.5/cmalign.js": "infernal/1.1.5/cmalign.js:abe028ca787e6d0c8b6ba6f358c4c99d",
++  "infernal/1.1.5/cmalign.wasm": "infernal/1.1.5/cmalign.wasm:85f0ddd02cede36c97c48d8a3b3dcfa0",
++  "infernal/1.1.5/cmbuild.js": "infernal/1.1.5/cmbuild.js:15061049d23fbe055d7ce300708252eb",
++  "infernal/1.1.5/cmbuild.wasm": "infernal/1.1.5/cmbuild.wasm:5891cef9e82aad706c4f21b36bac7b34",
++  "infernal/1.1.5/cmcalibrate.js": "infernal/1.1.5/cmcalibrate.js:ef1e2a408d85f7d0d6dfa682c79009bb",
++  "infernal/1.1.5/cmcalibrate.wasm": "infernal/1.1.5/cmcalibrate.wasm:9e12085e4b3bb26d4c235107a95c7b88",
++  "infernal/1.1.5/cmconvert.js": "infernal/1.1.5/cmconvert.js:96f460047719eeeb3d2f19a8f997f5b4",
++  "infernal/1.1.5/cmconvert.wasm": "infernal/1.1.5/cmconvert.wasm:02e6dac91c4570d1d8020499a3869a48",
++  "infernal/1.1.5/cmemit.js": "infernal/1.1.5/cmemit.js:69ac104915d65fbafb9eaa5e4044b740",
++  "infernal/1.1.5/cmemit.wasm": "infernal/1.1.5/cmemit.wasm:6401599d86d0fbe3b63ec370fe21fe0d",
++  "infernal/1.1.5/cmfetch.js": "infernal/1.1.5/cmfetch.js:d2ae5a6aec3d39d8b9d3a614cc6fd243",
++  "infernal/1.1.5/cmfetch.wasm": "infernal/1.1.5/cmfetch.wasm:3f2bb5fcf5d39460ca6679f2af71ee75",
++  "infernal/1.1.5/cmpress.js": "infernal/1.1.5/cmpress.js:1351662d1164dbeb2ee628a847e02881",
++  "infernal/1.1.5/cmpress.wasm": "infernal/1.1.5/cmpress.wasm:cfb05ff282557f9ed333ec0e44fce784",
++  "infernal/1.1.5/cmscan.js": "infernal/1.1.5/cmscan.js:8e1f8d0cdb3a8506efbe2eeedc99134e",
++  "infernal/1.1.5/cmscan.wasm": "infernal/1.1.5/cmscan.wasm:a950749513106fba7534eccc2dd1c93a",
++  "infernal/1.1.5/cmsearch.js": "infernal/1.1.5/cmsearch.js:37159a7ba935042c4a0b60a250d0f910",
++  "infernal/1.1.5/cmsearch.wasm": "infernal/1.1.5/cmsearch.wasm:ba64c2ca5c69d26d3936cc345e98e7b1",
++  "infernal/1.1.5/cmstat.js": "infernal/1.1.5/cmstat.js:45df6995f976858e1cd3e7a6ff09b602",
++  "infernal/1.1.5/cmstat.wasm": "infernal/1.1.5/cmstat.wasm:06398df3fcd72193cd370e51e5350535",
+   "ivar/1.3.1/ivar.js": "ivar/1.3.1/ivar.js:2c82626f51a4145c8751a45bd614fdea",
+   "ivar/1.3.1/ivar.wasm": "ivar/1.3.1/ivar.wasm:27b1298a17396853172b5888f4f72bfd",
+   "jq/1.6/jq.js": "jq/1.6/jq.js:9e398072b78de45e6c97ac4690a5fd20",
+diff --git a/biowasm.sizes.json b/biowasm.sizes.json
+index e21c8b0..6a8f22f 100644
+--- a/biowasm.sizes.json
++++ b/biowasm.sizes.json
+@@ -117,6 +117,10 @@
+   "coreutils/8.32/uniq.wasm": 68326,
+   "coreutils/8.32/wc.js": 87047,
+   "coreutils/8.32/wc.wasm": 70704,
++  "diamond/2.2.8/diamond-simd.js": 76144,
++  "diamond/2.2.8/diamond-simd.wasm": 5893388,
++  "diamond/2.2.8/diamond.js": 76139,
++  "diamond/2.2.8/diamond.wasm": 4819710,
+   "fastp/0.20.1/fastp.data": 11813,
+   "fastp/0.20.1/fastp.js": 286610,
+   "fastp/0.20.1/fastp.wasm": 684524,
+@@ -185,6 +189,26 @@
+   "hyphy/2.5.57/hyphy.data": 4591420,
+   "hyphy/2.5.57/hyphy.js": 161143,
+   "hyphy/2.5.57/hyphy.wasm": 2524626,
++  "infernal/1.1.5/cmalign.js": 73271,
++  "infernal/1.1.5/cmalign.wasm": 940550,
++  "infernal/1.1.5/cmbuild.js": 72646,
++  "infernal/1.1.5/cmbuild.wasm": 1546294,
++  "infernal/1.1.5/cmcalibrate.js": 73799,
++  "infernal/1.1.5/cmcalibrate.wasm": 467812,
++  "infernal/1.1.5/cmconvert.js": 70307,
++  "infernal/1.1.5/cmconvert.wasm": 830746,
++  "infernal/1.1.5/cmemit.js": 71020,
++  "infernal/1.1.5/cmemit.wasm": 329139,
++  "infernal/1.1.5/cmfetch.js": 68742,
++  "infernal/1.1.5/cmfetch.wasm": 168933,
++  "infernal/1.1.5/cmpress.js": 68742,
++  "infernal/1.1.5/cmpress.wasm": 179424,
++  "infernal/1.1.5/cmscan.js": 72942,
++  "infernal/1.1.5/cmscan.wasm": 1690315,
++  "infernal/1.1.5/cmsearch.js": 72944,
++  "infernal/1.1.5/cmsearch.wasm": 1723049,
++  "infernal/1.1.5/cmstat.js": 68024,
++  "infernal/1.1.5/cmstat.wasm": 186326,
+   "ivar/1.3.1/ivar.js": 120476,
+   "ivar/1.3.1/ivar.wasm": 712765,
+   "jq/1.6/jq.js": 102893,
+diff --git a/tools/diamond/compile.sh b/tools/diamond/compile.sh
+new file mode 100755
+index 0000000..94771cc
+--- /dev/null
++++ b/tools/diamond/compile.sh
+@@ -0,0 +1,32 @@
++#!/bin/bash
++
++set -e
++
++embuilder build zlib sqlite3
++
++CMAKE_FLAGS="$EM_CMAKE_FLAGS \
++	-DCMAKE_BUILD_TYPE=Release \
++	-DX86=OFF \
++	-DARM=OFF \
++	-DAARCH64=OFF \
++	-DCROSS_COMPILE=ON \
++	-DHAVE_SYSINFO=0 \
++	-DSQLite3_LIBRARY= \
++	-DZLIB_LIBRARY=$(em-config CACHE)/sysroot/lib/wasm32-emscripten/libz.a \
++	-DZLIB_INCLUDE_DIR=$(em-config CACHE)/sysroot/include"
++CXX_FLAGS="-O3 -DNDEBUG -fwasm-exceptions -sUSE_SQLITE3=1"
++LINKER_FLAGS="${EM_FLAGS//-s /-s} -fwasm-exceptions -sUSE_SQLITE3=1 -sERROR_ON_UNDEFINED_SYMBOLS=0"
++
++emcmake cmake -S . -B build-wasm $CMAKE_FLAGS \
++	-DWASM_SIMD=OFF \
++	-DCMAKE_CXX_FLAGS="$CXX_FLAGS" \
++	-DCMAKE_EXE_LINKER_FLAGS="$LINKER_FLAGS"
++emmake make -C build-wasm -j4 diamond
++cp build-wasm/diamond.{js,wasm} ../build/
++
++emcmake cmake -S . -B build-wasm-simd $CMAKE_FLAGS \
++	-DWASM_SIMD=ON \
++	-DCMAKE_CXX_FLAGS="$CXX_FLAGS" \
++	-DCMAKE_EXE_LINKER_FLAGS="$LINKER_FLAGS"
++emmake make -C build-wasm-simd -j4 diamond
++cp build-wasm-simd/diamond-simd.{js,wasm} ../build/
+diff --git a/tools/diamond/examples/v2.2.8.html b/tools/diamond/examples/v2.2.8.html
+new file mode 100644
+index 0000000..d6416b1
+--- /dev/null
++++ b/tools/diamond/examples/v2.2.8.html
+@@ -0,0 +1,21 @@
++<script src="https://biowasm.com/cdn/v3/aioli.js"></script>
++<script type="module">
++const CLI = await new Aioli(["diamond/2.2.8"]);
++
++// Eight protein domains to search against, and two query domains
++await CLI.mount([
++	{ name: "db.faa", data: ">d3f66a_\nHIDLSALNPELVQAVQHVVIGPSSLIVHFNEVIGRGHFGCVYHGTLLDNDGKKIHCAVKSLNRITDIGEVSQFLTEGIIMKDFSHPNVLSLLGICLRSEGSPLVVLPYMKHGDLRNFIRNETHNPTVKDLIGFGLQVAKGMKYLASKKFVHRDLAARNCMLDEKFTVKVADFGLARDMYDKEYYSVHNKTGAKLPVKWMALESLQTQKFTTKSDVWSFGVLLWELMTRGAPPYPDVNTFDITVYLLQGRRLLQPEYCPDPLYEVMLKCWHPKAEMRPSFSELVSRISAIFSTFIGEHY\n>d4i4ea_\nDYEIQRERIELGRCIGEGQFGDVHQGIYMSPENPALAVAIKTCKNCTSDSVREKFLQEALTMRQFDHPHIVKLIGVITENPVWIIMELCTLGELRSFLQVRKYSLDLASLILYAYQLSTALAYLESKRFVHRDIAARNVLVSSNDCVKLGDFGLSRYMEDSTYYKASKGKLPIKWMAPESINFRRFTSASDVWMFGVCMWEILMHGVKPFQGVKNNDVIGRIENGERLPMPPNCPPTLYSLMTKCWAYDPSRRPRFTELKAQLSTILEEEKAQ\n>d1ad5a3\nKPQKPWEKDAWEIPRESLKLEKKLGAGQFGEVWMATYNKHTKVAVKTMKPGSMSVEAFLAEANVMKTLQHDKLVKLHAVVTKEPIYIITEFMAKGSLLDFLKSDEGSKQPLPKLIDFSAQIAEGMAFIEQRNYIHRDLRAANILVSASLVCKIADFGLARVGAKFPIKWTAPEAINFGSFTIKSDVWSFGILLMEIVTYGRIPYPGMSNPEVIRALERGYRMPRPENCPEELYNIMMRCWKNRPEERPTFEYIQSVLDDFYTATESQYQQQP\n>d3poza_\nQALLRILKETEFKKIKVLGSGAFGTVYKGLWIPEGEKVKIPVAIKELREATSPKANKEILDEAYVMASVDNPHVCRLLGICLTSTVQLITQLMPFGCLLDYVREHKDNIGSQYLLNWCVQIAKGMNYLEDRRLVHRDLAARNVLVKTPQHVKITDFGLAKLLGAEEKEYHAEGGKVPIKWMALESILHRIYTHQSDVWSYGVTVWELMTFGSKPYDGIPASEISSILEKGERLPQPPICTIDVYMIMVKCWMIDADSRPKFRELIIEFSKMARDPQRYLVIQGDERMHLPSPTDSNFYRALMDEEDMDDVVDADEYL\n>d1geea_\nMYKDLEGKVVVITGSSTGLGKSMAIRFATEKAKVVVNYRSKEDEANSVLEEIKKVGGEAIAVKGDVTVESDVINLVQSAIKEFGKLDVMINNAGLENPVSSHEMSLSDWNKVIDTNLTGAFLGSREAIKYFVENDIKGTVINMSSVHEKIPWPLFVHYAASKGGMKLMTETLALEYAPKGIRVNNIGPGAINTPINAEKFADPEQRADVESMIPMGYIGEPEEIAAVAAWLASSEASYVTGITLFADGGMTLYPSFQAGRG\n>d3o38a_\nNLSEAPKEIDGHGLLKGKVVLVTAAAGTGIGSTTARRALLEGADVVISDYHERRLGETRDQLADLGLGRVEAVVCDVTSTEAVDALITQTVEKAGRLDVLVNNAGLGGQTPVVDMTDEEWDRVLNVTLTSVMRATRAALRYFRGVDHGGVIVNNASVLGWRAQHSQSHYAAAKAGVMALTRCSAIEAVEFGVRINAVSPSIARHKFLEKTSSSELLDRLASDEAFGRAAEPWEVAATIAFLASDYSSYMTGEVVSVSSQRA\n>d3uxya_\nFEGKVALVTGAAGGIGGAVVTALRAAGARVAVADRAVAGIAADLHLPGDLREAAYADGLPGAVAAGLGRLDIVVNNAGVISRGRITETTDADWSLSLGVNVEAPFRICRAAIPLMAAAGGGAIVNVASCWGLRPGPGHALYCLTKAALASLTQCMGMDHAPQGIRINAVCPNEVNTPMLRTGFAKRGFDPDRAVAELGRTVPLGRIAEPEDIADVVLFLASDAARYLCGSLVEVNGGKAVA\n>d3un1a1\nMRNQQKVVVITGASQGIGAGLVRAYRDRNYRVVATSRSIKPSADPDIHTVAGDISKPETADRIVREGIERFGRIDSLVNNAGVFLAKPFVEMTQEDYDHNLGVNVAGFFHITQRAAAEMLKQGSGHIVSITTSLVDQPMVGMPSALASLTKGGLNAVTRSLAMEFSRSGVRVNAVSPGVIKTPMHPAETHSTLAGLHPVGRMGEIRDVVDAVLYLEHAGFITGEILHVDGGQNAGRW" },
++	{ name: "query.faa", data: ">d4at5a1\nDTFVQHIKRHNIVLKRELGEGAFGKVFLAECYNLCPEQDKILVAVKTLKDASDNARKDFHREAELLTNLQHEHIVKFYGVCVEGDPLIMVFEYMKHGDLNKFLRAHGPDAVLMAEGNPPTELTQSQMLHIAQQIAAGMVYLASQHFVHRDLATRNCLVGENLLVKIGDFGMSRDVYSTDYYRVGGHTMLPIRWMPPESIMYRKFTTESDVWSLGVVLWEIFTYGKQPWYQLSNNEVIECITQGRVLQRPRTCPQEVYELMLGCWQREPHMRKNIKGIHTLLQNLAKASPVYLDILG\n>d4nima_\nGQLKGKIAVITGSTQGLGAATARLFAERGAQGLVICGRSAEKGRAQAAGLEELGAKAVFVQVDLENVEDCRRIVAEADRAFGRLDILVNAAGLTDRGTILDTSPELFDRLFAVNTRAPFFLIQEAIKLFRRDRVEGAIVNVSSMSSMGGQPFIAAYCASKGALDTLTRNVAYSVLRNRIRVNSLNIGWMASDGEDRIQREYHGAPANWLEEAVKTQPFGRLLDPAKVARAIAFLASEESGLMTGAIVNFDQSVWGAYDGSPHPEKPL" }
++]);
++
++// Build a DIAMOND index from the reference sequences
++await CLI.exec("diamond makedb --in db.faa -d db --quiet");
++
++// Search both queries against it and report the hits as a table
++await CLI.exec("diamond blastp --query query.faa --db db.dmnd --out hits.tsv --quiet --outfmt 6 qseqid sseqid pident length evalue bitscore");
++
++document.getElementById("output").innerHTML = await CLI.cat("hits.tsv");
++</script>
++
++<h4>Output of <code>diamond blastp</code> on sample data:</h4>
++<pre id="output">Loading...</pre>
+diff --git a/tools/diamond/patches/v2.2.8.patch b/tools/diamond/patches/v2.2.8.patch
+new file mode 100644
+index 0000000..943a61d
+--- /dev/null
++++ b/tools/diamond/patches/v2.2.8.patch
+@@ -0,0 +1,618 @@
++--- a/CMakeLists.txt
+++++ b/CMakeLists.txt
++@@ -31,6 +31,7 @@ option(AARCH64 "AARCH64" OFF)
++ option(LOONGARCH64 "LOONGARCH64" OFF)
++ option(WITH_ZSTD "WITH_ZSTD" OFF)
++ option(CROSS_COMPILE "CROSS_COMPILE" OFF)
+++option(WASM_SIMD "WASM_SIMD" OFF)
++ 
++ # experimental options not suitable for deployment purposes
++ option(EXTRA "EXTRA" OFF)
++@@ -329,6 +330,14 @@ endif(X86)
++ #  endif()
++ #endif(ARM)
++ 
+++# Build the SSE4.1 kernels against Emscripten's SSE-to-SIMD128 lowering, dropping the
+++# x86-only -mpopcnt/-mcx16/-msahf and defining __POPCNT__ by hand.
+++if(WASM_SIMD)
+++  add_definitions(-DWITH_SSE4_1)
+++  add_library(arch_sse4_1 OBJECT ${DISPATCH_OBJECTS})
+++  target_compile_options(arch_sse4_1 PUBLIC -DDISPATCH_ARCH=ARCH_SSE4_1 -DARCH_ID=1 -D__POPCNT__ -msimd128 -mssse3 -msse4.1 -msse4.2)
+++endif()
+++
++ check_symbol_exists(getauxval "sys/auxv.h" HAVE_GETAUXVAL)
++ if(AARCH64)
++   add_definitions(-DWITH_NEON)
++@@ -387,6 +396,7 @@ set(OBJECTS
++         src/lib/murmurhash/MurmurHash3.cpp
++         src/output/paf_format.cpp
++         src/util/system/system.cpp
+++        src/util/system/pthread_shim.cpp
++         src/util/memory/mem_profile.cpp
++         src/util/sequence/sequence.cpp
++         src/tools/tools.cpp
++@@ -534,10 +544,16 @@ elseif(ARM OR AARCH64)
++   else()
++     add_executable(diamond $<TARGET_OBJECTS:arch_generic> ${OBJECTS} ${ZSTD_OBJ})
++   endif()
+++elseif(WASM_SIMD)
+++  add_executable(diamond $<TARGET_OBJECTS:arch_generic> $<TARGET_OBJECTS:arch_sse4_1> ${OBJECTS} ${ZSTD_OBJ})
++ else()
++   add_executable(diamond $<TARGET_OBJECTS:arch_generic> ${OBJECTS} ${ZSTD_OBJ})
++ endif()
++ 
+++if(WASM_SIMD)
+++  set_target_properties(diamond PROPERTIES OUTPUT_NAME diamond-simd)
+++endif()
+++
++ if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
++   target_compile_options(diamond PUBLIC /Zc:__cplusplus)
++ endif()
++--- a/src/align/culling.cpp
+++++ b/src/align/culling.cpp
++@@ -106,7 +106,9 @@ static It output_range(const It begin, const It end, const Search::Config& cfg)
++ 			++i;
++ 	}
++ 	else {
++-		i += std::min((ptrdiff_t)cfg.max_target_seqs, end - begin);
+++		// -k0 sets max_target_seqs to INT64_MAX, which as a 32-bit ptrdiff_t is -1, so
+++		// compare in 64 bit and narrow afterwards.
+++		i += (ptrdiff_t)std::min<int64_t>(cfg.max_target_seqs, end - begin);
++ 		while (--i > begin && i->filter_evalue == DBL_MAX);
++ 		++i;
++ 	}
++--- a/src/basic/config.cpp
+++++ b/src/basic/config.cpp
++@@ -787,7 +787,12 @@ Config::Config(int argc, const char **argv, bool check_io, CommandLineParser& pa
++ #ifndef NDEBUG
++ 	*log_stream << "Assertions enabled." << endl;
++ #endif
++-	set_option(threads_, (int)std::thread::hardware_concurrency());
+++	// Everything runs on the calling thread here, and ips4o's barrier spins forever
+++	// with more than one.
+++	threads_ = 1;
+++	threads_align = 0;
+++	output_threads = 1;
+++	load_threads = 1;
++ 
++ 	switch (command) {
++ 	case Config::makedb:
++@@ -883,6 +888,9 @@ Config::Config(int argc, const char **argv, bool check_io, CommandLineParser& pa
++ 
++ 	oid_title_max = 0;
++ 
+++	// main() runs repeatedly in one module and these globals are never switched back,
+++	// so a blastp after a blastx would read its proteins as DNA.
+++	input_value_traits = value_traits = amino_acid_traits;
++ 	if (command == blastx || command == blastn)
++ 		input_value_traits = nucleotide_traits;
++ 
++--- a/src/cluster/count_seeds.cpp
+++++ b/src/cluster/count_seeds.cpp
++@@ -136,7 +136,7 @@ pair<vector<vector<HyperLogLog>>, vector<uint64_t>> count_distinct_seeds(Job& jo
++ 			ss << counters.back()[i].estimate() << (i + 1 < counters.back().size() ? "," : "");
++ 		}
++ 		letters.push_back(block->seqs().letters());
++-		job.log("Counting distinct seeds. Minichunk=%lli/%lli letters=%" PRIu64 " distinct seeds=", v + 1, n, (uint64_t)block->seqs().letters());
+++		job.log("Counting distinct seeds. Minichunk=%lli/%lli letters=%" PRIu64 " distinct seeds=", (long long)(v + 1), (long long)n, (uint64_t)block->seqs().letters());
++ 		job.log_raw(ss.str());
++ 	}
++ 	return std::make_pair(counters, letters);
++--- a/src/cluster/data.cpp
+++++ b/src/cluster/data.cpp
++@@ -72,7 +72,7 @@ struct QueueAbortGuard {
++ static tuple<OId, uint64_t, uint64_t> write_reps(Job& job, const VolumedFile& volumes, size_t idx, const RepWriteConfig& cfg,
++ 	const vector<OId>& clustering,
++ 	atomic<OId>& count_all, atomic<OId>& min_all, atomic<OId>& max_all) {
++-	job.log("Writing representatives. Volume=%lli/%lli Records=%s", idx + 1, volumes.size(), Util::String::format(volumes[idx].record_count).c_str());
+++	job.log("Writing representatives. Volume=%lli/%lli Records=%s", (long long)(idx + 1), (long long)volumes.size(), Util::String::format(volumes[idx].record_count).c_str());
++ 
++ 	const SequenceFile::Flags flags = SequenceFile::Flags::SEQS | SequenceFile::Flags::TITLES | SequenceFile::Flags::NEED_LETTER_COUNT;
++ 	string out_file = cfg.single_out_file ? cfg.output_path : cfg.output_path + std::to_string(idx) + ".faa";
++--- a/src/cluster/lin_index.cpp
+++++ b/src/cluster/lin_index.cpp
++@@ -64,7 +64,7 @@ void build_lin_indices(Job& job, const VolumedFile& volumes) {
++ 			finished.fetch_add();
++ 			continue;
++ 		}
++-		job.log("Building seed index. Block=%lli/%lli", v + 1, n);
+++		job.log("Building seed index. Block=%lli/%lli", (long long)(v + 1), (long long)n);
++ 		// The positions stored in the index refer to the order of the block on disk,
++ 		// which is left as it is: the index keeps the length of the sequence a seed
++ 		// comes from, so the pivot of a seed can be selected without sorting the block
++--- a/src/cluster/multinode.cpp
+++++ b/src/cluster/multinode.cpp
++@@ -109,7 +109,7 @@ static void run_block_combos(Job& job, const VolumedFile& superblocks, const str
++ 		if (r > 0)
++ 			seed_hit_table.reset(new vector<BitVector>());
++ 		for (int i = 0; i <= r; ++i) {
++-			job.log("Searching blocks. Blocks=%lli,%lli", r + 1, i + 1);
+++			job.log("Searching blocks. Blocks=%lli,%lli", (long long)(r + 1), (long long)(i + 1));
++ 			/*if (!seed_hit_table->empty()) {
++ 				for (size_t i = 0; i < seed_hit_table->size(); ++i)
++ 					job.log("Seed hit table paired positions shape %zu: %zu/%zu", i, seed_hit_table->operator[](i).one_count(), seed_hit_table->operator[](i).size());
++@@ -267,7 +267,7 @@ void multinode() {
++ 			job.log("Approximate sequence id cutoff = %f", config.approx_min_id.get(0));
++ 		else
++ 			job.log("Sequence id cutoff = %f", config.min_id);
++-		job.log("#Volumes = %lli", volumes.size());
+++		job.log("#Volumes = %lli", (long long)volumes.size());
++ 	}
++ 
++ 	if (max_open_files_per_process() < 1024) {
++--- a/src/legacy/dmnd/dmnd.cpp
+++++ b/src/legacy/dmnd/dmnd.cpp
++@@ -49,7 +49,8 @@ const uint32_t ReferenceHeader::current_db_version_nucl = 4;
++ 
++ void serialize(File &s, const ReferenceHeader2 &h)
++ {
++-	s.write(big_endian_byteswap(sizeof(ReferenceHeader2)));
+++	// The prefix is read back as uint64_t, but size_t is 32 bit on wasm32.
+++	s.write(big_endian_byteswap((uint64_t)sizeof(ReferenceHeader2)));
++ 	s.write(h.hash, sizeof(h.hash));
++ 	s.write(big_endian_byteswap(h.taxon_array_offset));
++ 	s.write(big_endian_byteswap(h.taxon_array_size));
++--- a/src/run/double_indexed.cpp
+++++ b/src/run/double_indexed.cpp
++@@ -78,7 +78,7 @@ static const string stack_join_redo = label_join + "_redo";
++ static const string stack_join_done = label_join + "_done";
++ 
++ static bool use_query_index(const size_t table_size) {
++-	return table_size <= std::max(MAX_HASH_SET_SIZE, 32 * MEGABYTES);
+++	return table_size <= std::max<uint64_t>(MAX_HASH_SET_SIZE, 32 * MEGABYTES);
++ }
++ 
++ static string get_ref_part_file_name(const string & prefix, size_t query, string suffix="") {
++--- a/src/tools/greedy_vertex_cover.cpp
+++++ b/src/tools/greedy_vertex_cover.cpp
++@@ -159,7 +159,9 @@ static RadixedTable edge_pass_one(const string& base_dir, const OId max_oid, boo
++ 	function<void(int64_t, const char*, const char*)> fn2([&](int64_t, const char* begin, const char* end) {
++ 		size_t line_count = 0;
++ 		Util::String::LineIterator it(begin, end);
++-		thread_local BufferArray buffers(file_array, RADIX_COUNT);
+++		// Not thread_local: on one thread it would not flush into file_array until exit,
+++		// losing every edge.
+++		BufferArray buffers(file_array, RADIX_COUNT);
++ 		string query, target;
++ 		OId q, t;
++ 		double qcov, tcov, weight;
++--- a/src/util/data_structures/deque.h
+++++ b/src/util/data_structures/deque.h
++@@ -221,7 +221,8 @@ private:
++ 
++ 	void new_bucket() {
++ 		buckets.emplace_back();
++-		buckets.back().reserve(N);
+++		// No reserve(N): 2^28 records is ~3.8 GB, more than a wasm32 heap, and N must stay
+++		// since Iterator addresses records by bucket and offset.
++ 	}
++ 
++ 	std::list<Bucket> buckets;
++--- a/src/util/data_structures/hash_set.h
+++++ b/src/util/data_structures/hash_set.h
++@@ -78,49 +78,11 @@ public:
++ 
++ 	bool contains(uint64_t key) const
++ 	{
++-#ifdef USE_AVX
++-		const uint64_t hash = _hash()(key);
++-		fp* p = table.get() + modulo<_mod>(hash >> (sizeof(fp) * 8), size_);
++-		__m256i r = _mm256_loadu_si256((const __m256i*)p);
++-		__m256i z = _mm256_setzero_si256();
++-		const int zm = _mm256_movemask_epi8(_mm256_cmpeq_epi8(r, z));
++-		if (zm == 0)
++-			return true;
++-
++-		const fp f = finger_print(hash);
++-		__m256i fr = _mm256_set1_epi8(f);
++-		const int fm = _mm256_movemask_epi8(_mm256_cmpeq_epi8(r, fr));
++-		return fm != 0;
++-#elif defined(__SSE2__)
++-		const uint64_t hash = _hash()(key);
++-		fp* p = table + modulo<_mod>(hash >> (sizeof(fp) * 8), size_);
++-		__m128i r = _mm_loadu_si128((const __m128i*)p);
++-		__m128i z = _mm_setzero_si128();
++-		const int zm = _mm_movemask_epi8(_mm_cmpeq_epi8(r, z));
++-		if (zm == 0)
++-			return true;
++-
++-		const fp f = finger_print(hash);
++-		__m128i fr = _mm_set1_epi8(f);
++-		const int fm = _mm_movemask_epi8(_mm_cmpeq_epi8(r, fr));
++-		return fm != 0;
++-#elif defined(__ARM_NEON)
++-		const uint64_t hash = _hash()(key);
++-		fp* p = table + modulo<_mod>(hash >> (sizeof(fp) * 8), size_);
++-		uint8x16_t r = vld1q_u8(p);
++-		uint8x16_t z = vdupq_n_u8(0);
++-                uint64x2_t zm = vreinterpretq_u64_u8(vceqq_u8(r, z));
++-		if ((vgetq_lane_u64(zm, 0) | vgetq_lane_u64(zm, 1)) == 0)
++-			return true;
++-
++-		const fp f = finger_print(hash);
++-		uint8x16_t fr = vdupq_n_u8(f);
++-                uint64x2_t fm = vreinterpretq_u64_u8(vceqq_u8(r, fr));
++-		return (vgetq_lane_u64(fm, 0) | vgetq_lane_u64(fm, 1)) != 0;
++-#else
+++		// One implementation for every target: the vectorised ones answer true for any
+++		// window with no empty slot, and a build that mixes the two sizes its seed
+++		// arrays from one answer and fills them from the other.
++ 		fp* p;
++ 		return get_entry(key, p);
++-#endif
++ 	}
++ 
++ 	void insert(uint64_t key)
++--- a/src/util/data_structures/queue.h
+++++ b/src/util/data_structures/queue.h
++@@ -25,223 +25,77 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ #include <utility>
++ #include "../parallel/semaphore.h"
++ 
+++
+++#include <deque>
+++
+++// Upstream's bounded ring blocks its producer on a semaphore nothing wakes on one
+++// thread; same interface, but an unbounded deque that never waits.
++ template <class T>
++ class Queue {
++ 
++ public:
++     using value_type = T;
++ 
++-#if _MSC_VER || __GNUC__ >= 5
++-    static_assert(std::is_default_constructible_v<T>, "T must be default constructible");
++-#endif
++-
++-    explicit Queue(size_t capacity, int producer_count, int consumer_count, T poison_pill)
++-        : capacity_(round_up_to_power_of_two(capacity ? capacity : 1)),
++-        mask_(capacity_ - 1),
++-        producer_count_(producer_count),
+++    explicit Queue(size_t, int producer_count, int consumer_count, T poison_pill)
+++        : producer_count_(producer_count),
++         consumer_count_(consumer_count),
++         poison_pill_(std::move(poison_pill)),
++-#if defined(__cpp_aligned_new) && __cpp_aligned_new >= 201606L
++-        buffer_(static_cast<Cell*>(::operator new[](capacity_ * sizeof(Cell), std::align_val_t{ alignof(Cell) }))),
++-#else
++-        buffer_(static_cast<Cell*>(::operator new[](capacity_ * sizeof(Cell)))),        
++-#endif
++-        enqueue_pos_(0),
++-        dequeue_pos_(0),
++-        pills_received_(0) {
+++        pills_received_(0),
+++        aborted_(false) {
++         assert(producer_count == 1 || consumer_count == 1);
++-        for (size_t i = 0; i < capacity_; ++i) {
++-            new (&buffer_[i]) Cell();
++-            buffer_[i].seq.store(i, std::memory_order_relaxed);
++-        }
++-    }
++-
++-    ~Queue() {
++-        T tmp;
++-        while (try_dequeue(tmp)) {}
++-
++-        for (size_t i = 0; i < capacity_; ++i) {
++-            buffer_[i].~Cell();
++-        }
++-#if defined(__cpp_aligned_new) && __cpp_aligned_new >= 201606L
++-        ::operator delete[](buffer_, std::align_val_t{ alignof(Cell) });
++-#else
++-        ::operator delete[](buffer_);
++-#endif
++     }
++ 
++     Queue(const Queue&) = delete;
++     Queue& operator=(const Queue&) = delete;
++ 
++-    void enqueue(const T& v) { (void)emplace_impl(v); }
++-    void enqueue(T&& v) { (void)emplace_impl(std::move(v)); }
++-    bool enqueue_or_abort(const T& v) { return emplace_impl(v); }
++-    bool enqueue_or_abort(T&& v) { return emplace_impl(std::move(v)); }
++-   
+++    void enqueue(const T& v) { queue_.push_back(v); }
+++    void enqueue(T&& v) { queue_.push_back(std::move(v)); }
+++    bool enqueue_or_abort(const T& v) { if (aborted_) return false; queue_.push_back(v); return true; }
+++    bool enqueue_or_abort(T&& v) { if (aborted_) return false; queue_.push_back(std::move(v)); return true; }
+++
+++    bool try_dequeue(T& out) {
+++        if (queue_.empty())
+++            return false;
+++        out = std::move(queue_.front());
+++        queue_.pop_front();
+++        return true;
+++    }
+++
++     bool wait_and_dequeue(T& out) {
++-        while (true) {
++-            items_.acquire();
++-            if (aborted_.load(std::memory_order_acquire))
++-                return false;
++-            while (!try_dequeue(out)) {
++-                if (aborted_.load(std::memory_order_acquire))
++-                    return false;
++-                std::this_thread::yield();
++-            }
++-            spaces_.release();
+++        while (!aborted_ && try_dequeue(out)) {
++             if (out == poison_pill_) {
++-                if (producer_count_ > 1) {
++-                    size_t seen = pills_received_.fetch_add(1, std::memory_order_relaxed) + 1;
++-                    if (seen == static_cast<size_t>(producer_count_)) {
++-                        return false;
++-                    }
+++                if (producer_count_ > 1 && ++pills_received_ < (size_t)producer_count_)
++                     continue;
++-                }
++                 return false;
++             }
++-
++             return true;
++         }
+++        return false;
++     }
++ 
++-    bool empty() const {
++-        return approx_size() == 0;
++-    }
++-
++-    size_t capacity() const { return capacity_; }
++-
++-    size_t approx_size() const {
++-        size_t enq = enqueue_pos_.load(std::memory_order_relaxed);
++-        size_t deq = dequeue_pos_.load(std::memory_order_relaxed);
++-        return enq >= deq ? (enq - deq) : 0;
++-    }
+++    bool empty() const { return queue_.empty(); }
+++    size_t capacity() const { return queue_.size(); }
+++    size_t approx_size() const { return queue_.size(); }
++ 
++     // call once per producer
++     void close() {
++-        if (aborted_.load(std::memory_order_acquire))
+++        if (aborted_)
++             return;
++-        for (int i = 0; i < consumer_count_; ++i) {
+++        for (int i = 0; i < consumer_count_; ++i)
++             enqueue(poison_pill_);
++-        }
++     }
++ 
++-    void abort() {
++-        if (!aborted_.exchange(true, std::memory_order_acq_rel)) {
++-            spaces_.release(producer_count_ + consumer_count_ + 1);
++-            items_.release(consumer_count_ + 1);
++-        }
++-    }
+++    void abort() { aborted_ = true; }
++ 
++-    int producer_count() const {
++-		return producer_count_;
++-    }
+++    int producer_count() const { return producer_count_; }
++ 
++ private:
++ 
++-    struct Cell {
++-        struct Storage {
++-            alignas(T) unsigned char storage[sizeof(T)];
++-        };
++-        std::atomic<size_t> seq;
++-        Storage storage;
++-        char pad[(64 - ((sizeof(std::atomic<size_t>) + sizeof(Storage)) % 64)) % 64];
++-        Cell() : seq(0) {}
++-    };
++-
++-    static constexpr bool is_power_of_two(size_t x) {
++-        return (x & (x - 1)) == 0;
++-    }
++-
++-    static size_t round_up_to_power_of_two(size_t x) {
++-        if (is_power_of_two(x)) return x;
++-        --x;
++-        for (size_t i = 1; i < sizeof(size_t) * 8; i <<= 1)
++-            x |= x >> i;
++-        return x + 1;
++-    }
++-
++-    static T* cell_value_ptr(Cell* c) noexcept {
++-#if defined(__cpp_lib_launder) && __cpp_lib_launder >= 201606L
++-        return std::launder(reinterpret_cast<T*>(c->storage.storage));
++-#else
++-#warning "old compiler missing support for std::launder"
++-        return reinterpret_cast<T*>(&c->storage);
++-#endif
++-    }
++-
++-    size_t index(size_t pos) const noexcept { return pos & mask_; }
++-
++-    template <class... Args>
++-    bool emplace_impl(Args&&... args) {
++-        if (aborted_.load(std::memory_order_acquire))
++-            return false;
++-        spaces_.acquire();
++-        if (aborted_.load(std::memory_order_acquire))
++-            return false;
++-        size_t pos = enqueue_pos_.load(std::memory_order_relaxed);
++-        for (;;) {
++-            if (aborted_.load(std::memory_order_acquire))
++-                return false;
++-            Cell* cell = &buffer_[index(pos)];
++-            size_t seq = cell->seq.load(std::memory_order_acquire);
++-            intptr_t dif = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos);
++-
++-            if (dif == 0) {
++-                if (enqueue_pos_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
++-                    new (cell_value_ptr(cell)) T(std::forward<Args>(args)...);
++-                    cell->seq.store(pos + 1, std::memory_order_release);
++-                    items_.release();                    
++-                    return true;
++-                }
++-            }
++-            else {
++-                std::this_thread::yield();
++-                pos = enqueue_pos_.load(std::memory_order_relaxed);
++-            }
++-        }
++-    }
++-
++-    bool try_dequeue(T& out) {
++-        size_t pos = dequeue_pos_.load(std::memory_order_relaxed);
++-        for (;;) {
++-            Cell* cell = &buffer_[index(pos)];
++-            size_t seq = cell->seq.load(std::memory_order_acquire);
++-            intptr_t dif = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos + 1);
++-            if (dif == 0) {
++-                if (dequeue_pos_.compare_exchange_weak(
++-                    pos, pos + 1,
++-                    std::memory_order_relaxed,
++-                    std::memory_order_relaxed)) {
++-                    T* p = cell_value_ptr(cell);
++-                    out = std::move(*p);
++-                    p->~T();
++-                    cell->seq.store(pos + capacity_, std::memory_order_release);
++-                    return true;
++-                }
++-            }
++-            else if (dif < 0) {
++-                return false;
++-            }
++-            else {
++-                std::this_thread::yield();
++-                pos = dequeue_pos_.load(std::memory_order_relaxed);
++-            }
++-        }
++-    }
++-
++-    const size_t capacity_;
++-    const size_t mask_;
+++    std::deque<T> queue_;
++     const int producer_count_;
++     const int consumer_count_;
++     const T poison_pill_;
++-    Cell* const buffer_;
++-    alignas(64) std::atomic<size_t> enqueue_pos_;
++-    char _pad0[(64 - sizeof(enqueue_pos_) % 64) % 64]{};
++-    alignas(64) std::atomic<size_t> dequeue_pos_;
++-    char _pad1[(64 - sizeof(dequeue_pos_) % 64) % 64]{};
++-    CountingSemaphore<> items_{ (ptrdiff_t)0 };
++-    CountingSemaphore<> spaces_{ (ptrdiff_t)capacity_ };
++-    std::atomic<size_t> pills_received_;
++-    std::atomic<bool> aborted_{ false };
+++    size_t pills_received_;
+++    bool aborted_;
++ 
++ };
++--- a/src/util/io/file.h
+++++ b/src/util/io/file.h
++@@ -29,9 +29,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ #include "compressor.h"
++ #include "util/memory/memory_resource.h"
++ 
++-const size_t MEGABYTES = 1 << 20;
++-const size_t GIGABYTES = 1 << 30;
++-const size_t KILOBYTES = 1 << 10;
+++// 64 bit: size_t is 32 bit on wasm32, where e.g. 4 * GIGABYTES silently wraps to 0
+++const uint64_t MEGABYTES = 1ULL << 20;
+++const uint64_t GIGABYTES = 1ULL << 30;
+++const uint64_t KILOBYTES = 1ULL << 10;
++ 
++ struct Temporary {};
++ 
++--- a/src/util/simd.cpp
+++++ b/src/util/simd.cpp
++@@ -62,6 +62,11 @@ namespace SIMD {
++ int flags = 0;
++ 
++ Arch init_arch() {
+++#ifdef WITH_SSE4_1
+++	// WebAssembly has no CPUID: a module is built for one instruction set, so report it.
+++	flags |= SSSE3 | POPCNT | SSE4_1;
+++	return Arch::SSE4_1;
+++#endif
++ #if defined(__aarch64__) | defined(__arm__)
++ 
++ #if defined(__aarch64__)
++--- a/src/util/util.cpp
+++++ b/src/util/util.cpp
++@@ -49,6 +49,10 @@ void cleanup() {
++ 		delete message_stream;
++ 	if (log_stream != &std::cerr)
++ 		delete log_stream;
+++	// main() runs once per command in one module, so put the streams back as they were
+++	// at startup rather than leaving the next run a dangling pointer.
+++	message_stream = new Nullostream;
+++	log_stream = new Nullostream;
++ }
++ 
++ #ifndef _MSC_VER
++--- /dev/null
+++++ b/src/util/system/pthread_shim.cpp
++@@ -0,0 +1,66 @@
+++/* Single-threaded stand-in for pthread_create/join/detach: without -pthread a module
+++   cannot start a thread at all, so the body is recorded here and run on the calling
+++   thread at join time, by which point its producer has closed the queue it reads.
+++   Handles count up from 1 so std::thread::id keeps spawn order under std::map, which
+++   is the order SimpleThreadPool::join_all() replays them in. */
+++
+++#include <pthread.h>
+++#include <stddef.h>
+++#include <vector>
+++
+++namespace {
+++
+++struct DeferredThread {
+++	void* (*fn)(void*);
+++	void* arg;
+++	void* ret;
+++	bool ran;
+++};
+++
+++std::vector<DeferredThread>& registry() {
+++	static std::vector<DeferredThread>* r = new std::vector<DeferredThread>(1);
+++	return *r;
+++}
+++
+++void run_once(size_t handle) {
+++	if (handle == 0 || handle >= registry().size())
+++		return;
+++	// Not a reference: the body may itself call pthread_create and reallocate.
+++	if (registry()[handle].ran)
+++		return;
+++	registry()[handle].ran = true;
+++	void* (*fn)(void*) = registry()[handle].fn;
+++	void* arg = registry()[handle].arg;
+++	void* ret = fn(arg);
+++	registry()[handle].ret = ret;
+++}
+++
+++}
+++
+++extern "C" {
+++
+++int pthread_create(pthread_t* thread, const pthread_attr_t*, void* (*start_routine)(void*), void* arg) {
+++	DeferredThread t;
+++	t.fn = start_routine;
+++	t.arg = arg;
+++	t.ret = NULL;
+++	t.ran = false;
+++	registry().push_back(t);
+++	*thread = (pthread_t)(registry().size() - 1);
+++	return 0;
+++}
+++
+++int pthread_join(pthread_t thread, void** retval) {
+++	const size_t handle = (size_t)thread;
+++	run_once(handle);
+++	if (retval != NULL)
+++		*retval = (handle > 0 && handle < registry().size()) ? registry()[handle].ret : NULL;
+++	return 0;
+++}
+++
+++int pthread_detach(pthread_t thread) {
+++	run_once((size_t)thread);
+++	return 0;
+++}
+++
+++}
+diff --git a/tools/infernal/compile.sh b/tools/infernal/compile.sh
+new file mode 100755
+index 0000000..1e4798e
+--- /dev/null
++++ b/tools/infernal/compile.sh
+@@ -0,0 +1,37 @@
++#!/bin/bash
++
++set -e
++
++PROGRAMS="cmalign cmbuild cmcalibrate cmemit cmfetch cmscan cmsearch cmstat cmconvert cmpress"
++
++# Infernal's build expects Easel and HMMER in-tree, so copy them in from the repos next door
++rm -rf easel hmmer simde shim
++cp -r ../easel easel
++cp -r ../hmmer hmmer
++cp -r ../simde simde
++rm -rf easel/.git hmmer/.git simde/.git
++patch -s -p1 -d easel -i ../../patches/easel-infernal-1.1.5.patch
++patch -s -p1 -d hmmer -i ../../patches/hmmer-infernal-1.1.5.patch
++
++mkdir -p shim
++echo "#include <simde/x86/sse.h>"  > shim/xmmintrin.h
++echo "#include <simde/x86/sse2.h>" > shim/emmintrin.h
++echo "#include <simde/x86/sse3.h>" > shim/pmmintrin.h
++
++autoconf
++
++# SIMDe lowers the SSE intrinsics to scalar C. -msimd128 instead of this is 1.6% on cmsearch
++# and slower on cmcalibrate, which is not worth doubling what the CDN serves.
++emconfigure ./configure \
++	--host=none-none-none \
++	--enable-sse --disable-threads --disable-mpi \
++	ac_cv_func_popen=no \
++	CC=emcc CFLAGS="-O3 -I$(pwd)/shim -I$(pwd)/simde -DSIMDE_ENABLE_NATIVE_ALIASES"
++emmake make -j4 -C easel libeasel.a
++emmake make -j4 -C hmmer/libdivsufsort libdivsufsort.a
++emmake make -j4 -C hmmer/src libhmmer.a
++emmake make -j4 -C src $PROGRAMS LDFLAGS="-s ERROR_ON_UNDEFINED_SYMBOLS=0 -s MAXIMUM_MEMORY=4GB $EM_FLAGS"
++for program in $PROGRAMS; do
++	cp src/$program ../build/$program.js
++	cp src/$program.wasm ../build/
++done
+diff --git a/tools/infernal/examples/infernal-1.1.5.html b/tools/infernal/examples/infernal-1.1.5.html
+new file mode 100644
+index 0000000..df05275
+--- /dev/null
++++ b/tools/infernal/examples/infernal-1.1.5.html
+@@ -0,0 +1,55 @@
++<script src="https://biowasm.com/cdn/v3/aioli.js"></script>
++<script type="module">
++const CLI = await new Aioli(["infernal/cmbuild/1.1.5", "infernal/cmalign/1.1.5"], {
++  printInterleaved: false
++});
++
++// Structure-annotated alignment of 5 tRNAs, from Infernal's tutorial (tutorial/tRNA5.sto)
++const alignment = `# STOCKHOLM 1.0
++
++tRNA1             GCGGAUUUAGCUCAGUUGGG.AGAGCGCCAGACUGAAGAUCUGGAGGUCC
++tRNA2             UCCGAUAUAGUGUAAC.GGCUAUCACAUCACGCUUUCACCGUGGAGA.CC
++tRNA3             UCCGUGAUAGUUUAAU.GGUCAGAAUGGGCGCUUGUCGCGUGCCAGA.UC
++tRNA4             GCUCGUAUGGCGCAGU.GGU.AGCGCAGCAGAUUGCAAAUCUGUUGGUCC
++tRNA5             GGGCACAUGGCGCAGUUGGU.AGCGCGCUUCCCUUGCAAGGAAGAGGUCA
++#=GC SS_cons      <<<<<<<..<<<<.........>>>>.<<<<<.......>>>>>.....<
++
++tRNA1             UGUGUUCGAUCCACAGAAUUCGCA
++tRNA2             GGGGUUCGACUCCCCGUAUCGGAG
++tRNA3             GGGGUUCAAUUCCCCGUCGCGGAG
++tRNA4             UUAGUUCGAUCCUGAGUGCGAGCU
++tRNA5             UCGGUUCGAUUCCGGUUGCGUCCA
++#=GC SS_cons      <<<<.......>>>>>>>>>>>>.
++//
++`;
++
++// Three tRNAs from the Methanobrevibacter ruminantium genome (from tutorial/mrum-tRNAs10.fa)
++const sequences = `>mrum-tRNA.1
++GGAGCUAUAGCUCAAUGGCAGAGCGUUUGGCUGACAUCCAAAAGGUUAUGGGUUCGAUUC
++CCUUUAGCCCCA
++>mrum-tRNA.6
++GCUUCUAUGGGGUAAUCGGCAAACCCAUCGGACUUUCGAUCCGAUAAUCCGGGUUCAAAU
++CCCGGUAGAAGCA
++>mrum-tRNA.9
++GCCGGGGUGGCUCAGCUGGUUAGAGCGCACGGCUCAUAGGGUAACUAAGCGUGCUCUGAC
++UUUUUUCCUGGGAUACCGUGAGAUCGCGGGUUCGAAUCCCGCCCCCGGCA
++`;
++
++await CLI.mount([
++  { name: "tRNA5.sto", data: alignment },
++  { name: "mrum-tRNAs.fa", data: sequences }
++]);
++
++// Build a covariance model from the alignment, then align new sequences to it
++const build = await CLI.exec("cmbuild tRNA5.cm tRNA5.sto");
++const align = await CLI.exec("cmalign tRNA5.cm mrum-tRNAs.fa");
++
++document.getElementById("build").innerHTML = build.stdout;
++document.getElementById("align").innerHTML = align.stdout;
++</script>
++
++<h4>Output of <code>cmbuild tRNA5.cm tRNA5.sto</code>:</h4>
++<pre id="build">Loading...</pre>
++
++<h4>Output of <code>cmalign tRNA5.cm mrum-tRNAs.fa</code>:</h4>
++<pre id="align">Loading...</pre>
+diff --git a/tools/infernal/patches/easel-infernal-1.1.5.patch b/tools/infernal/patches/easel-infernal-1.1.5.patch
+new file mode 100644
+index 0000000..238d255
+--- /dev/null
++++ b/tools/infernal/patches/easel-infernal-1.1.5.patch
+@@ -0,0 +1,117 @@
++--- a/easel.c
+++++ b/easel.c
++@@ -40,6 +40,9 @@
++ #include "easel.h"
++ #include <syslog.h>
++ 
+++/* getppid() is always 1 here, so Easel would log to syslog, whose unix socket aborts the module. */
+++#define esl_is_daemon() (0)
+++
++ /*****************************************************************
++  * 1. Exception and fatal error handling.
++  *****************************************************************/
++@@ -72,7 +77,7 @@ esl_fail(char *errbuf, const char *format, ...)
++       /* Check whether we are running as a daemon so we can do the
++        * right thing about logging instead of printing errors 
++        */
++-      if (getppid() != 1)
+++      if (! esl_is_daemon())
++ 	{ // we aren't running as a daemon, so print the error normally
++ 	  va_start(ap, format);
++ 	  if (errbuf) vsnprintf(errbuf, eslERRBUFSIZE, format, ap);
++@@ -149,7 +154,7 @@ esl_exception(int errcode, int use_errno, char *sourcefile, int sourceline, char
++   else 
++     {
++       /* Check whether we are running as a daemon so we can do the right thing about logging instead of printing errors */
++-      if (getppid() != 1)
+++      if (! esl_is_daemon())
++ 	{ // we're not running as a daemon, so print the error normally
++ 	  fprintf(stderr, "Fatal exception (source file %s, line %d):\n", sourcefile, sourceline);
++ 	  va_start(argp, format);
++@@ -307,7 +312,7 @@ esl_fatal(const char *format, ...)
++   int mpiflag;
++ #endif
++   /* Check whether we are running as a daemon so we can do the right thing about logging instead of printing errors */
++-  if (getppid() != 1)
+++  if (! esl_is_daemon())
++     { // we're not running as a daemon, so print the error normally
++       va_start(argp, format);
++       vfprintf(stderr, format, argp);
++--- a/esl_buffer.c
+++++ b/esl_buffer.c
++@@ -336,6 +336,10 @@ esl_buffer_OpenPipe(const char *filename, const char *cmdfmt, ESL_BUFFER **ret_b
++   if (filename && ! esl_FileExists(filename)) 
++     ESL_XFAIL(eslENOTFOUND, bf->errmsg, "couldn't read file %s", filename);
++ 
+++  /* No popen() or /bin/sh here, and the stub aborts the module, so gzipped input must be decompressed first. */
+++  ESL_XFAIL(eslENOTFOUND, bf->errmsg, "can't read %s through a pipe in WebAssembly (gzipped input must be decompressed first)",
+++	    filename ? filename : cmdfmt);
+++
++   if (filename) { if ((status = esl_sprintf(&cmd, cmdfmt, filename)) != eslOK) goto ERROR; }
++   else          { if ((status = esl_strdup(cmdfmt, -1, &cmd))        != eslOK) goto ERROR; }
++ 
++--- a/esl_cpu.c
+++++ b/esl_cpu.c
++@@ -65,6 +65,7 @@ static int  cpu_has_avx512(void);
++ int
++ esl_cpu_has_sse(void)
++ {
+++  return TRUE;   /* The SSE path is compiled in unconditionally. */
++ #ifdef eslENABLE_SSE
++   static int sse_support = -1;
++   if (sse_support < 0)
++@@ -201,18 +202,9 @@ esl_cpu_Get(void)
++ static void 
++ cpu_run_id(uint32_t eax, uint32_t ecx, uint32_t *abcd)
++ {
++-#if defined(_MSC_VER)
++-  __cpuidex(abcd, eax, ecx);
++-#else
++-  uint32_t ebx = 0;
++-  uint32_t edx = 0;
++-#if defined( __i386__ ) && defined ( __PIC__ )   /* in case of PIC under 32-bit EBX cannot be clobbered */
++-  __asm__ ( "movl %%ebx, %%edi \n\t cpuid \n\t xchgl %%ebx, %%edi" : "=D" (ebx), "+a" (eax), "+c" (ecx), "=d" (edx) );
++-#else
++-  __asm__ ( "cpuid" : "+b" (ebx), "+a" (eax), "+c" (ecx), "=d" (edx) );
++-#endif
++-  abcd[0] = eax; abcd[1] = ebx; abcd[2] = ecx; abcd[3] = edx;
++-#endif // ! _MSC_VER
+++  /* No CPUID here; vector support is decided at compile time. */
+++  (void) eax; (void) ecx;
+++  abcd[0] = abcd[1] = abcd[2] = abcd[3] = 0;
++ }     
++ #endif // eslENABLE_SSE | eslENABLE_SSE4 | eslENABLE_AVX | eslENABLE_AVX512
++ 
++--- a/esl_sse.c
+++++ b/esl_sse.c
++@@ -37,7 +37,7 @@
++ #include <math.h>
++ #include <float.h>
++ 
++-#include <x86intrin.h>
+++#include <emmintrin.h>
++ 
++ #include "easel.h"
++ #include "esl_sse.h"
++--- a/esl_sse.h
+++++ b/esl_sse.h
++@@ -22,7 +22,7 @@
++ #include "easel.h"
++ 
++ #include <stdio.h>
++-#include <x86intrin.h>	
+++#include <emmintrin.h>	
++ 
++ 
++ /*****************************************************************
++--- a/m4/esl_sse.m4
+++++ b/m4/esl_sse.m4
++@@ -50,7 +50,7 @@ AC_DEFUN([ESL_SSE], [
++ 
++     AC_LINK_IFELSE(
++       [AC_LANG_SOURCE([[
++-#include <x86intrin.h>
+++#include <emmintrin.h>
++ #include <stdint.h>
++ int stub_sse(void) {
++ __m128i v1 = _mm_set1_epi32(42);
+diff --git a/tools/infernal/patches/hmmer-infernal-1.1.5.patch b/tools/infernal/patches/hmmer-infernal-1.1.5.patch
+new file mode 100644
+index 0000000..7c83b2c
+--- /dev/null
++++ b/tools/infernal/patches/hmmer-infernal-1.1.5.patch
+@@ -0,0 +1,24 @@
++--- a/src/impl_sse/decoding.c
+++++ b/src/impl_sse/decoding.c
++@@ -12,7 +12,7 @@
++ #include <stdio.h>
++ #include <math.h>
++ 
++-#include <x86intrin.h>
+++#include <emmintrin.h>
++ 
++ #include "easel.h"
++ #include "esl_sse.h"
++--- a/src/impl_sse/p7_oprofile.c
+++++ b/src/impl_sse/p7_oprofile.c
++@@ -669,7 +669,9 @@
++   uint8_t b;
++ 
++   sc  = -1.0f * roundf(om->scale_b * sc);                          /* ugh. sc is now an integer cost represented in a float...           */
++-  b   = (sc > 255 - om->bias_b) ? 255 : (uint8_t) sc + om->bias_b; /* and now we cast, saturate, and bias it to an unsigned char cost... */
+++  /* (uint8_t) of a negative float wraps mod 256 on x86 but saturates to 0 here, which
+++   * left nothing passing the MSV filter; do the arithmetic in int to get x86's answer. */
+++  b   = (sc > 255 - om->bias_b) ? 255 : (uint8_t) ((int) sc + om->bias_b); /* and now we cast, saturate, and bias it to an unsigned char cost... */
++   return b;
++ }
++  
+diff --git a/tools/infernal/patches/infernal-1.1.5.patch b/tools/infernal/patches/infernal-1.1.5.patch
+new file mode 100644
+index 0000000..01a15d5
+--- /dev/null
++++ b/tools/infernal/patches/infernal-1.1.5.patch
+@@ -0,0 +1,79 @@
++diff --git a/configure.ac b/configure.ac
++index 1ef622ee..cdc13487 100644
++--- a/configure.ac
+++++ b/configure.ac
++@@ -464,7 +464,7 @@ if test "$impl_choice" = "sse"; then
++  				 [[_MM_SET_FLUSH_ZERO_MODE (_MM_FLUSH_ZERO_ON);
++ 				 ]])],
++ 	[ AC_MSG_RESULT([yes])
++-          AC_DEFINE([HAVE_FLUSH_ZERO_MODE], 1, [Processor supports flush-to-zero mode])],
+++          :],
++ 	[ AC_MSG_RESULT([no])]
++   )
++   CFLAGS="$esl_save_cflags"
++diff --git a/src/cm_file.c b/src/cm_file.c
++index a6d4376c..e57a5c83 100644
++--- a/src/cm_file.c
+++++ b/src/cm_file.c
++@@ -866,7 +866,7 @@ cm_file_WriteBinary(FILE *fp, int format, CM_t *cm, off_t *opt_fp7_offset)
++     if (fwrite((char *) &(cm->fp7_evparam[CM_p7_GFLAMBDA]), sizeof(float), 1, fp) != 1) return eslFAIL;
++   }
++   if (cm->flags & CMH_EXPTAIL_STATS) { 
++-    long dbsize_long;
+++    int64_t dbsize_long; /* long is 32 bits on wasm32, which breaks .i1m compatibility with 64-bit hosts. */
++     for(z = 0; z < EXP_NMODES; z++) {
++       /* make sure our dbsize values can be cast to a long reliably,
++        * even on 32 bit systems (<= 2 Gb), they certainly should be,
++@@ -874,11 +874,11 @@ cm_file_WriteBinary(FILE *fp, int format, CM_t *cm, off_t *opt_fp7_offset)
++        * i31.)
++        */
++       if(cm->expA[z]->dbsize > (2000. * 1000000.)) ESL_EXCEPTION(eslEINVAL, "invalid dbsize (too big)");
++-      dbsize_long = (long) cm->expA[z]->dbsize + 0.5;
+++      dbsize_long = (int64_t) cm->expA[z]->dbsize + 0.5;
++       if (fwrite((char *) &(cm->expA[z]->lambda),    sizeof(double), 1, fp) != 1) return eslFAIL;
++       if (fwrite((char *) &(cm->expA[z]->mu_extrap), sizeof(double), 1, fp) != 1) return eslFAIL;
++       if (fwrite((char *) &(cm->expA[z]->mu_orig),   sizeof(double), 1, fp) != 1) return eslFAIL;
++-      if (fwrite((char *) &(dbsize_long),            sizeof(long),   1, fp) != 1) return eslFAIL;
+++      if (fwrite((char *) &(dbsize_long),            sizeof(int64_t), 1, fp) != 1) return eslFAIL;
++       if (fwrite((char *) &(cm->expA[z]->nrandhits), sizeof(int),    1, fp) != 1) return eslFAIL;
++       if (fwrite((char *) &(cm->expA[z]->tailp),     sizeof(double), 1, fp) != 1) return eslFAIL;
++     }
++@@ -2255,14 +2255,14 @@ read_bin_1p1_cm(CM_FILE *cmfp, int read_fp7, ESL_ALPHABET **ret_abc, CM_t **opt_
++     if (! fread((char *) &tmp_fp7_gflambda, sizeof(float), 1, cmfp->f))         ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read additional P7 E-value stats");
++   }
++   if (cm->flags & CMH_EXPTAIL_STATS) { 
++-    long dbsize_long;
+++    int64_t dbsize_long;
++     ESL_ALLOC(cm->expA, sizeof(ExpInfo_t *) * EXP_NMODES);
++     for(x = 0; x < EXP_NMODES; x++) {
++       cm->expA[x] = CreateExpInfo();
++       if (! fread((char *) &(cm->expA[x]->lambda),    sizeof(double), 1, cmfp->f))        ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read CM E-value stats");
++       if (! fread((char *) &(cm->expA[x]->mu_extrap), sizeof(double), 1, cmfp->f))        ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read CM E-value stats");
++       if (! fread((char *) &(cm->expA[x]->mu_orig),   sizeof(double), 1, cmfp->f))        ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read CM E-value stats");
++-      if (! fread((char *) &(dbsize_long),            sizeof(long),   1, cmfp->f))        ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read CM E-value stats");
+++      if (! fread((char *) &(dbsize_long),            sizeof(int64_t), 1, cmfp->f))        ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read CM E-value stats");
++       cm->expA[x]->dbsize = (double) dbsize_long;
++       if (! fread((char *) &(cm->expA[x]->nrandhits), sizeof(int),    1, cmfp->f))        ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read CM E-value stats");
++       if (! fread((char *) &(cm->expA[x]->tailp),     sizeof(double), 1, cmfp->f))        ESL_XFAIL(eslEFORMAT, cmfp->errbuf, "failed to read CM E-value stats");
++diff --git a/src/impl_sse/cm_optimized.c b/src/impl_sse/cm_optimized.c
++index 15d4196b..e7fc1a39 100644
++--- a/src/impl_sse/cm_optimized.c
+++++ b/src/impl_sse/cm_optimized.c
++@@ -419,7 +419,7 @@ biased_byteify(CM_CONSENSUS *ccm, float sc)
++ 
++   sc  = -1.0f * roundf(ccm->scale_b * sc);                          /* ugh. sc is now an integer cost represented in a float...
++     */
++-  b   = (sc > 255 - ccm->bias_b) ? 255 : (uint8_t) sc + ccm->bias_b; /* and now we cast, saturate, and bias it to an unsigned char cost
+++  b   = (sc > 255 - ccm->bias_b) ? 255 : (uint8_t) ((int) sc + ccm->bias_b); /* and now we cast, saturate, and bias it to an unsigned char cost
++ ... */
++   return b;
++ }
++@@ -435,7 +435,7 @@ unbiased_byteify(CM_CONSENSUS *ccm, float sc)
++   uint8_t b;
++ 
++   sc  = -1.0f * roundf(ccm->scale_b * sc);       /* ugh. sc is now an integer cost represented in a float...    */
++-  b   = (sc > 255.) ? 255 : (uint8_t) sc;       /* and now we cast and saturate it to an unsigned char cost... */
+++  b   = (sc > 255.) ? 255 : (uint8_t) (int) sc;       /* and now we cast and saturate it to an unsigned char cost... */
++   return b;
++ }
++ 
+diff --git a/web/tests/test_cdn.cy.js b/web/tests/test_cdn.cy.js
+index 4613a68..ac54a22 100644
+--- a/web/tests/test_cdn.cy.js
++++ b/web/tests/test_cdn.cy.js
+@@ -1,5 +1,7 @@
+ const EXAMPLE_SAM = `@SQ	SN:ref	LN:45\n@SQ	SN:ref2	LN:40\nr001	163	ref	7	30	8M4I4M1D3M	=	37	39	TTAGATAAAGAGGATACTG	*	XX:B:S,12561,2,20,112\nr002	0	ref	9	30	1S2I6M1P1I1P1I4M2I	*	0	0	AAAAGATAAGGGATAAA	*\nr003	0	ref	9	30	5H6M	*	0	0	AGCTAA	*\nr004	0	ref	16	30	6M14N1I5M	*	0	0	ATAGCTCTCAGC	*\nr003	16	ref	29	30	6H5M	*	0	0	TAGGC	*\nr001	83	ref	37	30	9M	=	7	-39	CAGCGCCAT	*\nx1	0	ref2	1	30	20M	*	0	0	aggttttataaaacaaataa	????????????????????\nx2	0	ref2	2	30	21M	*	0	0	ggttttataaaacaaataatt	?????????????????????\nx3	0	ref2	6	30	9M4I13M	*	0	0	ttataaaacAAATaattaagtctaca	??????????????????????????\nx4	0	ref2	10	30	25M	*	0	0	CaaaTaattaagtctacagagcaac	?????????????????????????\nx5	0	ref2	12	30	24M	*	0	0	aaTaattaagtctacagagcaact	????????????????????????\nx6	0	ref2	14	30	23M	*	0	0	Taattaagtctacagagcaacta	???????????????????????`;
+ const EXPECTED_OUTPUTS = {
++	"tools/diamond/examples/v2.2.8.html": [`d4at5a1\td3f66a_\t37.1\t286\t2.25e-62\t189\nd4at5a1\td4i4ea_\t38.0\t279\t1.73e-61\t186\nd4at5a1\td1ad5a3\t35.5\t282\t1.62e-55\t171\nd4at5a1\td3poza_\t32.6\t282\t2.98e-46\t148\nd4nima_\td1geea_\t28.9\t242\t1.03e-28\t99.8\nd4nima_\td3o38a_\t29.6\t250\t7.42e-24\t86.7\nd4nima_\td3uxya_\t29.5\t254\t1.91e-22\t82.4\nd4nima_\td3un1a1\t28.5\t249\t5.68e-19\t72.8`],
++	"tools/infernal/examples/infernal-1.1.5.html": [`       1 tRNA5                       5     3.73     74    72   21    2 0.783 0.489 `, `# STOCKHOLM 1.0\n#=GF AU Infernal 1.1.5\n\nmrum-tRNA.1         GGAGCUAUAGCUCAAU.GGC.AGAGCGUUUGGCUGACAU........................................CCAAAAGGUUAUGGGUUCGAUUCCCUUUAGCCCCA\n#=GR mrum-tRNA.1 PP ****************.***.******************........................................***********************************\nmrum-tRNA.6         GCUUCUAUGGGGUAAUcGGCaAACCCAUCGGACUUUCGA........................................UCCGAUAA-UCCGGGUUCAAAUCCCGGUAGAAGCA\n#=GR mrum-tRNA.6 PP ***************************************........................................********.9*************************\nmrum-tRNA.9         GCCGGGGUGGCUCAGCuGGUuAGAGCGCACGGCUC----auaggguaacuaagcgugcucugacuuuuuuccugggauaCCGUGAGAUCGCGGGUUCGAAUCCCGCCCCCGGCA\n#=GR mrum-tRNA.9 PP ********************************995....678************************************************************************\n#=GC SS_cons        (((((((,,<<<<___.___._>>>>,<<<<<_______~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~>>>>>,,,,,<<<<<_______>>>>>))))))):\n#=GC RF             gCcggcAUAGcgcAgU.GGu.AgcgCgccagccUgucAa~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~gcuggAGgUCCgggGUUCGAUUCcccGUgccgGca\n//`],
+ 	// Test tool-specific code examples
+ 	"tools/ASTER/examples/v1.23.html": [
+ 		// Check the clades since newick is not sorted

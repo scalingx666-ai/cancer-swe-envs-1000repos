@@ -1,0 +1,488 @@
+diff --git a/.Rbuildignore b/.Rbuildignore
+index 95f6535f..a2904880 100644
+--- a/.Rbuildignore
++++ b/.Rbuildignore
+@@ -1,16 +1,19 @@
+-^cpsr\.Rproj$
++^CLAUDE\.md$
++^LICENSE\.md$
++^Makefile$
+ ^\.Rproj\.user$
+ ^\.bumpversion\.toml$
++^\.claude$
+ ^\.github$
+-^examples
+-^data-raw$
+-^LICENSE\.md$
++^\.positai$
++^\.pre-commit-config\.yaml$
++^_pkgdown\.yml$
++^air\.toml$
+ ^conda$
++^cpsr\.Rproj$
++^data-raw$
+ ^docs$
+-^pkgdown/_pkgdown\.yml$
++^examples
+ ^pkgdown$
+-^_pkgdown\.yml$
+-^\.pre-commit-config\.yaml$
++^pkgdown/_pkgdown\.yml$
+ ^vignettes$
+-^\.positai$
+-^\.claude$
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 9a3c2d61..3a37bea7 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -58,4 +58,4 @@ Encoding: UTF-8
+ LazyData: true
+ Roxygen: list(markdown = TRUE)
+ VignetteBuilder: knitr
+-Config/roxygen2/version: 8.0.0
++RoxygenNote: 7.3.3
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 00000000..4fc04f29
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,14 @@
++.PHONY: all pkgdown
++
++check:
++	@R -e "devtools::check()" --quiet --no-restore --no-save
++
++pkgdown:
++	@R -e "pkgdown::build_site()" --quiet --no-restore --no-save
++
++roxydoc:
++	@R -e "devtools::document()" --quiet --no-restore --no-save
++
++build:
++	@R -e "pak::local_install(upgrade = FALSE, dependencies = FALSE)" --quiet --no-restore --no-save
++
+diff --git a/NAMESPACE b/NAMESPACE
+index 65dcb0de..a5f1ce2b 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -14,7 +14,7 @@ export(assign_PP2_evidence)
+ export(assign_PP3_evidence)
+ export(assign_PS1_evidence)
+ export(assign_PVS1_evidence)
+-export(assign_acmg_concensus)
++export(assign_acmg_consensus)
+ export(assign_acmg_evidence)
+ export(assign_classification_authority)
+ export(bs_icon2)
+diff --git a/R/classification.R b/R/classification.R
+index bf500c8a..031e08df 100644
+--- a/R/classification.R
++++ b/R/classification.R
+@@ -130,7 +130,7 @@ assign_acmg_consensus <- function(
+ 
+   code_names <- active_codes$cpsr_evidence_code
+   disp_names <- active_codes$display_code
+-  score_map  <- setNames(active_codes$path_score, code_names)
++  score_map  <- stats::setNames(active_codes$path_score, code_names)
+ 
+   var_calls <- var_calls |>
+     dplyr::mutate(
+@@ -286,7 +286,6 @@ assign_classification_authority <-
+ 
+     var_calls <- var_calls |>
+       dplyr::mutate(
+-
+         ## -- individual override reason flags --
+         .clinvar_novel = is.na(.data$CLINVAR_CLASSIFICATION),
+         .clinvar_conflicted = (!is.na(.data$CLINVAR_CONFLICTED) &
+@@ -298,20 +297,21 @@ assign_classification_authority <-
+         .clinvar_single_star = (!is.na(.data$CLINVAR_GOLD_STARS) &
+                                   .data$CLINVAR_GOLD_STARS == 1),
+         .clinvar_no_cancer_pheno = (!is.na(.data$CLINVAR_PHENOTYPE_CANCER) &
+-                                      .data$CLINVAR_PHENOTYPE_CANCER == 0),
+-
++                                      .data$CLINVAR_PHENOTYPE_CANCER == 0)
++      ) |>
++      dplyr::mutate(
+         ## -- which flags are active at the chosen trust level --
+-        .override_novel = .clinvar_novel,
+-        .override_conflicted = .clinvar_conflicted,
++        .override_novel = .data$.clinvar_novel,
++        .override_conflicted = .data$.clinvar_conflicted,
+         .override_stars = if (clinvar_trust_level >= 2) {
+-          .clinvar_zero_stars | .clinvar_single_star
++          .data$.clinvar_zero_stars | .data$.clinvar_single_star
+         } else if (clinvar_trust_level >= 1) {
+-          .clinvar_zero_stars
++          .data$.clinvar_zero_stars
+         } else {
+           FALSE
+         },
+         .override_phenotype = if (clinvar_trust_level >= 3) {
+-          .clinvar_no_cancer_pheno
++          .data$.clinvar_no_cancer_pheno
+         } else {
+           FALSE
+         },
+@@ -319,11 +319,11 @@ assign_classification_authority <-
+ 
+         ## -- should CPSR take authority for this record? --
+         .cpsr_overrides = (
+-          .override_novel |
+-            .override_conflicted |
+-            .override_stars |
+-            .override_phenotype |
+-            .override_always
++          .data$.override_novel |
++            .data$.override_conflicted |
++            .data$.override_stars |
++            .data$.override_phenotype |
++            .data$.override_always
+         )
+       )
+ 
+@@ -333,22 +333,22 @@ assign_classification_authority <-
+       dplyr::mutate(
+         ASSERTION_RATIONALE = {
+           reasons <- character(0)
+-          if (.clinvar_novel)
++          if (.data$.clinvar_novel)
+             reasons <- c(reasons, "Novel variant (absent from ClinVar)")
+-          if (.clinvar_conflicted)
++          if (.data$.clinvar_conflicted)
+             reasons <- c(reasons, "Conflicting ClinVar interpretations")
+-          if (!.clinvar_novel & !.clinvar_conflicted) {
+-            if (.cpsr_overrides) {
++          if (!.data$.clinvar_novel & !.data$.clinvar_conflicted) {
++            if (.data$.cpsr_overrides) {
+               star_label <- paste0(
+                 "ClinVar review status: ",
+                 .data$CLINVAR_GOLD_STARS,
+                 ifelse(.data$CLINVAR_GOLD_STARS == 1,
+                        " gold star", " gold stars"))
+               reasons <- c(reasons, star_label)
+-              if (.override_phenotype)
++              if (.data$.override_phenotype)
+                 reasons <- c(reasons,
+                              "No cancer-related ClinVar phenotype(s)")
+-              if (.override_always & length(reasons) == 1)
++              if (.data$.override_always & length(reasons) == 1)
+                 reasons <- c(reasons,
+                              "CPSR override (trust level 4)")
+             } else {
+@@ -366,8 +366,8 @@ assign_classification_authority <-
+     var_calls <- var_calls |>
+       dplyr::mutate(
+         ASSERTION_AUTHORITY = dplyr::case_when(
+-          .cpsr_overrides & !is.na(.data$CPSR_CLASSIFICATION) ~ "CPSR",
+-          !.clinvar_novel & !.cpsr_overrides ~ "ClinVar",
++          .data$.cpsr_overrides & !is.na(.data$CPSR_CLASSIFICATION) ~ "CPSR",
++          !.data$.clinvar_novel & !.data$.cpsr_overrides ~ "ClinVar",
+           TRUE ~ NA_character_
+         ),
+         CLASSIFICATION = dplyr::case_when(
+@@ -409,7 +409,7 @@ assign_classification_authority <-
+     var_calls <- var_calls |>
+       dplyr::select(-dplyr::starts_with(".clinvar_"),
+                     -dplyr::starts_with(".override_"),
+-                    -.cpsr_overrides) |>
++                    -dplyr::all_of(".cpsr_overrides")) |>
+       dplyr::mutate(CLASSIFICATION = dplyr::if_else(
+         .data$CLASSIFICATION != "Benign" &
+           .data$CLASSIFICATION != "Likely Benign" &
+@@ -805,7 +805,7 @@ assign_BP7_evidence <- function(var_calls = NULL){
+ 
+     var_calls <- var_calls |>
+       tidyr::separate(
+-        MAXENTSCAN,
++        "MAXENTSCAN",
+         c("tmp_MES","MES_STRATUM","MES_TIER"),
+         sep = "\\|", remove = FALSE
+       ) |>
+@@ -919,7 +919,7 @@ assign_PVS1_evidence <- function(
+ 
+     var_calls <- var_calls |>
+       tidyr::separate(
+-        MAXENTSCAN,
++        "MAXENTSCAN",
+         c("tmp_MES","MES_STRATUM","MES_TIER"),
+         sep = "\\|", remove = FALSE
+       ) |>
+diff --git a/R/main.R b/R/main.R
+index f0c11f8f..a3392630 100644
+--- a/R/main.R
++++ b/R/main.R
+@@ -625,7 +625,7 @@ write_cpsr_output <- function(report,
+     )
+ 
+     if (file.exists(quarto_input_pdf)) {
+-      ## Temporary directory — same pattern as HTML rendering
++      ## Temporary directory - same pattern as HTML rendering
+       tmp_quarto_dir1 <- file.path(
+         output_dir,
+         paste0("quarto_", stringi::stri_rand_strings(1, 15))
+@@ -687,7 +687,7 @@ write_cpsr_output <- function(report,
+       pcgrr::log4r_warn(
+         paste0(
+           "PDF template not found at: ", quarto_input_pdf,
+-          " — skipping PDF generation"
++          " - skipping PDF generation"
+         )
+       )
+     }
+diff --git a/R/reactable.R b/R/reactable.R
+index 9fddc518..2504cab0 100644
+--- a/R/reactable.R
++++ b/R/reactable.R
+@@ -1,4 +1,4 @@
+-# ── Cell renderer factories ──────────────────────────────────────────────────
++# Cell renderer factories
+ 
+ #' Cell renderer factory for classification column
+ #' Returns a function that renders classification values as
+@@ -29,7 +29,7 @@ rt_cell_classification <- function(color_palette) {
+ }
+ 
+ #' Cell renderer factory for classification rank column
+-#' Maps a numeric rank (1=Benign … 5=Pathogenic) to a labelled
++#' Maps a numeric rank (1=Benign ... 5=Pathogenic) to a labelled
+ #' colored pill, enabling correct sort order via JavaScript.
+ #'
+ #' @param color_palette CPSR color palette object
+@@ -119,7 +119,7 @@ rt_cell_bm_significance <- function(color_palette) {
+   }
+ }
+ 
+-# ─────────────────────────────────────────────────────────────────────────────
++# ---------------------------------------------------------------------------
+ 
+ #' Prepare unified variant dataset for single-table display
+ #'
+@@ -162,7 +162,7 @@ prepare_unified_all_variants <- function(
+       !all(required_cols %in% colnames(all_variants))) {
+     return(
+       data.frame(matrix(ncol = length(required_cols), nrow = 0)) |>
+-        setNames(required_cols)
++        stats::setNames(required_cols)
+     )
+   }
+ 
+@@ -170,7 +170,7 @@ prepare_unified_all_variants <- function(
+     dplyr::mutate(
+       ACMG_CODE = dplyr::if_else(
+         is.na(.data$ACMG_CODE) | .data$ACMG_CODE == "",
+-        "—",
++        "\u2014",
+         .data$ACMG_CODE
+       )
+     ) |>
+@@ -185,7 +185,7 @@ prepare_unified_all_variants <- function(
+           .data$HGVSc_RefSeq,
+           .data$CLINVAR_PHENOTYPE,
+           pcgrr::strip_html(.data$CLINVAR),
+-          GENOMIC_CHANGE,
++          .data$GENOMIC_CHANGE,
+           .data$ACMG_CODE,
+           sep = " "
+         ),
+@@ -196,20 +196,20 @@ prepare_unified_all_variants <- function(
+ 
+   # Split by source and arrange by quality metrics
+   clinvar_data <- all_variants |>
+-    dplyr::filter(ASSERTION_AUTHORITY == "ClinVar") |>
++    dplyr::filter(.data$ASSERTION_AUTHORITY == "ClinVar") |>
+     dplyr::arrange(
+-      dplyr::desc(CLASSIFICATION),
+-      dplyr::desc(CLINVAR_GOLD_STARS),
+-      SYMBOL
++      dplyr::desc(.data$CLASSIFICATION),
++      dplyr::desc(.data$CLINVAR_GOLD_STARS),
++      .data$SYMBOL
+     ) |>
+     utils::head(max_rows)
+ 
+   cpsr_data <- all_variants |>
+-    dplyr::filter(ASSERTION_AUTHORITY == "CPSR") |>
++    dplyr::filter(.data$ASSERTION_AUTHORITY == "CPSR") |>
+     dplyr::arrange(
+-      dplyr::desc(CLASSIFICATION),
+-      dplyr::desc(CPSR_PATHOGENICITY_SCORE),
+-      SYMBOL
++      dplyr::desc(.data$CLASSIFICATION),
++      dplyr::desc(.data$CPSR_PATHOGENICITY_SCORE),
++      .data$SYMBOL
+     ) |>
+     utils::head(max_rows)
+ 
+@@ -220,15 +220,15 @@ prepare_unified_all_variants <- function(
+       cpsr_data) |>
+     dplyr::arrange(
+       dplyr::desc(.data$CLASSIFICATION),
+-      SYMBOL
++      .data$SYMBOL
+     ) |>
+     dplyr::mutate(
+       VARKEY_CLASSIFICATION = paste(
+-        SYMBOL,
+-        GENOMIC_CHANGE,
+-        ALTERATION,
+-        ASSERTION_AUTHORITY, sep = "|"),
+-      .after = SYMBOL
++        .data$SYMBOL,
++        .data$GENOMIC_CHANGE,
++        .data$ALTERATION,
++        .data$ASSERTION_AUTHORITY, sep = "|"),
++      .after = "SYMBOL"
+     ) |>
+     dplyr::mutate(
+       dplyr::across(
+@@ -799,7 +799,7 @@ prep_biomarker_tbl <- function(
+       biomarker_source_support <-
+         vars |>
+         dplyr::group_by(
+-          VAR_ID, ENTREZGENE
++          .data$VAR_ID, .data$ENTREZGENE
+         ) |>
+         dplyr::summarise(
+           BM_SOURCES = paste(
+@@ -815,9 +815,9 @@ prep_biomarker_tbl <- function(
+         dplyr::group_by(.data$VAR_ID, .data$ENTREZGENE) |>
+         dplyr::summarise(
+           SEARCH_INDEX = stringr::str_squish(paste(
+-            c(unique(na.omit(.data$BM_EVIDENCE_DESCRIPTION)),
+-              unique(na.omit(.data$BM_CANCER_TYPE)),
+-              unique(na.omit(.data$BM_THERAPEUTIC_CONTEXT))),
++            c(unique(stats::na.omit(.data$BM_EVIDENCE_DESCRIPTION)),
++              unique(stats::na.omit(.data$BM_CANCER_TYPE)),
++              unique(stats::na.omit(.data$BM_THERAPEUTIC_CONTEXT))),
+             collapse = " "
+           )),
+           .groups = "drop"
+diff --git a/air.toml b/air.toml
+new file mode 100644
+index 00000000..27a6b222
+--- /dev/null
++++ b/air.toml
+@@ -0,0 +1,9 @@
++[format]
++line-width = 100
++indent-width = 2
++indent-style = "space"
++line-ending = "auto"
++persistent-line-breaks = true
++exclude = []
++default-exclude = true
++skip = []
+diff --git a/man/assign_PP2_evidence.Rd b/man/assign_PP2_evidence.Rd
+index f935ad80..5d22354a 100644
+--- a/man/assign_PP2_evidence.Rd
++++ b/man/assign_PP2_evidence.Rd
+@@ -3,7 +3,7 @@
+ \name{assign_PP2_evidence}
+ \alias{assign_PP2_evidence}
+ \title{Function that assigns ACMG evidence indicators for
+-PP3}
++PP2}
+ \usage{
+ assign_PP2_evidence(
+   var_calls = NULL,
+@@ -25,5 +25,5 @@ data.frame with ACMG evidence indicators
+ }
+ \description{
+ Function that assigns ACMG evidence indicators for
+-PP3
++PP2
+ }
+diff --git a/man/assign_acmg_concensus.Rd b/man/assign_acmg_consensus.Rd
+similarity index 84%
+rename from man/assign_acmg_concensus.Rd
+rename to man/assign_acmg_consensus.Rd
+index 9153fd90..e324071a 100644
+--- a/man/assign_acmg_concensus.Rd
++++ b/man/assign_acmg_consensus.Rd
+@@ -1,12 +1,12 @@
+ % Generated by roxygen2: do not edit by hand
+ % Please edit documentation in R/classification.R
+-\name{assign_acmg_concensus}
+-\alias{assign_acmg_concensus}
++\name{assign_acmg_consensus}
++\alias{assign_acmg_consensus}
+ \title{Function that assigns a summary string of
+ all ACMG evidence codes met for a given variant
+ (e.g. "PVS1|PS1|PM2_supporting|PP3")}
+ \usage{
+-assign_acmg_concensus(var_calls = NULL)
++assign_acmg_consensus(var_calls = NULL)
+ }
+ \arguments{
+ \item{var_calls}{data frame with variant calls in predisposition genes}
+diff --git a/man/curated_transcripts.Rd b/man/curated_transcripts.Rd
+index 39f3c279..aab336ad 100644
+--- a/man/curated_transcripts.Rd
++++ b/man/curated_transcripts.Rd
+@@ -5,7 +5,7 @@
+ \alias{curated_transcripts}
+ \title{Curated transcripts}
+ \format{
+-A data frame with curated transcripts for MEN1
++A data frame with curated canonical RefSeq transcript identifiers (grch37 support)
+ }
+ \usage{
+ curated_transcripts
+diff --git a/man/render_actble_bm_table.Rd b/man/render_actble_bm_table.Rd
+index d82c8786..b886913a 100644
+--- a/man/render_actble_bm_table.Rd
++++ b/man/render_actble_bm_table.Rd
+@@ -2,10 +2,7 @@
+ % Please edit documentation in R/reactable.R
+ \name{render_actble_bm_table}
+ \alias{render_actble_bm_table}
+-\title{Build biomarker reactable with category-aware styling
+-Combines tier 1 and tier 2 records in one table.
+-Header uses tier 1 color; THERAPY_MATCH cell background
+-reflects the row's tier (1 or 2).}
++\title{Build biomarker reactable with category-aware styling}
+ \usage{
+ render_actble_bm_table(
+   rctbl_recs = NULL,
+@@ -14,8 +11,9 @@ render_actble_bm_table(
+ )
+ }
+ \arguments{
+-\item{rctbl_recs}{List with $main and $nested data frames.
+-$main must contain ACTIONABILITY_TIER with values 1 and 2.}
++\item{rctbl_recs}{List with $main and $nested data frames
++containing prepared biomarker table records, for example as
++returned by \code{\link[=prep_biomarker_tbl]{prep_biomarker_tbl()}}.}
+ 
+ \item{variant_category}{One of "snv_indel", "cnv", "fusion"}
+ 
+@@ -26,7 +24,4 @@ A reactable object with the biomarker table
+ }
+ \description{
+ Build biomarker reactable with category-aware styling
+-Combines tier 1 and tier 2 records in one table.
+-Header uses tier 1 color; THERAPY_MATCH cell background
+-reflects the row's tier (1 or 2).
+ }
+diff --git a/man/rt_cell_classification_rank.Rd b/man/rt_cell_classification_rank.Rd
+index cb596367..ea02bc60 100644
+--- a/man/rt_cell_classification_rank.Rd
++++ b/man/rt_cell_classification_rank.Rd
+@@ -3,7 +3,7 @@
+ \name{rt_cell_classification_rank}
+ \alias{rt_cell_classification_rank}
+ \title{Cell renderer factory for classification rank column
+-Maps a numeric rank (1=Benign … 5=Pathogenic) to a labelled
++Maps a numeric rank (1=Benign ... 5=Pathogenic) to a labelled
+ colored pill, enabling correct sort order via JavaScript.}
+ \usage{
+ rt_cell_classification_rank(color_palette)
+@@ -16,6 +16,6 @@ A function(value) returning an HTML span
+ }
+ \description{
+ Cell renderer factory for classification rank column
+-Maps a numeric rank (1=Benign … 5=Pathogenic) to a labelled
++Maps a numeric rank (1=Benign ... 5=Pathogenic) to a labelled
+ colored pill, enabling correct sort order via JavaScript.
+ }

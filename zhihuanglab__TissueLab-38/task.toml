@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/zhihuanglab__TissueLab-38"
+description = "ST counting workflow: CellCharter wiring, slide mpp to the coding agent"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "TissueLab",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zhihuanglab/TissueLab"
+ref = "2b316489684dbd7fb7dfccbb5ec3d9a93b91e504"
+reference = "https://github.com/zhihuanglab/TissueLab/pull/38"
+source_access = "auto"
+built_at = "2026-11-13T16:34:43.826998+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:dc25edcb2e63172307959dff0281cb70e7b145a13c78d5f8479635a6b4211b5c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-05T03:42:06Z"
+diff_format = "unified"
+context_files = [
+    "app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx",
+    "app/render/constants/modelRegistryFallback.json",
+    "app/render/constants/workflow.constants.ts",
+    "app/render/store/slices/chat/workflowSlice.ts",
+    "app/render/store/zustand/slice/workflowGraphChatBridge.ts",
+    "app/render/utils/agent/graph/panel.ts",
+    "app/render/utils/agent/workflow/buildStartPayload.ts",
+    "app/service/app/api/tasks.py",
+    "app/service/app/services/prompts/code_system_prompt.txt",
+    "app/service/app/services/prompts/workflow_system_prompt.txt",
+    "app/service/app/services/tasks.py",
+    "app/service/app/services/workflow/runtime.py",
+    "app/service/app/services/workflow/start.py",
+    "app/service/app/utils/workflow/scheduler.py",
+    "app/service/storage/model_registry_preset.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 95
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

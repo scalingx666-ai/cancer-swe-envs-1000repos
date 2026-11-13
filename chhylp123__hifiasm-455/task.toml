@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/chhylp123__hifiasm-455"
+description = "fix memory leak of print_utg"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "hifiasm",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "chhylp123/hifiasm"
+ref = "5bddae4ae9f9d5048407b5710ff67c5cb3f42bf8"
+reference = "https://github.com/chhylp123/hifiasm/pull/455"
+source_access = "auto"
+built_at = "2026-11-13T16:40:35.257908+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:72a8b31fcbca411b5e16b3619d80007cb2d287947831c84d9468d7b3fb55ea0b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-05-12T15:32:03Z"
+diff_format = "unified"
+context_files = [
+    "Assembly.cpp",
+    "CommandLines.h",
+    "Overlaps.cpp",
+    "Process_Read.cpp",
+    "Process_Read.h",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 72
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

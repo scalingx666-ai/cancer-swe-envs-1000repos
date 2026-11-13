@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/slideflow__slideflow-401"
+description = "Fix `sf.mil.get_mil_tile_predictions` for CLAM models"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "slideflow",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "slideflow/slideflow"
+ref = "e1dfa32f46ff825e6a0bb760253ccc4a2871ab89"
+reference = "https://github.com/slideflow/slideflow/pull/401"
+source_access = "auto"
+built_at = "2026-11-13T16:31:33.396577+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:657ffbc5e1f943f462ff09a416d7b2171eeb6afdb4ccecaebffa2756e614e4df"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-07-31T18:26:32Z"
+diff_format = "unified"
+context_files = [
+    "slideflow/mil/eval.py",
+    "slideflow/mil/models/clam.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 96
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

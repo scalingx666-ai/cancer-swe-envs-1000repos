@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/lazear__sage-240"
+description = "chore: migrate sage-cloudpath to reqwest 0.12"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "sage",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lazear/sage"
+ref = "cb9934ff4820cc6d323c08f6e53598ed2732cd07"
+reference = "https://github.com/lazear/sage/pull/240"
+source_access = "auto"
+built_at = "2026-11-13T15:59:50.436425+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:75849927a2996df58521961db19e5c5472c3ba0c185a8cfc4e8f0b33d61be88a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-21T17:50:23Z"
+diff_format = "unified"
+context_files = [
+    "Cargo.lock",
+    "crates/sage-cloudpath/Cargo.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 427
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

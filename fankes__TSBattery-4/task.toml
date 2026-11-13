@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/fankes__TSBattery-4"
+description = "Support QQ 8.8.50"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "TSBattery",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "fankes/TSBattery"
+ref = "b075fd8424100e5ff7bb29328c78a8010cd7a03d"
+reference = "https://github.com/fankes/TSBattery/pull/4"
+source_access = "auto"
+built_at = "2026-11-13T15:30:05.747919+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c6b0e7de10838cdec220575eb20b75f09d8f21061e688a668675906416d0d494"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-11-24T10:52:10Z"
+diff_format = "unified"
+context_files = [
+    "app/build.gradle",
+    "app/src/main/java/com/fankes/tsbattery/MainActivity.kt",
+    "app/src/main/java/com/fankes/tsbattery/hook/HookMain.kt",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 9
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

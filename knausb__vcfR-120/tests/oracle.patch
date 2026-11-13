@@ -1,0 +1,15 @@
+diff --git a/R/freq_peak_plot.R b/R/freq_peak_plot.R
+index ce5a6c0f..35101352 100644
+--- a/R/freq_peak_plot.R
++++ b/R/freq_peak_plot.R
+@@ -10,8 +10,8 @@
+ #' @param posUnits units ('bp', 'Kbp', 'Mbp', 'Gbp') for `pos` to be converted to in the main plot
+ #' @param ab1 matrix of allele balances for allele 1
+ #' @param ab2 matrix of allele balances for allele 2
+-#' @param fp1 feq_peak object for allele 1
+-#' @param fp2 feq_peak object for allele 2
++#' @param fp1 freq_peak object for allele 1
++#' @param fp2 freq_peak object for allele 2
+ #' @param mySamp sample indicator
+ #' @param col1 color 1
+ #' @param col2 color 2

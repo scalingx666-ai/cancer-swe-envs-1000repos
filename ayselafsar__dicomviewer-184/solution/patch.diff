@@ -1,0 +1,192 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index 3c136da..b999000 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -18,8 +18,8 @@ jobs:
+       # do not stop on another job's failure
+       fail-fast: false
+       matrix:
+-        php-versions: ['8.2']
+-        server-versions: ['stable34']
++        php-versions: ['8.3']
++        server-versions: ['stable35']
+ 
+     name: php${{ matrix.php-versions }}-${{ matrix.server-versions }}
+ 
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 8c5a9a7..d614f05 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -23,7 +23,7 @@ jobs:
+       - name: Setup PHP
+         uses: shivammathur/setup-php@v2
+         with:
+-          php-version: '8.2'
++          php-version: '8.3'
+           extensions: mbstring, intl, sqlite3
+           ini-values: post_max_size=256M, max_execution_time=180
+           coverage: xdebug
+@@ -48,7 +48,7 @@ jobs:
+           sudo apt install make openssl -y
+           echo "###### installing nextcloud"
+           mkdir ~/html
+-          git clone https://github.com/nextcloud/server.git --recursive --depth 1 -b stable34 ~/html/nextcloud
++          git clone https://github.com/nextcloud/server.git --recursive --depth 1 -b stable35 ~/html/nextcloud
+           cp -r $GITHUB_WORKSPACE ~/html/nextcloud/apps/${APP_ID}
+           php ~/html/nextcloud/occ maintenance:install --database "sqlite" --admin-user "admin" --admin-pass "password"
+           echo "###### make"
+diff --git a/appinfo/info.xml b/appinfo/info.xml
+index 70830e1..5f800e6 100644
+--- a/appinfo/info.xml
++++ b/appinfo/info.xml
+@@ -25,11 +25,14 @@ See [README](https://github.com/ayselafsar/dicomviewer) for a list of full featu
+     <screenshot small-thumbnail="https://raw.githubusercontent.com/ayselafsar/dicomviewer/master/screenshots/dump1-small.png">https://raw.githubusercontent.com/ayselafsar/dicomviewer/master/screenshots/dump1.png</screenshot>
+     <screenshot small-thumbnail="https://raw.githubusercontent.com/ayselafsar/dicomviewer/master/screenshots/dump2-small.png">https://raw.githubusercontent.com/ayselafsar/dicomviewer/master/screenshots/dump2.png</screenshot>
+     <dependencies>
+-        <nextcloud min-version="33" max-version="34"/>
++        <nextcloud min-version="33" max-version="35"/>
+     </dependencies>
+     <repair-steps>
+         <install>
+             <step>OCA\DICOMViewer\Migration\RegisterMimeType</step>
+         </install>
++        <post-upgrade>
++            <step>OCA\DICOMViewer\Migration\RegisterMimeType</step>
++        </post-upgrade>
+     </repair-steps>
+ </info>
+diff --git a/composer.json b/composer.json
+index fc61a4c..d23d7a8 100644
+--- a/composer.json
++++ b/composer.json
+@@ -4,7 +4,7 @@
+         "optimize-autoloader": true,
+         "classmap-authoritative": true,
+         "platform": {
+-            "php": "7.4"
++            "php": "8.1"
+         }
+     },
+     "description": "DICOM viewer on Nextcloud",
+diff --git a/img/application-dicom.svg b/img/application-dicom.svg
+new file mode 100644
+index 0000000..499827b
+--- /dev/null
++++ b/img/application-dicom.svg
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="utf-8"?>
++<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
++	 viewBox="0 0 32 32" style="enable-background:new 0 0 32 32;" xml:space="preserve">
++<style type="text/css">
++	.st0{fill:#969696;}
++	.st1{font-family:'MyriadPro-Bold';}
++	.st2{font-size:10.4869px;}
++</style>
++<path class="st0" d="M27,7.8c0.3,0.3,0.5,0.7,0.8,1.2c0.3,0.5,0.4,1,0.4,1.4v18.3c0,0.4-0.2,0.8-0.4,1.1c-0.4,0.2-0.7,0.4-1.2,0.4
++	H5.3c-0.4,0-0.8-0.2-1.1-0.4c-0.3-0.3-0.4-0.6-0.4-1.1V3.3c0-0.4,0.2-0.8,0.4-1.1s0.6-0.4,1.1-0.4h14.2c0.4,0,0.9,0.1,1.4,0.4
++	c0.5,0.3,0.9,0.4,1.2,0.8L27,7.8z M20,3.9v5.9H26c-0.1-0.3-0.2-0.5-0.4-0.6l-5-5C20.6,4.2,20.3,4,20,3.9z M26.1,28.1V11.9h-6.6
++	c-0.4,0-0.8-0.2-1.1-0.4c-0.3-0.3-0.4-0.6-0.4-1.1V3.9H5.9v24.3C5.9,28.1,26.1,28.1,26.1,28.1z"/>
++<text transform="matrix(0.9036 0 0 1 6.9415 24.9971)" class="st0 st1 st2">dcm</text>
++</svg>
+diff --git a/lib/Migration/RegisterMimeType.php b/lib/Migration/RegisterMimeType.php
+index 17505d8..54c23ad 100644
+--- a/lib/Migration/RegisterMimeType.php
++++ b/lib/Migration/RegisterMimeType.php
+@@ -2,6 +2,7 @@
+ 
+ namespace OCA\DICOMViewer\Migration;
+ 
++use OCP\App\IAppManager;
+ use OCP\Files\IMimeTypeLoader;
+ use OCP\Migration\IOutput;
+ use OCP\Migration\IRepairStep;
+@@ -11,10 +12,12 @@ class RegisterMimeType implements IRepairStep {
+     protected $logger;
+     private $customMimetypeMapping;
+     private IMimeTypeLoader $mimeTypeLoader;
++    private IAppManager $appManager;
+ 
+-    public function __construct(LoggerInterface $logger, IMimeTypeLoader $mimeTypeLoader) {
++    public function __construct(LoggerInterface $logger, IMimeTypeLoader $mimeTypeLoader, IAppManager $appManager) {
+         $this->logger = $logger;
+         $this->mimeTypeLoader = $mimeTypeLoader;
++        $this->appManager = $appManager;
+ 
+         // Define the custom mimetype mapping
+         $this->customMimetypeMapping = array(
+@@ -53,6 +56,21 @@ private function registerForNewFiles() {
+         file_put_contents($mimetypeMappingFile, json_encode($mimetypeMapping, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+     }
+ 
++    private function registerIcon() {
++        $source = $this->appManager->getAppPath('dicomviewer') . '/img/application-dicom.svg';
++        $targetDirectory = \OC::$SERVERROOT . '/core/img/filetypes';
++        $target = $targetDirectory . '/application-dicom.svg';
++
++        if (!is_file($source) || !is_dir($targetDirectory) || !is_writable($targetDirectory)) {
++            $this->logger->warning('Unable to install the DICOM file icon.');
++            return;
++        }
++
++        if (!is_file($target) || file_get_contents($source) !== file_get_contents($target)) {
++            copy($source, $target);
++        }
++    }
++
+     public function run(IOutput $output) {
+         $this->logger->info('Registering the mimetype...');
+ 
+@@ -62,6 +80,9 @@ public function run(IOutput $output) {
+         // Register the mime type for new files
+         $this->registerForNewFiles();
+ 
++        // The Files list resolves icons through /core/mimeicon, which only reads core/img/filetypes.
++        $this->registerIcon();
++
+         $this->logger->info('The mimetype was successfully registered.');
+     }
+ }
+diff --git a/package-lock.json b/package-lock.json
+index de2437b..9bf2bb3 100755
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -37,7 +37,7 @@
+       },
+       "engines": {
+         "node": ">=20.0.0",
+-        "npm": "^7.0.0 || ^8.0.0"
++        "npm": ">=9.0.0"
+       }
+     },
+     "node_modules/@aashutoshrathi/word-wrap": {
+diff --git a/package.json b/package.json
+index 4c2b0e3..6b82f88 100755
+--- a/package.json
++++ b/package.json
+@@ -36,7 +36,7 @@
+   ],
+   "engines": {
+     "node": ">=20.0.0",
+-    "npm": "^7.0.0 || ^8.0.0"
++    "npm": ">=9.0.0"
+   },
+   "devDependencies": {
+     "@nextcloud/babel-config": "^1.0.0",
+diff --git a/src/main.js b/src/main.js
+index b1776ee..db7b338 100755
+--- a/src/main.js
++++ b/src/main.js
+@@ -1,13 +1,6 @@
+-import { generateUrl } from '@nextcloud/router';
+ import DICOMView from './views/DICOMView.vue';
+-import generateFullUrl from './utils/generateFullUrl.js';
+ import registerFileActions from './utils/registerFileActions.js';
+ 
+-// Add MimeType Icon (OC.MimeType._mimeTypeIcons was removed in Nextcloud 33)
+-if (OC.MimeType && OC.MimeType._mimeTypeIcons) {
+-    OC.MimeType._mimeTypeIcons['application/dicom'] = `${generateFullUrl(generateUrl('/apps/dicomviewer/img/app.svg'))}`;
+-}
+-
+ OCA.Viewer.registerHandler({
+     id: 'dicom',
+ 

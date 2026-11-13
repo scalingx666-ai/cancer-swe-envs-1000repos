@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/mlin__GenomicSQLite-58"
+description = "Rust: check in Cargo.toml with a literal version"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "GenomicSQLite",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mlin/GenomicSQLite"
+ref = "6ebd132ff7c6cdc49f0f34eed1cc10f22ff33b88"
+reference = "https://github.com/mlin/GenomicSQLite/pull/58"
+source_access = "auto"
+built_at = "2026-11-13T16:14:21.882183+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:483c5ac85048f285225d31384077409a484df0c24d44409a335faddf2ceed15d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-08T03:03:12Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/build.yml",
+    ".github/workflows/release-smoke.yml",
+    "CMakeLists.txt",
+    "Dockerfile",
+    "bindings/rust/.gitignore",
+    "bindings/rust/Cargo.lock",
+    "bindings/rust/Cargo.toml",
+    "bindings/rust/cargo",
+    "test/cargo_smoke_test/.gitignore",
+    "test/cargo_smoke_test/Cargo.toml",
+    "test/cargo_smoke_test/cargo",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 97
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

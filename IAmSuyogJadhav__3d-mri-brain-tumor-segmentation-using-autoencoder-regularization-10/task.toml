@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/IAmSuyogJadhav__3d-mri-brain-tumor-segmentation-using-autoencoder-regularization-10"
+description = "Removed accuracy and added the dice coefficient as the new metric"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "3d-mri-brain-tumor-segmentation-using-autoencoder-regularization",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "IAmSuyogJadhav/3d-mri-brain-tumor-segmentation-using-autoencoder-regularization"
+ref = "81c4c4505e38dc7c0cb826ee3f33206f6806d578"
+reference = "https://github.com/IAmSuyogJadhav/3d-mri-brain-tumor-segmentation-using-autoencoder-regularization/pull/10"
+source_access = "auto"
+built_at = "2026-11-13T15:41:32.350361+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:28d0cbc2a26fe7bdd453596e3a831be284547d14b3612066e5d2696ab324cad4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-07-19T04:49:53Z"
+diff_format = "unified"
+context_files = [
+    "model.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 14
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

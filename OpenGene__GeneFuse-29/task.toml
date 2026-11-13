@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/OpenGene__GeneFuse-29"
+description = "fix strand oritentation bugs & add error msgs"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "GeneFuse",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "OpenGene/GeneFuse"
+ref = "5958b57ef40d6f95137967e78db470c22859e1d1"
+reference = "https://github.com/OpenGene/GeneFuse/pull/29"
+source_access = "auto"
+built_at = "2026-11-13T15:43:36.181507+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c485fa01b85bcd52b9fdef5abeab632c86a6dfe48682f4f3a7b7556d819da8da"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-06-29T02:19:12Z"
+diff_format = "unified"
+context_files = [
+    "scripts/make_fusion_genes.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 15
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

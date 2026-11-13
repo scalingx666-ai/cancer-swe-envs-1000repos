@@ -1,0 +1,75 @@
+version = "1.0"
+
+[task]
+name = "default/konst-int-i__healnet-16"
+description = "Feature/add baselines"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "healnet",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "konst-int-i/healnet"
+ref = "6e335caecb2d54c705a297510acdfc74aabe119a"
+reference = "https://github.com/konst-int-i/healnet/pull/16"
+source_access = "auto"
+built_at = "2026-11-13T15:36:27.690629+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fc30769cdb20cb674b9c111bd8c42e86498a5b2abb2b1da390ad1b606ba9c52f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-01-25T21:26:22Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "environment.yml",
+    "healnet/baselines/__init__.py",
+    "healnet/baselines/multimodn/__init__.py",
+    "healnet/baselines/multimodn/better_multimodn.py",
+    "healnet/baselines/multimodn/decoders.py",
+    "healnet/baselines/multimodn/encoders.py",
+    "healnet/baselines/multimodn/multimodn.py",
+    "healnet/baselines/multimodn/utils.py",
+    "healnet/etl/loaders.py",
+    "healnet/main.py",
+    "healnet/models/__init__.py",
+    "healnet/tests/test_baselines.py",
+    "healnet/tests/test_healnet.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1333
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

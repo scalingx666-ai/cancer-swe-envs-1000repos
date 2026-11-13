@@ -1,0 +1,38 @@
+diff --git a/.github/workflows/publish.yml b/.github/workflows/publish.yml
+index 1170dae..0bbb9d7 100644
+--- a/.github/workflows/publish.yml
++++ b/.github/workflows/publish.yml
+@@ -16,7 +16,7 @@ jobs:
+       - uses: actions/checkout@v4
+ 
+       - name: Build wheels
+-        uses: pypa/cibuildwheel@v2.21.3
++        uses: pypa/cibuildwheel@v3.3.1
+         # Config is read from pyproject.toml [tool.cibuildwheel]
+ 
+       - uses: actions/upload-artifact@v4
+diff --git a/README.md b/README.md
+index c82d04a..87b0feb 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # Smudgeplot 
+ 
+-<font size ="4">**_Version: 0.5.3 Skylight_**</font>
++<font size ="4">**_Version: 0.5.4 Skylight_**</font>
+ 
+ <font size ="4">**_Authors: Sam Ebdon, [Gene W Myers](https://github.com/thegenemyers) and [Kamil S. Jaron](https://github.com/KamilSJaron), Tianyi Ma._**</font>
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index 766db9a..e3a3aa8 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "smudgeplot"
+-version = "0.5.3"
++version = "0.5.4"
+ description = "Inference of ploidy and heterozygosity structure using whole genome sequencing data"
+ readme = "README.md"
+ license = "Apache-2.0"

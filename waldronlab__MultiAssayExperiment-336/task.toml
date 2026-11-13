@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/waldronlab__MultiAssayExperiment-336"
+description = "subsetting by rowData, closes #228"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MultiAssayExperiment",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "waldronlab/MultiAssayExperiment"
+ref = "3282297a8782b81d836d1af44d15a45f022255c3"
+reference = "https://github.com/waldronlab/MultiAssayExperiment/pull/336"
+source_access = "auto"
+built_at = "2026-11-13T15:38:52.784870+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5d25c21f94e808e5c6cb1f4cc010bdd1743ec5613807f312222e4ec00c45329c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-04-23T16:22:23Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/pr_check.yml",
+    "DESCRIPTION",
+    "NAMESPACE",
+    "R/MultiAssayExperiment-class.R",
+    "R/MultiAssayExperiment-helpers.R",
+    "R/longFormat-deprecated.R",
+    "R/subsetBy-methods.R",
+    "man/MultiAssayExperiment-class.Rd",
+    "man/MultiAssayExperiment-helpers.Rd",
+    "man/longFormat-deprecated.Rd",
+    "man/subsetBy.Rd",
+    "tests/testthat/test-subset.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 399
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

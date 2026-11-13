@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/GooglingTheCancerGenome__sv-callers-25"
+description = "Added unit tests for helper functions"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "sv-callers",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "GooglingTheCancerGenome/sv-callers"
+ref = "c3ba3b08bf9f73de897430033f723ba1893b1d1f"
+reference = "https://github.com/GooglingTheCancerGenome/sv-callers/pull/25"
+source_access = "auto"
+built_at = "2026-11-13T15:38:27.330704+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4a00924a7180b10f3c8ff860d2284df8fc47f4dc960b8266289daa0e61de1816"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-03-27T18:34:02Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    ".travis.yml",
+    "snakemake/test_helper_functions.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 202
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

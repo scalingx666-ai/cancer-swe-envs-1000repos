@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/deepomicslab__SpecHLA-73"
+description = "Replace zless with zcat for non-interactive VCF filtering"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "SpecHLA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "deepomicslab/SpecHLA"
+ref = "c36c600f8e89ee6bd1e593d184ebbec5b914436f"
+reference = "https://github.com/deepomicslab/SpecHLA/pull/73"
+source_access = "auto"
+built_at = "2026-11-13T15:39:34.413999+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:318b3077e06b1d58197e132ddcb5f841f63120f10760763644407d0cdb45c12a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-19T16:35:02Z"
+diff_format = "unified"
+context_files = [
+    "script/run.assembly.realign.sh",
+    "script/whole/SpecHLA.sh",
+    "script/whole/test_SpecHLA.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,82 @@
+diff --git a/Source/Bio.Core/IO/BAM/BAMParser.cs b/Source/Bio.Core/IO/BAM/BAMParser.cs
+index 391325a8..ae98edd3 100644
+--- a/Source/Bio.Core/IO/BAM/BAMParser.cs
++++ b/Source/Bio.Core/IO/BAM/BAMParser.cs
+@@ -4,6 +4,7 @@
+ using System.IO;
+ using System.IO.Compression;
+ using System.Linq;
++using System.Runtime.CompilerServices;
+ using System.Text;
+ 
+ using Bio.Algorithms.Alignment;
+@@ -257,13 +258,13 @@ private static int GetStringLength(byte[] array, int startIndex)
+         /// Gets equivalent sequence char for the specified encoded value.
+         /// </summary>
+         /// <param name="encodedValue">Encoded value.</param>
++        [MethodImpl(MethodImplOptions.AggressiveInlining)] 
+         private static byte GetSeqCharAsByte(int encodedValue)
+         {
+-            if (encodedValue >= 0 && encodedValue <= BAMAlphabetAsBytes.Length)
+-            {
+-                return BAMAlphabetAsBytes[encodedValue];
+-            }
+-            throw new Exception(Properties.Resource.BAM_InvalidEncodedSequenceValue);
++            // Note that encoded value must be between 0 and 15, but we don't 
++            // explicitly check that here because this private method is only called
++            // by byte-masking 4 bytes.
++            return BAMAlphabetAsBytes[encodedValue];
+         }
+ 
+         /// <summary>
+diff --git a/Source/Bio.Core/IO/SAM/SAMOptionalField.cs b/Source/Bio.Core/IO/SAM/SAMOptionalField.cs
+index 2fa3e544..af473ae8 100644
+--- a/Source/Bio.Core/IO/SAM/SAMOptionalField.cs
++++ b/Source/Bio.Core/IO/SAM/SAMOptionalField.cs
+@@ -151,7 +151,7 @@ private static string IsValidVType(string vtype)
+                 return "Optional field variable type must be of length 1, but was of length: " + vtype.Length.ToString();
+             }
+                 //note in this case they are "legal" characters
+-            if (Helper.StringContainsIllegalCharacters(vtype, VTypeAllowableValues))
++            if (Array.IndexOf(VTypeAllowableValues, vtype[0]) != -1)
+             {
+                 return String.Empty;
+             }
+diff --git a/Source/Bio.Core/Util/Helper.cs b/Source/Bio.Core/Util/Helper.cs
+index 10d3c3f7..65279e65 100644
+--- a/Source/Bio.Core/Util/Helper.cs
++++ b/Source/Bio.Core/Util/Helper.cs
+@@ -655,17 +655,22 @@ public static bool StringHasMatch(string test, params string[] args)
+ 		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1062:Validate arguments of public methods", MessageId = "0"), System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1062:Validate arguments of public methods", MessageId = "1")]
+ 		public static bool StringContainsIllegalCharacters(string toTest, char[] illegalCharacters)
+ 		{
+-			for (int j = 0; j < illegalCharacters.Length; j++)
+-			{
+-				char badVal=illegalCharacters[j];
+-				for (int i = 0; i < toTest.Length; i++)
+-				{
+-					if (toTest[i] == badVal)
+-					{
+-						return true; 
+-					}
+-				}
+-			}
++            // This will frequently be used to test for presence of low 
++            // values when represented as ushorts, such as '\t', \r', '\n' etc.
++            // we'll find the maximum value of the illegal characters
++            // and only check the full set if the value is below that, only
++            // checking the full set of illegal characters if we are below that range.
++            ushort cmax = (ushort)illegalCharacters[0];
++            for (int i = 1; i < illegalCharacters.Length; i++) {
++                cmax = Math.Max(cmax, (ushort)illegalCharacters[i]);    
++            }
++            for (int i = 0; i < toTest.Length; i++)
++            {
++                if ((ushort)toTest[i] <= cmax &&
++                    illegalCharacters.Contains(toTest[i])) {
++                    return true;
++                }
++            }
+ 			return false;
+ 		}
+ 

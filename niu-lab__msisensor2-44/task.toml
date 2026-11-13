@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/niu-lab__msisensor2-44"
+description = "microsatellites list based on hg38 reference genome"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "msisensor2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "niu-lab/msisensor2"
+ref = "e0798c713d62aa56c9672ae8b7e859fa82c17365"
+reference = "https://github.com/niu-lab/msisensor2/pull/44"
+source_access = "auto"
+built_at = "2026-11-13T16:35:30.558920+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b580fb03fd06e2aa0d4fdc6db8d4024d418b132878a05d771f9cda0f215273d8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-04-17T08:49:51Z"
+diff_format = "unified"
+context_files = [
+    "site_list_hg38",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2829
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/mlmed__torchxrayvision-195"
+description = "Rename VinDr \"Lesion\" to \"Other Lesion\" (fixes missing masks)"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "torchxrayvision",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mlmed/torchxrayvision"
+ref = "a2588598e4a78f713c9550fb160ee997c897832b"
+reference = "https://github.com/mlmed/torchxrayvision/pull/195"
+source_access = "auto"
+built_at = "2026-11-13T15:47:46.944501+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:af6f7a5f1d5d89a9a4ec1cdd2723629554fe1e595b96d9f8b1cbf34c0b555144"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-15T03:07:11Z"
+diff_format = "unified"
+context_files = [
+    "tests/test_dataloaders.py",
+    "torchxrayvision/datasets.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 21
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

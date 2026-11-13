@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/brentp__echtvar-53"
+description = "ARM support: use Scalar stream-vbyte on non-x86, SIMD on x86_64"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "echtvar",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "brentp/echtvar"
+ref = "f37761117571def14952735328ef9af8301959fa"
+reference = "https://github.com/brentp/echtvar/pull/53"
+source_access = "auto"
+built_at = "2026-11-13T16:14:50.582836+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:54f1fd2907e7d2cff8f6424dae8c585a683f77064207997ebfc5f4e73e67c1c8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-18T16:27:30Z"
+diff_format = "unified"
+context_files = [
+    "Cargo.toml",
+    "src/commands/encoder_cmd.rs",
+    "src/lib/echtvar.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 34
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

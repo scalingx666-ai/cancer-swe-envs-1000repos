@@ -1,0 +1,207 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index b4c1be2f..928e8525 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -28,6 +28,9 @@ Imports:
+     IRanges (>= 2.32.0),
+     GenomicRanges,
+     motifmatchr,
++    Biostrings,
++    BSgenome,
++    GenomeInfoDb,
+     glmnetUtils,
+     bayestestR,
+     ggpointdensity,
+diff --git a/R/grn.R b/R/grn.R
+index b4a30ee6..ff12942d 100644
+--- a/R/grn.R
++++ b/R/grn.R
+@@ -180,6 +180,13 @@ fit_grn_models.GRNData <- function(
+     if (is.null(gene_annot)){
+         stop('Please provide a gene annotation for the ChromatinAssay.')
+     }
++    # EnsDb-derived annotations (Signac::GetGRangesFromEnsDb) contain intronic
++    # 'gap' rows with strand '*'. Signac::Extend() treats '*' as '+', so these
++    # rows extend minus-strand genes by `upstream` on the downstream side too.
++    # Gap rows lie inside the gene body, so dropping them keeps the gene extent.
++    if ('type' %in% colnames(GenomicRanges::mcols(gene_annot))){
++        gene_annot <- gene_annot[gene_annot$type != 'gap']
++    }
+     # Select target genes for GRN inference
+     if (is.null(genes)){
+         genes <- VariableFeatures(object, assay=params$rna_assay)
+@@ -193,7 +200,7 @@ fit_grn_models.GRNData <- function(
+         gene_data <- Matrix::t(LayerData(
+             object, assay=params$rna_assay, layer='data'
+         ))
+-        gene_groups <- TRUE
++        gene_groups <- seq_len(nrow(gene_data))
+     } else {
+         gene_data <- GetAssaySummary(
+             object,
+@@ -208,7 +215,7 @@ fit_grn_models.GRNData <- function(
+         peak_data <- Matrix::t(LayerData(
+             object, assay=params$peak_assay, layer='data'
+         ))
+-        peak_groups <- TRUE
++        peak_groups <- seq_len(nrow(peak_data))
+     } else {
+         peak_data <- GetAssaySummary(
+             object,
+@@ -287,6 +294,10 @@ fit_grn_models.GRNData <- function(
+         }
+ 
+         # Select peaks correlating with target gene expression
++        if (!g %in% colnames(gene_data)){
++            log_message('Warning: ', g, ' not found in gene expression matrix', verbose=verbose==2)
++            return()
++        }
+         g_x <- gene_data[gene_groups, g, drop=FALSE]
+         peak_x <- peak_data[peak_groups, gene_peaks, drop=FALSE]
+         peak_g_cor <- as(sparse_cor(peak_x, g_x), 'generalMatrix')
+@@ -431,17 +442,36 @@ format_coefs <- function(coefs, term=':', adjust_method='fdr'){
+         coefs$padj <- p.adjust(coefs$pval, method=adjust_method)
+     }
+ 
+-    term_pattern <- paste0('(.+)', term, '(.+)')
+     region_pattern <- '[\\d\\w]+_\\d+_\\d+'
++
++    # Escape the interaction term for use in a regex (e.g. '+' is a quantifier)
++    term_esc <- stringr::str_replace_all(term, '([\\+\\*\\.\\|\\?\\^\\$\\(\\)\\[\\]\\{\\}\\\\])', '\\\\\\1')
++    term_pattern <- paste0('(.+)', term_esc, '(.+)')
++
++    # Check whether terms actually contain the separator (they do for ':' and '*'
++    # but NOT for '+' — R lm() stores additive terms as plain variable names).
++    terms_have_sep <- any(stringr::str_detect(
++        coefs$term[!coefs$term %in% c('(Intercept)', 'Intercept')],
++        term_esc
++    ))
++
+     coefs_use <- coefs %>%
+         filter(!term%in%c('(Intercept)', 'Intercept')) %>%
+         mutate(
+-            tf_ = str_replace(term, term_pattern, '\\1'),
+-            region_ = str_replace(term, term_pattern, '\\2')
++            # For interaction terms (containing the separator) split normally.
++            # For additive terms (no separator in term name) classify by pattern.
++            tf_ = if (terms_have_sep)
++                      str_replace(term, term_pattern, '\\1')
++                  else
++                      ifelse(str_detect(term, region_pattern), NA_character_, term),
++            region_ = if (terms_have_sep)
++                          str_replace(term, term_pattern, '\\2')
++                      else
++                          ifelse(str_detect(term, region_pattern), term, NA_character_)
+         ) %>%
+         mutate(
+-            tf = ifelse(str_detect(tf_, region_pattern), region_, tf_),
+-            region = ifelse(!str_detect(tf_, region_pattern), region_, tf_)
++            tf = ifelse(!is.na(tf_) & str_detect(tf_, region_pattern), region_, tf_),
++            region = ifelse(!is.na(tf_) & !str_detect(tf_, region_pattern), region_, tf_)
+         ) %>%
+         select(-region_, -tf_) %>%
+         mutate(
+diff --git a/R/models.R b/R/models.R
+index af2706bc..d270e61d 100644
+--- a/R/models.R
++++ b/R/models.R
+@@ -222,7 +222,9 @@ fit_xgb <- function(
+         eta=0.01,
+         objective='reg:squarederror'),
+     nrounds = 1000,
+-    nthread = -1,
++    # xgboost >= 3 rejects nthread = -1 ("Passed invalid 'nthreads'"); 1 is valid in
++    # every version and does not oversubscribe when infer_grn(parallel=TRUE) forks
++    nthread = 1,
+     ...
+ ){
+     if (!require(xgboost, quietly = T)){
+@@ -290,8 +292,9 @@ fit_bagging_ridge <- function(
+     }
+     response <- data[[formula[[2]]]]
+ 
++    # scikit-learn >= 1.4 renamed BaggingRegressor(base_estimator=) to estimator=
+     model <- sklearn$ensemble$BaggingRegressor(
+-        base_estimator = sklearn$linear_model$Ridge(
++        estimator = sklearn$linear_model$Ridge(
+             alpha = alpha,
+             solver = solver,
+             random_state = as.integer(123),
+diff --git a/R/regions.R b/R/regions.R
+index 64285e0e..f7eae812 100644
+--- a/R/regions.R
++++ b/R/regions.R
+@@ -119,6 +119,10 @@ initiate_grn.GRNData <- function(
+ #' @param genome A \code{BSgenome} object with the genome of interest.
+ #' @param motif_tfs A data frame matching motifs with TFs. The first column is assumed
+ #' to be the name of the motif, the second the name of the TF.
++#' @param bg Background nucleotide frequencies for motif scanning: 'subject'
++#' (composition of the candidate regions, default), 'genome', 'even' or a numeric
++#' vector of A, C, G, T frequencies.
++#' @param p_cutoff P-value cutoff for motif matches.
+ #' @param verbose Display messages.
+ #'
+ #' @return A GRNData object with updated motif info.
+@@ -131,6 +135,8 @@ find_motifs.GRNData <- function(
+     pfm,
+     genome,
+     motif_tfs = NULL,
++    bg = 'subject',
++    p_cutoff = 5e-05,
+     verbose = TRUE
+ ){
+     params <- Params(object)
+@@ -158,13 +164,16 @@ find_motifs.GRNData <- function(
+     }
+     object@grn@regions@tfs <- motif2tf[, tfs_use]
+ 
+-    # Find motif positions with Signac/motifmatchr
++    # Find motif positions with motifmatchr's scanner, using a corrected
++    # background conversion (see motifmatchr_patched.R)
+     cand_ranges <- object@grn@regions@ranges
+-    motif_pos <- Signac::AddMotifs(
++    motif_pos <- add_motifs_fixed(
+         object = cand_ranges,
+         genome = genome,
+         pfm = pfm,
+-        verbose= verbose
++        bg = bg,
++        p.cutoff = p_cutoff,
++        verbose = verbose
+     )
+     object@grn@regions@motifs <- motif_pos
+ 
+diff --git a/man/find_motifs.Rd b/man/find_motifs.Rd
+index a731f296..0714008c 100644
+--- a/man/find_motifs.Rd
++++ b/man/find_motifs.Rd
+@@ -7,7 +7,15 @@
+ \usage{
+ find_motifs(object, ...)
+ 
+-\method{find_motifs}{GRNData}(object, pfm, genome, motif_tfs = NULL, verbose = TRUE)
++\method{find_motifs}{GRNData}(
++  object,
++  pfm,
++  genome,
++  motif_tfs = NULL,
++  bg = "subject",
++  p_cutoff = 5e-05,
++  verbose = TRUE
++)
+ }
+ \arguments{
+ \item{pfm}{A \code{PFMatrixList} object with position weight matrices.}
+@@ -17,6 +25,12 @@ find_motifs(object, ...)
+ \item{motif_tfs}{A data frame matching motifs with TFs. The first column is assumed
+ to be the name of the motif, the second the name of the TF.}
+ 
++\item{bg}{Background nucleotide frequencies for motif scanning: 'subject'
++(composition of the candidate regions, default), 'genome', 'even' or a numeric
++vector of A, C, G, T frequencies.}
++
++\item{p_cutoff}{P-value cutoff for motif matches.}
++
+ \item{verbose}{Display messages.}
+ }
+ \value{

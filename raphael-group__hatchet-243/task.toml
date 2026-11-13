@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/raphael-group__hatchet-243"
+description = "Hatchet3 dev"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "hatchet",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "raphael-group/hatchet"
+ref = "399487f7fde53f3186582f8063d4668ee93a7b38"
+reference = "https://github.com/raphael-group/hatchet/pull/243"
+source_access = "auto"
+built_at = "2026-11-13T16:37:53.557252+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:35ffae8ed431c7529acaedd65df28ea22a5199b5273496fb389ad903086a8b8e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-12T21:35:01Z"
+diff_format = "unified"
+context_files = [
+    "src/hatchet/__main__.py",
+    "src/hatchet/cluster_bins/hmm/hmm_init.py",
+    "src/hatchet/hatchet_parser.py",
+    "tests/test_snakemake.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 83
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

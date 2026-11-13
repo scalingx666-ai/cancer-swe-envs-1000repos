@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/AI-sandbox__gnomix-38"
+description = "Update smoothers"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "gnomix",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AI-sandbox/gnomix"
+ref = "78b32553d803090934122a145037739d090bebbf"
+reference = "https://github.com/AI-sandbox/gnomix/pull/38"
+source_access = "auto"
+built_at = "2026-11-13T16:22:27.036187+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d5a1cdd1da72c78d233486f36c1badf38d34d2a5680a078e3376ccb7cf451f1e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-08-05T17:10:33Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "requirements.txt",
+    "src/gnomix/model/base/base.py",
+    "src/gnomix/model/model.py",
+    "src/gnomix/model/smooth/Calibration.py",
+    "src/gnomix/model/smooth/cnn.py",
+    "src/gnomix/model/smooth/crf.py",
+    "src/gnomix/model/smooth/models.py",
+    "src/gnomix/model/smooth/smooth.py",
+    "src/gnomix/model/smooth/smoother.py",
+    "src/gnomix/model/smooth/utils.py",
+    "src/gnomix/model/smooth/xgb.py",
+    "tests/unit/model/smooth/test_smooth.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 799
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

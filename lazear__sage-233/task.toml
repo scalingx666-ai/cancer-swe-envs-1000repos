@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/lazear__sage-233"
+description = "Support per-mod variable modification limits"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "sage",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lazear/sage"
+ref = "d74024df774054fa411a9d5cca6013ce91d26208"
+reference = "https://github.com/lazear/sage/pull/233"
+source_access = "auto"
+built_at = "2026-11-13T15:59:56.494877+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f4923f972f2ebb16ed23266c9ca44d7579a02f7e8a0cce97d31d89a27baf1e97"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-17T12:40:05Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "DOCS.md",
+    "crates/sage/Cargo.toml",
+    "crates/sage/src/database.rs",
+    "crates/sage/src/ion_series.rs",
+    "crates/sage/src/modification.rs",
+    "crates/sage/src/peptide.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 730
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

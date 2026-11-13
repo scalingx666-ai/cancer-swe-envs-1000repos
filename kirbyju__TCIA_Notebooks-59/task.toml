@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/kirbyju__TCIA_Notebooks-59"
+description = "Move NIfTI cohorts to Aspera and demonstrate public CT segmentations"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "TCIA_Notebooks",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kirbyju/TCIA_Notebooks"
+ref = "7adf5b51d8ed6d1f2e6a5f38d2ce57edaeba96b8"
+reference = "https://github.com/kirbyju/TCIA_Notebooks/pull/59"
+source_access = "auto"
+built_at = "2026-11-13T15:35:42.296655+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:25aec0c740cce85693a6220a1cc4cdf516b3f8a4dc0482b09746259c1ffb6232"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-04T19:57:52Z"
+diff_format = "unified"
+context_files = [
+    "TCIA_Aspera_CLI_Downloads.ipynb",
+    "tcia_utils_v4/README.md",
+    "tcia_utils_v4/TCIA_Dataset_and_Participant_Queries.ipynb",
+    "tcia_utils_v4/_fixtures/aspera-cohort-public-metadata.json.gz",
+    "tcia_utils_v4/_fixtures/workshop-public-metadata.json.gz",
+    "tools/aspera_brain_section.json",
+    "tools/build_aspera_cohort_section.py",
+    "tools/build_tcia_utils_v4_notebooks.py",
+    "tools/run_aspera_cohort.py",
+    "tools/run_tcia_workshop.py",
+    "tools/test_aspera_cohort.py",
+    "tools/test_workshop.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1784
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

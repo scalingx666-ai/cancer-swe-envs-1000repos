@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/NVIDIA-Genomics-Research__GenomeWorks-657"
+description = "[cudaaligner] myers_gpu uses workspace per block now"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "GenomeWorks",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "NVIDIA-Genomics-Research/GenomeWorks"
+ref = "9fd82325b546a68093d4c37f705daa509d45f2aa"
+reference = "https://github.com/NVIDIA-Genomics-Research/GenomeWorks/pull/657"
+source_access = "auto"
+built_at = "2026-11-13T16:01:05.422395+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f1b9af193b86315620af455ac0618fca1d03db13c6233305d7e23b8f7aba10b5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-08-09T14:56:17Z"
+diff_format = "unified"
+context_files = [
+    "common/base/include/claraparabricks/genomeworks/utils/device_preallocated_allocator.cuh",
+    "cudaaligner/include/claraparabricks/genomeworks/cudaaligner/aligner.hpp",
+    "cudaaligner/src/aligner_global.hpp",
+    "cudaaligner/src/aligner_global_myers_banded.cpp",
+    "cudaaligner/src/aligner_global_myers_banded.hpp",
+    "cudaaligner/src/batched_device_matrices.cuh",
+    "cudaaligner/src/myers_gpu.cu",
+    "cudaaligner/src/myers_gpu.cuh",
+    "cudaaligner/tests/Test_MyersAlgorithm.cu",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 869
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

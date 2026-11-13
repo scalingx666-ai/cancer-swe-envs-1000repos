@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/cancerit__CaVEMan-120"
+description = "Feature/umn bughunt"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "CaVEMan",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "cancerit/CaVEMan"
+ref = "f3986b20aff45b38274d36e2809e0d0ad3e1dd49"
+reference = "https://github.com/cancerit/CaVEMan/pull/120"
+source_access = "auto"
+built_at = "2026-11-13T15:38:28.791089+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:51d552d321b17ad843c17752f4a3042717d07fcd51098ec2c99e08e4dbd0d073"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-06-13T14:16:05Z"
+diff_format = "unified"
+context_files = [
+    "setup.sh",
+    "src/generateCavemanVCFUnmatchedNormalPanel.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

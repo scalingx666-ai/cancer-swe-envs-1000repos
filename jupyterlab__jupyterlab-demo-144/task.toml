@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/jupyterlab__jupyterlab-demo-144"
+description = "New update available at 496bb0f"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "jupyterlab-demo",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "jupyterlab/jupyterlab-demo"
+ref = "496bb0ff4b60a8991afc29c4a6a1795cbc0e8cd0"
+reference = "https://github.com/jupyterlab/jupyterlab-demo/pull/144"
+source_access = "auto"
+built_at = "2026-11-13T15:33:22.218915+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e4276561051e51b9170dd9bf62521014a41cc7d648db745c5aced99028dce87c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-07-30T08:44:44Z"
+diff_format = "unified"
+context_files = [
+    ".binder/environment.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 20
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

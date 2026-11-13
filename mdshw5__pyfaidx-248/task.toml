@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/mdshw5__pyfaidx-248"
+description = "Preserve coordinates through partial reverse sequence slices"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "pyfaidx",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mdshw5/pyfaidx"
+ref = "d7231d50560cd4fb3007aa85c4be6a38a600b399"
+reference = "https://github.com/mdshw5/pyfaidx/pull/248"
+source_access = "auto"
+built_at = "2026-11-13T15:31:05.653118+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:59264ed31171d1f87b36156814f3233e4f01d9aaac4a438ea7f97db5bd7a935c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-25T19:58:08Z"
+diff_format = "unified"
+context_files = [
+    "pyfaidx/__init__.py",
+    "tests/test_reverse_sequence_coordinates.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 41
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

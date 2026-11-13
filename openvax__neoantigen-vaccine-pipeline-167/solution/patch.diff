@@ -1,0 +1,28 @@
+diff --git a/run_snakemake.py b/run_snakemake.py
+index a931a683..72493876 100644
+--- a/run_snakemake.py
++++ b/run_snakemake.py
+@@ -78,6 +78,11 @@ def total_memory_gb():
+         "run beyond that",
+     action="store_true")
+ 
++targets_group.add_argument(
++    "--annotate-vcfs",
++    help="If this argument is present, will run the VCF annotation script",
++    action="store_true")
++
+ qc_group = parser.add_argument_group("QC-related arguments")
+ 
+ qc_group.add_argument(
+@@ -225,7 +230,10 @@ def get_and_check_targets(args, config):
+         elif args.process_reference_only:
+             targets = [config["reference"]["genome"] + ".done"]
+         else:
+-            targets = default_vaxrank_targets(config) + annotated_vaxrank_targets(config)
++            targets = default_vaxrank_targets(config)
++
++        if args.annotate_vcfs:
++            targets.extend(annotated_vaxrank_targets(config))
+     
+     if len(targets) == 0:
+         raise ValueError("Must specify at least one target")

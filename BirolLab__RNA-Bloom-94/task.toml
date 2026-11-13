@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/BirolLab__RNA-Bloom-94"
+description = "Updating GitHub organization"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "RNA-Bloom",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "BirolLab/RNA-Bloom"
+ref = "f97c71e22d110d05f6d8f4f77769c7e9a7bc2be0"
+reference = "https://github.com/BirolLab/RNA-Bloom/pull/94"
+source_access = "auto"
+built_at = "2026-11-13T16:24:58.139296+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f11ff784d47db51ed37b6c511985965498de97b60472ff12dc6e70eef8d17382"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-13T03:28:04Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "recipe/meta.yaml",
+    "src/rnabloom/util/MiniFloat.java",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 20
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/broadinstitute__mutect-3"
+description = "Fixing a few things that got lost in the transition to github"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "mutect",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "broadinstitute/mutect"
+ref = "9205157686d22eb1cb1f1fac7778fb5990b8e21a"
+reference = "https://github.com/broadinstitute/mutect/pull/3"
+source_access = "auto"
+built_at = "2026-11-13T15:36:55.046527+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:084b92efa4428a8501529ec15ea2d2806b56000bb37024f697a7c4d9ff9e26d8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2013-06-28T21:43:39Z"
+diff_format = "unified"
+context_files = [
+    "somaticspike.xml",
+    "src/org/broadinstitute/cga/tools/gatk/filters/LibraryReadFilter.java",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 51
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

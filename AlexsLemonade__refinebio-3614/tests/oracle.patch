@@ -1,0 +1,820 @@
+diff --git a/bin/lib/_docker.py b/bin/lib/_docker.py
+index 4b686bf59..21676a0db 100644
+--- a/bin/lib/_docker.py
++++ b/bin/lib/_docker.py
+@@ -1,13 +1,41 @@
+ """Docker-side helpers: bake target invocation + container pre-flights."""
+ 
++import os
+ import subprocess
+ 
+ from lib._runtime import Globals, run, stderr
++from lib.image import WORKER_R_ENV_NAMES, resolve_base, resolve_worker_r_env
++
++
++def resolve_bake_env():
++    """Resolve every content-hash env var the bake file references.
++    Returns (env_patch, ok). UBUNTU_DIGEST + BASE_HASH + each worker's
++    <WORKER>_R_ENV_HASH are resolved unconditionally; bake picks which
++    reach which target. Callers that already supplied a value via the
++    environment take precedence over auto-resolution."""
++    env = {}
++    ubuntu_digest = os.environ.get("UBUNTU_DIGEST")
++    base_hash, digest = resolve_base(ubuntu_digest=ubuntu_digest)
++    if base_hash is None:
++        return {}, False
++    env["UBUNTU_DIGEST"] = digest
++    env["BASE_HASH"] = base_hash
++    for worker in WORKER_R_ENV_NAMES:
++        var = f"{worker.upper()}_R_ENV_HASH"
++        env[var] = os.environ.get(var) or resolve_worker_r_env(worker, base_hash=base_hash)
++    return env, True
+ 
+ 
+ def bake_target(target):
+     """Build a single bake target into the local docker daemon."""
+-    return run(["docker", "buildx", "bake", "-f", "docker-bake.hcl", target, "--load"])
++    hash_env, ok = resolve_bake_env()
++    if not ok:
++        return 1
++    env = {**os.environ, **hash_env}
++    return run(
++        ["docker", "buildx", "bake", "-f", "docker-bake.hcl", target, "--load"],
++        env=env,
++    )
+ 
+ 
+ def is_container_running(name):
+diff --git a/bin/lib/build.py b/bin/lib/build.py
+index 6e242a68a..9761f8ccf 100644
+--- a/bin/lib/build.py
++++ b/bin/lib/build.py
+@@ -2,9 +2,11 @@
+ 
+ import argparse
+ import json
++import os
+ import subprocess
+ import time
+ 
++from lib._docker import resolve_bake_env
+ from lib._requirements import requires
+ from lib._runtime import REPO_ROOT, run, stderr
+ from lib.common import rebuild_common_sdist
+@@ -87,9 +89,14 @@ def cmd_build(argv):
+         cmd.append("--print")
+     cmd.extend(args.targets)
+ 
++    hash_env, ok = resolve_bake_env()
++    if not ok:
++        return 1
++    env = {**os.environ, **hash_env}
++
+     attempts = args.retries + 1
+     for attempt in range(1, attempts + 1):
+-        rc = run(cmd)
++        rc = run(cmd, env=env)
+         if rc == 0:
+             return 0
+         if attempt < attempts:
+diff --git a/bin/lib/image.py b/bin/lib/image.py
+new file mode 100644
+index 000000000..4e93a5106
+--- /dev/null
++++ b/bin/lib/image.py
+@@ -0,0 +1,222 @@
++"""image:* — content-addressed hashes for docker image tags."""
++
++import argparse
++import hashlib
++import json
++import re
++import subprocess
++
++from lib._requirements import requires
++from lib._runtime import REPO_ROOT, stderr
++
++# ---------- shared primitives ----------
++
++
++def _sha256_file(path):
++    """sha256(path contents), hex. Matches `sha256sum`'s hash column."""
++    h = hashlib.sha256()
++    with open(path, "rb") as f:
++        for chunk in iter(lambda: f.read(65536), b""):
++            h.update(chunk)
++    return h.hexdigest()
++
++
++def _sha256sum_line(path, display_path):
++    """One line matching `sha256sum`'s output: '<64hex>  <path>\\n'."""
++    return f"{_sha256_file(path)}  {display_path}\n"
++
++
++def _parse_upstream_image(dockerfile_rel):
++    """Read `FROM <image>@${...}` from a Dockerfile; return the <image> ref."""
++    text = (REPO_ROOT / dockerfile_rel).read_text()
++    m = re.search(r"^FROM\s+(\S+?)@\$\{", text, re.MULTILINE)
++    if not m:
++        raise RuntimeError(f"{dockerfile_rel}'s FROM line doesn't match 'FROM <image>@${{...}}'")
++    return m.group(1)
++
++
++def _resolve_upstream_digest(image_ref):
++    """Return the linux/amd64 digest of `image_ref` as 'sha256:...', or None."""
++    try:
++        output = subprocess.check_output(
++            ["docker", "manifest", "inspect", image_ref],
++            stderr=subprocess.PIPE,
++        )
++    except subprocess.CalledProcessError as e:
++        stderr(
++            f"docker manifest inspect {image_ref} failed:\n"
++            f"  {e.stderr.decode().strip() if e.stderr else e}"
++        )
++        return None
++    data = json.loads(output)
++    manifests = data.get("manifests")
++    if manifests:
++        for m in manifests:
++            plat = m.get("platform", {})
++            if plat.get("architecture") == "amd64" and plat.get("os") == "linux":
++                return m["digest"]
++        stderr(f"no linux/amd64 variant in {image_ref} manifest list")
++        return None
++    stderr(f"{image_ref} returned a non-list manifest; cannot pin")
++    return None
++
++
++# ---------- base: R 3.4.4 on pinned ubuntu ----------
++
++_BASE_DOCKERFILE = "common/dockerfiles/Dockerfile.base"
++_BASE_FILES = (_BASE_DOCKERFILE, "setup.cfg")
++_BASE_DIRS = ("config",)
++_BASE_PREFIX = "r3.4.4-"
++
++
++def _hash_base(upstream_ref, upstream_digest):
++    chunks = []
++    for rel in _BASE_FILES:
++        chunks.append(_sha256sum_line(REPO_ROOT / rel, rel))
++    # Mirror the shell recipe `find <dir> -exec sha256sum {} + | sort` — sort
++    # is by whole line (hash-first), not path, so produce lines then sort bytes.
++    for d in _BASE_DIRS:
++        root = REPO_ROOT / d
++        dir_lines = []
++        for p in root.rglob("*"):
++            if p.is_file():
++                rel = p.relative_to(REPO_ROOT).as_posix()
++                dir_lines.append(_sha256sum_line(p, rel))
++        dir_lines.sort()
++        chunks.extend(dir_lines)
++    chunks.append(f"{upstream_digest}  {upstream_ref}\n")
++    return hashlib.sha256("".join(chunks).encode()).hexdigest()[:12]
++
++
++def resolve_base(ubuntu_digest=None):
++    """Resolve dr_base's content hash + the ubuntu digest it was built against.
++    Returns (hash, digest) or (None, None) if the digest can't be fetched."""
++    upstream_ref = _parse_upstream_image(_BASE_DOCKERFILE)
++    digest = ubuntu_digest or _resolve_upstream_digest(upstream_ref)
++    if digest is None:
++        return None, None
++    return _hash_base(upstream_ref, digest), digest
++
++
++# ---------- r_env: per-worker R dependency layers on top of base ----------
++
++WORKER_R_ENV_NAMES = (
++    "smasher",
++    "illumina",
++    "salmon",
++    "no_op",
++    "downloaders",
++    "compendia",
++    "affymetrix",
++)
++
++
++def _r_env_files(worker):
++    """Inputs that invalidate one worker's dr_<worker>_r_env image."""
++    if worker == "affymetrix":
++        dockerfile = "workers/dockerfiles/Dockerfile.affymetrix_r_env"
++        extra = ("workers/R/dependencies/affymetrix/install_ensg_pkgs.R",)
++    else:
++        dockerfile = "workers/dockerfiles/Dockerfile.r_env"
++        extra = ()
++    return (
++        "common/R/renv_load.R",
++        f"workers/R/dependencies/{worker}/renv.lock",
++        dockerfile,
++        *extra,
++    )
++
++
++def _hash_r_env(worker, base_hash):
++    chunks = [f"{base_hash}  parent:base\n"]
++    for rel in _r_env_files(worker):
++        chunks.append(_sha256sum_line(REPO_ROOT / rel, rel))
++    return hashlib.sha256("".join(chunks).encode()).hexdigest()[:12]
++
++
++def resolve_worker_r_env(worker, base_hash=None):
++    """Resolve one worker's r_env hash. Resolves dr_base too if base_hash
++    isn't supplied. Returns None if the base can't be resolved."""
++    if worker not in WORKER_R_ENV_NAMES:
++        raise ValueError(f"unknown r_env worker: {worker}")
++    if base_hash is None:
++        base_hash, _ = resolve_base()
++        if base_hash is None:
++            return None
++    return _hash_r_env(worker, base_hash)
++
++
++# ---------- CLI ----------
++
++_IMAGE_NAMES = ("base",) + tuple(f"{w}_r_env" for w in WORKER_R_ENV_NAMES)
++
++
++@requires(tools=["docker"])
++def cmd_image_hash(argv):
++    image_list = f"  base            (prefix: {_BASE_PREFIX})\n" + "\n".join(
++        f"  {w}_r_env" for w in WORKER_R_ENV_NAMES
++    )
++    p = argparse.ArgumentParser(
++        prog="rbio image:hash",
++        description="Compute the content-addressed tag suffix for a docker image.",
++        epilog=(
++            "hashable images:\n"
++            f"{image_list}\n"
++            "\n"
++            "examples:\n"
++            "  rbio image:hash base\n"
++            "  rbio image:hash base --ubuntu-digest=sha256:abc...\n"
++            "  rbio image:hash smasher_r_env\n"
++            "  rbio image:hash smasher_r_env --base-hash=0418c52de898\n"
++            "\n"
++            "output:\n"
++            "  prints the content-addressed tag suffix on stdout.\n"
++            "  use as a docker tag, e.g. dr_base:$(rbio image:hash base)"
++        ),
++        formatter_class=argparse.RawDescriptionHelpFormatter,
++    )
++    p.add_argument(
++        "image", choices=_IMAGE_NAMES, help=f"image to hash (one of: {', '.join(_IMAGE_NAMES)})"
++    )
++    p.add_argument(
++        "--ubuntu-digest",
++        default=None,
++        metavar="sha256:...",
++        help="fold a specific ubuntu digest into the base hash (base only)",
++    )
++    p.add_argument(
++        "--base-hash",
++        default=None,
++        metavar="HASH",
++        help="override the parent BASE_HASH (r_env images only)",
++    )
++    args = p.parse_args(argv)
++
++    try:
++        if args.image == "base":
++            if args.base_hash is not None:
++                stderr("rbio image:hash: --base-hash is not valid for 'base'")
++                return 2
++            h, _ = resolve_base(ubuntu_digest=args.ubuntu_digest)
++            if h is None:
++                return 1
++            print(_BASE_PREFIX + h)
++            return 0
++
++        if args.ubuntu_digest is not None:
++            stderr(f"rbio image:hash: --ubuntu-digest only valid for 'base', not '{args.image}'")
++            return 2
++        worker = args.image.removesuffix("_r_env")
++        h = resolve_worker_r_env(worker, base_hash=args.base_hash)
++        if h is None:
++            return 1
++        print(h)
++        return 0
++    except FileNotFoundError as e:
++        stderr(f"rbio image:hash: missing input file: {e.filename}")
++        return 1
++
++
++COMMANDS = [
++    ("image:hash", cmd_image_hash, "compute the content-addressed tag suffix for a docker image"),
++]
+diff --git a/bin/rbio b/bin/rbio
+index 224f7e3d4..a3615bc1c 100755
+--- a/bin/rbio
++++ b/bin/rbio
+@@ -6,13 +6,13 @@ from pathlib import Path
+ # Make `from lib import ...` work when this script is invoked directly.
+ sys.path.insert(0, str(Path(__file__).resolve().parent))
+ 
+-from lib import build, common, compose, db, debug, deploy, dev, es, install, ops, test
++from lib import build, common, compose, db, debug, deploy, dev, es, image, install, ops, test
+ from lib._runtime import Globals, stderr
+ 
+ # Each namespace module exports a COMMANDS list of (name, fn, help) tuples;
+ # concatenating them gives the single registry that drives both dispatch and
+ # the top-level help block. Adding a namespace is one line in NAMESPACES.
+-NAMESPACES = [build, common, compose, db, debug, deploy, dev, es, install, ops, test]
++NAMESPACES = [build, common, compose, db, debug, deploy, dev, es, image, install, ops, test]
+ 
+ COMMAND_REGISTRY = [entry for ns in NAMESPACES for entry in ns.COMMANDS]
+ 
+diff --git a/common/dockerfiles/Dockerfile.base b/common/dockerfiles/Dockerfile.base
+index d2094dc6f..1d1dcee44 100644
+--- a/common/dockerfiles/Dockerfile.base
++++ b/common/dockerfiles/Dockerfile.base
+@@ -1,4 +1,5 @@
+-FROM ubuntu:22.04
++ARG UBUNTU_DIGEST
++FROM ubuntu:22.04@${UBUNTU_DIGEST}
+ 
+ # Fail in case of an error at any stage in the pipe.
+ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+diff --git a/docker-bake.hcl b/docker-bake.hcl
+index 84228e353..6a006ed1d 100644
+--- a/docker-bake.hcl
++++ b/docker-bake.hcl
+@@ -30,6 +30,29 @@ variable "SYSTEM_VERSION" {
+   default = "local"
+ }
+ 
++// Content-addressed tag inputs. All default to empty; the caller must set
++// them in the environment when building any content-hashed target,
++// otherwise the FROM lines parse to invalid references.
++variable "UBUNTU_DIGEST" {
++  // description = "sha256 digest of ubuntu:22.04 to pin dr_base's FROM to."
++  default = ""
++}
++
++variable "BASE_HASH" {
++  // description = "Content hash of dr_base inputs; drives dr_base's :r3.4.4-<hash> tag."
++  default = ""
++}
++
++// Per-worker content hashes. Each is independent; a change to one worker's
++// renv.lock invalidates only that worker's r_env image.
++variable "SMASHER_R_ENV_HASH"     { default = "" }
++variable "ILLUMINA_R_ENV_HASH"    { default = "" }
++variable "SALMON_R_ENV_HASH"      { default = "" }
++variable "NO_OP_R_ENV_HASH"       { default = "" }
++variable "DOWNLOADERS_R_ENV_HASH" { default = "" }
++variable "COMPENDIA_R_ENV_HASH"   { default = "" }
++variable "AFFYMETRIX_R_ENV_HASH"  { default = "" }
++
+ // Default is the public read-only cache that CI pushes to.
+ // Note: when DOCKERHUB_REPO differs, cache is also read from DOCKERHUB_REPO
+ // so writers benefit from their own previously-pushed cache.
+@@ -97,6 +120,23 @@ function "from_target" {
+   }
+ }
+ 
++// Same, for content-addressed parents whose tag is not SYSTEM_VERSION.
++// Example: from_target_hashed("base", base_tag())
++function "from_target_hashed" {
++  params = [parent, tag]
++  result = {
++    "${DOCKERHUB_REPO}/dr_${parent}:${tag}" = "target:${parent}"
++  }
++}
++
++// Single source of truth for the dr_base content-addressed tag. The r3.4.4
++// prefix documents the R version baked into dr_base; r_env Dockerfiles use
++// this tag (passed as BASE_TAG) rather than reconstructing it.
++function "base_tag" {
++  params = []
++  result = "r3.4.4-${BASE_HASH}"
++}
++
+ // ---------------------------------------------------------------------------
+ // Abstract base target - concrete targets inherit platform + build args.
+ // ---------------------------------------------------------------------------
+@@ -107,6 +147,8 @@ target "_common" {
+   args = {
+     DOCKERHUB_REPO = DOCKERHUB_REPO
+     SYSTEM_VERSION = SYSTEM_VERSION
++    UBUNTU_DIGEST  = UBUNTU_DIGEST
++    BASE_TAG       = base_tag()
+   }
+ }
+ 
+@@ -117,7 +159,13 @@ target "_common" {
+ target "base" {
+   inherits   = ["_common"]
+   dockerfile = "common/dockerfiles/Dockerfile.base"
+-  tags       = tags_for("base")
++  // The content-addressed tag r3.4.4-<BASE_HASH> is what downstream content-
++  // hashed targets (dr_<worker>_r_env) FROM. The legacy :$SYSTEM_VERSION and
++  // :latest tags are kept so untouched downstream images still resolve.
++  tags = concat(
++    tags_for("base"),
++    BASE_HASH != "" ? ["${DOCKERHUB_REPO}/dr_base:${base_tag()}"] : []
++  )
+   cache-from = cache_from_for("base")
+   cache-to   = cache_to_for("base")
+ }
+@@ -196,28 +244,93 @@ target "transcriptome" {
+   cache-to   = cache_to_for("transcriptome")
+ }
+ 
++// Content-addressed intermediates: the slow renv restore per worker, tagged
++// by content hash so they survive SYSTEM_VERSION bumps.
++
++target "smasher_r_env" {
++  inherits   = ["_common"]
++  dockerfile = "workers/dockerfiles/Dockerfile.r_env"
++  args       = { WORKER = "smasher" }
++  contexts   = from_target_hashed("base", base_tag())
++  tags       = SMASHER_R_ENV_HASH != "" ? ["${DOCKERHUB_REPO}/dr_smasher_r_env:${SMASHER_R_ENV_HASH}"] : []
++  cache-from = cache_from_for("smasher_r_env")
++  cache-to   = cache_to_for("smasher_r_env")
++}
++
+ target "smasher" {
+   inherits   = ["_common"]
+   dockerfile = "workers/dockerfiles/Dockerfile.smasher"
+-  contexts   = from_target("base")
++  args       = { R_ENV_HASH = SMASHER_R_ENV_HASH }
++  contexts   = from_target_hashed("smasher_r_env", SMASHER_R_ENV_HASH)
+   tags       = tags_for("smasher")
+   cache-from = cache_from_for("smasher")
+   cache-to   = cache_to_for("smasher")
+ }
+ 
+-target "salmon" {
++target "illumina_r_env" {
+   inherits   = ["_common"]
+-  dockerfile = "workers/dockerfiles/Dockerfile.salmon"
+-  contexts   = from_target("base")
+-  tags       = tags_for("salmon")
+-  cache-from = cache_from_for("salmon")
+-  cache-to   = cache_to_for("salmon")
++  dockerfile = "workers/dockerfiles/Dockerfile.r_env"
++  args       = { WORKER = "illumina" }
++  contexts   = from_target_hashed("base", base_tag())
++  tags       = ILLUMINA_R_ENV_HASH != "" ? ["${DOCKERHUB_REPO}/dr_illumina_r_env:${ILLUMINA_R_ENV_HASH}"] : []
++  cache-from = cache_from_for("illumina_r_env")
++  cache-to   = cache_to_for("illumina_r_env")
++}
++
++target "salmon_r_env" {
++  inherits   = ["_common"]
++  dockerfile = "workers/dockerfiles/Dockerfile.r_env"
++  args       = { WORKER = "salmon" }
++  contexts   = from_target_hashed("base", base_tag())
++  tags       = SALMON_R_ENV_HASH != "" ? ["${DOCKERHUB_REPO}/dr_salmon_r_env:${SALMON_R_ENV_HASH}"] : []
++  cache-from = cache_from_for("salmon_r_env")
++  cache-to   = cache_to_for("salmon_r_env")
++}
++
++target "no_op_r_env" {
++  inherits   = ["_common"]
++  dockerfile = "workers/dockerfiles/Dockerfile.r_env"
++  args       = { WORKER = "no_op" }
++  contexts   = from_target_hashed("base", base_tag())
++  tags       = NO_OP_R_ENV_HASH != "" ? ["${DOCKERHUB_REPO}/dr_no_op_r_env:${NO_OP_R_ENV_HASH}"] : []
++  cache-from = cache_from_for("no_op_r_env")
++  cache-to   = cache_to_for("no_op_r_env")
++}
++
++target "downloaders_r_env" {
++  inherits   = ["_common"]
++  dockerfile = "workers/dockerfiles/Dockerfile.r_env"
++  args       = { WORKER = "downloaders" }
++  contexts   = from_target_hashed("base", base_tag())
++  tags       = DOWNLOADERS_R_ENV_HASH != "" ? ["${DOCKERHUB_REPO}/dr_downloaders_r_env:${DOWNLOADERS_R_ENV_HASH}"] : []
++  cache-from = cache_from_for("downloaders_r_env")
++  cache-to   = cache_to_for("downloaders_r_env")
++}
++
++target "compendia_r_env" {
++  inherits   = ["_common"]
++  dockerfile = "workers/dockerfiles/Dockerfile.r_env"
++  args       = { WORKER = "compendia" }
++  contexts   = from_target_hashed("base", base_tag())
++  tags       = COMPENDIA_R_ENV_HASH != "" ? ["${DOCKERHUB_REPO}/dr_compendia_r_env:${COMPENDIA_R_ENV_HASH}"] : []
++  cache-from = cache_from_for("compendia_r_env")
++  cache-to   = cache_to_for("compendia_r_env")
++}
++
++target "affymetrix_r_env" {
++  inherits   = ["_common"]
++  dockerfile = "workers/dockerfiles/Dockerfile.affymetrix_r_env"
++  contexts   = from_target_hashed("base", base_tag())
++  tags       = AFFYMETRIX_R_ENV_HASH != "" ? ["${DOCKERHUB_REPO}/dr_affymetrix_r_env:${AFFYMETRIX_R_ENV_HASH}"] : []
++  cache-from = cache_from_for("affymetrix_r_env")
++  cache-to   = cache_to_for("affymetrix_r_env")
+ }
+ 
+ target "no_op" {
+   inherits   = ["_common"]
+   dockerfile = "workers/dockerfiles/Dockerfile.no_op"
+-  contexts   = from_target("base")
++  args       = { R_ENV_HASH = NO_OP_R_ENV_HASH }
++  contexts   = from_target_hashed("no_op_r_env", NO_OP_R_ENV_HASH)
+   tags       = tags_for("no_op")
+   cache-from = cache_from_for("no_op")
+   cache-to   = cache_to_for("no_op")
+@@ -226,16 +339,28 @@ target "no_op" {
+ target "illumina" {
+   inherits   = ["_common"]
+   dockerfile = "workers/dockerfiles/Dockerfile.illumina"
+-  contexts   = from_target("base")
++  args       = { R_ENV_HASH = ILLUMINA_R_ENV_HASH }
++  contexts   = from_target_hashed("illumina_r_env", ILLUMINA_R_ENV_HASH)
+   tags       = tags_for("illumina")
+   cache-from = cache_from_for("illumina")
+   cache-to   = cache_to_for("illumina")
+ }
+ 
++target "salmon" {
++  inherits   = ["_common"]
++  dockerfile = "workers/dockerfiles/Dockerfile.salmon"
++  args       = { R_ENV_HASH = SALMON_R_ENV_HASH }
++  contexts   = from_target_hashed("salmon_r_env", SALMON_R_ENV_HASH)
++  tags       = tags_for("salmon")
++  cache-from = cache_from_for("salmon")
++  cache-to   = cache_to_for("salmon")
++}
++
+ target "downloaders" {
+   inherits   = ["_common"]
+   dockerfile = "workers/dockerfiles/Dockerfile.downloaders"
+-  contexts   = from_target("base")
++  args       = { R_ENV_HASH = DOWNLOADERS_R_ENV_HASH }
++  contexts   = from_target_hashed("downloaders_r_env", DOWNLOADERS_R_ENV_HASH)
+   tags       = tags_for("downloaders")
+   cache-from = cache_from_for("downloaders")
+   cache-to   = cache_to_for("downloaders")
+@@ -244,7 +369,8 @@ target "downloaders" {
+ target "compendia" {
+   inherits   = ["_common"]
+   dockerfile = "workers/dockerfiles/Dockerfile.compendia"
+-  contexts   = from_target("base")
++  args       = { R_ENV_HASH = COMPENDIA_R_ENV_HASH }
++  contexts   = from_target_hashed("compendia_r_env", COMPENDIA_R_ENV_HASH)
+   tags       = tags_for("compendia")
+   cache-from = cache_from_for("compendia")
+   cache-to   = cache_to_for("compendia")
+@@ -254,7 +380,8 @@ target "compendia" {
+ target "affymetrix" {
+   inherits   = ["_common"]
+   dockerfile = "workers/dockerfiles/Dockerfile.affymetrix"
+-  contexts   = from_target("base")
++  args       = { R_ENV_HASH = AFFYMETRIX_R_ENV_HASH }
++  contexts   = from_target_hashed("affymetrix_r_env", AFFYMETRIX_R_ENV_HASH)
+   tags       = tags_for("affymetrix")
+   cache-from = cache_from_for("affymetrix")
+   cache-to   = cache_to_for("affymetrix")
+@@ -297,7 +424,7 @@ group "default" {
+   ]
+ }
+ 
+-// `all` includes affymetrix.
++// `all` includes affymetrix and content-addressed intermediates.
+ group "all" {
+   targets = [
+     "base",
+@@ -308,12 +435,19 @@ group "all" {
+     "api",
+     "api_local",
+     "transcriptome",
++    "smasher_r_env",
+     "smasher",
++    "illumina_r_env",
++    "illumina",
++    "salmon_r_env",
+     "salmon",
++    "no_op_r_env",
+     "no_op",
+-    "illumina",
++    "downloaders_r_env",
+     "downloaders",
++    "compendia_r_env",
+     "compendia",
++    "affymetrix_r_env",
+     "affymetrix",
+   ]
+ }
+diff --git a/workers/dockerfiles/Dockerfile.affymetrix b/workers/dockerfiles/Dockerfile.affymetrix
+index e9db31dfd..1909fb891 100644
+--- a/workers/dockerfiles/Dockerfile.affymetrix
++++ b/workers/dockerfiles/Dockerfile.affymetrix
+@@ -1,6 +1,6 @@
+ ARG DOCKERHUB_REPO
+-ARG SYSTEM_VERSION
+-FROM $DOCKERHUB_REPO/dr_base:$SYSTEM_VERSION
++ARG R_ENV_HASH
++FROM $DOCKERHUB_REPO/dr_affymetrix_r_env:$R_ENV_HASH
+ ARG SYSTEM_VERSION
+ 
+ # Fail in case of an error at any stage in the pipe.
+@@ -8,13 +8,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ 
+ WORKDIR /home/user
+ 
+-COPY workers/R/dependencies/affymetrix/renv.lock .
+-COPY common/R/renv_load.R renv_load_affymetrix.R
+-RUN Rscript renv_load_affymetrix.R
+-
+-COPY workers/R/dependencies/affymetrix/install_ensg_pkgs.R .
+-RUN Rscript install_ensg_pkgs.R
+-
+ COPY workers/data_refinery_workers/processors/requirements.txt .
+ RUN pip3 install --ignore-installed --no-cache-dir -r requirements.txt
+ 
+diff --git a/workers/dockerfiles/Dockerfile.affymetrix_r_env b/workers/dockerfiles/Dockerfile.affymetrix_r_env
+new file mode 100644
+index 000000000..1f87d6973
+--- /dev/null
++++ b/workers/dockerfiles/Dockerfile.affymetrix_r_env
+@@ -0,0 +1,17 @@
++ARG DOCKERHUB_REPO
++ARG BASE_TAG
++FROM $DOCKERHUB_REPO/dr_base:$BASE_TAG
++
++# Fail in case of an error at any stage in the pipe.
++SHELL ["/bin/bash", "-o", "pipefail", "-c"]
++
++WORKDIR /home/user
++
++COPY workers/R/dependencies/affymetrix/renv.lock .
++COPY common/R/renv_load.R renv_load_affymetrix.R
++RUN Rscript renv_load_affymetrix.R
++
++COPY workers/R/dependencies/affymetrix/install_ensg_pkgs.R .
++RUN Rscript install_ensg_pkgs.R
++
++ENTRYPOINT []
+diff --git a/workers/dockerfiles/Dockerfile.compendia b/workers/dockerfiles/Dockerfile.compendia
+index ec3ae03c0..146f63c69 100644
+--- a/workers/dockerfiles/Dockerfile.compendia
++++ b/workers/dockerfiles/Dockerfile.compendia
+@@ -2,8 +2,8 @@
+ # fancySVD, which provides the IterativeSVD imputation create_compendia uses.
+ 
+ ARG DOCKERHUB_REPO
+-ARG SYSTEM_VERSION
+-FROM $DOCKERHUB_REPO/dr_base:$SYSTEM_VERSION
++ARG R_ENV_HASH
++FROM $DOCKERHUB_REPO/dr_compendia_r_env:$R_ENV_HASH
+ ARG SYSTEM_VERSION
+ 
+ # Fail in case of an error at any stage in the pipe.
+@@ -11,10 +11,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ 
+ WORKDIR /home/user
+ 
+-COPY workers/R/dependencies/compendia/renv.lock .
+-COPY common/R/renv_load.R renv_load_compendia.R
+-RUN Rscript renv_load_compendia.R
+-
+ COPY workers/data_refinery_workers/processors/requirements.txt requirements.txt
+ RUN pip3 install --ignore-installed --no-cache-dir -r requirements.txt
+ 
+diff --git a/workers/dockerfiles/Dockerfile.downloaders b/workers/dockerfiles/Dockerfile.downloaders
+index 77cd246d8..cc490759f 100644
+--- a/workers/dockerfiles/Dockerfile.downloaders
++++ b/workers/dockerfiles/Dockerfile.downloaders
+@@ -1,6 +1,6 @@
+ ARG DOCKERHUB_REPO
+-ARG SYSTEM_VERSION
+-FROM $DOCKERHUB_REPO/dr_base:$SYSTEM_VERSION
++ARG R_ENV_HASH
++FROM $DOCKERHUB_REPO/dr_downloaders_r_env:$R_ENV_HASH
+ ARG SYSTEM_VERSION
+ 
+ # Fail in case of an error at any stage in the pipe.
+@@ -8,10 +8,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ 
+ WORKDIR /home/user
+ 
+-COPY workers/R/dependencies/downloaders/renv.lock .
+-COPY common/R/renv_load.R renv_load_downloaders.R
+-RUN Rscript renv_load_downloaders.R
+-
+ COPY workers/data_refinery_workers/downloaders/requirements.txt .
+ RUN pip3 install --ignore-installed --no-cache-dir -r requirements.txt
+ 
+diff --git a/workers/dockerfiles/Dockerfile.illumina b/workers/dockerfiles/Dockerfile.illumina
+index 0e2345c72..d189e6eed 100644
+--- a/workers/dockerfiles/Dockerfile.illumina
++++ b/workers/dockerfiles/Dockerfile.illumina
+@@ -1,6 +1,6 @@
+ ARG DOCKERHUB_REPO
+-ARG SYSTEM_VERSION
+-FROM $DOCKERHUB_REPO/dr_base:$SYSTEM_VERSION
++ARG R_ENV_HASH
++FROM $DOCKERHUB_REPO/dr_illumina_r_env:$R_ENV_HASH
+ ARG SYSTEM_VERSION
+ 
+ # Fail in case of an error at any stage in the pipe.
+@@ -8,10 +8,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ 
+ WORKDIR /home/user
+ 
+-COPY workers/R/dependencies/illumina/renv.lock .
+-COPY common/R/renv_load.R renv_load_illumina.R
+-RUN Rscript renv_load_illumina.R
+-
+ COPY workers/data_refinery_workers/processors/requirements.txt .
+ RUN pip3 install --ignore-installed --no-cache-dir -r requirements.txt
+ 
+diff --git a/workers/dockerfiles/Dockerfile.no_op b/workers/dockerfiles/Dockerfile.no_op
+index 383b06cc4..ca6dfbd78 100644
+--- a/workers/dockerfiles/Dockerfile.no_op
++++ b/workers/dockerfiles/Dockerfile.no_op
+@@ -1,6 +1,6 @@
+ ARG DOCKERHUB_REPO
+-ARG SYSTEM_VERSION
+-FROM $DOCKERHUB_REPO/dr_base:$SYSTEM_VERSION
++ARG R_ENV_HASH
++FROM $DOCKERHUB_REPO/dr_no_op_r_env:$R_ENV_HASH
+ ARG SYSTEM_VERSION
+ 
+ # Fail in case of an error at any stage in the pipe.
+@@ -8,10 +8,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ 
+ WORKDIR /home/user
+ 
+-COPY workers/R/dependencies/no_op/renv.lock .
+-COPY common/R/renv_load.R renv_load_no_op.R
+-RUN Rscript renv_load_no_op.R
+-
+ COPY workers/data_refinery_workers/processors/requirements.txt .
+ RUN pip3 install --ignore-installed --no-cache-dir -r requirements.txt
+ 
+diff --git a/workers/dockerfiles/Dockerfile.r_env b/workers/dockerfiles/Dockerfile.r_env
+new file mode 100644
+index 000000000..eba11bdc9
+--- /dev/null
++++ b/workers/dockerfiles/Dockerfile.r_env
+@@ -0,0 +1,15 @@
++ARG DOCKERHUB_REPO
++ARG BASE_TAG
++FROM $DOCKERHUB_REPO/dr_base:$BASE_TAG
++ARG WORKER
++
++# Fail in case of an error at any stage in the pipe.
++SHELL ["/bin/bash", "-o", "pipefail", "-c"]
++
++WORKDIR /home/user
++
++COPY workers/R/dependencies/$WORKER/renv.lock .
++COPY common/R/renv_load.R .
++RUN Rscript renv_load.R
++
++ENTRYPOINT []
+diff --git a/workers/dockerfiles/Dockerfile.salmon b/workers/dockerfiles/Dockerfile.salmon
+index 56298bf31..062e8aa99 100644
+--- a/workers/dockerfiles/Dockerfile.salmon
++++ b/workers/dockerfiles/Dockerfile.salmon
+@@ -1,6 +1,6 @@
+ ARG DOCKERHUB_REPO
+-ARG SYSTEM_VERSION
+-FROM $DOCKERHUB_REPO/dr_base:$SYSTEM_VERSION
++ARG R_ENV_HASH
++FROM $DOCKERHUB_REPO/dr_salmon_r_env:$R_ENV_HASH
+ ARG SYSTEM_VERSION
+ 
+ # Fail in case of an error at any stage in the pipe.
+@@ -8,10 +8,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ 
+ WORKDIR /home/user
+ 
+-COPY workers/R/dependencies/salmon/renv.lock .
+-COPY common/R/renv_load.R renv_load_salmon.R
+-RUN Rscript renv_load_salmon.R
+-
+ COPY workers/data_refinery_workers/processors/requirements.txt .
+ RUN pip3 install --ignore-installed --no-cache-dir -r requirements.txt
+ 
+diff --git a/workers/dockerfiles/Dockerfile.smasher b/workers/dockerfiles/Dockerfile.smasher
+index 1db7623ec..43c00f270 100644
+--- a/workers/dockerfiles/Dockerfile.smasher
++++ b/workers/dockerfiles/Dockerfile.smasher
+@@ -1,6 +1,6 @@
+ ARG DOCKERHUB_REPO
+-ARG SYSTEM_VERSION
+-FROM $DOCKERHUB_REPO/dr_base:$SYSTEM_VERSION
++ARG R_ENV_HASH
++FROM $DOCKERHUB_REPO/dr_smasher_r_env:$R_ENV_HASH
+ ARG SYSTEM_VERSION
+ 
+ # Fail in case of an error at any stage in the pipe.
+@@ -8,10 +8,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ 
+ WORKDIR /home/user
+ 
+-COPY workers/R/dependencies/smasher/renv.lock .
+-COPY common/R/renv_load.R renv_load_smasher.R
+-RUN Rscript renv_load_smasher.R
+-
+ COPY workers/data_refinery_workers/processors/requirements.txt .
+ RUN pip3 install --ignore-installed --no-cache-dir -r requirements.txt
+ 

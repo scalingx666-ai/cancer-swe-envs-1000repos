@@ -1,0 +1,973 @@
+diff --git a/.github/workflows/test-build.yml b/.github/workflows/test-build.yml
+index 7be7ce7f6..124c76bfb 100644
+--- a/.github/workflows/test-build.yml
++++ b/.github/workflows/test-build.yml
+@@ -84,6 +84,7 @@ jobs:
+       run: |
+         pip install -e '.[app,test]'
+         pytest -q
++        python demo/test_export.py
+         python -m unittest discover -s benchmarks/genomics -p 'test_*.py'
+         python -m unittest discover -s benchmarks/health_records -p 'test_*.py'
+         # Must run against the repo source. In a venv holding an installed
+@@ -107,7 +108,7 @@ jobs:
+         # `tests/test_examples.py` executes them. The local battery has always
+         # linted both; CI checking only `mirobody` meant an examples-only
+         # regression was invisible here.
+-        ruff check mirobody examples benchmarks/windows
++        ruff check mirobody examples benchmarks/windows demo
+ 
+     # Comment style, which ruff cannot see: block length and em-dashes in
+     # prose. The thresholds and what they were measured against are in the
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 738888748..9e0dfd7fb 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -17,6 +17,33 @@
+   not exist yet. To tell: `docs/images/README.md` names every file that
+   `ls docs/images` prints.
+ 
++- **Three synthetic reports in Chinese and in mg/dL, for the walk-through.**
++  `demo/upload/` held four files, all in English and, for `you`, all in
++  mmol/L, so a reader of Chinese who would rather not upload their own report
++  had nothing that shows one test printed three ways. Three more files give
++  `you` three earlier years from three places: a hospital lab slip in Chinese
++  that prints `LDL-C` in mmol/L (PDF), a photo of a check-up centre's sheet
++  that prints `低密度脂蛋白胆固醇` in mg/dL (JPG) and an international clinic's
++  export that prints `LDL Cholesterol` in mg/dL (XLSX), sixteen rows each,
++  every one invented. The walkthrough and the quickstart (English, Chinese,
++  Japanese) point at them. `demo/generate.py` now writes every upload file to
++  the same bytes on each run: a workbook used to carry the time it was saved,
++  so `mom_clinic_visit_2026-07.xlsx` is saved again with the same cells. How
++  to tell: upload the three, open LDL cholesterol under Indicators and it is
++  one line, `140 → 128 → 112 mg/dL`, each number opening the file it came
++  from; `demo/README.md` has the codes.
++
++### Fixed
++
++- **`demo/export.py` lists every seeded panel.** Mom's older panel, seeded
++  since 1.6.1, was in her readings and not among the fixture's files, so three
++  readings named a file the fixture did not carry, and `demo/test_export.py`
++  failed on the reading count. How to tell: `python demo/test_export.py`
++  passes, the fixture has three seed files and 2,022 seeded readings, and
++  `period` stays at the device coverage (2025-09-15 through 2026-09-14)
++  even when a lab panel predates it. The build workflow now runs the export
++  tests and lints `demo/`, so a broken fixture no longer passes CI unnoticed.
++
+ ## 1.6.1
+ 
+ ### Upgrade notes
+diff --git a/demo/README.md b/demo/README.md
+index 2d8f85b7b..096bb7cc8 100644
+--- a/demo/README.md
++++ b/demo/README.md
+@@ -9,7 +9,7 @@ already does) and sign in with the codes in `config.yaml`.
+ | --- | --- | --- |
+ | Who | healthy, active, labs in range | heavier, less active, sleeping badly, HbA1c above range |
+ | Seeded | a year of device readings + `seed/you_lab_2025-11.md` | a year of device readings + `seed/mom_lab_2025-05.md` (mg/dL) + `seed/mom_lab_2025-11.md` |
+-| Upload | `upload/you_annual_checkup_2026-05.pdf`, `upload/you_lipid_panel_2026-08.csv` | `upload/mom_physical_2026-06.jpg`, `upload/mom_clinic_visit_2026-07.xlsx` |
++| Upload | `upload/you_annual_checkup_2026-05.pdf`, `upload/you_lipid_panel_2026-08.csv`, and three earlier years that print one test three ways: `upload/you_lab_report_zh_2023-03.pdf`, `upload/you_checkup_photo_zh_2024-04.jpg`, `upload/you_lab_results_en_2025-03.xlsx` | `upload/mom_physical_2026-06.jpg`, `upload/mom_clinic_visit_2026-07.xlsx` |
+ | Circle | reads mom's record, view-only | shares their record with you |
+ 
+ ## `seed/` — what the database gets directly
+@@ -36,6 +36,58 @@ and the family actually produce:
+ | `mom_physical_2026-06.jpg` | JPG | a phone photo of a printed slip, read by the vision model | 9 |
+ | `you_lipid_panel_2026-08.csv` | CSV | a different lab's export, with its own wording | 5 |
+ | `mom_clinic_visit_2026-07.xlsx` | XLSX | what the clinic typed into a spreadsheet | 4 |
++| `you_lab_report_zh_2023-03.pdf` | PDF | a hospital lab slip in Chinese, analytes by abbreviation, mmol/L | 16 |
++| `you_checkup_photo_zh_2024-04.jpg` | JPG | a photo of a check-up centre's sheet in Chinese, full names, mg/dL | 16 |
++| `you_lab_results_en_2025-03.xlsx` | XLSX | an international clinic's export in English, mg/dL | 16 |
++
++## Three years, three names, two units
++
++中文说明见 [`docs/walkthrough.zh-CN.md`](../docs/walkthrough.zh-CN.md)。
++
++The four files above are in English and, for `you`, in one unit. A person's
++own decade of reports is neither, so three more files give `you` three
++earlier years from three places that share no wording:
++
++| File | Printed by | Prints LDL cholesterol as | Unit | Code | In mmol/L |
++| --- | --- | --- | --- | --- | --- |
++| `you_lab_report_zh_2023-03.pdf` | a hospital lab, Chinese | `LDL-C` | mmol/L | 22748-8 | 3.62 |
++| `you_checkup_photo_zh_2024-04.jpg` | a check-up centre, Chinese | `低密度脂蛋白胆固醇` | mg/dL | 13457-7 | 3.31 |
++| `you_lab_results_en_2025-03.xlsx` | an international clinic, English | `LDL Cholesterol` | mg/dL | 13457-7 | 2.90 |
++
++By name alone all three resolve to 13457-7 (`mirobody resolve LDL-C
++低密度脂蛋白胆固醇 "LDL Cholesterol"`). The unit then picks the code, the molar
++22748-8 for the slip in mmol/L, and both codes file under one series, so the
++three are one line. Each report carries sixteen rows (blood count, liver,
++kidney, glucose, the four lipids), and every one of the sixteen lands on one
++series across the three: `HGB` in g/L with `血红蛋白` and `Hemoglobin` in
++g/dL, `CREA` in µmol/L with `肌酐` and `Creatinine` in mg/dL, `FPG` with
++`空腹血糖` and `Glucose, Fasting`.
++
++What to expect after uploading the three, signed in as `you` or as anyone:
++
++- **Indicators** lists each of the sixteen once, with three records. On the
++  demo account, cholesterol, fasting glucose and HbA1c have four, because
++  the seeded 2025-11 panel is on the same series.
++- **The LDL drawer** draws one line through 2023, 2024 and 2025. A series
++  reads in the unit most of its readings carry, so with these three alone it
++  is `140 → 128 → 112 mg/dL`, the first converted from the slip's 3.62
++  mmol/L. Upload the two 2026 files as well and mmol/L has the majority:
++  `3.62 → 3.31 → 2.90 → 2.48 → 2.41 mmol/L`, five spellings on one line.
++  A converted row says what the report printed (`128 mg/dL`), and every row
++  opens the file it was read from.
++- **Ask** how LDL has changed over the years and the answer cites the same
++  numbers.
++
++Measured 2026-11-12 on a 1.6.1 stack running both models on the machine
++(MiniCPM5-2B answering, GLM-OCR reading the photo): sixteen readings from
++each file, filed under 2023-03-21, 2024-04-16 and 2025-03-25, and the five
++values above in the drawer and in the answer. The rows of the PDF and of the
++workbook are read by the table rules, off the text layer and the cells, not
++by a model; the photo needs a model that reads images. It was not run
++against a cloud vision model.
++
++The hospital, the check-up centre, the clinic, the people and every number
++on these three are invented, and each says so on its face.
+ 
+ ## Two vocabularies, one code
+ 
+@@ -52,8 +104,9 @@ its `Body weight` and `Systolic Blood Pressure` sit beside the watch's
+ `bodyMasss` and `systolicPressures`, carrying **29463-7** and **8480-6** just as
+ those do. Two sources, two rows, one code.
+ 
+-Your files match in units, so they make the three-spellings point alone.
+-Mom's do not, on purpose: `seed/mom_lab_2025-05.md` is from a US clinic and
++Your two 2026 files match in units, so they make the three-spellings point
++alone; your three earlier years (above) and mom's do not, on purpose:
++`seed/mom_lab_2025-05.md` is from a US clinic and
+ prints glucose and cholesterol in mg/dL, the 2025-11 panel and the uploads in
+ mmol/L. LOINC puts the unit in the identity (cholesterol is **2093-3** in
+ mg/dL and 14647-2 in mmol/L), the two fold into one series through the molar
+@@ -82,8 +135,11 @@ measured, 7 rows in and 1 row out.
+ 
+     python demo/generate.py
+ 
+-Rebuilds `upload/` from the panels declared in that script. The `seed/`
+-markdown is hand-written, because its values have to agree with `_PROFILES` in
++Rebuilds `upload/` from the panels declared in that script, to the same bytes
++on every run: the PDFs are written out by hand and the workbooks are saved
++with a fixed timestamp. The two photos need the fonts macOS ships (Arial and
++STHeiti) and are the same bytes for one version of Pillow and of those fonts.
++The `seed/` markdown is hand-written, because its values have to agree with `_PROFILES` in
+ `mirobody/server/demo.py`; `tests/server/test_member_seed.py` checks that they
+ do.
+ 
+@@ -95,8 +151,9 @@ window ends 2026-09-14 (`_LAST_DAY`).
+ 
+     python demo/export.py --output /tmp/mirobody-demo.json
+ 
+-Exports the same two accounts, their 2,019 seeded readings, the view-only
+-sharing grant and the six source files. The four upload files are marked
++Exports the same two accounts, their 2,022 seeded readings, the view-only
++sharing grant and the ten source files. `period` is the device coverage;
++mom's older mg/dL panel predates it. The seven upload files are marked
+ `stage: "upload"`; they must stay outside a client's initial record. Each file
+ carries its collection date, readings and SHA-256, and the fixture carries the
+ source commit and a deterministic data digest. No database, model key or
+diff --git a/demo/export.py b/demo/export.py
+index 0bf2cc035..95ff60b38 100644
+--- a/demo/export.py
++++ b/demo/export.py
+@@ -45,11 +45,12 @@ def build_fixture() -> dict:
+     files = []
+     for key in ("you", "mom"):
+         email = f"{key}@mirobody.ai"
+-        profile = seed.profile_for(email)
+         readings = [_reading(row) for row in seed._member_series(key, email)]
+         members.append({"id": key, "email": email, "readings": readings})
+-        collected, filename, panel = profile["lab"]
+-        files.append(_file(key, filename, "seed", collected, panel))
++        # Every seeded panel, not `profile["lab"]` alone: mom has an older
++        # one, and its readings named a file this list did not carry.
++        for collected, filename, panel in seed.panels_for(email):
++            files.append(_file(key, filename, "seed", collected, panel))
+ 
+     for name, panel in uploads.PANELS.items():
+         extension = ".pdf" if name.startswith("you_") else ".jpg"
+@@ -59,7 +60,11 @@ def build_fixture() -> dict:
+                        uploads.CSV_PANEL["collected"], uploads.CSV_PANEL["rows"]))
+     files.append(_file("mom", "mom_clinic_visit_2026-07.xlsx", "upload",
+                        uploads.XLSX_PANEL["collected"], uploads.XLSX_PANEL["rows"]))
+-    first = min(row["date"][:10] for member in members for row in member["readings"])
++    for filename, panel in uploads.HISTORY.items():
++        files.append(_file("you", filename, "upload", panel["collected"], panel["rows"]))
++    # `period` is the device coverage; a seeded lab panel may predate it.
++    first = min(row["date"][:10] for member in members for row in member["readings"]
++                if not row["fileId"])
+     fixture = {
+         "schemaVersion": 1,
+         "asOf": seed._LAST_DAY.isoformat(),
+diff --git a/demo/generate.py b/demo/generate.py
+index 6bedf0eb1..4a013b196 100644
+--- a/demo/generate.py
++++ b/demo/generate.py
+@@ -10,13 +10,22 @@
+ Four formats on purpose. A health record arrives as whatever the lab, the
+ clinic and the family actually produce, so the demo uploads a PDF, a phone
+ photo, a spreadsheet and a CSV rather than four of the same thing. Needs
+-Pillow and openpyxl, both in the `[app]` extra.
++Pillow and openpyxl, both in the `[app]` extra, and the fonts macOS ships
++(Arial and STHeiti) for the two photos.
++
++Every file comes out the same bytes on every run: the panels and their dates
++are literals, the PDFs are written out by hand, and the workbooks are saved
++with a fixed timestamp (`_workbook_bytes`). The photos are the same bytes
++for one version of Pillow and of the fonts.
+ """
+ 
+ from __future__ import annotations
+ 
+ import csv
+ import io
++import re
++import zipfile
++from itertools import groupby
+ from pathlib import Path
+ 
+ HERE = Path(__file__).resolve().parent
+@@ -106,6 +115,131 @@
+ }
+ 
+ 
++#: The same line on the reports printed in Chinese.
++BANNER_ZH = "合成演示数据，非真实病历"
++
++#: Three earlier years of `you`, from three places that share neither a
++#: vocabulary nor a unit, which is what a decade of anyone's reports looks
++#: like and what the four files above cannot show a reader of Chinese:
++#:
++#:   2023  a hospital lab slip, Chinese, analytes by abbreviation   LDL-C              mmol/L
++#:   2024  a check-up centre's sheet, photographed, full names      低密度脂蛋白胆固醇  mg/dL
++#:   2025  an international clinic's export, English                LDL Cholesterol    mg/dL
++#:
++#: Every row resolves, and each analyte lands on ONE series across the three
++#: and across the files above (`demo/README.md` has the codes). Measured
++#: 2026-11-12 against the shipped resolver: `LDL-C` in mmol/L is 22748-8 and
++#: the two mg/dL spellings are 13457-7, one series, and 3.62 mmol/L, 128 and
++#: 112 mg/dL read 3.62, 3.31 and 2.90 mmol/L. The names are chosen for that:
++#: `FPG`, `空腹血糖` and `Glucose, Fasting` are fasting glucose in plasma,
++#: where `GLU` and `葡萄糖(空腹)` resolve to glucose in whole blood, a
++#: different series; and no urea row, because a Chinese lab prints urea and a
++#: US one urea nitrogen, two analytes that must not share a line.
++#:
++#: The values fall from one year to the next toward the seeded 2025-11 panel
++#: and the 2026 uploads (cholesterol 5.54, 5.25, 4.84, then 4.60, 4.45, 4.38
++#: mmol/L), so the six files of this account draw one line. Total cholesterol
++#: agrees with the other three lipids (Friedewald) on every report.
++#:
++#: The hospital, the people and every number on them are invented.
++HISTORY = {
++    "you_lab_report_zh_2023-03.pdf": {
++        "institution": "青禾市第一人民医院",
++        "title": "检验报告单",
++        "collected": "2023-03-21",
++        "fields": (
++            ("姓名：张三", "性别：男", "年龄：38岁", "病历号：SYN0000417"),
++            ("科别：体检科", "标本：静脉血", "申请医生：李四", "条码号：SYN2303210417"),
++            ("采集时间：2023-03-21 07:52", "", "报告时间：2023-03-21 14:36", ""),
++        ),
++        "rows": [
++            ("WBC", "6.12", "10^9/L", "3.5-9.5", ""),
++            ("RBC", "4.86", "10^12/L", "4.3-5.8", ""),
++            ("HGB", "149", "g/L", "130-175", ""),
++            ("PLT", "238", "10^9/L", "125-350", ""),
++            ("ALT", "34", "U/L", "9-50", ""),
++            ("AST", "27", "U/L", "15-40", ""),
++            ("TBIL", "13.6", "µmol/L", "0-23", ""),
++            ("ALB", "46.2", "g/L", "40-55", ""),
++            ("CREA", "84", "µmol/L", "57-97", ""),
++            ("UA", "396", "µmol/L", "208-428", ""),
++            ("FPG", "5.4", "mmol/L", "3.9-6.1", ""),
++            ("HbA1c", "5.5", "%", "4.0-6.0", ""),
++            ("TC", "5.54", "mmol/L", "<5.18", "↑"),
++            ("TG", "1.62", "mmol/L", "<1.70", ""),
++            ("HDL-C", "1.18", "mmol/L", ">1.04", ""),
++            ("LDL-C", "3.62", "mmol/L", "<3.37", "↑"),
++        ],
++        "signed": ("检验者：王五", "审核者：赵六"),
++        "note": "本报告仅对所检标本负责。医院、姓名、编号均为虚构。",
++    },
++    "you_checkup_photo_zh_2024-04.jpg": {
++        "institution": "南汀健康体检中心",
++        "title": "健康体检报告（检验部分）",
++        "collected": "2024-04-16",
++        "fields": (
++            "姓名：张三　　性别：男　　年龄：39岁　　体检编号：SYN240416007",
++            # One day for both, as on the slip above. A sheet that prints two
++            # is filed under whichever the model reads as "the examination
++            # date": measured 2026-11-12 on 1.6.1 with the 2B local model, a
++            # report date of the 17th was chosen over a sampling date of the 16th.
++            "采样日期：2024-04-16　　报告日期：2024-04-16",
++        ),
++        "sections": (("血常规", 4), ("肝功能", 4), ("肾功能", 2), ("血糖", 2), ("血脂", 4)),
++        "rows": [
++            ("白细胞计数", "5.87", "10^9/L", "3.5-9.5", ""),
++            ("红细胞计数", "4.91", "10^12/L", "4.3-5.8", ""),
++            ("血红蛋白", "15.1", "g/dL", "13.0-17.5", ""),
++            ("血小板计数", "226", "10^9/L", "125-350", ""),
++            ("丙氨酸氨基转移酶", "29", "U/L", "9-50", ""),
++            ("天门冬氨酸氨基转移酶", "25", "U/L", "15-40", ""),
++            ("总胆红素", "0.8", "mg/dL", "0.2-1.2", ""),
++            ("白蛋白", "4.5", "g/dL", "4.0-5.5", ""),
++            ("肌酐", "0.95", "mg/dL", "0.64-1.10", ""),
++            ("尿酸", "6.3", "mg/dL", "3.5-7.2", ""),
++            ("空腹血糖", "95", "mg/dL", "70-110", ""),
++            ("糖化血红蛋白", "5.4", "%", "4.0-6.0", ""),
++            ("总胆固醇", "203", "mg/dL", "<200", "↑"),
++            ("甘油三酯", "128", "mg/dL", "<150", ""),
++            ("高密度脂蛋白胆固醇", "49", "mg/dL", ">40", ""),
++            ("低密度脂蛋白胆固醇", "128", "mg/dL", "<130", ""),
++        ],
++        "note": "小结：总胆固醇略高于参考范围，建议低脂饮食、规律运动，一年后复查。",
++        "disclaimer": "本文件为合成演示数据：机构、姓名、编号均为虚构。",
++    },
++    "you_lab_results_en_2025-03.xlsx": {
++        "institution": "Lumen Bay International Clinic",
++        "collected": "2025-03-25",
++        "sections": (("Complete Blood Count", 4), ("Liver Panel", 4), ("Kidney Panel", 2),
++                     ("Glucose", 2), ("Lipid Panel", 4)),
++        "rows": [
++            ("White Blood Cell Count", "5.6", "10^3/uL", "3.5-9.5", ""),
++            ("Red Blood Cell Count", "4.88", "10^6/uL", "4.30-5.80", ""),
++            ("Hemoglobin", "14.8", "g/dL", "13.0-17.5", ""),
++            ("Platelet Count", "241", "10^3/uL", "125-350", ""),
++            ("ALT (SGPT)", "24", "U/L", "9-50", ""),
++            ("AST (SGOT)", "22", "U/L", "15-40", ""),
++            ("Bilirubin, Total", "0.7", "mg/dL", "0.2-1.2", ""),
++            ("Albumin", "4.6", "g/dL", "4.0-5.5", ""),
++            ("Creatinine", "0.93", "mg/dL", "0.64-1.10", ""),
++            ("Uric Acid", "5.8", "mg/dL", "3.5-7.2", ""),
++            ("Glucose, Fasting", "92", "mg/dL", "70-99", ""),
++            ("Hemoglobin A1c", "5.3", "%", "4.0-5.6", ""),
++            ("Cholesterol, Total", "187", "mg/dL", "<200", ""),
++            ("Triglycerides", "112", "mg/dL", "<150", ""),
++            ("HDL Cholesterol", "53", "mg/dL", ">40", ""),
++            ("LDL Cholesterol", "112", "mg/dL", "<130", ""),
++        ],
++        "about": (
++            BANNER,
++            "Lumen Bay International Clinic, patient portal export",
++            "Patient: ZHANG San (M, 40y), record SYN-250325-0193",
++            "The clinic, the person and every number in this file are invented.",
++        ),
++    },
++}
++
++
+ # ── PDF ──────────────────────────────────────────────────────────────────────
+ # Written out by hand rather than with a PDF library: a demo fixture is not
+ # worth a dependency, and the whole file is seven objects of Helvetica text.
+@@ -146,16 +280,23 @@ def _pdf_stream(panel: dict) -> str:
+ 
+ 
+ def _pdf(panel: dict) -> bytes:
+-    stream = _pdf_stream(panel)
++    return _pdf_file(_pdf_stream(panel), f"({_escape(panel['title'])})")
++
++
++def _pdf_file(stream: str, title: str, *, cjk: bool = False) -> bytes:
++    """One A4 page drawing `stream`. `title` is a PDF string with its
++    delimiters; `cjk` adds the font `_mixed` sets Chinese in."""
+     objects = [
+         "<< /Type /Catalog /Pages 2 0 R >>",
+         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources "
+-        "<< /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
++        ("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources "
++         f"<< /Font << /F1 4 0 R /F2 5 0 R{' /F3 7 0 R' if cjk else ''} >> >> /Contents 6 0 R >>"),
+         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+         f"<< /Length {len(stream)} >>\nstream\n{stream}endstream",
+     ]
++    if cjk:
++        objects += _CJK_FONT
+ 
+     body = "%PDF-1.4\n"
+     offsets = []
+@@ -168,12 +309,105 @@ def _pdf(panel: dict) -> bytes:
+     body += "".join(f"{offset:010d} 00000 n \n" for offset in offsets)
+     body += (
+         f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R /Info "
+-        f"<< /Title ({_escape(panel['title'])}) /Producer (mirobody demo) >> >>\n"
++        f"<< /Title {title} /Producer (mirobody demo) >> >>\n"
+         f"startxref\n{xref_at}\n%%EOF\n"
+     )
+     return body.encode("latin-1")
+ 
+ 
++# ── PDF, in Chinese ──────────────────────────────────────────────────────────
++# The same seven hand-written objects and three more for a font. The Chinese
++# is set in STSong-Light, one of the fonts every PDF reader maps to a Song
++# face of its own, so nothing is embedded: no font file to license, and the
++# page is still a few kilobytes. Its text layer is real (the predefined
++# UniGB-UCS2-H encoding is UCS-2, so a reader gets every character back),
++# which is the path a born-digital hospital report takes through
++# `documents.extract`: read from the layer, never sent to a vision model.
++
++_CJK_FONT = [
++    ("<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H "
++     "/DescendantFonts [8 0 R] >>"),
++    ("<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo "
++     "<< /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> /FontDescriptor 9 0 R /DW 1000 >>"),
++    ("<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /FontBBox [-25 -254 1000 880] "
++     "/ItalicAngle 0 /Ascent 752 /Descent -271 /CapHeight 737 /StemV 58 >>"),
++]
++
++
++def _ucs2(text: str) -> str:
++    return "<" + text.encode("utf-16-be").hex().upper() + ">"
++
++
++def _mixed(x: float, y: float, body: str, *, size: int = 10, bold: bool = False) -> str:
++    """One line in two fonts: Chinese in STSong-Light, everything Latin-1 in
++    Helvetica. The Latin letters of an unembedded Song face have no widths a
++    reader agrees on, so `LDL-C` and `mmol/L` set in it come out spaced like
++    ideographs. A reader advances by each font's own widths, so the runs
++    follow one another with no measuring here. STSong has one weight: bold is
++    the same glyph filled and stroked."""
++    out = f"BT 1 0 0 1 {x} {y} Tm "
++    for chinese, run in groupby(body, key=lambda ch: ord(ch) > 0xFF):
++        text = "".join(run)
++        if not chinese:
++            out += f"/{'F2' if bold else 'F1'} {size} Tf ({_escape(text)}) Tj "
++        elif bold:
++            out += f"/F3 {size} Tf 0.35 w 2 Tr {_ucs2(text)} Tj 0 Tr "
++        else:
++            out += f"/F3 {size} Tf {_ucs2(text)} Tj "
++    return out + "ET\n"
++
++
++def _centred(y: float, body: str, *, size: int) -> str:
++    """`body` in the middle of the page. Chinese only: an ideograph is as wide
++    as the font size, which is all the measuring this needs."""
++    return _mixed((595 - len(body) * size) / 2, y, body, size=size, bold=True)
++
++
++def _pdf_zh_stream(panel: dict) -> str:
++    out = _mixed(48, 806, BANNER_ZH, size=9, bold=True)
++    out += _mixed(48, 794, BANNER, size=9, bold=True)
++    out += _centred(764, panel["institution"], size=16)
++    out += _centred(742, panel["title"], size=13)
++
++    # Four fields to a line, as a hospital's slip prints them. The last line
++    # before the table is one field alone, so the reader of the text layer
++    # sees where the patient's details end and the table begins.
++    y = 712
++    for line in panel["fields"]:
++        for x, field in zip((48, 178, 308, 418), line, strict=True):
++            if field:
++                out += _mixed(x, y, field)
++        y -= 16
++    out += _mixed(48, y, "临床诊断：健康体检")
++
++    y -= 30
++    columns = ((48, "项目"), (218, "结果"), (288, "提示"), (338, "单位"), (438, "参考区间"))
++    for x, label in columns:
++        out += _mixed(x, y, label, bold=True)
++    out += f"0.5 w 48 {y - 6} m 547 {y - 6} l S\n"
++
++    y -= 22
++    for analyte, result, unit, reference, flag in panel["rows"]:
++        out += _mixed(48, y, analyte)
++        out += _mixed(218, y, result, bold=True)
++        if flag:
++            out += _mixed(288, y, flag)
++        out += _mixed(338, y, unit)
++        out += _mixed(438, y, reference)
++        y -= 17
++    out += f"0.5 w 48 {y + 9} m 547 {y + 9} l S\n"
++
++    out += _mixed(48, y - 10, "备注：" + panel["note"])
++    for x, field in zip((48, 178), panel["signed"], strict=True):
++        out += _mixed(x, y - 28, field)
++    return out
++
++
++def _pdf_zh(panel: dict) -> bytes:
++    title = "FEFF" + f"{panel['institution']} {panel['title']}".encode("utf-16-be").hex().upper()
++    return _pdf_file(_pdf_zh_stream(panel), f"<{title}>", cjk=True)
++
++
+ # ── JPG ──────────────────────────────────────────────────────────────────────
+ # A phone photo of a printed slip, because that is how most people hand over a
+ # report. Slightly rotated and slightly uneven in brightness: a fixture that is
+@@ -222,6 +456,83 @@ def font(size: int, bold: bool = False):
+     return buffer.getvalue()
+ 
+ 
++# ── JPG, in Chinese ──────────────────────────────────────────────────────────
++# A check-up centre's printed sheet on a desk, photographed by its owner:
++# panels under their headings, the page a little turned, the desk showing
++# round it, and the corner nearest the phone in its shadow. Twice the pixels
++# of the photo above, because a Chinese character has four times the strokes
++# of a Latin letter and has to survive the same read by a vision model.
++
++def _photo_zh(panel: dict) -> bytes:
++    from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
++
++    def font(size: int, bold: bool = False):
++        name = "STHeiti Medium.ttc" if bold else "STHeiti Light.ttc"
++        return ImageFont.truetype(f"/System/Library/Fonts/{name}", size)
++
++    ink, grey, paper, desk = (28, 28, 30), (110, 110, 110), (252, 251, 247), (64, 56, 48)
++    width, left, right = 1500, 96, 1404
++    page = Image.new("RGB", (width, 2400), paper)
++    draw = ImageDraw.Draw(page)
++
++    draw.text((left, 64), f"{BANNER_ZH}  {BANNER}", font=font(23), fill=grey)
++    for y, text, size in ((122, panel["institution"], 56), (204, panel["title"], 38)):
++        face = font(size, bold=True)
++        draw.text(((width - draw.textlength(text, font=face)) / 2, y), text, font=face, fill=ink)
++    y = 290
++    for line in panel["fields"]:
++        draw.text((left, y), line, font=font(30), fill=ink)
++        y += 48
++
++    y += 22
++    columns = ((left, "检查项目"), (640, "结果"), (810, "单位"), (1010, "参考范围"), (1280, "提示"))
++    draw.line((left, y, right, y), fill=ink, width=3)
++    for x, label in columns:
++        draw.text((x, y + 16), label, font=font(31, bold=True), fill=ink)
++    y += 68
++    draw.line((left, y, right, y), fill=ink, width=2)
++
++    rows = iter(panel["rows"])
++    for heading, count in panel["sections"]:
++        y += 16
++        draw.text((left, y), f"【{heading}】", font=font(31, bold=True), fill=ink)
++        y += 54
++        for _ in range(count):
++            analyte, result, unit, reference, flag = next(rows)
++            draw.text((left + 24, y), analyte, font=font(31), fill=ink)
++            draw.text((640, y), result, font=font(31, bold=True), fill=ink)
++            draw.text((810, y), unit, font=font(31), fill=ink)
++            draw.text((1010, y), reference, font=font(31), fill=ink)
++            draw.text((1280, y), flag, font=font(31, bold=True), fill=ink)
++            y += 54
++    y += 10
++    draw.line((left, y, right, y), fill=ink, width=3)
++
++    draw.text((left, y + 34), panel["note"], font=font(29), fill=ink)
++    draw.text((left, y + 86), panel["disclaimer"], font=font(25), fill=grey)
++    page = page.crop((0, 0, width, y + 170))
++
++    # The sheet on the desk, turned the way a hand holds a phone over it.
++    photo = Image.new("RGB", (page.width + 150, page.height + 150), desk)
++    photo.paste(page, (75, 75))
++    photo = photo.rotate(1.7, resample=Image.BICUBIC, fillcolor=desk)
++
++    # Light from the far side of the desk, and the phone's shadow over the
++    # near left corner. Soft enough that every character stays dark on light.
++    w, h = photo.size
++    light = Image.linear_gradient("L").resize((w, h)).point(lambda v: 255 - v // 5)
++    shadow = Image.new("L", (w, h), 255)
++    ImageDraw.Draw(shadow).polygon([(0, int(h * 0.52)), (int(w * 0.56), h), (0, h)], fill=176)
++    shadow = shadow.filter(ImageFilter.GaussianBlur(110))
++    shade = ImageChops.multiply(light, shadow)
++    photo = ImageChops.multiply(photo, Image.merge("RGB", (shade, shade, shade)))
++    photo = photo.filter(ImageFilter.GaussianBlur(0.5))
++
++    buffer = io.BytesIO()
++    photo.save(buffer, "JPEG", quality=80)
++    return buffer.getvalue()
++
++
+ # ── CSV and XLSX ─────────────────────────────────────────────────────────────
+ 
+ def _csv() -> bytes:
+@@ -246,12 +557,66 @@ def _xlsx() -> bytes:
+     sheet.append(["Date", "Measurement", "Result", "Unit"])
+     for measurement, result, unit in XLSX_PANEL["rows"]:
+         sheet.append([XLSX_PANEL["collected"], measurement, result, unit])
+-    for column, width in zip("ABCD", (14, 30, 12, 12)):
++    for column, width in zip("ABCD", (14, 30, 12, 12), strict=True):
+         sheet.column_dimensions[column].width = width
++    return _workbook_bytes(book)
+ 
+-    buffer = io.BytesIO()
+-    book.save(buffer)
+-    return buffer.getvalue()
++
++def _xlsx_history(panel: dict) -> bytes:
++    """A clinic's patient portal export: one row per test, the collection
++    date and the panel on every row, results as numbers. The first row is
++    the header, because that is what `documents.extract` reads a sheet's
++    first row as; what a slip prints above its table goes on a second sheet."""
++    from openpyxl import Workbook
++    from openpyxl.styles import Font
++
++    book = Workbook()
++    sheet = book.active
++    sheet.title = "Lab results (synthetic sample)"
++    sheet.append(["Collected", "Panel", "Test", "Result", "Units", "Reference Range", "Flag"])
++    rows = iter(panel["rows"])
++    for heading, count in panel["sections"]:
++        for _ in range(count):
++            test, result, unit, reference, flag = next(rows)
++            number = float(result) if "." in result else int(result)
++            sheet.append([panel["collected"], heading, test, number, unit, reference, flag])
++    for cell in sheet[1]:
++        cell.font = Font(bold=True)
++    sheet.freeze_panes = "A2"
++    for column, width in zip("ABCDEFG", (13, 24, 26, 10, 11, 17, 7), strict=True):
++        sheet.column_dimensions[column].width = width
++
++    about = book.create_sheet("About this file")
++    for line in panel["about"]:
++        about.append([line])
++    about.column_dimensions["A"].width = 72
++    return _workbook_bytes(book)
++
++
++#: The moment every workbook says it was written. openpyxl stamps a workbook
++#: with the clock as it saves, and the zip around it stamps every member, so
++#: two runs of this script gave two different files for the same cells.
++_WORKBOOK_STAMP = b"2026-01-01T00:00:00Z"
++_WORKBOOK_CLOCK = re.compile(rb"(<dcterms:(created|modified)[^>]*>)[^<]*(</dcterms:\2>)")
++
++
++def _workbook_bytes(book) -> bytes:
++    """`book` as an .xlsx whose bytes depend on its cells alone: both dates in
++    its properties are the stamp, every member carries the zip format's
++    earliest date, and the members are stored, not deflated, so the zlib a
++    Python was built with does not show in the file either."""
++    saved = io.BytesIO()
++    book.save(saved)
++    packed = io.BytesIO()
++    with zipfile.ZipFile(saved) as source, zipfile.ZipFile(packed, "w", zipfile.ZIP_STORED) as target:
++        for member in source.infolist():
++            content = source.read(member)
++            if member.filename == "docProps/core.xml":
++                content = _WORKBOOK_CLOCK.sub(rb"\g<1>" + _WORKBOOK_STAMP + rb"\g<3>", content)
++            entry = zipfile.ZipInfo(member.filename, date_time=(1980, 1, 1, 0, 0, 0))
++            entry.external_attr = 0o644 << 16
++            target.writestr(entry, content)
++    return packed.getvalue()
+ 
+ 
+ def main() -> None:
+@@ -262,6 +627,9 @@ def main() -> None:
+         "mom_physical_2026-06.jpg": _jpg(PANELS["mom_physical_2026-06"]),
+         "mom_clinic_visit_2026-07.xlsx": _xlsx(),
+     }
++    writers = {".pdf": _pdf_zh, ".jpg": _photo_zh, ".xlsx": _xlsx_history}
++    for name, panel in HISTORY.items():
++        written[name] = writers[Path(name).suffix](panel)
+     for name, payload in written.items():
+         (OUT / name).write_bytes(payload)
+         print(f"{name:40} {len(payload):>8,} bytes")
+diff --git a/demo/test_export.py b/demo/test_export.py
+index 79fbf958f..003dd9c6e 100644
+--- a/demo/test_export.py
++++ b/demo/test_export.py
+@@ -10,16 +10,22 @@
+ spec = importlib.util.spec_from_file_location("demo_export_under_test", ROOT / "demo/export.py")
+ export = importlib.util.module_from_spec(spec)
+ spec.loader.exec_module(export)
++spec = importlib.util.spec_from_file_location("demo_generate_under_test", ROOT / "demo/generate.py")
++generate = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(generate)
+ 
+ 
+ class ExportContractTest(unittest.TestCase):
+     def test_initial_record_keeps_upload_samples_out(self):
+         fixture = export.build_fixture()
+-        self.assertEqual([len(m["readings"]) for m in fixture["members"]], [814, 1205])
++        self.assertEqual([len(m["readings"]) for m in fixture["members"]], [814, 1208])
+         self.assertEqual(fixture["period"], {"start": "2025-09-15", "end": "2026-09-14"})
++        seeded = {"you": {"you_lab_2025-11.md"}, "mom": {"mom_lab_2025-05.md", "mom_lab_2025-11.md"}}
+         for member in fixture["members"]:
+             names = {r["fileId"] for r in member["readings"] if r["fileId"]}
+-            self.assertEqual(names, {f"{member['id']}_lab_2025-11.md"})
++            self.assertEqual(names, seeded[member["id"]])
++            self.assertEqual(names, {f["filename"] for f in fixture["files"]
++                                     if f["stage"] == "seed" and f["owner"] == member["id"]})
+         self.assertEqual(fixture["sharing"], [{"owner": "mom", "viewer": "you", "access": "view"}])
+ 
+     def test_samples_keep_the_source_dates_readings_and_bytes(self):
+@@ -29,9 +35,10 @@ def test_samples_keep_the_source_dates_readings_and_bytes(self):
+             self.assertEqual(file["sha256"], hashlib.sha256(
+                 (ROOT / "demo" / file["stage"] / file["filename"]).read_bytes()).hexdigest())
+             counts[file["stage"]] += 1
+-        self.assertEqual(counts, {"seed": 2, "upload": 4})
++        self.assertEqual(counts, {"seed": 3, "upload": 7})
+         uploads = {f["filename"]: f for f in fixture["files"] if f["stage"] == "upload"}
+-        self.assertEqual(sorted(len(f["readings"]) for f in uploads.values()), [4, 5, 9, 9])
++        self.assertEqual(set(uploads), {p.name for p in (ROOT / "demo/upload").iterdir()})
++        self.assertEqual(sorted(len(f["readings"]) for f in uploads.values()), [4, 5, 9, 9, 16, 16, 16])
+         csv = uploads["you_lipid_panel_2026-08.csv"]
+         self.assertEqual(csv["collected"], "2026-08-04")
+         cholesterol = next(r for r in csv["readings"] if r["indicator"] == "Cholesterol, Total")
+@@ -40,6 +47,53 @@ def test_samples_keep_the_source_dates_readings_and_bytes(self):
+     def test_repeat_exports_are_identical(self):
+         self.assertEqual(export.build_fixture(), export.build_fixture())
+ 
++    def test_history_spellings_and_units_share_each_analytes_series(self):
++        from mirobody import standardize
++
++        panels = list(generate.HISTORY.values())
++        self.assertEqual([len(panel["rows"]) for panel in panels], [16, 16, 16])
++        all_series = set()
++        for variants in zip(*(panel["rows"] for panel in panels), strict=True):
++            series = set()
++            for name, value, unit, *_ in variants:
++                parsed = standardize.parse_value(value, unit)
++                key = standardize.name_key(name)
++                coding = standardize.code(
++                    name, name_key=key, local_key=f"{key}|{unit}",
++                    value_kind=parsed.value_kind, value_text=value,
++                    unit_text=unit, unit_ucum=parsed.unit_ucum,
++                    value_num=parsed.value_num,
++                )
++                self.assertTrue(coding.coded, (name, coding.reason))
++                series.add(coding.series_id)
++            self.assertEqual(len(series), 1, variants)
++            all_series.update(series)
++        self.assertEqual(len(all_series), 16)
++
++    def test_three_years_print_one_test_three_ways(self):
++        """`upload/you_*_zh_*` and `you_lab_results_en_*`: three places, three
++        names for LDL cholesterol, two units. Each file is checked against its
++        panel the way it can be without a model: the PDF by its text layer's
++        bytes, the workbook by its cells. The photo has no text to compare."""
++        history = generate.HISTORY
++        ldl = [next(r for r in panel["rows"] if "LDL" in r[0] or "低密度" in r[0]) for panel in history.values()]
++        self.assertEqual([(r[0], r[1], r[2]) for r in ldl], [
++            ("LDL-C", "3.62", "mmol/L"),
++            ("低密度脂蛋白胆固醇", "128", "mg/dL"),
++            ("LDL Cholesterol", "112", "mg/dL"),
++        ])
++        self.assertEqual(sorted(p["collected"][:4] for p in history.values()), ["2023", "2024", "2025"])
++
++        pdf = "you_lab_report_zh_2023-03.pdf"
++        self.assertEqual((ROOT / "demo/upload" / pdf).read_bytes(), generate._pdf_zh(history[pdf]))
++
++        book = "you_lab_results_en_2025-03.xlsx"
++        from openpyxl import load_workbook
++        cells = list(load_workbook(ROOT / "demo/upload" / book).worksheets[0].iter_rows(values_only=True))
++        self.assertEqual(cells[0][2:5], ("Test", "Result", "Units"))
++        self.assertEqual([(row[2], str(row[3]), row[4]) for row in cells[1:]],
++                         [(r[0], r[1], r[2]) for r in history[book]["rows"]])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/demo/upload/mom_clinic_visit_2026-07.xlsx b/demo/upload/mom_clinic_visit_2026-07.xlsx
+index 03ce727fe..f9fcd2af4 100644
+Binary files a/demo/upload/mom_clinic_visit_2026-07.xlsx and b/demo/upload/mom_clinic_visit_2026-07.xlsx differ
+diff --git a/demo/upload/you_checkup_photo_zh_2024-04.jpg b/demo/upload/you_checkup_photo_zh_2024-04.jpg
+new file mode 100644
+index 000000000..30686313d
+Binary files /dev/null and b/demo/upload/you_checkup_photo_zh_2024-04.jpg differ
+diff --git a/demo/upload/you_lab_report_zh_2023-03.pdf b/demo/upload/you_lab_report_zh_2023-03.pdf
+new file mode 100644
+index 000000000..ff90d7b67
+Binary files /dev/null and b/demo/upload/you_lab_report_zh_2023-03.pdf differ
+diff --git a/demo/upload/you_lab_results_en_2025-03.xlsx b/demo/upload/you_lab_results_en_2025-03.xlsx
+new file mode 100644
+index 000000000..03139e4ca
+Binary files /dev/null and b/demo/upload/you_lab_results_en_2025-03.xlsx differ
+diff --git a/docs/quickstart.ja.md b/docs/quickstart.ja.md
+index 368258a09..7f816aff4 100644
+--- a/docs/quickstart.ja.md
++++ b/docs/quickstart.ja.md
+@@ -87,7 +87,7 @@ COMPOSE_PROFILES=local-cpu ./deploy.sh
+ 
+ ### ログインしてアップロードを試す
+ 
+-「メールコード」タブで `you@mirobody.ai`、コード `111111` でログインします。メールサービスは不要です。「コレステロールはどう変化した？」と聞いてから、「データ」ページで [`demo/upload/`](../demo/) の合成ファイルをアップロードしてください。これらのファイルは種子データに含まれていないため、アップロードすると文書処理を実際に試せます。
++「メールコード」タブで `you@mirobody.ai`、コード `111111` でログインします。メールサービスは不要です。「コレステロールはどう変化した？」と聞いてから、「データ」ページで [`demo/upload/`](../demo/) の合成ファイルをアップロードしてください。これらのファイルは種子データに含まれていないため、アップロードすると文書処理を実際に試せます。そのうち `you_lab_report_zh_2023-03.pdf`、`you_checkup_photo_zh_2024-04.jpg`、`you_lab_results_en_2025-03.xlsx` の3つは、同じ検査を3通りの名前と2通りの単位で印刷した3年分の報告書です。3つともアップロードして「指標」でLDLコレステロールを開くと1本の線になり、どの数値からも元のファイルを開けます。
+ 
+ **実データを扱うデプロイを初めて起動する前に、`SEED_DEMO_DATA=false` を設定してください。** 設定しないと、公開された2つのデモアカウントが作成されます。
+ 
+diff --git a/docs/quickstart.md b/docs/quickstart.md
+index 5bdf16b42..057dff5bb 100644
+--- a/docs/quickstart.md
++++ b/docs/quickstart.md
+@@ -120,6 +120,11 @@ On the Email code tab, sign in as `you@mirobody.ai` with code `111111`.
+ No mail service is needed. Ask “How has my cholesterol changed?”, then upload
+ a synthetic file from [`demo/upload/`](../demo/) on the Data page. Those files
+ are not included in the seeded records, so uploading one tests document processing.
++Three of them (`you_lab_report_zh_2023-03.pdf`, `you_checkup_photo_zh_2024-04.jpg`,
++`you_lab_results_en_2025-03.xlsx`) are three years of reports that print one
++test under three names and in two units. Upload all three and open LDL
++cholesterol under Indicators: they are one line, and each number opens the
++file it came from.
+ 
+ **Before the first start of a deployment for real data, set
+ `SEED_DEMO_DATA=false`.** Otherwise the app creates the two public demo accounts.
+diff --git a/docs/quickstart.zh-CN.md b/docs/quickstart.zh-CN.md
+index 9b1d59108..6c3f916a7 100644
+--- a/docs/quickstart.zh-CN.md
++++ b/docs/quickstart.zh-CN.md
+@@ -93,7 +93,7 @@ COMPOSE_PROFILES=local-cpu ./deploy.sh
+ 
+ ### 登录并上传示例
+ 
+-在「邮箱验证码」标签使用 `you@mirobody.ai`、验证码 `111111` 登录，无需配置邮件服务。可以先问「我的胆固醇有什么变化？」，再到「数据」页上传 [`demo/upload/`](../demo/) 中的合成文件。这些文件未预先导入，上传后可验证完整的文档处理流程。
++在「邮箱验证码」标签使用 `you@mirobody.ai`、验证码 `111111` 登录，无需配置邮件服务。可以先问「我的胆固醇有什么变化？」，再到「数据」页上传 [`demo/upload/`](../demo/) 中的合成文件。这些文件未预先导入，上传后可验证完整的文档处理流程。其中 `you_lab_report_zh_2023-03.pdf`、`you_checkup_photo_zh_2024-04.jpg`、`you_lab_results_en_2025-03.xlsx` 是三家机构、三个年份的合成化验单，同一项检查有三种写法、两种单位。三份都上传后，在「指标」里点开「低密度脂蛋白胆固醇」，可以看到它们连成一条趋势，每个数字都能点回原文件。
+ 
+ **如需保存真实数据，请在首次启动前设置 `SEED_DEMO_DATA=false`。** 否则应用会创建两个使用公开登录信息的示例账号。
+ 
+diff --git a/docs/walkthrough.ja.md b/docs/walkthrough.ja.md
+index 06ebf95a1..0df397c84 100644
+--- a/docs/walkthrough.ja.md
++++ b/docs/walkthrough.ja.md
+@@ -33,7 +33,7 @@
+ 
+ 例外となるメンバーが1人だけいます。「ケアサークル管理」ページで追加する、自分ではログインしない親などです。そのアドレスは誰もログインできないプレースホルダーなので、そのスイッチはあなたが握り、読み書きできます。本人が自分でログインしたくなったら、カードから招待リンクを送ってください。本人が本当のアドレスを証明すると（そこに送られたコード、メールを送らないデプロイではパスワードで）、アカウントとその中身はすべて本人のものになり、編集・閲覧・なしのうちどれをあなたに残すかを本人が選びます。そのアドレスに既にアカウントがある場合は、記録はそちらに統合されます。
+ 
+-**2 · ① 収集。** [`demo/upload/`](../demo/) には、種子データがあえて含めていない4つのファイルがあり、アップロードは意味のある操作になります。しかも4つは別々の形式です。健康記録は、検査機関や診療所、家族がそれぞれ作った形のまま届くからです。
++**2 · ① 収集。** [`demo/upload/`](../demo/) には、種子データがあえて含めていない7つのファイルがあり、アップロードは意味のある操作になります。最初の4つは別々の形式です。健康記録は、検査機関や診療所、家族がそれぞれ作った形のまま届くからです。
+ 
+ | ファイル | 形式 | 内容 | 指標数 |
+ | --- | --- | --- | --- |
+@@ -42,6 +42,16 @@
+ | `you_lipid_panel_2026-08.csv` | CSV | 別の検査機関のエクスポート、独自の表記 | 5 |
+ | `mom_clinic_visit_2026-07.xlsx` | XLSX | 診療所が表計算ソフトに入力した内容 | 4 |
+ 
++残りの3つは `you` のそれ以前の3年分で、3つの機関が同じ検査を3通りの名前、2通りの単位で印刷しています。
++
++| ファイル | 内容 | LDLコレステロールの表記 | 単位 |
++| --- | --- | --- | --- |
++| `you_lab_report_zh_2023-03.pdf` | 病院の検査報告書（中国語） | `LDL-C` | mmol/L |
++| `you_checkup_photo_zh_2024-04.jpg` | 健診センターの報告書を撮影した写真（中国語） | `低密度脂蛋白胆固醇` | mg/dL |
++| `you_lab_results_en_2025-03.xlsx` | 国際クリニックのエクスポート（英語） | `LDL Cholesterol` | mg/dL |
++
++3つをアップロードして「指標」でLDLコレステロールを開くと、1本の線になります。この3つだけなら `140 → 128 → 112 mg/dL`、2026年の2つも加えると `3.62 → 3.31 → 2.90 → 2.48 → 2.41 mmol/L` です。どの数値からも読み取り元のファイルを開けます。写真には画像を読めるモデルが必要です。コードと各画面の表示は [`demo/README.md`](../demo/README.md#three-years-three-names-two-units) にあります。
++
+ 「データ」ページにファイルを1つ落とすと、そのファイルはまず原文のまま、追跡可能な形で保存されます。① 収集がすることはそれだけです。この切り分けが重要です。検査機関が何と言ったかは1つの事実であり、それが何を意味するかは別の話だからです。
+ 
+ <p align="center">
+diff --git a/docs/walkthrough.md b/docs/walkthrough.md
+index 2214ad342..79e041f83 100644
+--- a/docs/walkthrough.md
++++ b/docs/walkthrough.md
+@@ -58,10 +58,10 @@ there, or a password where the deployment sends no mail), the account and
+ everything in it becomes theirs, and they choose what you keep: edit, view or
+ nothing. If the address already has an account, the record is merged into it.
+ 
+-**2 · ① Collect.** [`demo/upload/`](../demo/) holds four files the seed
+-deliberately leaves out, so uploading one is not a no-op — and they are four
+-different formats, because a health record arrives as whatever the lab, the
+-clinic and the family actually produce:
++**2 · ① Collect.** [`demo/upload/`](../demo/) holds seven files the seed
++deliberately leaves out, so uploading one is not a no-op. The first four are
++four different formats, because a health record arrives as whatever the lab,
++the clinic and the family actually produce:
+ 
+ | File | Format | What it is | Readings |
+ | --- | --- | --- | --- |
+@@ -70,6 +70,22 @@ clinic and the family actually produce:
+ | `you_lipid_panel_2026-08.csv` | CSV | a different lab's export, in its own wording | 5 |
+ | `mom_clinic_visit_2026-07.xlsx` | XLSX | what the clinic typed into a spreadsheet | 4 |
+ 
++The other three are `you`'s three earlier years, from three places that word
++one test three ways and print it in two units:
++
++| File | What it is | Prints LDL cholesterol as | Unit |
++| --- | --- | --- | --- |
++| `you_lab_report_zh_2023-03.pdf` | a hospital lab slip, in Chinese | `LDL-C` | mmol/L |
++| `you_checkup_photo_zh_2024-04.jpg` | a photo of a check-up centre's sheet, in Chinese | `低密度脂蛋白胆固醇` | mg/dL |
++| `you_lab_results_en_2025-03.xlsx` | an international clinic's export, in English | `LDL Cholesterol` | mg/dL |
++
++Upload the three, open LDL cholesterol under Indicators, and they are one
++line: `140 → 128 → 112 mg/dL` with these three alone, and
++`3.62 → 3.31 → 2.90 → 2.48 → 2.41 mmol/L` once the two 2026 files are in as
++well, each number opening the file it was read from. The photo needs a model
++that reads images. [`demo/README.md`](../demo/README.md#three-years-three-names-two-units)
++has the codes and what each view shows.
++
+ Drop one on the Data page and the file is stored first, verbatim and traceable.
+ That is all ① Collect does, and the split matters: what a lab said is one fact,
+ what it means is another.
+diff --git a/docs/walkthrough.zh-CN.md b/docs/walkthrough.zh-CN.md
+index 77ba301da..07d4a4aeb 100644
+--- a/docs/walkthrough.zh-CN.md
++++ b/docs/walkthrough.zh-CN.md
+@@ -46,8 +46,8 @@ TA 的邮箱是一个谁也无法登录的占位地址，所以这个开关由
+ TA 证明真实邮箱属于自己（向这个邮箱发送的验证码；部署不发邮件时则设置密码）后，这个账户和其中的全部数据就归 TA 所有，并由 TA 决定你还保留哪种权限：查看和编辑、仅查看，或者不再查看。
+ 如果这个邮箱已经有账户，记录会合并进去。
+ 
+-**2 · ① 收集。** [`demo/upload/`](../demo/) 里放着四份种子数据有意没有写入的文件，所以上传一份不是空操作。
+-它们是四种不同的格式，因为健康档案本来就以化验所、诊所和家里各自产出的样子到来：
++**2 · ① 收集。** [`demo/upload/`](../demo/) 里放着七份种子数据有意没有写入的文件，所以上传一份不是空操作。
++前四份是四种不同的格式，因为健康档案本来就以化验所、诊所和家里各自产出的样子到来：
+ 
+ | 文件 | 格式 | 是什么 | 指标数 |
+ | --- | --- | --- | --- |
+@@ -56,6 +56,23 @@ TA 证明真实邮箱属于自己（向这个邮箱发送的验证码；部署
+ | `you_lipid_panel_2026-08.csv` | CSV | 另一家化验所的导出，用它自己的写法 | 5 |
+ | `mom_clinic_visit_2026-07.xlsx` | XLSX | 诊所录入表格的内容 | 4 |
+ 
++另外三份是 `you` 更早三年的化验单，来自三家互不相干的机构：同一项检查，三种写法，两种单位。
++想用中文报告走一遍，又不想用自己的真实报告，就用这三份：
++
++| 文件 | 是什么 | 低密度脂蛋白胆固醇的写法 | 单位 |
++| --- | --- | --- | --- |
++| `you_lab_report_zh_2023-03.pdf` | 医院的检验报告单，中文 PDF | `LDL-C` | mmol/L |
++| `you_checkup_photo_zh_2024-04.jpg` | 体检中心报告的手机照片，中文 | `低密度脂蛋白胆固醇` | mg/dL |
++| `you_lab_results_en_2025-03.xlsx` | 国际诊所导出的表格，英文 | `LDL Cholesterol` | mg/dL |
++
++三份都上传，到「指标」里点开「低密度脂蛋白胆固醇」：三种写法是同一项，连成一条线。
++只传这三份时读作 `140 → 128 → 112 mg/dL`，第一个数由报告上的 3.62 mmol/L 换算而来；
++把 2026 年的两份也传上，就是 `3.62 → 3.31 → 2.90 → 2.48 → 2.41 mmol/L`。
++换算过的数字旁边写着报告原值，每一行都能点回它出自的那份文件。
++每份除血脂四项外还有血常规、肝肾功能和血糖共十六项，三份之间每一项都落在同一条序列上。
++照片要靠能读图的模型：云端的 key，或本地的文档识别模型。
++这三份全是合成数据，医院、姓名、编号均为虚构；各项的编码和每个页面该看到什么，见 [`demo/README.md`](../demo/README.md#three-years-three-names-two-units)。
++
+ 把一份文件拖到「数据」页，文件先被原样保存，可以追溯。
+ ① 收集只做这一件事，而这个切分很重要：化验所写了什么是一个事实，它代表什么是另一个。
+ 
+diff --git a/mirobody/server/demo.py b/mirobody/server/demo.py
+index fd32b5ac0..4f77cd5c2 100644
+--- a/mirobody/server/demo.py
++++ b/mirobody/server/demo.py
+@@ -19,9 +19,9 @@
+ charts them against the device series.
+ 
+ Mom's older panel is from a US clinic and prints glucose and cholesterol in
+-mg/dL, where every other demo document prints mmol/L, on purpose: the two are
++mg/dL, where every other seeded panel prints mmol/L, on purpose: the two are
+ one series only through the molar conversion, and every view answers it in one
+-unit. This docstring said so before any seeded panel did; with every demo
++unit. Two of `you`'s uploads print mg/dL for the same reason. This docstring said so before any seeded panel did; with every demo
+ file in mmol/L, no demo walk-through, screenshot or review ever showed a series
+ printed in two units, and the chart's fall from 212 to 4.9 shipped (#271).
+ 
+@@ -133,7 +133,11 @@ def enabled() -> bool:
+             ("Fasting Blood Glucose-FBG", 5.1, "mmol/L", "3.9-6.1", ""),
+             ("Total Cholesterol-TC", 4.60, "mmol/L", "3.0-5.18", ""),
+         )),
+-        "uploads": ("you_annual_checkup_2026-05.pdf", "you_lipid_panel_2026-08.csv"),
++        "uploads": ("you_annual_checkup_2026-05.pdf", "you_lipid_panel_2026-08.csv",
++                    # Three earlier years from three places, in Chinese and in
++                    # mg/dL: one test under three names and two units.
++                    "you_lab_report_zh_2023-03.pdf", "you_checkup_photo_zh_2024-04.jpg",
++                    "you_lab_results_en_2025-03.xlsx"),
+     },
+     # The person whose record you are following: heavier, less active, sleeping
+     # badly, and an
+diff --git a/skills/mirobody/SKILL.md b/skills/mirobody/SKILL.md
+index eb86a60ff..06274a301 100644
+--- a/skills/mirobody/SKILL.md
++++ b/skills/mirobody/SKILL.md
+@@ -145,9 +145,11 @@ one, and `mom@mirobody.ai`, who shares her record view-only. Set
+ `SEED_DEMO_DATA=false` in `.env` before the first start for an empty
+ deployment.
+ 
+-- **Data page**: drop a file. `demo/upload/` in the checkout holds four the
+-  seed leaves out: the lab PDF and the CSV are `you`'s, the report photo and
+-  the spreadsheet are `mom`'s (upload those signed in as her). Each analyte
++- **Data page**: drop a file. `demo/upload/` in the checkout holds seven the
++  seed leaves out: the 2026 lab PDF and the CSV are `you`'s, the 2026 report
++  photo and spreadsheet are `mom`'s (upload those signed in as her), and
++  three more are `you`'s earlier years, two in Chinese and two in mg/dL,
++  printing LDL cholesterol under three names (`demo/README.md`). Each analyte
+   comes out with a value, a unit and a code, linked to the page it was read
+   from. A genotype export goes on the Genomics tab, not here.
+ - **Ask page**: a question such as "How has my cholesterol moved?" finds every

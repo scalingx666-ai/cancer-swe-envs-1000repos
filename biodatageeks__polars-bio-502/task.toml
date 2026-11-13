@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/biodatageeks__polars-bio-502"
+description = "chore(conda): sync bioconda recipe with upstream 0.37.0"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "polars-bio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "biodatageeks/polars-bio"
+ref = "d142e6bc2c5053c0b8dfa47f0bb47337587cc52c"
+reference = "https://github.com/biodatageeks/polars-bio/pull/502"
+source_access = "auto"
+built_at = "2026-11-13T16:10:05.146232+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e929e5c365c74096be812232800cfc38d02bbb1a855f487dd3ad7c5554478deb"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-08T06:02:54Z"
+diff_format = "unified"
+context_files = [
+    "bioconda-recipe/README.md",
+    "bioconda-recipe/meta.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 70
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

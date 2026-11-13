@@ -1,0 +1,636 @@
+diff --git a/alphadia/search_step.py b/alphadia/search_step.py
+index 0157d4b2b..eade910fd 100644
+--- a/alphadia/search_step.py
++++ b/alphadia/search_step.py
+@@ -173,12 +173,12 @@ def _init_config(
+             cli_config_update = Config(cli_config, name=USER_DEFINED_CLI_PARAM)
+             config_updates.append(cli_config_update)
+ 
+-        if not SearchStep._is_ng_activated(config, config_updates):
+-            ng_default_config = SearchStep._load_default_config(
++        if not SearchStep._is_rust_backend(config, config_updates):
++            python_default_config = SearchStep._load_default_config(
+                 file_name="default_python.yaml"
+             )
+-            ng_default_config.name = "default_python"
+-            config_updates.insert(0, ng_default_config)
++            python_default_config.name = "default_python"
++            config_updates.insert(0, python_default_config)
+ 
+         # the update done for multi-step search needs to be last in order to overwrite any user-defined output folder
+         if extra_config:
+@@ -218,7 +218,7 @@ def _load_default_config(file_name="default.yaml") -> Config:
+         return config
+ 
+     @staticmethod
+-    def _is_ng_activated(config: Config, config_updates: list[Config]) -> bool:
++    def _is_rust_backend(config: Config, config_updates: list[Config]) -> bool:
+         """Decide if the extraction backend is 'rust'.
+ 
+         If no updates are provided, the decision is based on the default config.
+diff --git a/alphadia/workflow/base.py b/alphadia/workflow/base.py
+index d357ec254..593762591 100644
+--- a/alphadia/workflow/base.py
++++ b/alphadia/workflow/base.py
+@@ -4,7 +4,7 @@
+ from abc import ABC, abstractmethod
+ 
+ from alphabase.spectral_library.flat import SpecLibFlat
+-from alphadia_search_rs import DIAData as DiaDataNG
++from alphadia_search_rs import DIAData as DiaDataRust
+ 
+ from alphadia.constants.keys import ConfigKeys
+ from alphadia.constants.settings import FIGURES_FOLDER_NAME
+@@ -75,7 +75,7 @@ def __init__(
+ 
+         self._config: Config = config
+         self.reporter: reporting.Pipeline | None = None
+-        self._dia_data: DiaData | DiaDataNG | None = None
++        self._dia_data: DiaData | DiaDataRust | None = None
+         self._spectral_library: SpecLibFlat | None = None
+         self._calibration_manager: CalibrationManager | None = None
+         self._optimization_manager: OptimizationManager | None = None
+@@ -144,7 +144,7 @@ def load(
+         self.reporter.log_event("section_stop", {})
+ 
+     @abstractmethod
+-    def _convert_dia_data(self, dia_data: DiaData) -> DiaData | DiaDataNG:
++    def _convert_dia_data(self, dia_data: DiaData) -> DiaData | DiaDataRust:
+         """Convert the loaded DIA data into the representation the extraction backend works on."""
+ 
+     @property
+@@ -180,6 +180,6 @@ def spectral_library(self) -> SpecLibFlat | None:
+     @property
+     def dia_data(
+         self,
+-    ) -> DiaData | DiaDataNG:
++    ) -> DiaData | DiaDataRust:
+         """DIA data for the workflow. Owns the DIA data"""
+         return self._dia_data
+diff --git a/alphadia/workflow/peptidecentric/extraction_handler.py b/alphadia/workflow/peptidecentric/extraction_handler.py
+index c4b552521..fa8fd2ef2 100644
+--- a/alphadia/workflow/peptidecentric/extraction_handler.py
++++ b/alphadia/workflow/peptidecentric/extraction_handler.py
+@@ -24,7 +24,7 @@ def __init__(
+         fdr_manager: FDRManager,
+         reporter: Pipeline,
+         column_name_handler: ColumnNameHandler,
+-        dia_data: "DiaData | DiaDataNG",  # noqa: F821
++        dia_data: "DiaData | DiaDataRust",  # noqa: F821
+         spectral_library: SpecLibFlat,
+     ):
+         """
+@@ -40,7 +40,7 @@ def __init__(
+             Reporter for logging
+         column_name_handler : ColumnNameHandler
+             Column name handler for data access
+-        dia_data : DiaData | DiaDataNG
++        dia_data : DiaData | DiaDataRust
+             DIA data to extract from, in the format of the backend
+         spectral_library : SpecLibFlat
+             Spectral library containing precursors and fragments
+@@ -146,10 +146,10 @@ def quantify_candidates(
+         precursor_fdr_df : pd.DataFrame | None
+             DataFrame with post-FDR precursor results. If given, FDR-related columns will be merged into the precursor results.
+         top_k_fragments : int, optional
+-            top k fragments to use for quantification (only for classic backend, None means default from config)
++            top k fragments to use for quantification (only for the Python backend, None means default from config)
+         Returns
+         -------
+         tuple[pd.DataFrame | None, pd.DataFrame]
+-            precursor dataframe incl. quantification (only NG, None otherwise) and fragments dataframe
++            precursor dataframe incl. quantification (only Rust backend, None otherwise) and fragments dataframe
+ 
+         """
+diff --git a/alphadia/workflow/peptidecentric/optimization_handler.py b/alphadia/workflow/peptidecentric/optimization_handler.py
+index 3218fe584..fd4f946ac 100644
+--- a/alphadia/workflow/peptidecentric/optimization_handler.py
++++ b/alphadia/workflow/peptidecentric/optimization_handler.py
+@@ -63,7 +63,7 @@ def __init__(
+         fdr_manager: FDRManager,
+         reporter: Pipeline,
+         spectral_library: SpecLibFlat,
+-        dia_data: "DiaData | DiaDataNG",  # noqa: F821
++        dia_data: "DiaData | DiaDataRust",  # noqa: F821
+         create_extraction_handler: Callable[[SpecLibFlat], ExtractionHandlerT],
+         figure_path: str | None = None,
+     ):
+@@ -74,7 +74,7 @@ def __init__(
+ 
+         self._reporter = reporter
+         self._spectral_library = spectral_library
+-        self._dia_data: DiaData | DiaDataNG = dia_data  # noqa: F821
++        self._dia_data: DiaData | DiaDataRust = dia_data  # noqa: F821
+         self._figure_path = figure_path
+         self._create_extraction_handler = create_extraction_handler
+ 
+diff --git a/alphadia/workflow/peptidecentric/python/extraction_handler.py b/alphadia/workflow/peptidecentric/python/extraction_handler.py
+index dde9fe4f1..ce735919f 100644
+--- a/alphadia/workflow/peptidecentric/python/extraction_handler.py
++++ b/alphadia/workflow/peptidecentric/python/extraction_handler.py
+@@ -177,9 +177,9 @@ def quantify_candidates(
+         precursor_fdr_df: pd.DataFrame | None,
+         top_k_fragments: int | None = None,
+     ) -> tuple[pd.DataFrame | None, pd.DataFrame]:
+-        """Quantify candidates using classic backend.
++        """Quantify candidates using the Python backend.
+ 
+-        Note: because quantification and scoring are intertwined in the classic backend,
++        Note: because quantification and scoring are intertwined in the Python backend,
+         this method performs both scoring and quantification, but only returns the fragments dataframe.
+ 
+         """
+diff --git a/alphadia/workflow/peptidecentric/rust/extraction_handler.py b/alphadia/workflow/peptidecentric/rust/extraction_handler.py
+index 83480c0d4..71108e3fa 100644
+--- a/alphadia/workflow/peptidecentric/rust/extraction_handler.py
++++ b/alphadia/workflow/peptidecentric/rust/extraction_handler.py
+@@ -2,7 +2,7 @@
+ 
+ import pandas as pd
+ from alphabase.spectral_library.flat import SpecLibFlat
+-from alphadia_search_rs import DIAData as DiaDataNG
++from alphadia_search_rs import DIAData as DiaDataRust
+ from alphadia_search_rs import (
+     FeatureSet,
+     OptimizationContext,
+@@ -13,7 +13,7 @@
+     ScoringParameters,
+     SelectionParameters,
+ )
+-from alphadia_search_rs import SpecLibFlat as SpecLibFlatNG
++from alphadia_search_rs import SpecLibFlat as SpecLibFlatRust
+ 
+ from alphadia.constants.keys import CalibCols
+ from alphadia.fragcomp.utils import candidate_hash
+@@ -24,12 +24,12 @@
+ from alphadia.workflow.managers.fdr_manager import FDRManager
+ from alphadia.workflow.peptidecentric.column_name_handler import ColumnNameHandler
+ from alphadia.workflow.peptidecentric.extraction_handler import ExtractionHandler
+-from alphadia.workflow.peptidecentric.rust.ng_mapper import (
++from alphadia.workflow.peptidecentric.rust.mapper import (
+     FINAL_ROUND_EXCLUDED_FEATURES,
+-    candidates_to_ng,
++    candidates_to_rust,
+     parse_candidates,
+     parse_quantification,
+-    speclib_to_ng,
++    speclib_to_rust,
+     to_features_df,
+ )
+ 
+@@ -44,7 +44,7 @@ def __init__(
+         fdr_manager: FDRManager,
+         reporter: Pipeline,
+         column_name_handler: ColumnNameHandler,
+-        dia_data: DiaDataNG,
++        dia_data: DiaDataRust,
+         spectral_library: SpecLibFlat,
+     ):
+         super().__init__(
+@@ -57,7 +57,7 @@ def __init__(
+             spectral_library,
+         )
+ 
+-        self._speclib_ng: SpecLibFlatNG = speclib_to_ng(
++        self._speclib_rust: SpecLibFlatRust = speclib_to_rust(
+             spectral_library,
+             rt_column=column_name_handler.get_rt_column(),
+             precursor_mz_column=column_name_handler.get_precursor_mz_column(),
+@@ -85,7 +85,7 @@ def _select_candidates(self) -> pd.DataFrame:
+         )
+ 
+         candidates = PeakGroupSelection(selection_params).search(
+-            self._dia_data, self._speclib_ng
++            self._dia_data, self._speclib_rust
+         )
+ 
+         return parse_candidates(candidates, self._spectral_library, self._dia_data)
+@@ -108,7 +108,7 @@ def score_candidates(
+         pd.DataFrame
+             precursors dataframe with results from scoring (= features)
+         """
+-        candidates = candidates_to_ng(candidates_df, self._dia_data)
++        candidates = candidates_to_rust(candidates_df, self._dia_data)
+ 
+         scoring_params = ScoringParameters()
+         scoring_params.update(
+@@ -120,7 +120,7 @@ def score_candidates(
+         )
+ 
+         candidate_features = PeakGroupScoring(scoring_params).score(
+-            self._dia_data, self._speclib_ng, candidates
++            self._dia_data, self._speclib_rust, candidates
+         )
+ 
+         return to_features_df(candidate_features, self._spectral_library)
+@@ -135,7 +135,7 @@ def quantify_candidates(
+ 
+         See superclass documentation for interface details.
+         """
+-        candidates_collection = candidates_to_ng(candidates_df, self._dia_data)
++        candidates_collection = candidates_to_rust(candidates_df, self._dia_data)
+ 
+         # run quantification
+         quant_params = QuantificationParameters()
+@@ -144,7 +144,7 @@ def quantify_candidates(
+ 
+         peak_group_quantification = PeakGroupQuantification(quant_params)
+         quantified_lib = peak_group_quantification.quantify(
+-            self._dia_data, self._speclib_ng, candidates_collection
++            self._dia_data, self._speclib_rust, candidates_collection
+         )
+         precursor_df, fragments_df = parse_quantification(quantified_lib)
+ 
+diff --git a/alphadia/workflow/peptidecentric/rust/ng_mapper.py b/alphadia/workflow/peptidecentric/rust/mapper.py
+similarity index 84%
+rename from alphadia/workflow/peptidecentric/rust/ng_mapper.py
+rename to alphadia/workflow/peptidecentric/rust/mapper.py
+index f8fd3537f..5fd364fa4 100644
+--- a/alphadia/workflow/peptidecentric/rust/ng_mapper.py
++++ b/alphadia/workflow/peptidecentric/rust/mapper.py
+@@ -1,4 +1,4 @@
+-"""Conversion of AlphaDIA to NG data structure and back."""
++"""Conversion between alphaDIA and alphadia-search-rs data structures."""
+ 
+ import numpy as np
+ import pandas as pd
+@@ -10,21 +10,21 @@
+     set_num_threads,
+ )
+ from alphadia_search_rs import (
+-    DIAData as DiaDataNG,
++    DIAData as DiaDataRust,
+ )
+-from alphadia_search_rs import SpecLibFlat as SpecLibFlatNG
++from alphadia_search_rs import SpecLibFlat as SpecLibFlatRust
+ 
+ from alphadia.constants.keys import CalibCols
+ from alphadia.raw_data import DiaData
+ 
+ 
+-def set_ng_thread_count(thread_count: int) -> None:
+-    """Set the number of threads for NG computations."""
++def set_thread_count(thread_count: int) -> None:
++    """Set the number of threads used by alphadia-search-rs."""
+     set_num_threads(thread_count)
+ 
+ 
+-def dia_data_to_ng(dia_data: DiaData) -> "DiaDataNG":  # noqa: F821
+-    """Convert DIA data from classic to ng format."""
++def dia_data_to_rust(dia_data: DiaData) -> "DiaDataRust":  # noqa: F821
++    """Convert DIA data to the alphadia-search-rs format."""
+ 
+     spectrum_df = dia_data.spectrum_df
+     peak_df = dia_data.peak_df
+@@ -39,7 +39,7 @@ def dia_data_to_ng(dia_data: DiaData) -> "DiaDataNG":  # noqa: F821
+         :spectrum_df_len
+     ]
+ 
+-    return DiaDataNG.from_arrays(
++    return DiaDataRust.from_arrays(
+         delta_scan_idx.astype(np.int64),
+         spectrum_df["isolation_lower_mz"].values.astype(np.float32),
+         spectrum_df["isolation_upper_mz"].values.astype(np.float32),
+@@ -53,19 +53,19 @@ def dia_data_to_ng(dia_data: DiaData) -> "DiaDataNG":  # noqa: F821
+     )
+ 
+ 
+-def speclib_to_ng(
++def speclib_to_rust(
+     speclib: SpecLibFlat,
+     *,
+     rt_column: str,
+     precursor_mz_column: str,
+     fragment_mz_column: str,
+-) -> "SpecLibFlatNG":  # noqa: F821
+-    """Convert speclib from classic to ng format."""
++) -> "SpecLibFlatRust":  # noqa: F821
++    """Convert a spectral library to the alphadia-search-rs format."""
+ 
+     precursor_df = speclib.precursor_df
+     fragment_df = speclib.fragment_df
+ 
+-    return SpecLibFlatNG.from_arrays(
++    return SpecLibFlatRust.from_arrays(
+         precursor_df["precursor_idx"].values.astype(np.uint64),
+         precursor_df["mz_library"].values.astype(np.float32),
+         precursor_df[precursor_mz_column].values.astype(np.float32),
+@@ -87,7 +87,7 @@ def speclib_to_ng(
+ 
+ 
+ def get_feature_names(feature_set: FeatureSet) -> list[str]:
+-    """Get the names of the features NG scoring computes with `feature_set`."""
++    """Get the names of the features alphadia-search-rs computes with `feature_set`."""
+     return list(CandidateFeatureCollection.get_feature_names(feature_set))
+ 
+ 
+@@ -97,9 +97,11 @@ def get_feature_names(feature_set: FeatureSet) -> list[str]:
+ 
+ 
+ def parse_candidates(
+-    candidates: CandidateCollection, spectral_library: SpecLibFlat, dia_data: DiaDataNG
++    candidates: CandidateCollection,
++    spectral_library: SpecLibFlat,
++    dia_data: DiaDataRust,
+ ) -> pd.DataFrame:
+-    """Parse candidates from NG to classic format."""
++    """Parse alphadia-search-rs candidates into a DataFrame."""
+ 
+     cycle_len = dia_data.cycle.shape[1]
+ 
+@@ -146,10 +148,10 @@ def parse_candidates(
+     return candidates_df
+ 
+ 
+-def candidates_to_ng(
+-    candidates_df: pd.DataFrame, dia_data: DiaDataNG
++def candidates_to_rust(
++    candidates_df: pd.DataFrame, dia_data: DiaDataRust
+ ) -> CandidateCollection:
+-    """Convert candidates from classic to NG format."""
++    """Convert a candidates DataFrame to the alphadia-search-rs format."""
+ 
+     cycle_len = dia_data.cycle.shape[1]
+ 
+@@ -170,7 +172,7 @@ def candidates_to_ng(
+ def to_features_df(
+     candidate_features: CandidateFeatureCollection, spectral_library: SpecLibFlat
+ ) -> pd.DataFrame:
+-    """Convert NG candidate features to classic format."""
++    """Convert alphadia-search-rs candidate features into a DataFrame."""
+ 
+     features_dict = candidate_features.to_dict_arrays()
+ 
+@@ -202,7 +204,7 @@ def to_features_df(
+ def parse_quantification(
+     quantified_speclib: "SpecLibFlatQuantified",  # noqa: F821
+ ) -> tuple[pd.DataFrame, pd.DataFrame]:
+-    """Convert NG quantified spectral library to classic precursor and fragments DataFrame."""
++    """Convert the alphadia-search-rs quantified spectral library into precursor and fragments DataFrames."""
+ 
+     precursor_dict, fragment_dict = quantified_speclib.to_dict_arrays()
+ 
+diff --git a/alphadia/workflow/peptidecentric/rust/workflow.py b/alphadia/workflow/peptidecentric/rust/workflow.py
+index c9446fa31..7c4cd8d12 100644
+--- a/alphadia/workflow/peptidecentric/rust/workflow.py
++++ b/alphadia/workflow/peptidecentric/rust/workflow.py
+@@ -4,7 +4,7 @@
+ 
+ import pandas as pd
+ from alphabase.spectral_library.flat import SpecLibFlat
+-from alphadia_search_rs import DIAData as DiaDataNG
++from alphadia_search_rs import DIAData as DiaDataRust
+ from alphadia_search_rs import FeatureSet
+ 
+ from alphadia.exceptions import GenericUserError
+@@ -14,10 +14,10 @@
+ from alphadia.workflow.peptidecentric.rust.extraction_handler import (
+     RustExtractionHandler,
+ )
+-from alphadia.workflow.peptidecentric.rust.ng_mapper import (
+-    dia_data_to_ng,
++from alphadia.workflow.peptidecentric.rust.mapper import (
++    dia_data_to_rust,
+     get_feature_names,
+-    set_ng_thread_count,
++    set_thread_count,
+ )
+ from alphadia.workflow.peptidecentric.rust.optimization_handler import (
+     RustOptimizationHandler,
+@@ -53,29 +53,29 @@ def _create_extraction_handler(
+             spectral_library,
+         )
+ 
+-    def _convert_dia_data(self, dia_data: DiaData) -> DiaDataNG:
++    def _convert_dia_data(self, dia_data: DiaData) -> DiaDataRust:
+         if isinstance(dia_data, TimsTOFTranspose):
+             raise GenericUserError(
+-                "NOT_SUPPORTED_BY_NG",
++                "NOT_SUPPORTED_BY_RUST",
+                 "Rust backend does not support TimsTOF data yet. Please use extraction_backend='python'.",
+             )
+ 
+         time_start = time.time()
+ 
+         # needs to be the first call to alphadia-search-rs
+-        set_ng_thread_count(self.config["general"]["thread_count"])
++        set_thread_count(self.config["general"]["thread_count"])
+ 
+-        dia_data_ng = dia_data_to_ng(dia_data)
++        dia_data_rust = dia_data_to_rust(dia_data)
+ 
+         # TODO: remove these asserts
+-        assert dia_data.cycle.shape[1] == dia_data_ng.cycle.shape[1]
+-        assert all(dia_data.rt_values == dia_data_ng.rt_values)
++        assert dia_data.cycle.shape[1] == dia_data_rust.cycle.shape[1]
++        assert all(dia_data.rt_values == dia_data_rust.rt_values)
+ 
+         self.reporter.log_string(
+-            f"Creating DIA data NG object took: {time.time() - time_start}"
++            f"Converting DIA data for alphadia-search-rs took: {time.time() - time_start}"
+         )
+ 
+-        return dia_data_ng
++        return dia_data_rust
+ 
+     @use_timing_manager("extraction")
+     def extraction(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+diff --git a/tests/unit_tests/test_search_step.py b/tests/unit_tests/test_search_step.py
+index 43bcb2c0b..07bb21719 100644
+--- a/tests/unit_tests/test_search_step.py
++++ b/tests/unit_tests/test_search_step.py
+@@ -217,15 +217,15 @@ def test_updates_with_user_config_object_python_backend(mock_load_default_config
+             "general": {"reuse_quant_from": []},
+         }
+     )
+-    default_config_ng = Config(
++    default_config_python = Config(
+         {
+-            "key1": "NEW_NG_DEFAULT1",
+-            "key2": "NEW_NG_DEFAULT2",
++            "key1": "NEW_PYTHON_DEFAULT1",
++            "key2": "NEW_PYTHON_DEFAULT2",
+         }
+     )
+     mock_load_default_config.side_effect = [
+         deepcopy(default_config),
+-        deepcopy(default_config_ng),
++        deepcopy(default_config_python),
+     ]
+ 
+     user_config = Config(
+@@ -236,8 +236,8 @@ def test_updates_with_user_config_object_python_backend(mock_load_default_config
+     result = SearchStep._init_config(user_config, None, None, "/output")
+ 
+     assert result == {
+-        "key1": "NEW_NG_DEFAULT1",  # taken from ng default
+-        "key2": "some_user_value",  # overwritten by user although ng default exists
++        "key1": "NEW_PYTHON_DEFAULT1",  # taken from python default
++        "key2": "some_user_value",  # overwritten by user although python default exists
+         "key3": "value3",
+         "output_directory": "/output",
+         "search": {"extraction_backend": "python"},
+@@ -585,9 +585,9 @@ def test_raises_if_extraction_backend_is_unknown(tmp_path):
+ 
+ 
+ @pytest.mark.parametrize(("backend", "expected"), [("rust", True), ("python", False)])
+-def test_is_ng_activated(backend, expected):
++def test_is_rust_backend(backend, expected):
+     # given
+     config = Config({"search": {"extraction_backend": backend}})
+ 
+     # when / then
+-    assert SearchStep._is_ng_activated(config, []) is expected
++    assert SearchStep._is_rust_backend(config, []) is expected
+diff --git a/tests/unit_tests/workflow/test_backend_workflows.py b/tests/unit_tests/workflow/test_backend_workflows.py
+index d00ceaecb..d11e63206 100644
+--- a/tests/unit_tests/workflow/test_backend_workflows.py
++++ b/tests/unit_tests/workflow/test_backend_workflows.py
+@@ -20,7 +20,7 @@
+ from alphadia.workflow.peptidecentric.rust.extraction_handler import (
+     RustExtractionHandler,
+ )
+-from alphadia.workflow.peptidecentric.rust.ng_mapper import get_feature_names
++from alphadia.workflow.peptidecentric.rust.mapper import get_feature_names
+ from alphadia.workflow.peptidecentric.rust.optimization_handler import (
+     RustOptimizationHandler,
+ )
+@@ -91,7 +91,7 @@ def test_classifier_feature_columns_match_backend(
+         (RustPeptideCentricWorkflow, RustExtractionHandler),
+     ],
+ )
+-@patch("alphadia.workflow.peptidecentric.rust.extraction_handler.speclib_to_ng")
++@patch("alphadia.workflow.peptidecentric.rust.extraction_handler.speclib_to_rust")
+ def test_workflow_creates_extraction_handler_of_its_backend(
+     _, workflow_class, extraction_handler_class, tmp_path
+ ):
+@@ -185,17 +185,17 @@ def test_python_workflow_keeps_dia_data(tmp_path):
+     assert prepared is dia_data
+ 
+ 
+-@patch("alphadia.workflow.peptidecentric.rust.workflow.set_ng_thread_count")
+-@patch("alphadia.workflow.peptidecentric.rust.workflow.dia_data_to_ng")
++@patch("alphadia.workflow.peptidecentric.rust.workflow.set_thread_count")
++@patch("alphadia.workflow.peptidecentric.rust.workflow.dia_data_to_rust")
+ def test_rust_workflow_converts_dia_data(
+-    mock_dia_data_to_ng, mock_set_ng_thread_count, tmp_path
++    mock_dia_data_to_rust, mock_set_thread_count, tmp_path
+ ):
+     # given
+     workflow = _create_workflow(RustPeptideCentricWorkflow, tmp_path)
+     dia_data = MagicMock(
+         name="dia_data", cycle=np.zeros((1, 4)), rt_values=np.arange(3)
+     )
+-    mock_dia_data_to_ng.return_value = MagicMock(
++    mock_dia_data_to_rust.return_value = MagicMock(
+         cycle=dia_data.cycle, rt_values=dia_data.rt_values
+     )
+ 
+@@ -203,9 +203,9 @@ def test_rust_workflow_converts_dia_data(
+     prepared = workflow._convert_dia_data(dia_data)
+ 
+     # then
+-    mock_set_ng_thread_count.assert_called_once_with(THREAD_COUNT)
+-    mock_dia_data_to_ng.assert_called_once_with(dia_data)
+-    assert prepared is mock_dia_data_to_ng.return_value
++    mock_set_thread_count.assert_called_once_with(THREAD_COUNT)
++    mock_dia_data_to_rust.assert_called_once_with(dia_data)
++    assert prepared is mock_dia_data_to_rust.return_value
+ 
+ 
+ def test_rust_workflow_rejects_timstof_data(tmp_path):
+diff --git a/tests/unit_tests/workflow/test_extraction_handler.py b/tests/unit_tests/workflow/test_extraction_handler.py
+index 40e480936..d59a1a5d3 100644
+--- a/tests/unit_tests/workflow/test_extraction_handler.py
++++ b/tests/unit_tests/workflow/test_extraction_handler.py
+@@ -9,11 +9,13 @@
+ from alphadia.workflow.peptidecentric.rust.extraction_handler import (
+     RustExtractionHandler,
+ )
+-from alphadia.workflow.peptidecentric.rust.ng_mapper import (
++from alphadia.workflow.peptidecentric.rust.mapper import (
+     FINAL_ROUND_EXCLUDED_FEATURES,
+ )
+ 
+-SPECLIB_TO_NG = "alphadia.workflow.peptidecentric.rust.extraction_handler.speclib_to_ng"
++SPECLIB_TO_RUST = (
++    "alphadia.workflow.peptidecentric.rust.extraction_handler.speclib_to_rust"
++)
+ 
+ OPTIMIZATION_CONTEXT = OptimizationContext(
+     rt_error=120.0,
+@@ -30,7 +32,7 @@
+ 
+ def _create_handler(config, fdr_manager=None):
+     """Create a handler on mock DIA data and a mock spectral library, with the library conversion patched."""
+-    with patch(SPECLIB_TO_NG, return_value=MagicMock(name="speclib_ng")):
++    with patch(SPECLIB_TO_RUST, return_value=MagicMock(name="speclib_rust")):
+         return RustExtractionHandler(
+             config,
+             OPTIMIZATION_CONTEXT,
+@@ -42,8 +44,8 @@ def _create_handler(config, fdr_manager=None):
+         )
+ 
+ 
+-@patch(SPECLIB_TO_NG)
+-def test_converts_the_library_once_at_construction(mock_speclib_to_ng):
++@patch(SPECLIB_TO_RUST)
++def test_converts_the_library_once_at_construction(mock_speclib_to_rust):
+     # Given: a spectral library and the columns of the current calibration state
+     column_name_handler = MagicMock()
+     column_name_handler.get_rt_column.return_value = "rt_calibrated"
+@@ -63,21 +65,21 @@ def test_converts_the_library_once_at_construction(mock_speclib_to_ng):
+     )
+ 
+     # Then: the handler converts the library with these columns and keeps the result
+-    mock_speclib_to_ng.assert_called_once_with(
++    mock_speclib_to_rust.assert_called_once_with(
+         spectral_library,
+         rt_column="rt_calibrated",
+         precursor_mz_column="mz_calibrated",
+         fragment_mz_column="mz_library",
+     )
+-    assert handler._speclib_ng is mock_speclib_to_ng.return_value
++    assert handler._speclib_rust is mock_speclib_to_rust.return_value
+ 
+ 
+ @pytest.mark.parametrize("feature_set", [FeatureSet.Calibration, FeatureSet.Full])
+ @patch("alphadia.workflow.peptidecentric.rust.extraction_handler.to_features_df")
+ @patch("alphadia.workflow.peptidecentric.rust.extraction_handler.PeakGroupScoring")
+-@patch("alphadia.workflow.peptidecentric.rust.extraction_handler.candidates_to_ng")
++@patch("alphadia.workflow.peptidecentric.rust.extraction_handler.candidates_to_rust")
+ def test_score_candidates_returns_the_scored_features(
+-    mock_candidates_to_ng, mock_scoring, mock_to_features_df, feature_set
++    mock_candidates_to_rust, mock_scoring, mock_to_features_df, feature_set
+ ):
+     # Given: a handler with a configured top k fragments value
+     config = {"search": {"top_k_fragments_scoring": 12}}
+@@ -92,7 +94,7 @@ def test_score_candidates_returns_the_scored_features(
+     assert scoring_params.feature_set == feature_set
+     assert scoring_params.mass_tolerance == 7.5
+     mock_scoring.return_value.score.assert_called_once_with(
+-        handler._dia_data, handler._speclib_ng, mock_candidates_to_ng.return_value
++        handler._dia_data, handler._speclib_rust, mock_candidates_to_rust.return_value
+     )
+     mock_to_features_df.assert_called_once_with(
+         mock_scoring.return_value.score.return_value, handler._spectral_library
+diff --git a/tests/unit_tests/workflow/test_ng_mapper.py b/tests/unit_tests/workflow/test_rust_mapper.py
+similarity index 89%
+rename from tests/unit_tests/workflow/test_ng_mapper.py
+rename to tests/unit_tests/workflow/test_rust_mapper.py
+index ed431e24e..40ff3417c 100644
+--- a/tests/unit_tests/workflow/test_ng_mapper.py
++++ b/tests/unit_tests/workflow/test_rust_mapper.py
+@@ -1,10 +1,10 @@
+-"""Unit tests for the NG mapper."""
++"""Unit tests for the alphadia-search-rs mapper."""
+ 
+ from unittest.mock import MagicMock
+ 
+ import pandas as pd
+ 
+-from alphadia.workflow.peptidecentric.rust.ng_mapper import to_features_df
++from alphadia.workflow.peptidecentric.rust.mapper import to_features_df
+ 
+ 
+ def test_to_features_df_sets_the_library_mz_as_observed_mz():

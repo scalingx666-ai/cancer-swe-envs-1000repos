@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/nyukat__GMIC-14"
+description = "assert torch 1.1.0"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "GMIC",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nyukat/GMIC"
+ref = "261c2f0f5201e6f8d8803ee6ffb8fa3f348584cd"
+reference = "https://github.com/nyukat/GMIC/pull/14"
+source_access = "auto"
+built_at = "2026-11-13T15:33:11.955523+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:06e380bc4a698add5ff722220f87674250ce2d32de96f5f3b52846b296e8039f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-02-18T14:55:17Z"
+diff_format = "unified"
+context_files = [
+    "requirements.txt",
+    "src/scripts/run_model.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

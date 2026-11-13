@@ -1,0 +1,15 @@
+diff --git a/pytorch/utils.py b/pytorch/utils.py
+index fe046c9..e32d493 100644
+--- a/pytorch/utils.py
++++ b/pytorch/utils.py
+@@ -199,6 +199,10 @@ def load(self, path):
+         self.best_score = checkpoint["best_score"]
+         if self.optimizer:
+             self.optimizer.load_state_dict(checkpoint["optimizer_state"])
++            for state in self.optimizer.state.values():
++                  for k, v in state.items():
++                           if torch.is_tensor(v):
++                                    state[k] = v.cuda()
+ 
+     def save(self, path):
+         state_dict = self.model.module.state_dict()

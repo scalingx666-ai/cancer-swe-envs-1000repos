@@ -1,0 +1,182 @@
+diff --git a/README.md b/README.md
+index bfe7852..e43937f 100755
+--- a/README.md
++++ b/README.md
+@@ -173,6 +173,14 @@ The output will be in `/path/to/plots/cohortWide`. Some of the output is focused
+ 
+ Varikondo developed at https://github.com/annaquaglieri16/varikondo is an R package that provides interactive visualisation of output from superFreq and other variant callers over a subset of Genes of Interest.
+ 
++# Conda
++
++~~~~bash
++cd r-superfreq
++conda build -c bioconda -c conda-forge --debug .
++conda install -c bioconda -c conda-forge --use-local r-superfreq
++~~~~
++
+ # Acknowledgements
+ We wish to thanks all the organisations sharing data and resources openly, which allows preprocessing and redistribution. This allows superFreq to depend on only a single connection (which is the WEHI servers atm) and a minimum amount of data downloaded. So this limits the risk of 'server X could not be found' type of errors, and it limits the download size of the preprocessed data to hundreds of MBs, rather than hundreds of GBs for the unprocessed original data. It also saves time for everyone by removing user parsing of external resources from the analysis.
+ - dbSNP
+diff --git a/r-superfreq/bld.bat b/r-superfreq/bld.bat
+new file mode 100644
+index 0000000..b7e1203
+--- /dev/null
++++ b/r-superfreq/bld.bat
+@@ -0,0 +1,2 @@
++"%R%" CMD INSTALL --build .
++IF %ERRORLEVEL% NEQ 0 exit 1
+diff --git a/r-superfreq/build.sh b/r-superfreq/build.sh
+new file mode 100644
+index 0000000..9ef724f
+--- /dev/null
++++ b/r-superfreq/build.sh
+@@ -0,0 +1,38 @@
++#!/bin/bash
++
++if [[ $target_platform =~ linux.* ]] || [[ $target_platform == win-32 ]] || [[ $target_platform == win-64 ]] || [[ $target_platform == osx-64 ]]; then
++  export DISABLE_AUTOBREW=1
++  mv DESCRIPTION DESCRIPTION.old
++  grep -v '^Priority: ' DESCRIPTION.old > DESCRIPTION
++  $R CMD INSTALL --build .
++else
++  mkdir -p $PREFIX/lib/R/library/superFreq
++  mv * $PREFIX/lib/R/library/superFreq
++
++  if [[ $target_platform == osx-64 ]]; then
++    pushd $PREFIX
++      for libdir in lib/R/lib lib/R/modules lib/R/library lib/R/bin/exec sysroot/usr/lib; do
++        pushd $libdir || exit 1
++          for SHARED_LIB in $(find . -type f -iname "*.dylib" -or -iname "*.so" -or -iname "R"); do
++            echo "fixing SHARED_LIB $SHARED_LIB"
++            install_name_tool -change /Library/Frameworks/R.framework/Versions/3.5.0-MRO/Resources/lib/libR.dylib "$PREFIX"/lib/R/lib/libR.dylib $SHARED_LIB || true
++            install_name_tool -change /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libR.dylib "$PREFIX"/lib/R/lib/libR.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/local/clang4/lib/libomp.dylib "$PREFIX"/lib/libomp.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/local/gfortran/lib/libgfortran.3.dylib "$PREFIX"/lib/libgfortran.3.dylib $SHARED_LIB || true
++            install_name_tool -change /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libquadmath.0.dylib "$PREFIX"/lib/libquadmath.0.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/local/gfortran/lib/libquadmath.0.dylib "$PREFIX"/lib/libquadmath.0.dylib $SHARED_LIB || true
++            install_name_tool -change /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libgfortran.3.dylib "$PREFIX"/lib/libgfortran.3.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/lib/libgcc_s.1.dylib "$PREFIX"/lib/libgcc_s.1.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/lib/libiconv.2.dylib "$PREFIX"/sysroot/usr/lib/libiconv.2.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/lib/libncurses.5.4.dylib "$PREFIX"/sysroot/usr/lib/libncurses.5.4.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/lib/libicucore.A.dylib "$PREFIX"/sysroot/usr/lib/libicucore.A.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/lib/libexpat.1.dylib "$PREFIX"/lib/libexpat.1.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/lib/libcurl.4.dylib "$PREFIX"/lib/libcurl.4.dylib $SHARED_LIB || true
++            install_name_tool -change /usr/lib/libc++.1.dylib "$PREFIX"/lib/libc++.1.dylib $SHARED_LIB || true
++            install_name_tool -change /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libc++.1.dylib "$PREFIX"/lib/libc++.1.dylib $SHARED_LIB || true
++          done
++        popd
++      done
++    popd
++  fi
++fi
+diff --git a/r-superfreq/meta.yaml b/r-superfreq/meta.yaml
+new file mode 100644
+index 0000000..b76a624
+--- /dev/null
++++ b/r-superfreq/meta.yaml
+@@ -0,0 +1,105 @@
++{% set version = '1.3.2' %}
++
++{% set posix = 'm2-' if win else '' %}
++{% set native = 'm2w64-' if win else '' %}
++
++package:
++  name: r-superfreq
++  version: {{ version|replace("-", "_") }}
++
++source:
++  path: ../
++
++build:
++  merge_build_host: True  # [win]
++  # If this is a new build for the same version, increment the build number.
++  number: 0
++
++  # This is required to make R link correctly on Linux.
++  rpaths:
++    - lib/R/lib/
++    - lib/
++
++requirements:
++  build:
++    - {{posix}}filesystem        # [win]
++    - {{posix}}git
++    - {{posix}}zip               # [win]
++
++  host:
++    - r-base
++    - r-r.oo >=1.22
++    - r-writexls >=4.0
++    - bioconductor-bsgenome.hsapiens.ucsc.hg19 >=1.4.0
++    - bioconductor-bsgenome.hsapiens.ucsc.hg38 >=1.4.1
++    - bioconductor-bsgenome.mmusculus.ucsc.mm10 >=1.4.0
++    - bioconductor-biocgenerics >=0.26
++    - bioconductor-genomicranges >=1.32.7
++    - bioconductor-iranges >=2.14.12
++    - bioconductor-mutationalpatterns >=1.6.1
++    - bioconductor-rsamtools >=1.32.3
++    - bioconductor-rsubread >=1.30.9
++    - bioconductor-s4vectors >=0.18.3
++    - bioconductor-biomart >=2.36.1
++    - bioconductor-limma >=3.36.5
++
++  run:
++    - r-base
++    - r-r.oo >=1.22
++    - r-writexls >=4.0
++    - bioconductor-bsgenome.hsapiens.ucsc.hg19 >=1.4.0
++    - bioconductor-bsgenome.hsapiens.ucsc.hg38 >=1.4.1
++    - bioconductor-bsgenome.mmusculus.ucsc.mm10 >=1.4.0
++    - bioconductor-biocgenerics >=0.26
++    - bioconductor-genomicranges >=1.32.7
++    - bioconductor-iranges >=2.14.12
++    - bioconductor-mutationalpatterns >=1.6.1
++    - bioconductor-rsamtools >=1.32.3
++    - bioconductor-rsubread >=1.30.9
++    - bioconductor-s4vectors >=0.18.3
++    - bioconductor-biomart >=2.36.1
++    - bioconductor-limma >=3.36.5
++
++test:
++  commands:
++    # You can put additional test commands to be run here.
++    - $R -e "library('superFreq')"           # [not win]
++    - "\"%R%\" -e \"library('superFreq')\""  # [win]
++
++  # You can also put a file called run_test.py, run_test.sh, or run_test.bat
++  # in the recipe that will be run at test time.
++
++  # requires:
++    # Put any additional test requirements here.
++
++about:
++  home: https://github.com/ChristofferFlensburg/superFreq
++  license: MIT
++  summary: SuperFreq analyses SNVs and CNAs of multiple cancer exomes, sharing all information
++    across samples and mutation types. The inputs are the bam-files and a preliminary
++    SNV calling in .vcf format. SuperFreq filters and annotates the SNVs, calls CNAs
++    and tracks clones over samples from the same individual. A matched normal improves
++    results, but is not necessary. SuperFreq requireas at least two (preferably 5-10
++    or more) reference normal samples that do not have to be related to the studied
++    cancer samples, but must be from the same sequencing platform and capture. These
++    are used to improve results through variance of read depth and requrring false SNVs
++    amongst other things. SuperFreq produces ample output in terms of plots and spread
++    sheets, both for identifying properties of the cancer samples and for quality control.
++  license_family: MIT
++
++# The original CRAN metadata for this package was:
++
++# Package: superFreq
++# Title: Calls and tracks CNAs, SNVs and clones over multiple cancer exomes.
++# Version: 1.3.2
++# Authors@R: person("Christoffer", "Flensburg", email = "flensburg.c@wehi.edu.au", role = c("aut", "cre"))
++# Description: SuperFreq analyses SNVs and CNAs of multiple cancer exomes, sharing all information across samples and mutation types. The inputs are the bam-files and a preliminary SNV calling in .vcf format. SuperFreq filters and annotates the SNVs, calls CNAs and tracks clones over samples from the same individual. A matched normal improves results, but is not necessary. SuperFreq requireas at least two (preferably 5-10 or more) reference normal samples that do not have to be related to the studied cancer samples, but must be from the same sequencing platform and capture. These are used to improve results through variance of read depth and requrring false SNVs amongst other things. SuperFreq produces ample output in terms of plots and spread sheets, both for identifying properties of the cancer samples and for quality control.
++# biocViews:
++# Depends: R (>= 3.2.1), WriteXLS (>= 4.0), BiocGenerics (>= 0.26), GenomicRanges (>= 1.32.7), IRanges (>= 2.14.12), S4Vectors (>= 0.18.3), biomaRt (>= 2.36.1), Rsamtools (>= 1.32.3), R.oo (>= 1.22), Rsubread (>= 1.30.9), limma (>= 3.36.5), parallel, MutationalPatterns (>= 1.6.1), BSgenome.Mmusculus.UCSC.mm10 (>= 1.4.0), BSgenome.Hsapiens.UCSC.hg19 (>= 1.4.0), BSgenome.Hsapiens.UCSC.hg38 (>= 1.4.1)
++# License: MIT
++# LazyData: true
++# RoxygenNote: 6.1.1
++
++# See
++# https://docs.conda.io/projects/conda-build for
++# more information about meta.yaml

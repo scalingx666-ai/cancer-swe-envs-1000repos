@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/pyranges__pyranges0-409"
+description = "Fix PyPI publishing metadata and authentication"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pyranges0",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pyranges/pyranges0"
+ref = "2d20e82829259536d47a92c7c2d8e51fa709398a"
+reference = "https://github.com/pyranges/pyranges0/pull/409"
+source_access = "auto"
+built_at = "2026-11-13T15:54:25.159599+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3e41bf0949bd2e6549b8bec3a60a462eb38d2c6472f06236de4c06f5be8a9634"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-21T19:52:57Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/build_and_upload_wheels.yml",
+    "RELEASING.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 84
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

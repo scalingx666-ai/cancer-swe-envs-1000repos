@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/Clinical-Genomics__BALSAMIC-1679"
+description = "chore: fixes for mammut transition"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BALSAMIC",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Clinical-Genomics/BALSAMIC"
+ref = "c409f31459d0ce1a58a72bb39ff43fde8a74df31"
+reference = "https://github.com/Clinical-Genomics/BALSAMIC/pull/1679"
+source_access = "auto"
+built_at = "2026-11-13T15:40:10.300634+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:093d9763d22c732ca5f5a59fd6b50fa32fc2558064834eaefc9cd8fd8f6d48ac"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-03T08:54:26Z"
+diff_format = "unified"
+context_files = [
+    "BALSAMIC/constants/rules.py",
+    "BALSAMIC/snakemake_rules/quality_control/multiqc.rule",
+    "BALSAMIC/snakemake_rules/quality_control/sambamba_depth.rule",
+    "CHANGELOG.rst",
+    "docs/balsamic_methods.rst",
+    "docs/bioinfo_softwares.rst",
+    "docs/resources.rst",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 102
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

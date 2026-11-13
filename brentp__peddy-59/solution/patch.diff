@@ -1,0 +1,51 @@
+diff --git a/.travis.yml b/.travis.yml
+index f6feddb..fea80de 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -29,10 +29,7 @@ install:
+     - hash -r
+     - conda config --set always_yes yes --set changeps1 no
+     - conda update -q conda
+-    - conda create -q -n travis python=$TRAVIS_PYTHON_VERSION scipy scikit-learn cython pandas numpy networkx nose
++    - conda create -q -n travis python=$TRAVIS_PYTHON_VERSION nose
+     - source activate travis
+-    - pip install -U networkx
+-    - conda install -c bioconda "cyvcf2>=0.5.3"
+-    - pip install -r requirements.txt
+-    - python setup.py install
++    - pip install '.'
+     - pwd
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+new file mode 100644
+index 0000000..9f580cb
+--- /dev/null
++++ b/requirements-dev.txt
+@@ -0,0 +1 @@
++nose
+\ No newline at end of file
+diff --git a/setup.py b/setup.py
+index 0e51d16..5f07710 100644
+--- a/setup.py
++++ b/setup.py
+@@ -2,6 +2,13 @@
+ 
+ from setuptools import setup
+ 
++
++def get_requirements():
++    """Get requirements from requirements.txt"""
++    with open("requirements.txt") as handle:
++        return [x.strip() for x in handle]
++
++
+ def get_version():
+     """Get the version info from the mpld3 package without importing it"""
+     import ast
+@@ -25,6 +32,7 @@ def get_version():
+     long_description=open('README.md').read(),
+     author="Brent Pedersen",
+     author_email="bpederse@gmail.com",
++    install_requires=get_requirements(),
+     zip_safe=False,
+     test_suite='nose.collector',
+     # To provide executable scripts, use entry points in preference to the

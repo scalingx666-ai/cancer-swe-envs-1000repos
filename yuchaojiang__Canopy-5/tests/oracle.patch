@@ -1,0 +1,33 @@
+diff --git a/README.md b/README.md
+index f68d285..21c08d9 100644
+--- a/README.md
++++ b/README.md
+@@ -53,7 +53,7 @@ install_github("yuchaojiang/Canopy/package")
+ * [SNA clustering](https://github.com/yuchaojiang/Canopy/edit/master/clustering)
+ 
+ ## Citation
+-Jiang, Y., Qiu, Y., Minn, A.J. and Zhang, N.R., 2016. Assessing intratumor heterogeneity and tracking longitudinal and spatial clonal evolutionary history by next-generation sequencing. *Proceedings of the National Academy of Sciences*. [[html](http://www.pnas.org/content/early/2016/08/26/1522203113), [pdf](http://www.pnas.org/content/early/2016/08/26/1522203113.full.pdf)]
++Jiang, Y., Qiu, Y., Minn, A.J. and Zhang, N.R., 2016. Assessing intratumor heterogeneity and tracking longitudinal and spatial clonal evolutionary history by next-generation sequencing. *Proceedings of the National Academy of Sciences*. [[html](http://www.pnas.org/content/113/37/E5528), [pdf](http://www.pnas.org/content/113/37/E5528.full.pdf)]
+ 
+ 
+ ## Google User Group (Q&A)
+diff --git a/package/vignettes/Canopy_vignettes.Rnw b/package/vignettes/Canopy_vignettes.Rnw
+index 6ccebe9..e888ed7 100644
+--- a/package/vignettes/Canopy_vignettes.Rnw
++++ b/package/vignettes/Canopy_vignettes.Rnw
+@@ -476,7 +476,7 @@ save.image(file = paste(projectname, '_postmcmc_image.rda',sep=''),
+ \section*{4. Citation}
+ Assessing intra-tumor heterogeneity and tracking longitudinal and spatial clonal
+ evolutionary history by next-generation sequencing,
+-Yuchao Jiang, Yu Qiu, Andy J Minn, Nancy R zhang, Proceedings of the National Academy of Sciences, 2016. (\href{http://www.pnas.org/content/early/2016/08/26/1522203113}{html}, \href{http://www.pnas.org/content/early/2016/08/26/1522203113.full.pdf}{pdf})
++Yuchao Jiang, Yu Qiu, Andy J Minn, Nancy R zhang, Proceedings of the National Academy of Sciences, 2016. (\href{http://www.pnas.org/content/113/37/E5528}{html}, \href{http://www.pnas.org/content/113/37/E5528.full.pdf}{pdf})
+ 
+ 
+ \section*{5. Session information:}
+@@ -486,4 +486,4 @@ Output of sessionInfo on the system on which this document was compiled:
+ toLatex(sessionInfo())
+ @
+ 
+-\end{document}
+\ No newline at end of file
++\end{document}

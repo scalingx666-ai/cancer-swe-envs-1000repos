@@ -1,0 +1,31 @@
+diff --git a/debian/changelog b/debian/changelog
+index a22ea07..4f9d82c 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++r-tgi-sciclone (1.0.7-2) lucid; urgency=low
++
++  * update normt3 version required.
++
++ -- Avinash Ramu <aramu@genome.wustl.edu>  Wed, 12 Nov 2014 13:26:39 -0500
++
+ r-tgi-sciclone (1.0.7-1) lucid; urgency=low
+ 
+   * new plotting options
+diff --git a/debian/control b/debian/control
+index 24a4222..dac89f6 100644
+--- a/debian/control
++++ b/debian/control
+@@ -2,10 +2,10 @@ Source: r-tgi-sciclone
+ Section: misc
+ Priority: optional
+ Maintainer: Chris Miller <cmiller@genome.wustl.edu>
+-Build-Depends: debhelper (>= 7.4), r-base-dev (>= 2.10.1-2), cdbs, r-tgi-bmm (>= 0.3-1), r-cran-mkmisc, r-cran-normt3 (>= 1.0), r-cran-rgl (>= 0.8), r-cran-teachingdemos (>= 2.4), r-bioc-iranges, r-cran-ggplot2, r-cran-plotrix
++Build-Depends: debhelper (>= 7.4), r-base-dev (>= 2.10.1-2), cdbs, r-tgi-bmm (>= 0.3-1), r-cran-mkmisc, r-cran-normt3 (>= 1.0-2-3), r-cran-rgl (>= 0.8), r-cran-teachingdemos (>= 2.4), r-bioc-iranges, r-cran-ggplot2, r-cran-plotrix
+  
+ Package: r-tgi-sciclone
+ Architecture: all
+-Depends: bash, r-base (>= 2.10.1-2), r-tgi-bmm (>= 0.3-1), r-cran-mkmisc, r-cran-normt3 (>= 1.0), r-cran-rgl (>= 0.8), r-cran-teachingdemos (>= 2.4), r-bioc-iranges, r-cran-ggplot2, r-cran-plotrix
++Depends: bash, r-base (>= 2.10.1-2), r-tgi-bmm (>= 0.3-1), r-cran-mkmisc, r-cran-normt3 (>= 1.0-2-3), r-cran-rgl (>= 0.8), r-cran-teachingdemos (>= 2.4), r-bioc-iranges, r-cran-ggplot2, r-cran-plotrix
+ Description: An R package for inferring the subclonal architecture of tumors.
+  The sciClone R package integrates the read depth and copy number information at single nucleotide variant locations in order to create a visualization of the sub-clonal variant populations areas of deleted, neutral, and amplified copy number. Variants are optionally clustered to formalize predictions of the sub-clonal makeup of the sample.

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/parklab__NGSCheckMate-46"
+description = "Incorporate bug fixes and update version number"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "NGSCheckMate",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "parklab/NGSCheckMate"
+ref = "8ea2c043896adf9bbd1dc5bb2136f3a1dab9b445"
+reference = "https://github.com/parklab/NGSCheckMate/pull/46"
+source_access = "auto"
+built_at = "2026-11-13T15:35:17.454644+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d41b4f21b1926cbea0257dddc63d4624fc9f15e3670b61e4f2bcff94679c9dfa"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-08-15T13:00:02Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "ncm.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 39
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

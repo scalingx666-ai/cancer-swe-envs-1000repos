@@ -1,0 +1,409 @@
+diff --git a/src/openms/include/OpenMS/ANALYSIS/ID/PROSE/ProSEAlgorithm.h b/src/openms/include/OpenMS/ANALYSIS/ID/PROSE/ProSEAlgorithm.h
+index cacea5fc316..1d1ed32dd51 100644
+--- a/src/openms/include/OpenMS/ANALYSIS/ID/PROSE/ProSEAlgorithm.h
++++ b/src/openms/include/OpenMS/ANALYSIS/ID/PROSE/ProSEAlgorithm.h
+@@ -1754,7 +1754,10 @@ class OPENMS_DLLAPI ProSEAlgorithm :
+      */
+     struct OPENMS_DLLAPI MzRecalibration_ // exported: the class test calls its functions (MSVC links nothing of a nested struct without it)
+     {
+-      struct Chunk { double rt; double intercept; double slope; Size points; };
++      /// one RT chunk: its centre (the median RT of its points), the model and the number of points it was fitted to;
++      /// decoys: the decoys among its points (fit() with decoys); from_neighbours: its points are mostly false matches and
++      /// its model is that of its neighbours (the median of all points when every chunk is such a chunk)
++      struct Chunk { double rt; double intercept; double slope; Size points; Size decoys{0}; bool from_neighbours{false}; };
+       std::vector<Chunk> chunks; ///< in RT order; empty: no correction
+       bool ppm{true};            ///< the error unit: ppm (correction mz - e * mz * 1e-6) or Da (mz - e)
+       bool active() const { return !chunks.empty(); }
+@@ -1785,15 +1788,24 @@ class OPENMS_DLLAPI ProSEAlgorithm :
+         }
+       };
+       AtRT at(double rt) const; ///< the model at @p rt (the chunks must not change while the result is used)
+-      std::string toString() const;               ///< "ppm; rt <s>: <intercept> + <slope> mz (<points>) | ..." (empty: inactive)
++      /// "ppm; rt <s>: <intercept> + <slope> mz (<points>); ..." (empty: inactive); a chunk whose model is that of its
++      /// neighbours: "(<points>, <decoys> decoys: mostly false matches)"
++      std::string toString() const;
+       /**
+        * Fit the model: the points (error, m/z, RT) are split in RT order into @p n_chunks groups of equal size (fewer
+        * when a group would hold less than @p min_points points), each fitted to its points within three robust
+        * standard deviations of its median: the median (@p linear false) or the least-squares line in m/z (@p linear;
+        * the median when the line cannot be fitted). Deterministic (no RANSAC).
++       *
++       * With @p decoys (one flag per point: the PSM is a decoy hit) a chunk where more than half of the points are
++       * estimated to be false matches (twice its decoys, as many false targets as decoys) is not fitted to its own
++       * points, whose median would be that of the false matches (OpenMS/OpenMS#10885): it takes the model of its
++       * neighbours (interpolated between the nearest such chunks before and after it at its RT, that of the nearest at
++       * the ends; the median of all points, no slope, when every chunk is such a chunk) and is marked from_neighbours.
+        */
+       static MzRecalibration_ fit(const std::vector<double>& errors, const std::vector<double>& mzs,
+-                                  const std::vector<double>& rts, Size n_chunks, Size min_points, bool linear, bool ppm);
++                                  const std::vector<double>& rts, Size n_chunks, Size min_points, bool linear, bool ppm,
++                                  const std::vector<char>* decoys = nullptr);
+     };
+ 
+     /**
+@@ -1988,12 +2000,18 @@ class OPENMS_DLLAPI ProSEAlgorithm :
+      * @param[in,out] fragment_index  Pre-built fragment index for candidate lookup.
+      * @param[in] db  Protein database (for sequence reconstruction of candidates).
+      * @param[in] query_spectra Optional spectra for candidate retrieval, aligned with @p spectra.
++     * @param[in] decoy_string The decoy marker of the accessions of @p db (empty: no decoys); the decoy hits among the
++     *            calibration PSMs mark the RT chunks of the precursor model where most of them are false matches
++     *            (MzRecalibration_::fit()).
++     * @param[in] decoy_is_prefix Whether @p decoy_string is a prefix (else a suffix) of the accessions.
+      * @return CalibrationResult_ with estimated tolerances, or success=false if insufficient PSMs.
+      */
+     CalibrationResult_ runCalibrationPass_(PeakMap& spectra,
+                                            FragmentIndex& fragment_index,
+                                            const std::vector<FASTAFile::FASTAEntry>& db,
+-                                           const PeakMap* query_spectra = nullptr) const;
++                                           const PeakMap* query_spectra = nullptr,
++                                           const std::string& decoy_string = std::string(),
++                                           bool decoy_is_prefix = true) const;
+ 
+     /**
+      * @brief calibration:recalibrate: subtract the error models of @p cal from the MS2 spectra, in place.
+diff --git a/src/openms/source/ANALYSIS/ID/PROSE/ProSEAlgorithm.cpp b/src/openms/source/ANALYSIS/ID/PROSE/ProSEAlgorithm.cpp
+index 31769661764..d26980d935e 100644
+--- a/src/openms/source/ANALYSIS/ID/PROSE/ProSEAlgorithm.cpp
++++ b/src/openms/source/ANALYSIS/ID/PROSE/ProSEAlgorithm.cpp
+@@ -768,7 +768,9 @@ namespace OpenMS
+       "Correct the m/z of the spectra by the mass errors the calibration pass measures, before the main search: "
+       "'offset' subtracts the median error, 'linear' a line in m/z fitted to the errors (precursor errors against "
+       "the precursor m/z, fragment errors against the fragment m/z), each per retention-time chunk "
+-      "(calibration:recalibrate_rt_chunks) and interpolated between the chunks. The precursor m/z and the fragment "
++      "(calibration:recalibrate_rt_chunks) and interpolated between the chunks; a chunk of the precursor model whose "
++      "calibration PSMs are mostly false matches (more than a quarter of them decoy hits) takes the model of its "
++      "neighbours. The precursor m/z and the fragment "
+       "peaks of the searched MS2 spectra are corrected in place (the candidate retrieval, the scoring and the PSMs' "
+       "mass errors use the corrected values; a PeakMap passed to the library is corrected too); the PSMs report the "
+       "observed precursor m/z and their fragment annotations the observed peak m/z. The windows are then derived from "
+@@ -1311,7 +1313,8 @@ namespace OpenMS
+       StopWatch sw_cal; sw_cal.start();
+       {
+         OnScopeExit end_progress([this]() { endProgress(); }); // also when the calibration loop rethrows
+-        last_calibration_result_ = runCalibrationPass_(spectra, fragment_index_, db, query_ptr);
++        last_calibration_result_ = runCalibrationPass_(spectra, fragment_index_, db, query_ptr,
++          ctx.have_decoys ? ctx.decoy_string : std::string(), ctx.decoy_is_prefix);
+       }
+       sw_cal.stop();
+       last_run_stats_.seconds_calibration = sw_cal.getClockTime();
+@@ -2158,7 +2161,8 @@ namespace OpenMS
+           OPENMS_LOG_INFO << "[ProSE] Calibration for " << in_spectra_files[i]
+                           << " (strided sample, " << cal_db.size() << " proteins)" << std::endl;
+           CalibrationResult_& cal = per_file_result[i];
+-          cal = runCalibrationPass_(all_spectra[i], cal_fi, cal_db, query_raw_spectrum_ ? &all_query_spectra[i] : nullptr);
++          cal = runCalibrationPass_(all_spectra[i], cal_fi, cal_db, query_raw_spectrum_ ? &all_query_spectra[i] : nullptr,
++            strategy.have_decoys ? strategy.decoy_string : std::string(), strategy.is_prefix);
+           if (cal.success)
+           {
+             applyRecalibration_(cal, all_spectra[i], query_raw_spectrum_ ? &all_query_spectra[i] : nullptr,
+diff --git a/src/openms/source/ANALYSIS/ID/PROSE/ProSEReport.cpp b/src/openms/source/ANALYSIS/ID/PROSE/ProSEReport.cpp
+index 8527ccaa454..def68b975e4 100644
+--- a/src/openms/source/ANALYSIS/ID/PROSE/ProSEReport.cpp
++++ b/src/openms/source/ANALYSIS/ID/PROSE/ProSEReport.cpp
+@@ -709,7 +709,9 @@ namespace OpenMS
+       PeakMap& spectra,
+       FragmentIndex& fragment_index,
+       const std::vector<FASTAFile::FASTAEntry>& db,
+-      const PeakMap* query_spectra) const
++      const PeakMap* query_spectra,
++      const std::string& decoy_string,
++      bool decoy_is_prefix) const
+   {
+     CalibrationResult_ result;
+ 
+@@ -783,8 +785,10 @@ namespace OpenMS
+     const SpectrumGenerators_ generators = spectrumGenerators_();
+ 
+     // Collect per-spectrum best hits with scores and errors
+-    // (rt, prec_mz [theoretical] and frag_mzs [theoretical, aligned with frag_errors] feed the models of calibration:recalibrate)
+-    struct CalHit { double score; double prec_error; std::vector<float> frag_errors; double rt; double prec_mz; std::vector<float> frag_mzs; };
++    // (rt, prec_mz [theoretical] and frag_mzs [theoretical, aligned with frag_errors] feed the models of calibration:recalibrate;
++    // decoy: the best hit is a peptide of a decoy protein, which marks the RT chunks of the precursor model whose PSMs are
++    // mostly false matches)
++    struct CalHit { double score; double prec_error; std::vector<float> frag_errors; double rt; double prec_mz; std::vector<float> frag_mzs; bool decoy; };
+     // At most one hit per spectrum of the subset, in its slot (written by one iteration only): collected in subset order
+     // after the loop
+     vector<CalHit> slots(subset_size);
+@@ -836,6 +840,7 @@ namespace OpenMS
+       AASequence best_seq;
+       int best_isotope_error = 0;
+       uint16_t best_charge = 0;
++      UInt32 best_protein = 0; // the protein the fragment index records for the peptide of the best hit
+ 
+       PeakSpectrum& theo = scratch.theo_spectrum;
+       std::vector<uint8_t>& theo_ion_series = scratch.theo_ion_series;
+@@ -877,6 +882,7 @@ namespace OpenMS
+           best_seq = std::move(seq);
+           best_isotope_error = sms.isotope_error_;
+           best_charge = sms.precursor_charge_;
++          best_protein = peptide.protein_idx;
+         }
+       }
+ 
+@@ -911,7 +917,10 @@ namespace OpenMS
+       }
+       matchedFragmentErrors(spec, theo, pass_fragment, fragment_mass_tolerance_unit_ppm, frag_errors, &frag_mzs);
+ 
+-      slots[si] = CalHit{best_score, prec_err, std::move(frag_errors), spec.getRT(), theo_mz, std::move(frag_mzs)};
++      const bool decoy = !decoy_string.empty() && best_protein < db.size()
++        && (decoy_is_prefix ? StringUtils::hasPrefix(db[best_protein].identifier, decoy_string)
++                            : StringUtils::hasSuffix(db[best_protein].identifier, decoy_string));
++      slots[si] = CalHit{best_score, prec_err, std::move(frag_errors), spec.getRT(), theo_mz, std::move(frag_mzs), decoy};
+       filled[si] = 1;
+       }
+       catch (...)
+@@ -942,6 +951,7 @@ namespace OpenMS
+     // The hits the pass window delivers: the signed error e = observed - theoretical lies in [-upper, +lower] (the
+     // mass-space window is [observed - lower, observed + upper]; the bounds flip for asymmetric windows)
+     vector<double> precursor_errors, precursor_mzs, precursor_rts;
++    vector<char> precursor_decoys;
+     vector<double> fragment_errors, fragment_mzs, fragment_rts;
+     for (const auto& h : cal_hits)
+     {
+@@ -949,6 +959,7 @@ namespace OpenMS
+       precursor_errors.push_back(h.prec_error);
+       precursor_mzs.push_back(h.prec_mz);
+       precursor_rts.push_back(h.rt);
++      precursor_decoys.push_back(h.decoy);
+       fragment_errors.insert(fragment_errors.end(), h.frag_errors.begin(), h.frag_errors.end());
+       fragment_mzs.insert(fragment_mzs.end(), h.frag_mzs.begin(), h.frag_mzs.end());
+       fragment_rts.insert(fragment_rts.end(), h.frag_errors.size(), h.rt);
+@@ -980,8 +991,20 @@ namespace OpenMS
+         return std::make_pair(med, 1.4826 * mad);
+       };
+       std::tie(result.precursor_raw_shift, result.precursor_raw_sigma) = robust(precursor_errors);
++      // (the decoy hits mark the chunks whose PSMs are mostly false matches, which take the model of their neighbours)
+       result.precursor_recalibration = MzRecalibration_::fit(precursor_errors, precursor_mzs, precursor_rts,
+-        calibration_recalibrate_rt_chunks_, calibration_min_psms_, linear, precursor_ppm);
++        calibration_recalibrate_rt_chunks_, calibration_min_psms_, linear, precursor_ppm,
++        decoy_string.empty() ? nullptr : &precursor_decoys);
++      const auto& chunks = result.precursor_recalibration.chunks;
++      const Size from_neighbours = static_cast<Size>(std::count_if(chunks.begin(), chunks.end(),
++                                                                   [](const MzRecalibration_::Chunk& c) { return c.from_neighbours; }));
++      if (from_neighbours > 0)
++      {
++        OPENMS_LOG_INFO << "[ProSE] Calibration: in " << from_neighbours << " of " << chunks.size() << " RT chunks of the "
++                        << "precursor model most calibration PSMs are false matches (more than a quarter are decoy hits): "
++                        << (from_neighbours == chunks.size() ? "one offset for the run, the median of all calibration PSMs."
++                                                             : "they take the model of their neighbours.") << std::endl;
++      }
+       for (Size i = 0; i < precursor_errors.size(); ++i)
+       {
+         precursor_errors[i] -= result.precursor_recalibration.error(precursor_mzs[i], precursor_rts[i]);
+@@ -1239,22 +1262,25 @@ namespace OpenMS
+     {
+       s << "; rt " << std::fixed << std::setprecision(1) << c.rt << ": " << std::setprecision(4) << c.intercept;
+       if (c.slope != 0.0) { s << (c.slope < 0 ? " - " : " + ") << std::scientific << std::setprecision(3) << std::fabs(c.slope) << " mz"; }
+-      s << " (" << c.points << ")";
++      s << " (" << c.points;
++      if (c.from_neighbours) { s << ", " << c.decoys << " decoys: mostly false matches"; }
++      s << ")";
+     }
+     return s.str();
+   }
+ 
+   ProSEAlgorithm::MzRecalibration_ ProSEAlgorithm::MzRecalibration_::fit(const std::vector<double>& errors, const std::vector<double>& mzs,
+-    const std::vector<double>& rts, Size n_chunks, Size min_points, bool linear, bool ppm)
++    const std::vector<double>& rts, Size n_chunks, Size min_points, bool linear, bool ppm, const std::vector<char>* decoys)
+   {
+     MzRecalibration_ model;
+     model.ppm = ppm;
+     const Size n = errors.size();
+-    if (n == 0 || mzs.size() != n || rts.size() != n) return model;
++    if (n == 0 || mzs.size() != n || rts.size() != n || (decoys != nullptr && decoys->size() != n)) return model;
+     std::vector<Size> order(n);
+     std::iota(order.begin(), order.end(), Size(0));
+     std::stable_sort(order.begin(), order.end(), [&rts](Size a, Size b) { return rts[a] < rts[b]; });
+     n_chunks = std::max<Size>(1, std::min(n_chunks, n / std::max<Size>(1, min_points)));
++    std::vector<char> mostly_false(n_chunks, 0);
+     for (Size c = 0; c < n_chunks; ++c)
+     {
+       const Size begin = n * c / n_chunks, end = n * (c + 1) / n_chunks;
+@@ -1265,6 +1291,11 @@ namespace OpenMS
+       std::vector<double> sorted = e;
+       const auto [med, mad] = medianAndMADBySelection(sorted);
+       Chunk chunk{rts[order[(begin + end) / 2]], med, 0.0, e.size()}; // the centre: the median RT of the chunk
++      if (decoys != nullptr)
++      {
++        for (Size i = begin; i < end; ++i) { chunk.decoys += (*decoys)[order[i]] != 0; }
++        mostly_false[c] = 4 * chunk.decoys > end - begin; // estimated false matches (2 * decoys) > half of the points
++      }
+       if (linear)
+       {
+         // the least-squares line through the points within 3 sigma of the median (the false matches among the PSMs)
+@@ -1281,6 +1312,45 @@ namespace OpenMS
+       }
+       model.chunks.push_back(chunk);
+     }
++    // A chunk whose calibration PSMs are mostly false matches takes the model of its neighbours. Its median is that of
++    // the false matches, which need not be near the mass error of the instrument: a contaminant that elutes over
++    // minutes (PEG late in a run) is matched to targets and decoys alike at the same +11 ppm, and the last three of
++    // eight chunks of a PXD019643 class I run (twice their decoys: 78-96 % of their PSMs) got +9 to +11 ppm, whose
++    // correct PSMs are within 0.3 ppm of 0, and lost them from the 5 ppm window of the search (OpenMS/OpenMS#10885).
++    // The decoys tell such a chunk from a drift of the instrument, which shifts the errors of correct PSMs and is
++    // followed (-15 ppm in the last chunk of a PXD011695 EThcD run, 1 decoy among its 88 PSMs).
++    if (std::find(mostly_false.begin(), mostly_false.end(), 1) == mostly_false.end()) return model;
++    if (std::find(mostly_false.begin(), mostly_false.end(), 0) == mostly_false.end())
++    {
++      // no chunk to take the model from: the median of all points, one offset for the run
++      std::vector<double> all = errors;
++      const double median = medianAndMADBySelection(all).first;
++      for (Chunk& chunk : model.chunks) { chunk.intercept = median; chunk.slope = 0.0; chunk.from_neighbours = true; }
++      return model;
++    }
++    const std::vector<Chunk> fitted = model.chunks;
++    for (Size c = 0; c < n_chunks; ++c)
++    {
++      if (!mostly_false[c]) continue;
++      SignedSize before = static_cast<SignedSize>(c) - 1;
++      while (before >= 0 && mostly_false[static_cast<Size>(before)]) { --before; }
++      Size after = c + 1;
++      while (after < n_chunks && mostly_false[after]) { ++after; }
++      Chunk& chunk = model.chunks[c];
++      chunk.from_neighbours = true;
++      if (before < 0 || after == n_chunks || !(fitted[after].rt > fitted[static_cast<Size>(before)].rt))
++      {
++        const Chunk& nearest = before < 0 ? fitted[after] : fitted[static_cast<Size>(before)]; // at an end (or no RT range): the nearest
++        chunk.intercept = nearest.intercept;
++        chunk.slope = nearest.slope;
++        continue;
++      }
++      const Chunk& lo = fitted[static_cast<Size>(before)];
++      const Chunk& hi = fitted[after];
++      const double w = (chunk.rt - lo.rt) / (hi.rt - lo.rt); // as the model interpolates between chunks
++      chunk.intercept = (1.0 - w) * lo.intercept + w * hi.intercept;
++      chunk.slope = (1.0 - w) * lo.slope + w * hi.slope;
++    }
+     return model;
+   }
+ 
+diff --git a/src/openms/source/ANALYSIS/ID/PROSE/ProSEScoring.cpp b/src/openms/source/ANALYSIS/ID/PROSE/ProSEScoring.cpp
+index 633c3b3efbf..e2e7721f635 100644
+--- a/src/openms/source/ANALYSIS/ID/PROSE/ProSEScoring.cpp
++++ b/src/openms/source/ANALYSIS/ID/PROSE/ProSEScoring.cpp
+@@ -1473,7 +1473,8 @@ namespace OpenMS
+       cal_fi.setParameters(fragmentIndexParameters_(electron_ions));
+       cal_fi.build(cal_db);
+ 
+-      cal = runCalibrationPass_(spectra, cal_fi, cal_db, query_ptr);
++      cal = runCalibrationPass_(spectra, cal_fi, cal_db, query_ptr, strategy.have_decoys ? strategy.decoy_string : std::string(),
++                                strategy.is_prefix);
+       if (cal.success)
+       {
+         applyRecalibration_(cal, spectra, query_ptr, evidence_ptr);
+diff --git a/src/tests/class_tests/openms/source/ProSEAlgorithm_test.cpp b/src/tests/class_tests/openms/source/ProSEAlgorithm_test.cpp
+index e48170115ec..ed14a62f725 100644
+--- a/src/tests/class_tests/openms/source/ProSEAlgorithm_test.cpp
++++ b/src/tests/class_tests/openms/source/ProSEAlgorithm_test.cpp
+@@ -3952,6 +3952,98 @@ START_SECTION(([EXTRA] MzRecalibration_::fit models the error per RT chunk, the
+   TEST_EQUAL(std::fabs(linear.uncorrect(linear.correct(300.0, 0.0), 0.0) - 300.0) < 1e-9, true)
+   TEST_EQUAL(std::fabs(da.uncorrect(da.correct(500.0, 1.0), 1.0) - 500.0) < 1e-9, true)
+ 
++  // Chunks whose calibration PSMs are mostly false matches take the model of their neighbours (OpenMS/OpenMS#10885):
++  // eight chunks of 60 points; in the first five 45 correct points near 0.2 ppm and 15 false ones spread over the
++  // +/- 20 ppm of the calibration pass, 5 of them decoy hits; in the last three 6 correct points and 54 false ones
++  // between +5 and +20 ppm (as PEG late in a run, matched to targets and decoys alike), 20 of them decoy hits
++  {
++    vector<double> e8, mz8, rt8;
++    vector<char> d8;
++    for (Size c = 0; c < 8; ++c)
++    {
++      const Size correct = c < 5 ? 45 : 6, decoys = c < 5 ? 5 : 20;
++      for (Size i = 0; i < 60; ++i)
++      {
++        const double u = std::fmod(0.6180339887 * static_cast<double>(60 * c + i + 1), 1.0); // spread over [0, 1)
++        e8.push_back(i < correct ? 0.2 + 0.5 * std::sin(static_cast<double>(i)) : (c < 5 ? -20.0 + 40.0 * u : 5.0 + 15.0 * u));
++        mz8.push_back(400.0 + 37.0 * static_cast<double>((7 * i) % 11));
++        rt8.push_back(static_cast<double>(60 * c + i));
++        d8.push_back(i >= 60 - decoys ? 1 : 0);
++      }
++    }
++    // without the decoys: the median of a chunk of false matches is theirs
++    const Model plain = Model::fit(e8, mz8, rt8, 8, 50, false, true);
++    for (Size c = 5; c < 8; ++c) { TEST_EQUAL(plain.chunks[c].intercept > 5.0, true) }
++    for (const bool lin : {false, true})
++    {
++      const Model m = Model::fit(e8, mz8, rt8, 8, 50, lin, true, &d8);
++      TEST_EQUAL(m.chunks.size(), 8)
++      for (Size c = 0; c < 8; ++c)
++      {
++        TEST_EQUAL(m.chunks[c].decoys, c < 5 ? 5 : 20)
++        TEST_EQUAL(m.chunks[c].from_neighbours, c >= 5)
++        TEST_EQUAL(std::fabs(m.chunks[c].intercept + m.chunks[c].slope * 550.0 - 0.2) < 1.0, true)
++      }
++      for (Size c = 5; c < 8; ++c) // at the end of the run: the model of the last chunk before them
++      {
++        TEST_REAL_SIMILAR(m.chunks[c].intercept, m.chunks[4].intercept)
++        TEST_REAL_SIMILAR(m.chunks[c].slope, m.chunks[4].slope)
++      }
++      TEST_EQUAL(m.toString().find(", 20 decoys: mostly false matches)") != std::string::npos, true)
++    }
++    // the same flags without such a chunk change nothing
++    const vector<char> few(d8.size(), 0);
++    const Model same = Model::fit(e8, mz8, rt8, 8, 50, false, true, &few);
++    for (Size c = 0; c < 8; ++c) { TEST_EQUAL(same.chunks[c].intercept, plain.chunks[c].intercept) }
++    TEST_EQUAL(same.toString(), plain.toString())
++  }
++
++  // ... while a drift of the instrument, of correct PSMs, is followed: -18 ppm in the last of ten chunks, 1 decoy hit
++  // among its 60 points; and a chunk inside the run takes the model interpolated between its neighbours at its RT
++  {
++    vector<double> ed, mzd, rtd;
++    vector<char> dd;
++    for (Size c = 0; c < 10; ++c)
++    {
++      for (Size i = 0; i < 60; ++i)
++      {
++        const bool false_match = c == 4 && i < 40; // chunk 4: 40 false matches at +12 ppm, 16 of them decoys
++        ed.push_back(c == 9 ? -18.0 + 0.5 * std::sin(static_cast<double>(i))
++                            : (false_match ? 12.0 : 0.1 * static_cast<double>(c)) + 0.3 * std::sin(static_cast<double>(i)));
++        mzd.push_back(500.0);
++        rtd.push_back(static_cast<double>(60 * c + i));
++        dd.push_back((c == 9 && i == 7) || (false_match && i % 5 < 2) ? 1 : 0);
++      }
++    }
++    const Model d = Model::fit(ed, mzd, rtd, 10, 50, false, true, &dd);
++    TEST_EQUAL(d.chunks.size(), 10)
++    TEST_EQUAL(d.chunks[9].from_neighbours, false)
++    TEST_EQUAL(d.chunks[9].decoys, 1)
++    TEST_EQUAL(std::fabs(d.chunks[9].intercept + 18.0) < 1.0, true)
++    TEST_EQUAL(d.chunks[4].from_neighbours, true)
++    TEST_EQUAL(d.chunks[4].decoys, 16)
++    const double w = (d.chunks[4].rt - d.chunks[3].rt) / (d.chunks[5].rt - d.chunks[3].rt);
++    TEST_REAL_SIMILAR(d.chunks[4].intercept, (1.0 - w) * d.chunks[3].intercept + w * d.chunks[5].intercept)
++    TEST_EQUAL(std::fabs(d.chunks[4].intercept - 0.4) < 0.3, true)
++  }
++
++  // every chunk mostly false matches: the median of all points, one offset for the run
++  {
++    const vector<double> e{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}, x(8, 500.0), t{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
++    const vector<char> all_decoys{1, 0, 1, 0, 1, 0, 1, 0};
++    const Model a = Model::fit(e, x, t, 2, 4, true, true, &all_decoys);
++    TEST_EQUAL(a.chunks.size(), 2)
++    for (const auto& chunk : a.chunks)
++    {
++      TEST_EQUAL(chunk.from_neighbours, true)
++      TEST_REAL_SIMILAR(chunk.intercept, 4.5)
++      TEST_EQUAL(chunk.slope, 0.0)
++    }
++    // flags that do not match the points: inactive
++    const vector<char> short_flags(3, 0);
++    TEST_EQUAL(Model::fit(e, x, t, 2, 4, false, true, &short_flags).active(), false)
++  }
++
+   // nothing to fit: inactive
+   const Model none = Model::fit({}, {}, {}, 1, 1, true, true);
+   TEST_EQUAL(none.active(), false)
+diff --git a/src/topp/ProSE.cpp b/src/topp/ProSE.cpp
+index 5116dea9218..c671774a550 100644
+--- a/src/topp/ProSE.cpp
++++ b/src/topp/ProSE.cpp
+@@ -326,7 +326,7 @@ It lacks behind in speed and/or quality of results when compared to state-of-the
+ 
+ @note Currently mzIdentML (mzid) is not directly supported as an input/output format of this tool. Convert mzid files to/from idXML using @ref TOPP_IDFileConverter if necessary.
+ @note Open-search mode is automatically determined by the precursor mass tolerance: enabled when tolerance exceeds 1 Da or 1000 ppm. No explicit open-search parameter is needed. This is logged at runtime and recorded in the output search parameters as UserParam 'open_search'.
+-@note Mass tolerances are measured by default ('-Search:calibration:enabled', on in this tool; the library's ProSEAlgorithm default is off). A calibration pass over the 10 % most intense spectra, searched with at least 20 ppm precursor and fragment windows (in Da twice the configured window, up to 0.5 Da; the configured ones if wider), takes the offset (median) and the spread (robust standard deviation, 1.4826 * MAD) of the signed mass errors of its confident PSMs. The main search then uses the fragment tolerance |median| + 4 sigma ('-Search:calibration:sigma_factor'), never wider than '-Search:fragment:mass_tolerance' and never below 10 ppm (0.02 Da; 5 ppm or 0.01 Da with the m/z correction below); the precursor window stays as configured by default ('-Search:calibration:precursor_sigma_factor' 0: the precursor errors are measured and reported; a value such as 4 tightens the window to median +/- 4 sigma, asymmetric about zero when the run has an offset, within 2.5 ppm per side and the configured window). The configured tolerances are therefore the widest windows searched, and a stated window stays an upper bound. The pass takes its spectra per tenth of the run, and a fragment tolerance that covers less than 95 % of the matched peaks of the calibration PSMs (or a precursor window less than 98 % of the PSMs) is not trusted: the configured tolerance is kept, with a warning. On the 20-run benchmark at equal entrapment-estimated FDP the fragment window gains on Astral (+6 %) and ion-trap CID data (+1 %) and is neutral elsewhere, while a tightened precursor window cost 2-3 % on every Orbitrap HCD set, which is why it is off. The measured errors are also corrected: '-Search:calibration:recalibrate offset' with '-Search:calibration:recalibrate_rt_chunks 10' (the tool's defaults; the library's: none) subtracts the median error of each tenth of the run (interpolated between them) from the precursor and fragment m/z the search uses, before the windows are set around zero; 'linear' subtracts a line in m/z per chunk instead, and 'none' only measures. The windows then follow the residual errors, with the fragment floor of 5 ppm (0.01 Da). The PSMs report the observed precursor m/z and the residual precursor error, their fragment annotations the observed peak m/z, and the models and the errors before and after the correction are recorded in the search parameters and the run summary. At equal entrapment FDP the correction adds +0.6 % on the 20 DDA runs, +6.5 % on HeLa diaPASEF (the fragment window can tighten once the offset is gone) and +1.6 % on the Astral runs; 'linear' adds nothing over 'offset'. Set '-Search:calibration:enabled false' to search with the configured tolerances as given. The measured errors (offset, sigma and |offset| + 4 sigma, before and after the correction) are logged and recorded in the search parameters ('calibration:*') and the run summary, with a warning when a configured window is tighter than them ('calibration:precursor_measurement_trusted' / 'calibration:fragment_measurement_trusted' are false when the measured error covers less than 98 % of the calibration PSMs or 95 % of their fragment peaks, e.g. two error modes or too few peaks, or reaches the window of the calibration pass, where the errors beyond it were cut off and the value is a lower bound: such a value should not be taken as a tolerance); the errors of the final PSMs, of the m/z as observed, are reported in the run summary and the QPX provenance ('precursor_error_*', 'fragment_error_*'). '-Search:precursor:isotope_error_min' is -2 in this tool (the library: -1): a precursor may have been picked on the first or second 13C peak of its peptide, which holds for 2-4 % of the identifications of DIA pseudo-spectra and for some of DDA.
++@note Mass tolerances are measured by default ('-Search:calibration:enabled', on in this tool; the library's ProSEAlgorithm default is off). A calibration pass over the 10 % most intense spectra, searched with at least 20 ppm precursor and fragment windows (in Da twice the configured window, up to 0.5 Da; the configured ones if wider), takes the offset (median) and the spread (robust standard deviation, 1.4826 * MAD) of the signed mass errors of its confident PSMs. The main search then uses the fragment tolerance |median| + 4 sigma ('-Search:calibration:sigma_factor'), never wider than '-Search:fragment:mass_tolerance' and never below 10 ppm (0.02 Da; 5 ppm or 0.01 Da with the m/z correction below); the precursor window stays as configured by default ('-Search:calibration:precursor_sigma_factor' 0: the precursor errors are measured and reported; a value such as 4 tightens the window to median +/- 4 sigma, asymmetric about zero when the run has an offset, within 2.5 ppm per side and the configured window). The configured tolerances are therefore the widest windows searched, and a stated window stays an upper bound. The pass takes its spectra per tenth of the run, and a fragment tolerance that covers less than 95 % of the matched peaks of the calibration PSMs (or a precursor window less than 98 % of the PSMs) is not trusted: the configured tolerance is kept, with a warning. On the 20-run benchmark at equal entrapment-estimated FDP the fragment window gains on Astral (+6 %) and ion-trap CID data (+1 %) and is neutral elsewhere, while a tightened precursor window cost 2-3 % on every Orbitrap HCD set, which is why it is off. The measured errors are also corrected: '-Search:calibration:recalibrate offset' with '-Search:calibration:recalibrate_rt_chunks 10' (the tool's defaults; the library's: none) subtracts the median error of each tenth of the run (interpolated between them; a tenth whose calibration PSMs are mostly false matches, more than a quarter of them decoy hits, takes the precursor offset of its neighbours) from the precursor and fragment m/z the search uses, before the windows are set around zero; 'linear' subtracts a line in m/z per chunk instead, and 'none' only measures. The windows then follow the residual errors, with the fragment floor of 5 ppm (0.01 Da). The PSMs report the observed precursor m/z and the residual precursor error, their fragment annotations the observed peak m/z, and the models and the errors before and after the correction are recorded in the search parameters and the run summary. At equal entrapment FDP the correction adds +0.6 % on the 20 DDA runs, +6.5 % on HeLa diaPASEF (the fragment window can tighten once the offset is gone) and +1.6 % on the Astral runs; 'linear' adds nothing over 'offset'. Set '-Search:calibration:enabled false' to search with the configured tolerances as given. The measured errors (offset, sigma and |offset| + 4 sigma, before and after the correction) are logged and recorded in the search parameters ('calibration:*') and the run summary, with a warning when a configured window is tighter than them ('calibration:precursor_measurement_trusted' / 'calibration:fragment_measurement_trusted' are false when the measured error covers less than 98 % of the calibration PSMs or 95 % of their fragment peaks, e.g. two error modes or too few peaks, or reaches the window of the calibration pass, where the errors beyond it were cut off and the value is a lower bound: such a value should not be taken as a tolerance); the errors of the final PSMs, of the m/z as observed, are reported in the run summary and the QPX provenance ('precursor_error_*', 'fragment_error_*'). '-Search:precursor:isotope_error_min' is -2 in this tool (the library: -1): a precursor may have been picked on the first or second 13C peak of its peptide, which holds for 2-4 % of the identifications of DIA pseudo-spectra and for some of DDA.
+ @note Tolerances in '-out_merged': the run of each input reports the tolerances it was searched with, which the calibration may have narrowed differently for each input. The pooled run then reports the configured tolerances, and its search parameters list those of each input as 'input_precursor_mass_tolerances' and 'input_fragment_mass_tolerances' (one entry per input, in the order of the inputs; -1 for an input that was not pooled).
+ @note Remote input: an mzML file (also .mzML.gz or .mzML.bz2) can be read from Amazon S3 or an S3-compatible server ('-in s3://bucket/run.mzML') or from an HTTP(S) or FTP server ('-in https://host/run.mzML'). It is read as one stream, without a copy on disk, so more slowly than a local file (whose parts are parsed in parallel); '-qpx_extended' reads it again. S3 needs OpenMS built with an Arrow library that has S3 support (as in the vcpkg build); the credentials and the region are those of the AWS default credential chain (e.g. the environment variables AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_DEFAULT_REGION, or ~/.aws), and the query of the URI can set the region or the endpoint, e.g. 's3://bucket/run.mzML?region=eu-central-1' or 's3://bucket/run.mzML?endpoint_override=localhost:9000&scheme=http'. The outputs and the log name such an input without its user info and query (e.g. 's3://bucket/run.mzML'), as these can hold credentials; prefer the environment to credentials in the URI all the same, as the command line and an INI file hold the URI as given. The database ('-database'), Bruker .d, Thermo .raw and mzPeak inputs and all outputs are local files.
+ @note Search settings from a run: prose-auto (https://github.com/okohlbacher/prose-auto) proposes ProSE settings from an mzML file (label, protease, modifications, organism and mass tolerances measured from the spectra, optionally with the dataset's records and methods text), each with its source and evidence.

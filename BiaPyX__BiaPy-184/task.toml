@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/BiaPyX__BiaPy-184"
+description = "Add schema_version and data to --json output, and CLI tests"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BiaPy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "BiaPyX/BiaPy"
+ref = "9442f96545daae83eabde6d2ecbf6bcec5be2640"
+reference = "https://github.com/BiaPyX/BiaPy/pull/184"
+source_access = "auto"
+built_at = "2026-11-13T16:09:35.093075+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:64f95d33e817333b84d85a7e4c9f4b4ada6c8ad8494072f096d7b446d0114985"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T12:30:04Z"
+diff_format = "unified"
+context_files = [
+    "AGENTS.md",
+    "biapy/__init__.py",
+    "tests/test_cli.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 290
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

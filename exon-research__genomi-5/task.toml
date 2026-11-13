@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/exon-research__genomi-5"
+description = "fix: report the array reference build only when the export declares one"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "genomi",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "exon-research/genomi"
+ref = "07a255e5a4fdfb88b9ed1372cdec9ff1092aca20"
+reference = "https://github.com/exon-research/genomi/pull/5"
+source_access = "auto"
+built_at = "2026-11-13T15:30:49.979215+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:cb4f541ac4349c871bd82b90ea4d497c5f1e3c014800c4c333743510d1f0b5d7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-25T06:14:52Z"
+diff_format = "unified"
+context_files = [
+    "src/genomi/active_genome_index/source_intake/detection.py",
+    "tests/test_source_detection.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 53
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

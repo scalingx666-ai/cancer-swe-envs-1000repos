@@ -1,0 +1,13 @@
+diff --git a/pom.xml b/pom.xml
+index 13c07d9f5..b622d68fb 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -21,7 +21,7 @@
+     <avro.version>1.11.4</avro.version>
+     <scala.version>2.12.20</scala.version>
+     <scala.version.prefix>2.12</scala.version.prefix>
+-    <spark.version>3.5.3</spark.version>
++    <spark.version>3.5.5</spark.version>
+     <parquet.version>1.13.1</parquet.version>
+     <hadoop-bam.version>7.10.0</hadoop-bam.version>
+     <slf4j.version>1.7.36</slf4j.version>

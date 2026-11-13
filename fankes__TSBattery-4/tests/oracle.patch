@@ -1,0 +1,42 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index 30a5d1d4..2b81a0a0 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -6,7 +6,7 @@ plugins {
+ android {
+     signingConfigs {
+         debug {
+-            storeFile file('/Users/fankes/ProjectPath/AndroidStudioProjects/TSBattery/keystore/public')
++            storeFile file('../keystore/public')
+             storePassword '123456'
+             keyAlias 'public'
+             keyPassword '123456'
+diff --git a/app/src/main/java/com/fankes/tsbattery/MainActivity.kt b/app/src/main/java/com/fankes/tsbattery/MainActivity.kt
+index ce244b4e..04fa9609 100644
+--- a/app/src/main/java/com/fankes/tsbattery/MainActivity.kt
++++ b/app/src/main/java/com/fankes/tsbattery/MainActivity.kt
+@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity() {
+     companion object {
+ 
+         private const val moduleVersion = BuildConfig.VERSION_NAME
+-        private const val moduleSupport = "QQ 8.5.5~8.8.38、TIM 2+"
++        private const val moduleSupport = "QQ 8.5.5~8.8.50、TIM 2+"
+ 
+         /** 声明当前实例 */
+         var instance: MainActivity? = null
+diff --git a/app/src/main/java/com/fankes/tsbattery/hook/HookMain.kt b/app/src/main/java/com/fankes/tsbattery/hook/HookMain.kt
+index 54850d45..495c0180 100644
+--- a/app/src/main/java/com/fankes/tsbattery/hook/HookMain.kt
++++ b/app/src/main/java/com/fankes/tsbattery/hook/HookMain.kt
+@@ -92,6 +92,11 @@ class HookMain : IXposedHookLoadPackage {
+                 replaceToNull("activity.aio.core.BaseChatPie", "bi")
+                 replaceToNull("activity.aio.core.BaseChatPie", "bj")
+             }
++            // JiZhi适配
++            "8.8.50" -> {
++                replaceToNull("activity.aio.core.BaseChatPie", "bj")//remainScreenOn
++                replaceToNull("activity.aio.core.BaseChatPie", "bk")//cancelRemainScreenOn
++            }
+             else -> logD("$version not supported!")
+         }
+     }

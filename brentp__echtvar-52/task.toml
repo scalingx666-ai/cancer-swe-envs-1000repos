@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/brentp__echtvar-52"
+description = "Add support for Flag field type"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "echtvar",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "brentp/echtvar"
+ref = "53c7518a89e601d3c81ff9a1149dc37c1f661f17"
+reference = "https://github.com/brentp/echtvar/pull/52"
+source_access = "auto"
+built_at = "2026-11-13T16:14:53.171369+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b864e5baa26d72f718c8060fea62ecd04b4384a170846867ae3f54d5f43f3eb1"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-12T01:35:13Z"
+diff_format = "unified"
+context_files = [
+    "src/commands/annotate_cmd.rs",
+    "src/commands/encoder_cmd.rs",
+    "src/lib/echtvar.rs",
+    "src/lib/fields.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 100
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

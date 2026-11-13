@@ -1,0 +1,125 @@
+diff --git a/README.md b/README.md
+index e4820e8..6db486f 100644
+--- a/README.md
++++ b/README.md
+@@ -443,12 +443,17 @@ Nextflow working directory: from this directory
+ nextflow is executed, also there all nextflow log
+ files are kept
+ 
+-##### nextflow_config_dir NEXTFLOW_CONFIG_DIR, --nc NEXTFLOW_CONFIG_DIR
++##### --nextflow_config_dir NEXTFLOW_CONFIG_DIR, --nc NEXTFLOW_CONFIG_DIR
+ 
+ Directory containing nextflow configuration files for
+ cluster, pls see nextflow_config_files/readme.txt for
+ details.
+ 
++##### --quiet, -q
++
++Run without printing messages to console. 
++This does not affect the writing of log _files_: they will be written as usual. 
++
+ ## Output reading
+ 
+ This section describes TOGA output.
+diff --git a/split_chain_jobs.py b/split_chain_jobs.py
+index c42a6be..e75e922 100755
+--- a/split_chain_jobs.py
++++ b/split_chain_jobs.py
+@@ -37,6 +37,12 @@ def parse_args():
+     app.add_argument("bed_file", type=str, help="Bed file, gene annotations.")
+     app.add_argument("bed_index", type=str, help="Indexed bed")
+     app.add_argument("--log_file", type=str, help="Path to logfile")
++    app.add_argument(
++        "--quiet",
++        "-q",
++        action="store_true",
++        help="Don't print to console"
++    )
+     app.add_argument("--parallel_logs_dir", type=str, help="Path to dir storing logs from each cluster job")
+     app.add_argument(
+         "--jobs_num",
+@@ -293,7 +299,7 @@ def save(template, batch, logs_dir=None):
+ def main():
+     """Entry point."""
+     args = parse_args()
+-    setup_logger(args.log_file)
++    setup_logger(args.log_file, write_to_console=not args.quiet)
+     check_args(args)  # check if all the files, dependencies etc are correct
+     intersections, skipped = get_intersections()  # intersect chains and beds
+     # # extract genes that are not intersected by any chain
+diff --git a/split_exon_realign_jobs.py b/split_exon_realign_jobs.py
+index 12e766d..eacbbad 100755
+--- a/split_exon_realign_jobs.py
++++ b/split_exon_realign_jobs.py
+@@ -223,6 +223,12 @@ def parse_args():
+         default=None,
+         help="Log file"
+     )
++    app.add_argument(
++        "--quiet",
++        "-q",
++        action="store_true",
++        help="Don't print to console"
++    )
+     # print help if there are no args
+     if len(sys.argv) < 2:
+         app.print_help()
+@@ -813,7 +819,7 @@ def main():
+     """Entry point."""
+     t0 = dt.now()
+     args = parse_args()
+-    setup_logger(args.log_file)
++    setup_logger(args.log_file, write_to_console=not args.quiet)
+     os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"  # otherwise it could crash
+     args_dict = vars(args)
+     to_log(f"{MODULE_NAME_FOR_LOG}: the arguments list is:")
+diff --git a/toga.py b/toga.py
+index e5df5e5..33d6767 100755
+--- a/toga.py
++++ b/toga.py
+@@ -77,10 +77,11 @@ def __init__(self, args):
+ 
+         # manage logfiles
+         _log_filename = self.t0.strftime("%Y_%m_%d_at_%H_%M")
++        self.quiet = args.quiet
+         self.log_file = os.path.join(self.wd, f"toga_{_log_filename}.log")
+         self.log_dir = os.path.join(self.wd, "temp_logs")  # temp file to collect logs from processes
+         os.mkdir(self.log_dir) if not os.path.isdir(self.log_dir) else None
+-        setup_logger(self.log_file)
++        setup_logger(self.log_file, write_to_console=not self.quiet)
+ 
+         # check if all files TOGA needs are here
+         self.temp_files = []  # remove at the end, list of temp files
+@@ -730,7 +731,8 @@ def __split_chain_jobs(self):
+             f"--jobs {self.ch_cl_jobs} "
+             f"--jobs_file {self.chain_cl_jobs_combined} "
+             f"--results_dir {self.chain_class_results} "
+-            f"--rejected {rejected_path}"
++            f"--rejected {rejected_path} "
++            f"{'--quiet' if self.quiet else ''}"
+         )
+ 
+         self.__call_proc(split_jobs_cmd, "Could not split chain jobs!")
+@@ -879,7 +881,8 @@ def __split_cesar_jobs(self):
+             f"--predefined_glp_class_path {self.predefined_glp_cesar_split} "
+             f"--unprocessed_log {self.technical_cesar_err} "
+             f"--log_file {self.log_file} "
+-            f"--cesar_logs_dir {self.log_dir}"
++            f"--cesar_logs_dir {self.log_dir} "
++            f"{'--quiet' if self.quiet else ''}"
+         )
+ 
+         if self.annotate_paralogs:  # very rare occasion
+@@ -1484,6 +1487,12 @@ def parse_args():
+         dest="keep_temp",
+         help="Do not remove temp files.",
+     )
++    app.add_argument(
++        "--quiet",
++        "-q",
++        action="store_true",
++        help="Don't print to console"
++    )
+     app.add_argument(
+         "--limit_to_ref_chrom",
+         default=None,

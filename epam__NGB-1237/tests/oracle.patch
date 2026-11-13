@@ -1,0 +1,115 @@
+diff --git a/server/catgenome/src/main/java/com/epam/catgenome/manager/FileManager.java b/server/catgenome/src/main/java/com/epam/catgenome/manager/FileManager.java
+index f44c6a287..ea2b92606 100644
+--- a/server/catgenome/src/main/java/com/epam/catgenome/manager/FileManager.java
++++ b/server/catgenome/src/main/java/com/epam/catgenome/manager/FileManager.java
+@@ -170,7 +170,6 @@ public class FileManager {
+     public static final String BED_GRAPH_FEATURE_TEMPLATE = "%s\t%d\t%d\t%f%n";
+ 
+     private static final String ROOT_DIR_NAME = "42";
+-    private static final String FILE_SYSTEM_ROOT = "/";
+ 
+     @Autowired(required = false)
+     private EhCacheBasedIndexCache indexCache;
+@@ -1982,14 +1981,7 @@ public void deleteFeatureFileDirectory(FeatureFile featureFile) throws IOExcepti
+      */
+     public List<AbstractFsItem> loadDirectoryContents(String path) throws IOException {
+ 
+-        if(!StringUtils.isEmpty(path) && !Paths.get(path).startsWith(ngsDataRootPath)) {
+-            throw new AccessDeniedException(
+-                    String.format("Parameter path doesn't fall into 'ngs.data.root.path': %s", ngsDataRootPath));
+-        }
+-
+-        if (!filesBrowsingAllowed || ngsDataRootPath.equals(FILE_SYSTEM_ROOT)) {
+-            throw new AccessDeniedException("Server file system browsing is not allowed");
+-        }
++        urlValidatorService.validateLocalPath(path);
+ 
+         List<File> parentDirs = new ArrayList<>();
+         if (path == null) {
+diff --git a/server/catgenome/src/main/java/com/epam/catgenome/manager/UrlValidatorService.java b/server/catgenome/src/main/java/com/epam/catgenome/manager/UrlValidatorService.java
+index 56e232615..a7ffaf4a4 100644
+--- a/server/catgenome/src/main/java/com/epam/catgenome/manager/UrlValidatorService.java
++++ b/server/catgenome/src/main/java/com/epam/catgenome/manager/UrlValidatorService.java
+@@ -26,6 +26,9 @@
+ 
+ import java.net.URI;
+ import java.net.URISyntaxException;
++import java.nio.file.AccessDeniedException;
++import java.nio.file.Path;
++import java.nio.file.Paths;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -35,6 +38,7 @@
+ import com.epam.catgenome.controller.vo.registration.ReferenceRegistrationRequest;
+ import com.epam.catgenome.entity.BiologicalDataItemResourceType;
+ import com.epam.catgenome.util.NgbFileUtils;
++import lombok.SneakyThrows;
+ import lombok.extern.slf4j.Slf4j;
+ import org.apache.commons.collections4.ListUtils;
+ import org.apache.commons.io.FilenameUtils;
+@@ -46,11 +50,19 @@
+ @Slf4j
+ public class UrlValidatorService {
+ 
++    private static final String FILE_SYSTEM_ROOT = "/";
++
+     private final List<String> allowedHosts;
++    private String ngsDataRootPath;
++    private boolean filesBrowsingAllowed;
+ 
+-    public UrlValidatorService(@Value("#{'${url.browsing.allowed.hosts}'.split(',')}")
+-                               final List<String> allowedHosts) {
++    public UrlValidatorService(
++            @Value("#{'${url.browsing.allowed.hosts}'.split(',')}") final List<String> allowedHosts,
++            @Value("#{catgenome['ngs.data.root.path'] ?: '/'}") final String ngsDataRootPath,
++            @Value("#{catgenome['file.browsing.allowed'] ?: false}") final boolean filesBrowsingAllowed) {
+         this.allowedHosts = allowedHosts;
++        this.ngsDataRootPath = ngsDataRootPath;
++        this.filesBrowsingAllowed = filesBrowsingAllowed;
+     }
+ 
+     public void validate(final IndexedFileRegistrationRequest request) {
+@@ -68,16 +80,29 @@ public void validateURL(final String url) {
+         validatePath(url, BiologicalDataItemResourceType.FILE);
+     }
+ 
++    @SneakyThrows
++    public void validateLocalPath(final String path) {
++        if (!filesBrowsingAllowed || ngsDataRootPath.equals(FILE_SYSTEM_ROOT)) {
++            throw new AccessDeniedException("Server file system browsing is not allowed");
++        }
++        final Path resolvedPath = Paths.get(Optional.ofNullable(path).orElse(ngsDataRootPath)).normalize();
++        if(!resolvedPath.startsWith(ngsDataRootPath)) {
++            throw new AccessDeniedException(
++                    String.format("Parameter path doesn't fall into 'ngs.data.root.path': %s", ngsDataRootPath));
++        }
++    }
++
+     private void validatePath(final String inputPath, final BiologicalDataItemResourceType type) {
+         if (StringUtils.isBlank(inputPath)) {
+             log.debug("Input path is empty. Skipping validation.");
+             return;
+         }
+-        if (!validationRequired(inputPath, type)) {
+-            log.debug("Validation not required.");
+-            return;
++        if (!isRemotePath(inputPath, type)) {
++            log.debug("Validating local path.");
++            validateLocalPath(inputPath);
++        } else {
++            validateUrl(inputPath);
+         }
+-        validateUrl(inputPath);
+     }
+ 
+     private void validateUrl(final String inputUrl) {
+@@ -100,7 +125,7 @@ private boolean matchesAllowedDomain(final String allowedDomain, final String ta
+         return FilenameUtils.wildcardMatch(targetHost, allowedDomain);
+     }
+ 
+-    private boolean validationRequired(final String inputPath, final BiologicalDataItemResourceType type) {
++    private boolean isRemotePath(final String inputPath, final BiologicalDataItemResourceType type) {
+         return BiologicalDataItemResourceType.URL.equals(type)
+                 || BiologicalDataItemResourceType.S3.equals(type)
+                 || BiologicalDataItemResourceType.AZ.equals(type)

@@ -1,0 +1,106 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 368d630..0948f60 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -52,4 +52,4 @@ jobs:
+         with:
+           pytest-coverage-path: pytest-coverage.txt
+           junitxml-path: pytest.xml
+-        if: ${{ matrix.os=='ubuntu-latest' && matrix.python-version=='3.12' }}
++        if: ${{ matrix.os=='ubuntu-latest' && matrix.python-version=='3.12' && !env.ACT }}
+diff --git a/docs/images/pgv-gui_screen.png b/docs/images/pgv-gui_screen.png
+index b97b9a8..7f281c6 100644
+Binary files a/docs/images/pgv-gui_screen.png and b/docs/images/pgv-gui_screen.png differ
+diff --git a/src/pygenomeviz/__init__.py b/src/pygenomeviz/__init__.py
+index 5f638b8..10af5e2 100644
+--- a/src/pygenomeviz/__init__.py
++++ b/src/pygenomeviz/__init__.py
+@@ -3,7 +3,7 @@
+ from pygenomeviz import logger as _logger
+ from pygenomeviz.genomeviz import GenomeViz
+ 
+-__version__ = "1.6.0"
++__version__ = "1.6.1"
+ 
+ __all__ = [
+     "GenomeViz",
+diff --git a/src/pygenomeviz/align/tool/base.py b/src/pygenomeviz/align/tool/base.py
+index 402ff5e..5f2acbf 100644
+--- a/src/pygenomeviz/align/tool/base.py
++++ b/src/pygenomeviz/align/tool/base.py
+@@ -98,24 +98,23 @@ def run_cmd(
+         """
+         logger.info(f"$ {cmd}")
+         cmd_args = shlex.split(cmd)
+-        cmd_res = sp.run(cmd_args, capture_output=True, text=True)
+-        return_code = cmd_res.returncode
+-
+-        if return_code == 0:
++        try:
++            cmd_res = sp.run(cmd_args, capture_output=True, text=True, check=True)
+             # Write stdout result if stdout_file is set
+             if stdout_file:
+                 logger.info(f"> Save cmd stdout results to '{stdout_file}'")
+                 with open(stdout_file, "w", encoding="utf-8") as f:
+                     f.write(cmd_res.stdout)
+-        else:
+-            logger.error(f"Failed to run command below ({return_code=})")
++        except sp.CalledProcessError as e:
++            returncode, stdout, stderr = e.returncode, str(e.stdout), str(e.stderr)
++            logger.error(f"Failed to run command below ({returncode=})")
+             logger.error(f"$ {cmd}")
+-            stdout_lines = cmd_res.stdout.splitlines()
++            stdout_lines = stdout.splitlines()
+             if len(stdout_lines) > 0:
+                 logger.error("STDOUT:")
+                 for line in stdout_lines:
+                     logger.error(f"> {line}")
+-            stderr_lines = cmd_res.stderr.splitlines()
++            stderr_lines = stderr.splitlines()
+             if len(stderr_lines) > 0:
+                 logger.error("STDERR:")
+                 for line in stderr_lines:
+diff --git a/src/pygenomeviz/gui/plot.py b/src/pygenomeviz/gui/plot.py
+index dac62ec..993764b 100644
+--- a/src/pygenomeviz/gui/plot.py
++++ b/src/pygenomeviz/gui/plot.py
+@@ -5,11 +5,10 @@
+ from pathlib import Path
+ 
+ from pygenomeviz import GenomeViz
+-from pygenomeviz.align import AlignCoord, AlignToolBase, Blast, MMseqs, MUMmer
++from pygenomeviz.align import AlignCoord, Blast, MMseqs, MUMmer
+ from pygenomeviz.exception import SegmentNotFoundError
+ from pygenomeviz.gui import config, utils
+ from pygenomeviz.parser import Genbank
+-from pygenomeviz.typing import AlnMethod
+ from pygenomeviz.utils import is_pseudo_feature
+ 
+ 
+@@ -103,14 +102,18 @@ def plot_by_gui_cfg(
+     if aln_coords_file.exists():
+         align_coords = AlignCoord.read(aln_coords_file)
+     else:
+-        aln_method2aligner: dict[AlnMethod, AlignToolBase] = {
+-            "MUMmer (nucleotide)": MUMmer(gbk_list, seqtype="nucleotide"),
+-            "MUMmer (protein)": MUMmer(gbk_list, seqtype="protein"),
+-            "MMseqs RBH": MMseqs(gbk_list),
+-            "BLAST (nucleotide)": Blast(gbk_list, seqtype="nucleotide"),
+-            "BLAST (protein)": Blast(gbk_list, seqtype="protein"),
+-        }
+-        aligner = aln_method2aligner[cfg.aln.method]
++        if cfg.aln.method == "MUMmer (nucleotide)":
++            aligner = MUMmer(gbk_list, seqtype="nucleotide")
++        elif cfg.aln.method == "MUMmer (protein)":
++            aligner = MUMmer(gbk_list, seqtype="protein")
++        elif cfg.aln.method == "MMseqs RBH":
++            aligner = MMseqs(gbk_list)
++        elif cfg.aln.method == "BLAST (nucleotide)":
++            aligner = Blast(gbk_list, seqtype="nucleotide")
++        elif cfg.aln.method == "BLAST (protein)":
++            aligner = Blast(gbk_list, seqtype="protein")
++        else:
++            raise ValueError(f"{cfg.aln.method=} is invalid alignment method.")
+         align_coords = aligner.run()
+         AlignCoord.write(align_coords, aln_coords_file)
+     align_coords = AlignCoord.filter(

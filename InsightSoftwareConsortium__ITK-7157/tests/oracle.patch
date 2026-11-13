@@ -1,0 +1,24 @@
+diff --git a/Testing/ContinuousIntegration/AzurePipelinesLinux.yml b/Testing/ContinuousIntegration/AzurePipelinesLinux.yml
+index d4ea516284a..5f3b731b6f1 100644
+--- a/Testing/ContinuousIntegration/AzurePipelinesLinux.yml
++++ b/Testing/ContinuousIntegration/AzurePipelinesLinux.yml
+@@ -71,6 +71,7 @@ jobs:
+         architecture: 'x64'
+ 
+     - bash: |
++        set -e
+         set -x
+         sudo pip3 install ninja
+         sudo apt-get update
+diff --git a/Testing/ContinuousIntegration/AzurePipelinesLinuxPython.yml b/Testing/ContinuousIntegration/AzurePipelinesLinuxPython.yml
+index 81a87938ddf..86c245eaf58 100644
+--- a/Testing/ContinuousIntegration/AzurePipelinesLinuxPython.yml
++++ b/Testing/ContinuousIntegration/AzurePipelinesLinuxPython.yml
+@@ -71,6 +71,7 @@ jobs:
+         architecture: 'x64'
+ 
+     - bash: |
++        set -e
+         set -x
+         sudo apt-get update
+         sudo apt-get install -y ccache locales

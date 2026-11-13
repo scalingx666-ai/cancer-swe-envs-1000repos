@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/sortmerna__sortmerna-468"
+description = "Read the last line of a reads file that has no final newline"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "sortmerna",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "sortmerna/sortmerna"
+ref = "d0944692ea69b870bebab1982f843685c487a9db"
+reference = "https://github.com/sortmerna/sortmerna/pull/468"
+source_access = "auto"
+built_at = "2026-11-13T16:01:03.759492+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:62e1e36ef2c41cc5df6ce5de6466ce4e3ccf211e7f66c562fd05c25aaf09a1ae"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-05T00:52:43Z"
+diff_format = "unified"
+context_files = [
+    "src/sortmerna/readfeed.cpp",
+    "tests/golden/small/other.fa",
+    "tests/golden/tiny/aligned.blast",
+    "tests/golden/tiny/aligned.fa",
+    "tests/golden/tiny/aligned.sam",
+    "tests/smr_api/test_smoke.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 151
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

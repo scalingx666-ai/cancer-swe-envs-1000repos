@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/alok-ai-lab__pyDeepInsight-58"
+description = "fix dependencies and metadata in pyproject.toml"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "pyDeepInsight",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "alok-ai-lab/pyDeepInsight"
+ref = "047648e2f78deb968523c8dc9d063f3efe05a725"
+reference = "https://github.com/alok-ai-lab/pyDeepInsight/pull/58"
+source_access = "auto"
+built_at = "2026-11-13T15:33:33.778089+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6770ab0ad732afaff7598897da16d5c748855fa18dd74f6ffae71a6e1cf7733a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-09-12T05:57:00Z"
+diff_format = "unified"
+context_files = [
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

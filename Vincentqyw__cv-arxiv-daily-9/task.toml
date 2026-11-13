@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Vincentqyw__cv-arxiv-daily-9"
+description = "Fix bug of usage of OR keyword of query"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "cv-arxiv-daily",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Vincentqyw/cv-arxiv-daily"
+ref = "d6a4e2fc4662bd4611e37894f70bb1fab9bbe5cb"
+reference = "https://github.com/Vincentqyw/cv-arxiv-daily/pull/9"
+source_access = "auto"
+built_at = "2026-11-13T15:29:53.978360+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:20197133bf32067e314cf276e91a0a75cb1c46ad133cb24a8bfbe0070be55980"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-05-25T11:04:49Z"
+diff_format = "unified"
+context_files = [
+    "daily_arxiv.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 96
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

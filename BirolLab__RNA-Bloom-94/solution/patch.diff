@@ -1,0 +1,80 @@
+diff --git a/README.md b/README.md
+index 2bed7c6f..7c9d2ce3 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,5 @@
+-[![Release](https://img.shields.io/github/v/release/bcgsc/RNA-Bloom?include_prereleases)](https://github.com/bcgsc/RNA-Bloom/releases)
+-[![Downloads](https://img.shields.io/github/downloads/bcgsc/RNA-Bloom/total?logo=github)](https://github.com/bcgsc/RNA-Bloom/releases)
++[![Release](https://img.shields.io/github/v/release/BirolLab/RNA-Bloom?include_prereleases)](https://github.com/BirolLab/RNA-Bloom/releases)
++[![Downloads](https://img.shields.io/github/downloads/BirolLab/RNA-Bloom/total?logo=github)](https://github.com/BirolLab/RNA-Bloom/releases)
+ [![Conda](https://img.shields.io/conda/dn/bioconda/rnabloom?label=Conda)](https://anaconda.org/bioconda/rnabloom)
+ 
+ <p align="center">
+@@ -27,7 +27,7 @@ Written by [Ka Ming Nip](mailto:kmnip@bcgsc.ca) :email:
+ | :-------------------------------------------------- | :------------ | :----------- |
+ | [minimap2](https://github.com/lh3/minimap2) >=2.22  | required      | required     |
+ | [Racon](https://github.com/lbcb-sci/racon)          | not used      | required     |
+-| [ntCard](https://github.com/bcgsc/ntCard) >=1.2.1   | required      | required     |
++| [ntCard](https://github.com/BirolLab/ntCard) >=1.2.1   | required      | required     |
+ 
+ :warning: Their executables must be accessible from your `PATH`!
+ 
+@@ -47,7 +47,7 @@ mamba install -c bioconda rnabloom
+ All dependent software (listed above) will be installed. RNA-Bloom can be run as `rnabloom ...`
+ 
+ ### (B) download from GitHub: 
+-1. Download the binary tarball `rnabloom_vX.X.X.tar.gz` from the [releases](https://github.com/bcgsc/RNA-Bloom/releases) section.
++1. Download the binary tarball `rnabloom_vX.X.X.tar.gz` from the [releases](https://github.com/BirolLab/RNA-Bloom/releases) section.
+ 2. Extract the downloaded tarball with the command:
+ ```
+ tar -zxf rnabloom_vX.X.X.tar.gz
+diff --git a/recipe/meta.yaml b/recipe/meta.yaml
+index c7d62774..70d15cf0 100644
+--- a/recipe/meta.yaml
++++ b/recipe/meta.yaml
+@@ -6,12 +6,12 @@ package:
+   version: {{ version }}
+ 
+ source:
+-  url: https://github.com/bcgsc/RNA-Bloom/releases/download/v{{ version }}/{{ name }}_v{{ version }}.tar.gz
++  url: https://github.com/BirolLab/RNA-Bloom/releases/download/v{{ version }}/{{ name }}_v{{ version }}.tar.gz
+   sha256: 6a29f48be4b3959996928686f53b0a43fd44801cdd606da3bc82047068d6efbb
+ 
+ build:
+   noarch: generic
+-  number: 0
++  number: 1
+ 
+ requirements:
+   run:
+@@ -25,12 +25,12 @@ test:
+     - rnabloom --version | grep {{ version }}
+ 
+ about:
+-  home: https://github.com/bcgsc/RNA-Bloom
++  home: https://github.com/BirolLab/RNA-Bloom
+   license: GPL-3.0
+   license_file: LICENSE
+   summary: Java tool for RNA-seq assembly
+   description: >- 
+     RNA-Bloom is a lightweight reference-free transcript sequence assembly tool
+     for short reads and nanopore reads.
+-  dev_url: https://github.com/bcgsc/RNA-Bloom
+-  doc_url: https://github.com/bcgsc/RNA-Bloom/blob/master/README.md
+\ No newline at end of file
++  dev_url: https://github.com/BirolLab/RNA-Bloom
++  doc_url: https://github.com/BirolLab/RNA-Bloom/blob/master/README.md
+\ No newline at end of file
+diff --git a/src/rnabloom/util/MiniFloat.java b/src/rnabloom/util/MiniFloat.java
+index 0f4c649a..cc1b752d 100644
+--- a/src/rnabloom/util/MiniFloat.java
++++ b/src/rnabloom/util/MiniFloat.java
+@@ -20,7 +20,7 @@
+ import static java.lang.Math.scalb;
+ 
+ /**
+- * Based on https://github.com/bcgsc/abyss/blob/master/LogKmerCount/plc.h
++ * Based on https://github.com/BirolLab/abyss/blob/master/LogKmerCount/plc.h
+  * @author Ka Ming Nip
+  */
+ public class MiniFloat {

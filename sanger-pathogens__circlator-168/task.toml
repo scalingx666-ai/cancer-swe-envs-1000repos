@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/sanger-pathogens__circlator-168"
+description = "Remove support email from README"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "circlator",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "sanger-pathogens/circlator"
+ref = "e9624eea7979b5945a670a907da1cd52ddac6655"
+reference = "https://github.com/sanger-pathogens/circlator/pull/168"
+source_access = "auto"
+built_at = "2026-11-13T16:05:49.418263+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:09715934f474a880a4e6b749aff2cc29702e32d2be4e76df828c9a584b095f39"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-06-09T16:07:32Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "install_dependencies.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

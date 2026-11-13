@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/epam__cloud-pipeline-4858"
+description = "Issue 4570: name archive entries relative to what the selection has in common"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "cloud-pipeline",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "epam/cloud-pipeline"
+ref = "82371f67fd6f97d8e15da03e0d417825f030c813"
+reference = "https://github.com/epam/cloud-pipeline/pull/4858"
+source_access = "auto"
+built_at = "2026-11-13T16:15:27.065194+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c60b4af574f54d8bbcb6cc35a6021c48e1fc39ec01187ad9184e435cac71a850"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T15:20:55Z"
+diff_format = "unified"
+context_files = [
+    "docs/md/manual/08_Manage_Data_Storage/8.2._Upload_Download_data.md",
+    "storage-async-task-service/README.md",
+    "storage-async-task-service/sats/worker/archive_preparation_worker.py",
+    "storage-async-task-service/tests/test_archive_preparation_worker.py",
+    "storage-async-task-service/tests/test_archive_root.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 417
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

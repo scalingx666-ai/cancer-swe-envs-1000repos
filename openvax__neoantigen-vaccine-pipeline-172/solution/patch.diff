@@ -1,0 +1,574 @@
+diff --git a/README.md b/README.md
+index 3752eb9f..a9e492fc 100644
+--- a/README.md
++++ b/README.md
+@@ -20,7 +20,7 @@ The steps performed by the workflow are as follows.
+ * Tumor and normal whole exome sequencing FASTQ files are aligned to GRCh37+decoy (b37decoy) using [bwa mem](http://bio-bwa.sourceforge.net/). RNA-seq of the tumor sample is aligned by [STAR](https://academic.oup.com/bioinformatics/article/29/1/15/272537) to the same reference genome.
+ * Aligned tumor and normal exome reads pass through several steps using GATK 3.7: MarkDuplicates, IndelRealigner, BQSR.
+ * Aligned RNA-seq reads are grouped into two sets: those spanning introns and those aligning entirely within an exon (determined based on the CIGAR string). The latter group is passed through IndelRealigner, and the two groups of reads are merged.
+-* Somatic variant calling is performed by running Mutect 1.1.7, Mutect 2, and/or Strelka version 1. The user is expected to specify which of those 3 variant callers the pipeline should run.
++* Somatic variant calling is performed by running Mutect 1.1.7, Mutect 2, and/or Strelka 2.9.10. The user is expected to specify which of those 3 variant callers the pipeline should run.
+ * [Vaxrank](https://github.com/openvax/vaxrank) is run, using the combined VCFs from all variant callers and the aligned RNA reads.
+ 
+ ## Running using Docker
+@@ -83,7 +83,7 @@ openvax/neoantigen-vaccine-pipeline:latest \
+ --configfile=/inputs/idh1_config.yaml
+ ```
+ 
+-This should create the final vaccine peptide results as well as many intermediate files in your `outputs` directory, under a subdirectory specified in the `id` field in the YAML config (in this case, `idh1-test-sample`). See the final results at `$(realpath outputs)/idh1-test-sample/vaccine-peptide-report_netmhcpan-iedb_mutect-strelka.txt`.
++This should create the final vaccine peptide results as well as many intermediate files in your `outputs` directory, under a subdirectory specified in the `id` field in the YAML config (in this case, `idh1-test-sample`). See the final results at `$(realpath outputs)/idh1-test-sample/vaccine-peptide-report_mhcflurry_mutect-strelka.txt`.
+ 
+ If the pipeline errors, the offending job will be highlighted in red and will mention a log file. The first step in understanding what went wrong is to look at that log file, which will live in the directory `$(realpath outputs)/idh1-test-sample`.
+ 
+diff --git a/datagen/idh1_config_iedb.yaml b/datagen/idh1_config_iedb.yaml
+deleted file mode 100644
+index a1a98e19..00000000
+--- a/datagen/idh1_config_iedb.yaml
++++ /dev/null
+@@ -1,35 +0,0 @@
+-input:
+-  id: idh1-test-sample
+-  mhc_alleles:
+-    - HLA-A*30:01
+-  # The input FASTQ files must live in the same directory as your config YAML file.
+-  # You should only need to modify the basename of the sample file paths, leaving the /inputs part
+-  # of the filename unchanged.
+-  normal:
+-    - fragment_id: L001
+-      # If your data is paired-end FASTQ files, you must specify the two files as r1 and r2 entries
+-      # instead of the singular r entry in this template. Also change the type to say paired-end.
+-      type: single-end
+-      r: /inputs/idh1_r132h_normal.fastq.gz
+-  tumor:
+-    - fragment_id: L001
+-      type: single-end
+-      r: /inputs/idh1_r132h_tumor.fastq.gz
+-  rna:
+-    - fragment_id: L001
+-      type: single-end
+-      r: /inputs/idh1_r132h_tumor.fastq.gz
+-# In most cases, you should not need to modify anything below this line.
+-workdir:
+-  /outputs
+-reference:
+-  genome: /reference-genome/b37decoy/b37decoy.fasta
+-  dbsnp: /reference-genome/b37decoy/dbsnp.vcf
+-  cosmic: /reference-genome/b37decoy/cosmic.vcf
+-  transcripts: /reference-genome/b37decoy/transcripts.gtf
+-  capture_kit_coverage_file: /reference-genome/b37decoy/S04380110_Covered_grch37.bed
+-parallel_indel_realigner: true
+-mhc_predictor: netmhcpan-iedb
+-variant_callers:
+-  - mutect
+-  - strelka
+diff --git a/docker/Dockerfile b/docker/Dockerfile
+index 3ed53bbd..3583044b 100644
+--- a/docker/Dockerfile
++++ b/docker/Dockerfile
+@@ -4,12 +4,17 @@ FROM --platform=linux/amd64 ubuntu:22.04
+ 
+ MAINTAINER Julia Kodysh <julia326@gmail.com>
+ 
++# Note on fonts-dejavu-core: WeasyPrint renders text via Pango/fontconfig, which
++# needs at least one real font present. --no-install-recommends below strips the
++# font packages that would otherwise arrive as recommends, leaving the image with
++# fontconfig but no fonts, so one is requested explicitly.
+ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections && \
+     apt-get clean && \
+     apt-get update && \
+     apt-get install --no-install-recommends --no-upgrade -y \
+         ca-certificates \
+         curl \
++        fonts-dejavu-core \
+         gawk \
+         git \
+         graphviz \
+@@ -36,6 +41,40 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
+     apt-get clean -y && \
+     rm -rf /var/lib/apt/lists/*
+ 
++# WeasyPrint, used to render the vaccine peptide PDF report.
++#
++# We deliberately do NOT use vaxrank's own PDF output: vaxrank 1.4.0 renders PDFs
++# via pdfkit -> wkhtmltopdf, and wkhtmltopdf was archived upstream in 2023. Instead
++# vaxrank emits the HTML report and the vaccine_peptide_report_pdf rule converts it
++# (see pipeline/special_sauce.rules).
++#
++# WeasyPrint is installed against the system Python 3.10 rather than vaxrank's
++# Python 3.7 conda env, and is invoked as a CLI, so vaxrank's Python version does
++# not constrain it. Needs Pango >= 1.44; jammy ships 1.50.
++#
++# Version pin, do not bump without also bumping the base image: WeasyPrint 63.0+
++# subsets fonts with HarfBuzz and needs libharfbuzz-subset.so.0 (HarfBuzz >= 4.1).
++# Ubuntu 22.04 ships HarfBuzz 2.7.4 and provides that library in no package at all
++# -- there is no libharfbuzz-subset0 on jammy. 62.3 is the last release that
++# subsets via fontTools instead, so it is the newest version that builds here.
++#
++# pydyf must be pinned alongside it. WeasyPrint 62.3 requires "pydyf>=0.10.0" with
++# no upper bound, so pip otherwise installs the newest pydyf, whose Stream API no
++# longer provides transform(). That combination installs cleanly and only fails at
++# render time with "AttributeError: 'super' object has no attribute 'transform'".
++# 0.10.0 is the version 62.3 was built against; pydyf 0.11+ pairs with WeasyPrint 63+.
++RUN apt-get update && \
++    apt-get install -y --no-install-recommends \
++        python3-pip \
++        libpango-1.0-0 \
++        libpangoft2-1.0-0 \
++        libharfbuzz0b \
++        libfontconfig1 && \
++    pip3 install --no-cache-dir weasyprint==62.3 pydyf==0.10.0 && \
++    apt-get clean -y && \
++    rm -rf /var/lib/apt/lists/* && \
++    weasyprint --version
++
+ RUN useradd --create-home --home-dir /home/user --shell /bin/bash -G sudo user && \
+     echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+ 
+@@ -55,26 +94,35 @@ RUN cd /tmp && wget https://github.com/openvax/neoantigen-vaccine-pipeline/relea
+ 
+ ENV PERL5LIB /usr/local/lib
+ 
+-# Install Miniconda
+-RUN wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
+-    bash miniconda.sh -b -p $HOME/miniconda
++# Install Miniforge (not Miniconda).
++#
++# Miniforge defaults to conda-forge and never configures Anaconda's repo.anaconda.com
++# channels. This matters for two reasons:
++#  1. Anaconda now requires explicit Terms of Service acceptance for pkgs/main and
++#     pkgs/r, which fails any non-interactive build that touches those channels.
++#  2. Those terms require a paid license for organizations over 200 employees, so
++#     accepting them is a licensing decision, not a build fix.
++# Every package we install lives on conda-forge or bioconda, so we avoid both.
++#
++# Installed to $HOME/miniconda (not $HOME/miniforge) so the PGV_BIN / MHCFLURRY_BIN
++# paths below and the sed patch further down keep working unchanged.
++RUN wget -q https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -O miniforge.sh && \
++    bash miniforge.sh -b -p $HOME/miniconda && \
++    rm miniforge.sh
+ ENV PATH $HOME/miniconda/bin:$PATH
+ 
+ ENV PGV_BIN /home/user/miniconda/envs/pgv/bin
+ ENV JAVA7_BIN /home/user/miniconda/envs/java7/bin
+ 
+-# Switch to a faster solver for conda
+-RUN conda update -n base conda && conda install -n base conda-libmamba-solver && \
+-    conda config --set solver libmamba
++# No conda-libmamba-solver step is needed: Miniforge ships conda >= 23.10, which
++# already uses the libmamba solver by default.
+ 
+ # install a bunch of bfx tools; gatk needs to be this version, latest doesn't work
+ # graphviz needed for DAG visualization
+ # ucsc-liftover for converting coverage bed files between various alignments
+ # java version specific to MuTect
+-RUN conda config --add channels r && \
+-    conda config --add channels defaults && \
+-    conda config --add channels conda-forge && \
+-    conda config --add channels bioconda && \
++# conda-forge is already Miniforge's default channel; bioconda goes on top of it.
++RUN conda config --add channels bioconda && \
+     conda create -n pgv \
+     setuptools \
+     python=3.6 \
+@@ -93,11 +141,7 @@ RUN conda config --add channels r && \
+     && conda clean --all -y
+ 
+ # We also setup a newer environment with mhcflurry.
+-RUN conda config --add channels r && \
+-    conda config --add channels defaults && \
+-    conda config --add channels conda-forge && \
+-    conda config --add channels bioconda && \
+-    conda create -n mhcflurry \
++RUN conda create -n mhcflurry \
+     python=3.7 \
+     setuptools \
+     cython \
+@@ -148,7 +192,6 @@ RUN wget https://github.com/Illumina/strelka/releases/download/v2.9.10/strelka-2
+     && mv strelka-2.9.10.centos6_x86_64 $HOME/strelka \
+     && rm strelka-2.9.10.centos6_x86_64.tar.bz2
+ 
+-ENV STRELKA_CONFIG $HOME/pipeline/strelka_config.txt
+ ENV STRELKA_BIN $HOME/strelka/bin
+ 
+ # Python scripts setup, for things that are too small/simple to be their own modules
+diff --git a/pipeline/scripts/vaccine_report_pdf.css b/pipeline/scripts/vaccine_report_pdf.css
+new file mode 100644
+index 00000000..c9890f08
+--- /dev/null
++++ b/pipeline/scripts/vaccine_report_pdf.css
+@@ -0,0 +1,164 @@
++/*
++ * Stylesheet applied when converting the vaxrank HTML report to PDF with
++ * WeasyPrint. See the vaccine_peptide_report_pdf rule in special_sauce.rules.
++ *
++ * WHY THIS FILE EXISTS
++ *
++ * vaxrank's HTML template links two stylesheets from Yahoo's retired YUI "Pure"
++ * CDN over plain HTTP. The pdf rule strips those <link> tags so that rendering
++ * needs no network and is deterministic. vaxrank's tables are marked up with
++ * Pure's classes ("pure-table", "pure-table-bordered"), so the table styling is
++ * vendored below rather than fetched. It is copied faithfully from Pure 0.6.0,
++ * limited to the two classes vaxrank actually uses.
++ *
++ * The rest of the report's layout -- table widths, column widths, page breaks --
++ * comes from vaxrank's own inline stylesheet. Do not set table width or
++ * table-layout here: vaxrank assigns those per table via <col> elements
++ * (col.epitope-data-column-*, col.patient-info-*, ...) and a blanket rule
++ * collapses the epitope columns until peptide sequences wrap mid-string.
++ */
++
++@page {
++    size: A4;
++    margin: 14mm 12mm;
++}
++
++body {
++    font-family: "DejaVu Sans", sans-serif;
++    font-size: 8pt;
++    line-height: 1.4;
++    color: #000;
++    margin: 0;
++}
++
++/* ------------------------------------------------------------------------
++ * Vendored from Pure 0.6.0 (pure-min.css), the .pure-table rules only.
++ * ------------------------------------------------------------------------ */
++
++.pure-table {
++    border-collapse: collapse;
++    border-spacing: 0;
++    empty-cells: show;
++    border: 1px solid #cbcbcb;
++}
++
++.pure-table td,
++.pure-table th {
++    border-left: 1px solid #cbcbcb;
++    border-width: 0 0 0 1px;
++    font-size: inherit;
++    margin: 0;
++    overflow: visible;
++    padding: 0.5em 1em;
++}
++
++.pure-table td:first-child,
++.pure-table th:first-child {
++    border-left-width: 0;
++}
++
++.pure-table thead {
++    background-color: #e0e0e0;
++    color: #000;
++    text-align: left;
++    vertical-align: bottom;
++}
++
++.pure-table td {
++    background-color: transparent;
++}
++
++.pure-table-bordered td {
++    border-bottom: 1px solid #cbcbcb;
++}
++
++.pure-table-bordered tbody > tr:last-child > td {
++    border-bottom-width: 0;
++}
++
++/* ------------------------------------------------------------------------
++ * Adjustments for vaxrank rules that were tuned for wkhtmltopdf.
++ * ------------------------------------------------------------------------ */
++
++/* NOTE ON !important BELOW
++ *
++ * WeasyPrint loads --stylesheet as a USER stylesheet, and in the CSS cascade an
++ * author stylesheet (vaxrank's inline <style> block) beats a user stylesheet for
++ * normal declarations no matter how specific the user selector is. A user
++ * declaration only wins when marked !important. So any rule here that has to
++ * override something vaxrank sets must be !important -- without it the rule is
++ * silently ignored. Rules that merely fill gaps vaxrank leaves alone (the
++ * vendored .pure-table block, @page, body) need no such marker.
++ */
++
++/* vaxrank pads #main by 4em. Combined with the @page margin that doubles up and
++   leaves the report using only about 60% of the page width. */
++#main {
++    padding: 0 !important;
++}
++
++/* vaxrank sets div.variant-span to an absolute 16px, which ignores the body size
++   above, so every per-variant section renders far larger than the summary tables
++   and the epitope columns overflow. Scale it down -- these per-peptide tables are
++   dense reference data, not prose, and do not need to be larger than the summary
++   tables on page 1. */
++div.variant-span {
++    font-size: 8pt !important;
++}
++
++/* Pure's 0.5em/1em cell padding makes the per-peptide tables very tall for the
++   amount of data in them. Tighten it for the variant sections only; the page-1
++   summary tables keep Pure's roomier spacing. */
++div.variant-span .pure-table td,
++div.variant-span .pure-table th {
++    padding: 0.35em 0.7em;
++}
++
++/* vaxrank gives table.variant a -2em top margin to compensate for wkhtmltopdf's
++   spacing. Under WeasyPrint that lifts the table above its own list marker, so
++   the "1." ends up sitting below the top of the table it labels. Zero it so the
++   marker and the table top line up.
++   Note this is deliberately NOT applied to table.peptide, whose -1em margin is
++   still doing useful work there: zeroing it pushes the peptide tables down and
++   roughly doubles the gap to their markers. */
++table.variant {
++    margin-top: 0 !important;
++}
++
++/* Peptide and epitope sequences must never break mid-string -- a wrapped
++   "KPIIIGHHAY" is unreadable and easy to misread. Stated explicitly so a future
++   edit doesn't reintroduce a global word-break. */
++table.peptide td,
++table.epitope-inner td,
++table.epitope-inner th,
++table.wt-epitopes td,
++span.mutant {
++    overflow-wrap: normal;
++    hyphens: none;
++}
++
++/* Long filesystem paths in the patient-info and command-line-args tables do need
++   to wrap, or they run off the right edge of the page.
++   Note "break-word" rather than "anywhere": "anywhere" also lets the column
++   shrink below its longest word when the table is laid out, which chops argument
++   names like "max_reference_transcript_mismatches" mid-identifier. */
++table.patient-info td,
++table.args td {
++    overflow-wrap: break-word;
++}
++
++/* The six-column epitope table is the tightest thing in the report: vaxrank gives
++   every column 16% regardless of content, and Pure's 1em horizontal padding then
++   pushes values like "1470.85 nM" onto a second line. Tighten the padding and
++   forbid wrapping so the auto table layout widens columns to fit instead -- the
++   full row is only ~60 characters, so there is ample room inside the table. */
++table.epitope-inner td,
++table.epitope-inner th {
++    padding: 0.4em 0.5em;
++    white-space: nowrap;
++}
++
++/* Keep headings attached to the content that follows them. */
++h1, h2, h3, h4 {
++    break-after: avoid;
++}
+diff --git a/pipeline/special_sauce.rules b/pipeline/special_sauce.rules
+index 3d15934f..bb214d9e 100644
+--- a/pipeline/special_sauce.rules
++++ b/pipeline/special_sauce.rules
+@@ -41,8 +41,9 @@ if "mhc_alleles" in config["input"] and _rna_exists():
+       output:
+         ascii_report = join(WORKDIR, "vaccine-peptide-report_{mhc_predictor}_{vcf_types}.txt"),
+         json_file = join(WORKDIR, "vaccine-peptide-report_{mhc_predictor}_{vcf_types}.json"),
+-	    # commenting this out for now: will need to figure out wkhtmltopdf install in Docker image
+-        #pdf_report = join(WORKDIR, "vaccine-peptide-report_{mhc_predictor}_{vcf_types}.pdf"),
++        # vaxrank emits HTML here rather than PDF; the PDF is rendered from this
++        # by the vaccine_peptide_report_pdf rule below. See that rule for why.
++        html_report = join(WORKDIR, "vaccine-peptide-report_{mhc_predictor}_{vcf_types}.html"),
+         all_passing_variants = join(WORKDIR, "all-passing-variants_{mhc_predictor}_{vcf_types}.csv")
+       params:
+         # excel report is a param because if there are no vaccine peptides, this output won't exist
+@@ -72,6 +73,7 @@ if "mhc_alleles" in config["input"] and _rna_exists():
+             --output-ascii-report {output.ascii_report} \
+             --output-xlsx-report {params.xlsx_report} \
+             --output-json-file {output.json_file} \
++            --output-html-report {output.html_report} \
+             --output-passing-variants-csv {output.all_passing_variants} \
+             --output-patient-id {params.patient_id} \
+             --log-path {log} \
+@@ -84,6 +86,32 @@ if "mhc_alleles" in config["input"] and _rna_exists():
+             --mhc-epitope-lengths {params.mhc_epitope_lengths}
+             """ % (vcf_input_str, ",".join(params.mhc_alleles)))
+ 
++    # Render the PDF report from vaxrank's HTML output using WeasyPrint, rather
++    # than using vaxrank's own --output-pdf-report. vaxrank 1.4.0 produces PDFs
++    # via pdfkit -> wkhtmltopdf, and wkhtmltopdf was archived upstream in 2023.
++    # WeasyPrint is maintained, needs no X server, and runs against the image's
++    # system Python (see docker/Dockerfile), so vaxrank's Python 3.7 env does not
++    # constrain it. The stylesheet compensates for the layout tuning that was
++    # previously passed to wkhtmltopdf as pdfkit options.
++    rule vaccine_peptide_report_pdf:
++      input:
++        join(WORKDIR, "vaccine-peptide-report_{mhc_predictor}_{vcf_types}.html")
++      output:
++        join(WORKDIR, "vaccine-peptide-report_{mhc_predictor}_{vcf_types}.pdf")
++      log:
++        join(LOGDIR, "vaccine_peptide_report_pdf_{mhc_predictor}_{vcf_types}.log")
++      shell:
++        # vaxrank's HTML template links two stylesheets from Yahoo's retired YUI
++        # CDN over plain HTTP. Strip them so rendering requires no network and is
++        # deterministic; vaccine_report_pdf.css supplies the base styling instead.
++        #
++        # sed feeds WeasyPrint on stdin ("-") rather than via a temp file: snakemake
++        # runs this under `set -euo pipefail`, so a non-zero weasyprint exit aborts
++        # the shell immediately and any cleanup placed after it would never run.
++        "sed '/yui\\.yahooapis\\.com/d' {input} | "
++        "weasyprint --stylesheet $SCRIPTS/vaccine_report_pdf.css "
++        "--base-url {input} - {output} > {log} 2>&1"
++
+     rule annotated_all_passing_variants:
+       input:
+         vcfs = _get_vaxrank_input_vcfs,
+diff --git a/pipeline/strelka_config.txt b/pipeline/strelka_config.txt
+deleted file mode 100644
+index 01ec005a..00000000
+--- a/pipeline/strelka_config.txt
++++ /dev/null
+@@ -1,21 +0,0 @@
+-[user]
+-isSkipDepthFilters = 1
+-maxInputDepth = 10000
+-depthFilterMultiple = 3.0
+-snvMaxFilteredBasecallFrac = 0.4
+-snvMaxSpanningDeletionFrac = 0.75
+-indelMaxRefRepeat = 8
+-indelMaxWindowFilteredBasecallFrac = 0.3
+-indelMaxIntHpolLength = 14
+-ssnvPrior = 0.000001
+-sindelPrior = 0.000001
+-ssnvNoise = 0.0000005
+-sindelNoise = 0.0000001
+-ssnvNoiseStrandBiasFrac = 0.5
+-minTier1Mapq = 40
+-minTier2Mapq = 5
+-ssnvQuality_LowerBound = 15
+-sindelQuality_LowerBound = 30
+-isWriteRealignedBam = 0
+-binSize = 25000000
+-extraStrelkaArguments = --eland-compatibility
+diff --git a/pipeline/variant_calling.rules b/pipeline/variant_calling.rules
+index 53faf975..7ae7ca2c 100644
+--- a/pipeline/variant_calling.rules
++++ b/pipeline/variant_calling.rules
+@@ -118,9 +118,12 @@ rule mutect2:
+   shell:
+     "vcf-concat {input} > {output}"
+ 
+-# If not running in a Docker image, user must have these environment variables set:
+-# - STRELKA_BIN: directory of Strelka installation, must contain configureStrelkaWorkflow.pl
+-# - STRELKA_CONFIG: path to Strelka config file
++# If not running in a Docker image, user must have this environment variable set:
++# - STRELKA_BIN: directory of Strelka installation, must contain
++#   configureStrelkaSomaticWorkflow.py
++#
++# Note: --exome turns off Strelka's high-depth filters, which are designed for WGS
++# and are inappropriate for the exome/targeted input this pipeline expects.
+ rule strelka:
+   input:
+     normal = join(WORKDIR, "normal.bam"),
+@@ -142,7 +145,7 @@ rule strelka:
+     "--normal {input.normal} "
+     "--tumor {input.tumor} "
+     "--ref {params.reference} "
+-    "--config $STRELKA_CONFIG "
++    "--exome "
+     "--runDir {params.output_dir} &> {log}; "
+     "cd {params.output_dir}; "
+     "./runWorkflow.py -m local -j {threads} "
+diff --git a/run_snakemake.py b/run_snakemake.py
+index 72493876..71276a5f 100644
+--- a/run_snakemake.py
++++ b/run_snakemake.py
+@@ -205,9 +205,8 @@ def default_vaxrank_targets(config):
+     path_without_ext = join(
+         get_output_dir(config),
+         "vaccine-peptide-report_%s_%s" % (mhc_predictor, vcfs))
+-    # removed 'pdf' from this list until we install wkhtmltopdf in Docker image
+     return [
+-        '%s.%s' % (path_without_ext, ext) for ext in ('txt', 'json')
++        '%s.%s' % (path_without_ext, ext) for ext in ('txt', 'json', 'pdf')
+     ]
+ 
+ def annotated_vaxrank_targets(config):
+diff --git a/test/idh1_config.yaml b/test/idh1_config.yaml
+index 06da07e3..1f0c48a4 100644
+--- a/test/idh1_config.yaml
++++ b/test/idh1_config.yaml
+@@ -1,7 +1,9 @@
+ input:
+   id: idh1-test-sample
+   mhc_alleles:
+-    - HLA-A*30:01
++    # B*35:01 is the strongest predicted binder for the IDH1 R132H neoepitope
++    # (KPIIIGHHAY, ~55nM by mhcflurry), so this test yields a non-empty report.
++    - HLA-B*35:01
+   # The input FASTQ files must live in the same directory as your config YAML file.
+   # You should only need to modify the basename of the sample file paths, leaving the /inputs part
+   # of the filename unchanged.
+@@ -29,7 +31,7 @@ reference:
+   transcripts: /reference-genome/b37decoy/transcripts.gtf
+   capture_kit_coverage_file: /reference-genome/b37decoy/S04380110_Covered_grch37_with_M.bed
+ parallel_indel_realigner: true
+-mhc_predictor: netmhcpan-iedb
++mhc_predictor: mhcflurry
+ variant_callers:
+   - mutect
+   - strelka
+diff --git a/test/idh1_config_grch38.yaml b/test/idh1_config_grch38.yaml
+index d7fdc963..4e342b19 100644
+--- a/test/idh1_config_grch38.yaml
++++ b/test/idh1_config_grch38.yaml
+@@ -1,7 +1,9 @@
+ input:
+   id: idh1-test-sample-grch38
+   mhc_alleles:
+-    - HLA-A*30:01
++    # B*35:01 is the strongest predicted binder for the IDH1 R132H neoepitope
++    # (KPIIIGHHAY, ~55nM by mhcflurry), so this test yields a non-empty report.
++    - HLA-B*35:01
+   # The input FASTQ files must live in the same directory as your config YAML file.
+   # You should only need to modify the basename of the sample file paths, leaving the /inputs part
+   # of the filename unchanged.
+@@ -29,7 +31,7 @@ reference:
+   transcripts: /reference-genome/grch38/gencode.v22.annotation.gtf
+   capture_kit_coverage_file: /reference-genome/grch38/S31285117_Covered_grch38.bed
+ parallel_indel_realigner: true
+-mhc_predictor: netmhcpan-iedb
++mhc_predictor: mhcflurry
+ variant_callers:
+   - mutect
+   - strelka
+diff --git a/test/test_snakemake_pipeline.py b/test/test_snakemake_pipeline.py
+index 15029c1e..3fa8da0f 100644
+--- a/test/test_snakemake_pipeline.py
++++ b/test/test_snakemake_pipeline.py
+@@ -86,9 +86,9 @@ def test_vaxrank_targets(self):
+             config = yaml.safe_load(idh1_config_file)
+         targets = default_vaxrank_targets(config)
+         expected_targets = (
+-            '/outputs/idh1-test-sample/vaccine-peptide-report_netmhcpan-iedb_mutect-strelka.txt',
+-            '/outputs/idh1-test-sample/vaccine-peptide-report_netmhcpan-iedb_mutect-strelka.json',
+-            '/outputs/idh1-test-sample/vaccine-peptide-report_netmhcpan-iedb_mutect-strelka.pdf',
++            '/outputs/idh1-test-sample/vaccine-peptide-report_mhcflurry_mutect-strelka.txt',
++            '/outputs/idh1-test-sample/vaccine-peptide-report_mhcflurry_mutect-strelka.json',
++            '/outputs/idh1-test-sample/vaccine-peptide-report_mhcflurry_mutect-strelka.pdf',
+         )
+         self.assertEqual(len(expected_targets), len(targets))
+         for target in targets:
+@@ -120,7 +120,7 @@ def test_workflow_compiles(self):
+                 join(
+                     self.workdir.name, 
+                     'idh1-test-sample',
+-                    'vaccine-peptide-report_netmhcpan-iedb_mutect-strelka.txt'),
++                    'vaccine-peptide-report_mhcflurry_mutect-strelka.txt'),
+                 join(
+                     self.workdir.name,
+                     'idh1-test-sample',
+@@ -234,7 +234,7 @@ def test_docker_entrypoint_script_failures(self):
+             '--target', join(
+                 self.workdir.name, 
+                 'idh1-test-sample',
+-                'vaccine-peptide-report_netmhcpan-iedb_mutect-strelka-mutect2.txt'),
++                'vaccine-peptide-report_mhcflurry_mutect-strelka-mutect2.txt'),
+         ]
+         self.assertRaises(ValueError, docker_entrypoint, bad_vaxrank_target_cli_args)
+ 

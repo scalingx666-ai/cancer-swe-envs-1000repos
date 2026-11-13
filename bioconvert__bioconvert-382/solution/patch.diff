@@ -1,0 +1,249 @@
+diff --git a/bioconvert/cool2hic.py b/bioconvert/cool2hic.py
+new file mode 100644
+index 00000000..a15ecdfc
+--- /dev/null
++++ b/bioconvert/cool2hic.py
+@@ -0,0 +1,77 @@
++###########################################################################
++# Bioconvert is a project to facilitate the interconversion               #
++# of life science data from one format to another.                        #
++#                                                                         #
++# Copyright © 2018-2022  Institut Pasteur, Paris and CNRS.                #
++#                                                                         #
++# bioconvert is free software: you can redistribute it and/or modify      #
++# it under the terms of the GNU General Public License as published by    #
++# the Free Software Foundation, either version 3 of the License, or       #
++# (at your option) any later version.                                     #
++#                                                                         #
++# bioconvert is distributed in the hope that it will be useful,           #
++# but WITHOUT ANY WARRANTY; without even the implied warranty of          #
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the           #
++# GNU General Public License for more details.                            #
++#                                                                         #
++# You should have received a copy of the GNU General Public License       #
++# along with this program (COPYING file).                                 #
++# If not, see <http://www.gnu.org/licenses/>.                             #
++#                                                                         #
++# Repository: https://github.com/bioconvert/bioconvert                    #
++# Documentation: http://bioconvert.readthedocs.io                         #
++###########################################################################
++"""Convert :term:`COOL` format to :term:`HIC` format"""
++import colorlog
++
++from bioconvert import ConvBase
++from bioconvert.core.decorators import requires
++
++logger = colorlog.getLogger(__name__)
++
++__all__ = ["COOL2HIC"]
++
++
++class COOL2HIC(ConvBase):
++    """Convert :term:`COOL` file to :term:`HIC` file
++
++    Convert a Hi-C contact map in Cooler :term:`COOL` format to the Juicer
++    :term:`HIC` format.
++
++    Methods available are based on HiCLift [HICLIFT]_.
++
++    .. seealso:: :class:`~bioconvert.hic2cool.HIC2COOL`
++    """
++
++    #: Default value
++    _default_method = "hiclift"
++
++    def __init__(self, infile, outfile):
++        """.. rubric:: constructor
++
++        :param str infile: input :term:`COOL` file
++        :param str outfile: output :term:`HIC` file
++        """
++        super(COOL2HIC, self).__init__(infile, outfile)
++
++    @requires("HiCLift")
++    def _method_hiclift(self, assembly="hg38", *args, **kwargs):
++        """Convert :term:`COOL` to :term:`HIC` using HiCLift.
++
++        The *assembly* parameter must match the reference genome used when
++        generating the contact map (e.g. ``hg38``, ``hg19``, ``mm10``).
++        Both ``--assembly-from`` and ``--assembly-to`` are set to the same
++        value so that no coordinate liftover is performed – only the file
++        format is converted.
++
++        `HiCLift documentation <https://github.com/XiaoTaoWang/HiCLift>`_"""
++        cmd = (
++            "HiCLift --input {infile} --input-format cool"
++            " --output {outfile} --output-format hic"
++            " --assembly-from {assembly} --assembly-to {assembly}"
++        ).format(
++            infile=self.infile,
++            outfile=self.outfile,
++            assembly=assembly,
++        )
++        self.execute(cmd)
+diff --git a/bioconvert/core/extensions.py b/bioconvert/core/extensions.py
+index 45876ac5..0acd633f 100644
+--- a/bioconvert/core/extensions.py
++++ b/bioconvert/core/extensions.py
+@@ -95,6 +95,8 @@ def update(self, content):
+     "graphml": ["graphml"],  # network
+     "gtf": ["gtf"],  # annotation
+     "gz": ["gz"],
++    "hic": ["hic"],  # 3D genome Hi-C contact map (Juicer)
++    "cool": ["cool", "mcool"],  # 3D genome Hi-C contact map (Cooler)
+     "jaspar": ["jaspar"],  # motif
+     "json": ["json"],  # database
+     "maf": ["maf"],  # !! this is MIRA format, not mutation alignment format
+diff --git a/bioconvert/hic2cool.py b/bioconvert/hic2cool.py
+new file mode 100644
+index 00000000..7f537c81
+--- /dev/null
++++ b/bioconvert/hic2cool.py
+@@ -0,0 +1,72 @@
++###########################################################################
++# Bioconvert is a project to facilitate the interconversion               #
++# of life science data from one format to another.                        #
++#                                                                         #
++# Copyright © 2018-2022  Institut Pasteur, Paris and CNRS.                #
++#                                                                         #
++# bioconvert is free software: you can redistribute it and/or modify      #
++# it under the terms of the GNU General Public License as published by    #
++# the Free Software Foundation, either version 3 of the License, or       #
++# (at your option) any later version.                                     #
++#                                                                         #
++# bioconvert is distributed in the hope that it will be useful,           #
++# but WITHOUT ANY WARRANTY; without even the implied warranty of          #
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the           #
++# GNU General Public License for more details.                            #
++#                                                                         #
++# You should have received a copy of the GNU General Public License       #
++# along with this program (COPYING file).                                 #
++# If not, see <http://www.gnu.org/licenses/>.                             #
++#                                                                         #
++# Repository: https://github.com/bioconvert/bioconvert                    #
++# Documentation: http://bioconvert.readthedocs.io                         #
++###########################################################################
++"""Convert :term:`HIC` format to :term:`COOL` format"""
++import colorlog
++
++from bioconvert import ConvBase
++from bioconvert.core.decorators import requires
++
++logger = colorlog.getLogger(__name__)
++
++__all__ = ["HIC2COOL"]
++
++
++class HIC2COOL(ConvBase):
++    """Convert :term:`HIC` file to :term:`COOL` file
++
++    Convert a Hi-C contact map in Juicer :term:`HIC` format to the Cooler
++    :term:`COOL` format.
++
++    Methods available are based on hic2cool [HIC2COOL]_.
++
++    .. seealso:: :class:`~bioconvert.cool2hic.COOL2HIC`
++    """
++
++    #: Default value
++    _default_method = "hic2cool"
++
++    def __init__(self, infile, outfile):
++        """.. rubric:: constructor
++
++        :param str infile: input :term:`HIC` file
++        :param str outfile: output :term:`COOL` file
++        """
++        super(HIC2COOL, self).__init__(infile, outfile)
++
++    @requires("hic2cool")
++    def _method_hic2cool(self, resolution=0, *args, **kwargs):
++        """Convert :term:`HIC` to :term:`COOL` using the hic2cool tool.
++
++        When *resolution* is 0 (the default), all available resolutions are
++        extracted and saved in a multi-resolution :term:`MCOOL` file.  Pass a
++        specific base-pair resolution to obtain a single-resolution
++        :term:`COOL` file.
++
++        `hic2cool documentation <https://github.com/4dn-dcic/hic2cool>`_"""
++        cmd = "hic2cool convert {infile} {outfile} -r {resolution}".format(
++            infile=self.infile,
++            outfile=self.outfile,
++            resolution=resolution,
++        )
++        self.execute(cmd)
+diff --git a/pyproject.toml b/pyproject.toml
+index f424ea09..9f6460d5 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -58,6 +58,8 @@ dependencies = [
+     "py2bit",
+     "statsmodels",
+     "tqdm",
++    "hic2cool",
++    "HiCLift",
+ ]
+ 
+ [project.optional-dependencies]
+diff --git a/requirements.txt b/requirements.txt
+index 0616db6e..ec22be39 100755
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -24,3 +24,5 @@ pyBigWig
+ py2bit
+ statsmodels
+ tqdm
++hic2cool
++HiCLift
+diff --git a/test/test_cool2hic.py b/test/test_cool2hic.py
+new file mode 100644
+index 00000000..9e9abf9b
+--- /dev/null
++++ b/test/test_cool2hic.py
+@@ -0,0 +1,20 @@
++import os
++
++import pytest
++
++from bioconvert.cool2hic import COOL2HIC
++from bioconvert import TempFile
++
++from . import test_dir
++
++_cool_infile = f"{test_dir}/data/cool/test.cool"
++
++
++@pytest.mark.parametrize("method", COOL2HIC.available_methods)
++@pytest.mark.skipif(not os.path.exists(_cool_infile), reason="test data not available")
++def test_conv(method):
++    with TempFile(suffix=".hic") as tempfile:
++        convert = COOL2HIC(_cool_infile, tempfile.name)
++        convert(method=method)
++        assert os.path.exists(tempfile.name)
++        assert os.path.getsize(tempfile.name) > 0
+diff --git a/test/test_hic2cool.py b/test/test_hic2cool.py
+new file mode 100644
+index 00000000..87648782
+--- /dev/null
++++ b/test/test_hic2cool.py
+@@ -0,0 +1,20 @@
++import os
++
++import pytest
++
++from bioconvert.hic2cool import HIC2COOL
++from bioconvert import TempFile
++
++from . import test_dir
++
++_hic_infile = f"{test_dir}/data/hic/test.hic"
++
++
++@pytest.mark.parametrize("method", HIC2COOL.available_methods)
++@pytest.mark.skipif(not os.path.exists(_hic_infile), reason="test data not available")
++def test_conv(method):
++    with TempFile(suffix=".cool") as tempfile:
++        convert = HIC2COOL(_hic_infile, tempfile.name)
++        convert(method=method)
++        assert os.path.exists(tempfile.name)
++        assert os.path.getsize(tempfile.name) > 0

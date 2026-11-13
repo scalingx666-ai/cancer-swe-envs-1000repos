@@ -1,0 +1,944 @@
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..6ad1ab8
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,27 @@
++Copyright (c) 2016, TCGA-microbe development team
++All rights reserved.
++
++Redistribution and use in source and binary forms, with or without modification,
++are permitted provided that the following conditions are met:
++
++  Redistributions of source code must retain the above copyright notice, this
++  list of conditions and the following disclaimer.
++
++  Redistributions in binary form must reproduce the above copyright notice, this
++  list of conditions and the following disclaimer in the documentation and/or
++  other materials provided with the distribution.
++
++  Neither the name of the TCGA-microbe development team nor the names of its
++  contributors may be used to endorse or promote products derived from
++  this software without specific prior written permission.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
++ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
++WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
++ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+diff --git a/README.md b/README.md
+index a9d5617..72adc61 100644
+--- a/README.md
++++ b/README.md
+@@ -1,2 +1,2 @@
+-# tcga
+-Microbial analysis of TCGA data
++## TCGA Analysis
++Workflow to rapidly search TCGA data for microbial presence.
+diff --git a/docker/docker-parse-kraken-to-biom/Dockerfile b/docker/docker-parse-kraken-to-biom/Dockerfile
+new file mode 100644
+index 0000000..6cea366
+--- /dev/null
++++ b/docker/docker-parse-kraken-to-biom/Dockerfile
+@@ -0,0 +1,16 @@
++# Creates Dockerfile for parse_kraken_to_biom.py
++FROM python:3
++MAINTAINER Evguenia Kopylova <jenya.kopylov@gmail.com>
++
++RUN mkdir -p /usr/src/app
++WORKDIR /usr/src/app
++
++COPY requirements.txt /usr/src/app/
++RUN pip install --no-cache-dir numpy h5py
++RUN pip install --no-cache-dir -r requirements.txt
++COPY parse_kraken_to_biom.py /usr/src/app
++COPY test_parse_kraken_to_biom.py /usr/src/app
++
++ADD parse_kraken_to_biom.py /usr/src/app/parse_kraken_to_biom.py
++
++CMD ["python", "/usr/src/app/parse_kraken_to_biom.py"]
+diff --git a/docker/docker-parse-kraken-to-biom/parse_kraken_to_biom.py b/docker/docker-parse-kraken-to-biom/parse_kraken_to_biom.py
+new file mode 100644
+index 0000000..0149412
+--- /dev/null
++++ b/docker/docker-parse-kraken-to-biom/parse_kraken_to_biom.py
+@@ -0,0 +1,190 @@
++#!/usr/bin/env python
++
++#-----------------------------------------------------------------------------
++# Copyright (c) 2016--, Evguenia Kopylova.
++#
++# Distributed under the terms of the Modified BSD License.
++#
++# The full license is in the file COPYING.txt, distributed with this software.
++#-----------------------------------------------------------------------------
++
++"""
++Parse output of "kraken translate" and generate single BIOM table.
++"""
++
++import click
++import pandas as pd
++import numpy as np
++from biom.table import Table
++from biom.util import biom_open
++
++
++def compute_biom_table(kraken_translate_report_fp,
++                       taxonomic_rank,
++                       taxa_levels,
++                       taxa_levels_idx,
++                       columns,
++                       index):
++    """Absolute abundance of number of reads matching a defined taxa level.
++
++    Parameters
++    ----------
++    kraken_translate_report_fp: str
++        filepath to output of "kraken translate"
++    taxonomic_rank: str
++        taxonomy level (e.g., genus or species)
++    taxa_levels: dict
++        keys are full name taxonomic ranks and values are abbreviated ranks
++    taxa_levels_idx: dict
++        2-way dict storing integer depths for abbreviated taxonomic ranks
++    columns: list
++        sample IDs list
++    index: list
++        observation IDs (taxonomy strings) list
++
++    Returns
++    -------
++    biom_table: biom.Table
++        BIOM table
++    """
++    total_levels = len(taxa_levels)
++    # columns are sample IDs and rows are taxonomy strings
++    abundances = pd.DataFrame(columns=columns, index=index)    
++    taxonomic_rank_level_str = taxa_levels[taxonomic_rank]
++    taxonomic_rank_level_int = taxa_levels_idx[taxonomic_rank_level_str]
++    if taxonomic_rank_level_int < 6:
++        split_on_level = taxa_levels_idx[str(taxonomic_rank_level_int + 1)]
++    else:
++        # keep full string (to species level)
++        split_on_level = '\t'
++    with open(kraken_translate_report_fp) as kraken_translate_report_f:
++        for line in kraken_translate_report_f:
++            label, taxonomy = line.strip().split('\t')
++            # record abundance
++            if taxonomic_rank_level_str in taxonomy:
++                # keep taxonomy string up to specified level
++                taxonomy = taxonomy.split(split_on_level)[0]
++                sample_id = label.split('_')[0]
++                value = abundances.at[taxonomy, sample_id]
++                if np.isnan(value):
++                    abundances.set_value(taxonomy, sample_id, 1.)
++                else:
++                    abundances.set_value(taxonomy, sample_id, value+1.)
++    obs_ids = abundances.index.values.tolist()
++    for i in range(len(obs_ids)):
++        obs_ids[i] = obs_ids[i].replace("d__", "k__")
++        obs_ids[i] = obs_ids[i].replace("|", ";")
++    return Table(abundances.fillna(0.).as_matrix(),
++                 obs_ids,
++                 abundances.columns.values.tolist())
++
++
++def prepare_dataframe(kraken_translate_report_fp,
++                      taxonomic_rank,
++                      taxa_levels,
++                      taxa_levels_idx):
++    """Return sets for sample IDs and taxonomy strings.
++
++    Parameters
++    ----------
++    kraken_translate_report_fp: str
++        filepath to output of "kraken translate"
++    taxonomic_rank: str
++        taxonomy level (e.g., genus or species)
++    taxa_levels: dict
++        keys are full name taxonomic ranks and values are abbreviated ranks
++    taxa_levels_idx: dict
++        2-way dict storing integer depths for abbreviated taxonomic ranks
++
++    Returns
++    -------
++    sample_ids: list
++        all unique sample IDs in file
++    taxonomies: list
++        all unique taxonomies in file
++    """
++    total_levels = len(taxa_levels)
++    taxonomic_rank_level_str = taxa_levels[taxonomic_rank]
++    taxonomic_rank_level_int = taxa_levels_idx[taxonomic_rank_level_str]
++    if taxonomic_rank_level_int < 6:
++        split_on_level = taxa_levels_idx[str(taxonomic_rank_level_int + 1)]
++    else:
++        # keep full string (to species level)
++        split_on_level = '\t'
++    sample_ids = set()
++    taxonomies = set()
++    with open(kraken_translate_report_fp) as kraken_translate_report_f:
++        for line in kraken_translate_report_f:
++            label, taxonomy = line.strip().split('\t')
++            sample_id = label.split('_')[0]
++            sample_ids.add(sample_id)
++            # record abundance
++            if taxonomic_rank_level_str in taxonomy:
++                # keep taxonomy string up to specified level
++                taxonomy = taxonomy.split(split_on_level)[0]
++                taxonomies.add(taxonomy)
++    return list(sample_ids), list(taxonomies)
++
++
++def write_biom_table(table, biom_output_fp):
++    """Write BIOM table to file.
++
++    Parameters
++    ----------
++    table: biom.Table
++        an instance of a BIOM table
++    biom_output_fp: str
++        filepath to output BIOM table
++    """
++    with biom_open(biom_output_fp, 'w') as f:
++            table.to_hdf5(h5grp=f, generated_by="tcga-kraken-translate")
++
++
++@click.command()
++@click.option('--kraken-translate-report-fp', required=True,
++              type=click.Path(resolve_path=True, readable=True, exists=True,
++                              file_okay=True))
++@click.option('--taxonomic-rank', type=click.Choice(['genus', 'species',
++                                                     'family', 'order',
++                                                     'class', 'phylum',
++                                                     'domain']),
++              required=False, default=['genus'], show_default=True,
++              help="Taxonomic rank at which to generate summary")
++@click.option('--biom-output-fp', required=True,
++              type=click.Path(resolve_path=True, readable=True, exists=False,
++                              file_okay=True),
++              help="Filepath to output BIOM table")
++def main(kraken_translate_report_fp,
++         taxonomic_rank,
++         biom_output_fp):
++    taxa_levels = {"domain": "d__",
++                   "phylum": "|p__",
++                   "class": "|c__",
++                   "order": "|o__",
++                   "family": "|f__",
++                   "genus": "|g__",
++                   "species": "|s__"}
++    taxa_levels_idx = {"d__": 0, "|p__": 1, "|c__": 2,
++                       "|o__": 3, "|f__": 4, "|g__": 5,
++                       "|s__": 6, "6": "|s__", "5": "|g__",
++                       "4": "|f__", "3": "|o__", "2": "|c__",
++                       "1": "|p__", "0": "d__"}
++    columns, index = prepare_dataframe(
++        kraken_translate_report_fp=kraken_translate_report_fp,
++        taxonomic_rank=taxonomic_rank,
++        taxa_levels=taxa_levels,
++        taxa_levels_idx=taxa_levels_idx)
++    biom_table =\
++        compute_biom_table(
++            kraken_translate_report_fp=kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=taxa_levels,
++            taxa_levels_idx=taxa_levels_idx,
++            columns=columns,
++            index=index)
++    # output table
++    write_biom_table(biom_table, biom_output_fp)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docker/docker-parse-kraken-to-biom/requirements.txt b/docker/docker-parse-kraken-to-biom/requirements.txt
+new file mode 100644
+index 0000000..b5d4534
+--- /dev/null
++++ b/docker/docker-parse-kraken-to-biom/requirements.txt
+@@ -0,0 +1,3 @@
++pandas
++click
++biom-format
+\ No newline at end of file
+diff --git a/docker/docker-parse-kraken-to-biom/test_parse_kraken_to_biom.py b/docker/docker-parse-kraken-to-biom/test_parse_kraken_to_biom.py
+new file mode 100644
+index 0000000..19b9346
+--- /dev/null
++++ b/docker/docker-parse-kraken-to-biom/test_parse_kraken_to_biom.py
+@@ -0,0 +1,233 @@
++#!/usr/bin/env python
++
++# ----------------------------------------------------------------------------
++# Copyright (c) 2016--, Evguenia Kopylova.
++#
++# Distributed under the terms of the Modified BSD License.
++#
++# The full license is in the file COPYING.txt, distributed with this software.
++# ----------------------------------------------------------------------------
++
++from unittest import TestCase, main
++from shutil import rmtree
++from tempfile import mkdtemp
++from os.path import join
++import numpy as np
++
++from biom.table import Table
++from biom import load_table
++
++from parse_kraken_to_biom import (compute_biom_table, prepare_dataframe,
++                                  write_biom_table)
++
++
++class ParseKrakenToBIOMTests(TestCase):
++    """Tests for function parse_kraken_to_biom.py
++    """
++
++    def setUp(self):
++        """Set up working directory and test files
++        """
++        self.working_dir = mkdtemp()
++        # Sample MPA report from Kraken
++        self.kraken_translate_report_fp = join(
++            self.working_dir, "kraken_mpa_report.txt")
++        with open(self.kraken_translate_report_fp, 'w') as tmp:
++            tmp.write(kraken_sample_report)
++        # Sample MPA report from Kraken unsorted
++        self.kraken_translate_report_unsorted_fp = join(
++            self.working_dir, "kraken_mpa_report_unsorted.txt")
++        with open(self.kraken_translate_report_unsorted_fp, 'w') as tmp:
++            tmp.write(kraken_sample_report_unsorted)
++        self.taxa_levels = {"domain": "d__",
++                            "phylum": "|p__",
++                            "class": "|c__",
++                            "order": "|o__",
++                            "family": "|f__",
++                            "genus": "|g__",
++                            "species": "|s__"}
++        self.taxa_levels_idx = {"d__": 0, "|p__": 1, "|c__": 2,
++                                "|o__": 3, "|f__": 4, "|g__": 5,
++                                "|s__": 6, "6": "|s__", "5": "|g__",
++                                "4": "|f__", "3": "|o__", "2": "|c__",
++                                "1": "|p__", "0": "d__"}
++
++    def tearDown(self):
++        """Remove tests directory
++        """
++        rmtree(self.working_dir)
++
++    def test_compute_biom_table(self):
++        """Test functionality of compute_biom_table().
++        """
++        taxonomic_rank = "genus"
++        columns = ["s1", "s2", "s3", "s4", "s5"]
++        index = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium",
++                 "d__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium"]
++        exp_table = Table(np.array([[1., 1., 0., 0., 1.],
++                                    [1., 0., 0., 0., 0.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 0., 1.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium",
++                           "k__Bacteria;p__Firmicutes;c__Bacilli;o__Bacillales;f__Staphylococcaceae;g__Staphylococcus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Corynebacteriaceae;g__Corynebacterium"],
++                          columns)
++        obs_table = compute_biom_table(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx,
++            columns=columns,
++            index=index)
++        self.assertEqual(obs_table, exp_table)
++
++    def test_compute_biom_table_species(self):
++        """Test functionality of compute_biom_table() to species level.
++        """
++        taxonomic_rank = "species"
++        columns = ["s1", "s2", "s3", "s4", "s5"]
++        index = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus|s__Mobiluncus_curtisii",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas|s__Stenotrophomonas_maltophilia"]
++        exp_table = Table(np.array([[1., 1., 0., 0., 1.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium;s__Propionibacterium_acnes",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia;s__Escherichia_coli",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus;s__Mobiluncus_curtisii",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas;s__Stenotrophomonas_maltophilia"],
++                          columns)
++        obs_table = compute_biom_table(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx,
++            columns=columns,
++            index=index)
++        self.assertEqual(obs_table, exp_table)
++
++    def test_compute_biom_table_unsorted(self):
++        """Test functionality of compute_biom_table() with unsorted input.
++        """
++        taxonomic_rank = "genus"
++        columns = ["s1", "s2", "s5", "s4", "s3"]
++        index = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium",
++                 "d__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium"]
++        exp_table = Table(np.array([[1., 1., 1., 0., 0.],
++                                    [1., 0., 0., 0., 0.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 1., 0., 0.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium",
++                           "k__Bacteria;p__Firmicutes;c__Bacilli;o__Bacillales;f__Staphylococcaceae;g__Staphylococcus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Corynebacteriaceae;g__Corynebacterium"],
++                          columns)
++        obs_table = compute_biom_table(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx,
++            columns=columns,
++            index=index)
++        self.assertEqual(obs_table, exp_table)
++
++    def test_prepare_dataframe(self):
++        """Test functionality of prepare_dataframe().
++        """
++        taxonomic_rank = "genus"
++        sample_ids_exp = ["s1", "s2", "s3", "s4", "s5"]
++        taxonomies_exp = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium",
++                          "d__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus",
++                          "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia",
++                          "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus",
++                          "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas",
++                          "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium"]
++        sample_ids_obs, taxonomies_obs = prepare_dataframe(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx)
++        self.assertListEqual(sorted(sample_ids_obs), sorted(sample_ids_exp))
++        self.assertListEqual(sorted(taxonomies_obs), sorted(taxonomies_exp))
++
++    def test_write_biom_table(self):
++        """Test functionality of write_biom_table().
++        """
++        table_exp = Table(np.array([[1., 1., 1., 0., 0.],
++                                    [1., 0., 0., 0., 0.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 1., 0., 0.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium",
++                           "k__Bacteria;p__Firmicutes;c__Bacilli;o__Bacillales;f__Staphylococcaceae;g__Staphylococcus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Corynebacteriaceae;g__Corynebacterium"],
++                          ["s1", "s2", "s3", "s4", "s5"])
++        self.biom_output_fp = join(self.working_dir, "test_output_biom")
++        write_biom_table(table_exp, self.biom_output_fp)
++        table_obs = load_table(self.biom_output_fp)
++        self.assertEqual(table_obs, table_exp)
++
++
++kraken_sample_report = """s1_0\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s1_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s1_2\td__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus
++s2_1\td__Archaea
++s2_2\td__Bacteria
++s2_3\troot
++s2_4\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Pasteurellales|f__Pasteurellaceae
++s2_5\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s2_6\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s3_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s3_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s4_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus|s__Mobiluncus_curtisii
++s4_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas|s__Stenotrophomonas_maltophilia
++s5_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s5_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s5_3\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s5_4\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium
++"""
++
++kraken_sample_report_unsorted = """s1_0\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s1_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s2_1\td__Archaea
++s5_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s2_2\td__Bacteria
++s2_3\troot
++s2_4\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Pasteurellales|f__Pasteurellaceae
++s2_5\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s1_2\td__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus
++s4_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas|s__Stenotrophomonas_maltophilia
++s5_4\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium
++s2_6\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s3_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s3_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s4_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus|s__Mobiluncus_curtisii
++s5_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s5_3\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++"""
++
++if __name__ == '__main__':
++    main()
+diff --git a/python_scripts/parse_kraken_to_biom.py b/python_scripts/parse_kraken_to_biom.py
+new file mode 100644
+index 0000000..0149412
+--- /dev/null
++++ b/python_scripts/parse_kraken_to_biom.py
+@@ -0,0 +1,190 @@
++#!/usr/bin/env python
++
++#-----------------------------------------------------------------------------
++# Copyright (c) 2016--, Evguenia Kopylova.
++#
++# Distributed under the terms of the Modified BSD License.
++#
++# The full license is in the file COPYING.txt, distributed with this software.
++#-----------------------------------------------------------------------------
++
++"""
++Parse output of "kraken translate" and generate single BIOM table.
++"""
++
++import click
++import pandas as pd
++import numpy as np
++from biom.table import Table
++from biom.util import biom_open
++
++
++def compute_biom_table(kraken_translate_report_fp,
++                       taxonomic_rank,
++                       taxa_levels,
++                       taxa_levels_idx,
++                       columns,
++                       index):
++    """Absolute abundance of number of reads matching a defined taxa level.
++
++    Parameters
++    ----------
++    kraken_translate_report_fp: str
++        filepath to output of "kraken translate"
++    taxonomic_rank: str
++        taxonomy level (e.g., genus or species)
++    taxa_levels: dict
++        keys are full name taxonomic ranks and values are abbreviated ranks
++    taxa_levels_idx: dict
++        2-way dict storing integer depths for abbreviated taxonomic ranks
++    columns: list
++        sample IDs list
++    index: list
++        observation IDs (taxonomy strings) list
++
++    Returns
++    -------
++    biom_table: biom.Table
++        BIOM table
++    """
++    total_levels = len(taxa_levels)
++    # columns are sample IDs and rows are taxonomy strings
++    abundances = pd.DataFrame(columns=columns, index=index)    
++    taxonomic_rank_level_str = taxa_levels[taxonomic_rank]
++    taxonomic_rank_level_int = taxa_levels_idx[taxonomic_rank_level_str]
++    if taxonomic_rank_level_int < 6:
++        split_on_level = taxa_levels_idx[str(taxonomic_rank_level_int + 1)]
++    else:
++        # keep full string (to species level)
++        split_on_level = '\t'
++    with open(kraken_translate_report_fp) as kraken_translate_report_f:
++        for line in kraken_translate_report_f:
++            label, taxonomy = line.strip().split('\t')
++            # record abundance
++            if taxonomic_rank_level_str in taxonomy:
++                # keep taxonomy string up to specified level
++                taxonomy = taxonomy.split(split_on_level)[0]
++                sample_id = label.split('_')[0]
++                value = abundances.at[taxonomy, sample_id]
++                if np.isnan(value):
++                    abundances.set_value(taxonomy, sample_id, 1.)
++                else:
++                    abundances.set_value(taxonomy, sample_id, value+1.)
++    obs_ids = abundances.index.values.tolist()
++    for i in range(len(obs_ids)):
++        obs_ids[i] = obs_ids[i].replace("d__", "k__")
++        obs_ids[i] = obs_ids[i].replace("|", ";")
++    return Table(abundances.fillna(0.).as_matrix(),
++                 obs_ids,
++                 abundances.columns.values.tolist())
++
++
++def prepare_dataframe(kraken_translate_report_fp,
++                      taxonomic_rank,
++                      taxa_levels,
++                      taxa_levels_idx):
++    """Return sets for sample IDs and taxonomy strings.
++
++    Parameters
++    ----------
++    kraken_translate_report_fp: str
++        filepath to output of "kraken translate"
++    taxonomic_rank: str
++        taxonomy level (e.g., genus or species)
++    taxa_levels: dict
++        keys are full name taxonomic ranks and values are abbreviated ranks
++    taxa_levels_idx: dict
++        2-way dict storing integer depths for abbreviated taxonomic ranks
++
++    Returns
++    -------
++    sample_ids: list
++        all unique sample IDs in file
++    taxonomies: list
++        all unique taxonomies in file
++    """
++    total_levels = len(taxa_levels)
++    taxonomic_rank_level_str = taxa_levels[taxonomic_rank]
++    taxonomic_rank_level_int = taxa_levels_idx[taxonomic_rank_level_str]
++    if taxonomic_rank_level_int < 6:
++        split_on_level = taxa_levels_idx[str(taxonomic_rank_level_int + 1)]
++    else:
++        # keep full string (to species level)
++        split_on_level = '\t'
++    sample_ids = set()
++    taxonomies = set()
++    with open(kraken_translate_report_fp) as kraken_translate_report_f:
++        for line in kraken_translate_report_f:
++            label, taxonomy = line.strip().split('\t')
++            sample_id = label.split('_')[0]
++            sample_ids.add(sample_id)
++            # record abundance
++            if taxonomic_rank_level_str in taxonomy:
++                # keep taxonomy string up to specified level
++                taxonomy = taxonomy.split(split_on_level)[0]
++                taxonomies.add(taxonomy)
++    return list(sample_ids), list(taxonomies)
++
++
++def write_biom_table(table, biom_output_fp):
++    """Write BIOM table to file.
++
++    Parameters
++    ----------
++    table: biom.Table
++        an instance of a BIOM table
++    biom_output_fp: str
++        filepath to output BIOM table
++    """
++    with biom_open(biom_output_fp, 'w') as f:
++            table.to_hdf5(h5grp=f, generated_by="tcga-kraken-translate")
++
++
++@click.command()
++@click.option('--kraken-translate-report-fp', required=True,
++              type=click.Path(resolve_path=True, readable=True, exists=True,
++                              file_okay=True))
++@click.option('--taxonomic-rank', type=click.Choice(['genus', 'species',
++                                                     'family', 'order',
++                                                     'class', 'phylum',
++                                                     'domain']),
++              required=False, default=['genus'], show_default=True,
++              help="Taxonomic rank at which to generate summary")
++@click.option('--biom-output-fp', required=True,
++              type=click.Path(resolve_path=True, readable=True, exists=False,
++                              file_okay=True),
++              help="Filepath to output BIOM table")
++def main(kraken_translate_report_fp,
++         taxonomic_rank,
++         biom_output_fp):
++    taxa_levels = {"domain": "d__",
++                   "phylum": "|p__",
++                   "class": "|c__",
++                   "order": "|o__",
++                   "family": "|f__",
++                   "genus": "|g__",
++                   "species": "|s__"}
++    taxa_levels_idx = {"d__": 0, "|p__": 1, "|c__": 2,
++                       "|o__": 3, "|f__": 4, "|g__": 5,
++                       "|s__": 6, "6": "|s__", "5": "|g__",
++                       "4": "|f__", "3": "|o__", "2": "|c__",
++                       "1": "|p__", "0": "d__"}
++    columns, index = prepare_dataframe(
++        kraken_translate_report_fp=kraken_translate_report_fp,
++        taxonomic_rank=taxonomic_rank,
++        taxa_levels=taxa_levels,
++        taxa_levels_idx=taxa_levels_idx)
++    biom_table =\
++        compute_biom_table(
++            kraken_translate_report_fp=kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=taxa_levels,
++            taxa_levels_idx=taxa_levels_idx,
++            columns=columns,
++            index=index)
++    # output table
++    write_biom_table(biom_table, biom_output_fp)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/python_scripts/tests/test_parse_kraken_to_biom.py b/python_scripts/tests/test_parse_kraken_to_biom.py
+new file mode 100644
+index 0000000..19b9346
+--- /dev/null
++++ b/python_scripts/tests/test_parse_kraken_to_biom.py
+@@ -0,0 +1,233 @@
++#!/usr/bin/env python
++
++# ----------------------------------------------------------------------------
++# Copyright (c) 2016--, Evguenia Kopylova.
++#
++# Distributed under the terms of the Modified BSD License.
++#
++# The full license is in the file COPYING.txt, distributed with this software.
++# ----------------------------------------------------------------------------
++
++from unittest import TestCase, main
++from shutil import rmtree
++from tempfile import mkdtemp
++from os.path import join
++import numpy as np
++
++from biom.table import Table
++from biom import load_table
++
++from parse_kraken_to_biom import (compute_biom_table, prepare_dataframe,
++                                  write_biom_table)
++
++
++class ParseKrakenToBIOMTests(TestCase):
++    """Tests for function parse_kraken_to_biom.py
++    """
++
++    def setUp(self):
++        """Set up working directory and test files
++        """
++        self.working_dir = mkdtemp()
++        # Sample MPA report from Kraken
++        self.kraken_translate_report_fp = join(
++            self.working_dir, "kraken_mpa_report.txt")
++        with open(self.kraken_translate_report_fp, 'w') as tmp:
++            tmp.write(kraken_sample_report)
++        # Sample MPA report from Kraken unsorted
++        self.kraken_translate_report_unsorted_fp = join(
++            self.working_dir, "kraken_mpa_report_unsorted.txt")
++        with open(self.kraken_translate_report_unsorted_fp, 'w') as tmp:
++            tmp.write(kraken_sample_report_unsorted)
++        self.taxa_levels = {"domain": "d__",
++                            "phylum": "|p__",
++                            "class": "|c__",
++                            "order": "|o__",
++                            "family": "|f__",
++                            "genus": "|g__",
++                            "species": "|s__"}
++        self.taxa_levels_idx = {"d__": 0, "|p__": 1, "|c__": 2,
++                                "|o__": 3, "|f__": 4, "|g__": 5,
++                                "|s__": 6, "6": "|s__", "5": "|g__",
++                                "4": "|f__", "3": "|o__", "2": "|c__",
++                                "1": "|p__", "0": "d__"}
++
++    def tearDown(self):
++        """Remove tests directory
++        """
++        rmtree(self.working_dir)
++
++    def test_compute_biom_table(self):
++        """Test functionality of compute_biom_table().
++        """
++        taxonomic_rank = "genus"
++        columns = ["s1", "s2", "s3", "s4", "s5"]
++        index = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium",
++                 "d__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium"]
++        exp_table = Table(np.array([[1., 1., 0., 0., 1.],
++                                    [1., 0., 0., 0., 0.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 0., 1.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium",
++                           "k__Bacteria;p__Firmicutes;c__Bacilli;o__Bacillales;f__Staphylococcaceae;g__Staphylococcus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Corynebacteriaceae;g__Corynebacterium"],
++                          columns)
++        obs_table = compute_biom_table(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx,
++            columns=columns,
++            index=index)
++        self.assertEqual(obs_table, exp_table)
++
++    def test_compute_biom_table_species(self):
++        """Test functionality of compute_biom_table() to species level.
++        """
++        taxonomic_rank = "species"
++        columns = ["s1", "s2", "s3", "s4", "s5"]
++        index = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus|s__Mobiluncus_curtisii",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas|s__Stenotrophomonas_maltophilia"]
++        exp_table = Table(np.array([[1., 1., 0., 0., 1.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium;s__Propionibacterium_acnes",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia;s__Escherichia_coli",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus;s__Mobiluncus_curtisii",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas;s__Stenotrophomonas_maltophilia"],
++                          columns)
++        obs_table = compute_biom_table(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx,
++            columns=columns,
++            index=index)
++        self.assertEqual(obs_table, exp_table)
++
++    def test_compute_biom_table_unsorted(self):
++        """Test functionality of compute_biom_table() with unsorted input.
++        """
++        taxonomic_rank = "genus"
++        columns = ["s1", "s2", "s5", "s4", "s3"]
++        index = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium",
++                 "d__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus",
++                 "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas",
++                 "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium"]
++        exp_table = Table(np.array([[1., 1., 1., 0., 0.],
++                                    [1., 0., 0., 0., 0.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 1., 0., 0.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium",
++                           "k__Bacteria;p__Firmicutes;c__Bacilli;o__Bacillales;f__Staphylococcaceae;g__Staphylococcus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Corynebacteriaceae;g__Corynebacterium"],
++                          columns)
++        obs_table = compute_biom_table(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx,
++            columns=columns,
++            index=index)
++        self.assertEqual(obs_table, exp_table)
++
++    def test_prepare_dataframe(self):
++        """Test functionality of prepare_dataframe().
++        """
++        taxonomic_rank = "genus"
++        sample_ids_exp = ["s1", "s2", "s3", "s4", "s5"]
++        taxonomies_exp = ["d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium",
++                          "d__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus",
++                          "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia",
++                          "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus",
++                          "d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas",
++                          "d__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium"]
++        sample_ids_obs, taxonomies_obs = prepare_dataframe(
++            kraken_translate_report_fp=self.kraken_translate_report_fp,
++            taxonomic_rank=taxonomic_rank,
++            taxa_levels=self.taxa_levels,
++            taxa_levels_idx=self.taxa_levels_idx)
++        self.assertListEqual(sorted(sample_ids_obs), sorted(sample_ids_exp))
++        self.assertListEqual(sorted(taxonomies_obs), sorted(taxonomies_exp))
++
++    def test_write_biom_table(self):
++        """Test functionality of write_biom_table().
++        """
++        table_exp = Table(np.array([[1., 1., 1., 0., 0.],
++                                    [1., 0., 0., 0., 0.],
++                                    [0., 0., 1., 0., 1.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 0., 1., 0.],
++                                    [0., 0., 1., 0., 0.]]),
++                          ["k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Propionibacteriaceae;g__Propionibacterium",
++                           "k__Bacteria;p__Firmicutes;c__Bacilli;o__Bacillales;f__Staphylococcaceae;g__Staphylococcus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacteriales;f__Enterobacteriaceae;g__Escherichia",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Actinomycetaceae;g__Mobiluncus",
++                           "k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Xanthomonadales;f__Xanthomonadaceae;g__Stenotrophomonas",
++                           "k__Bacteria;p__Actinobacteria;c__Actinobacteria;o__Actinomycetales;f__Corynebacteriaceae;g__Corynebacterium"],
++                          ["s1", "s2", "s3", "s4", "s5"])
++        self.biom_output_fp = join(self.working_dir, "test_output_biom")
++        write_biom_table(table_exp, self.biom_output_fp)
++        table_obs = load_table(self.biom_output_fp)
++        self.assertEqual(table_obs, table_exp)
++
++
++kraken_sample_report = """s1_0\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s1_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s1_2\td__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus
++s2_1\td__Archaea
++s2_2\td__Bacteria
++s2_3\troot
++s2_4\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Pasteurellales|f__Pasteurellaceae
++s2_5\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s2_6\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s3_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s3_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s4_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus|s__Mobiluncus_curtisii
++s4_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas|s__Stenotrophomonas_maltophilia
++s5_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s5_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s5_3\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s5_4\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium
++"""
++
++kraken_sample_report_unsorted = """s1_0\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s1_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s2_1\td__Archaea
++s5_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s2_2\td__Bacteria
++s2_3\troot
++s2_4\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Pasteurellales|f__Pasteurellaceae
++s2_5\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s1_2\td__Bacteria|p__Firmicutes|c__Bacilli|o__Bacillales|f__Staphylococcaceae|g__Staphylococcus
++s4_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Xanthomonadales|f__Xanthomonadaceae|g__Stenotrophomonas|s__Stenotrophomonas_maltophilia
++s5_4\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Corynebacteriaceae|g__Corynebacterium
++s2_6\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s3_1\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++s3_2\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia_coli
++s4_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Actinomycetaceae|g__Mobiluncus|s__Mobiluncus_curtisii
++s5_1\td__Bacteria|p__Actinobacteria|c__Actinobacteria|o__Actinomycetales|f__Propionibacteriaceae|g__Propionibacterium|s__Propionibacterium_acnes
++s5_3\td__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacteriales|f__Enterobacteriaceae
++"""
++
++if __name__ == '__main__':
++    main()

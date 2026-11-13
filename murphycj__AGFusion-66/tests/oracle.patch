@@ -1,0 +1,1319 @@
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 9d5236c..648d9c9 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -4,7 +4,7 @@ AGFusion is a Python bioinformatics package for annotating gene fusions from hum
+ 
+ ## Stack
+ 
+-- **Language**: Python 3.7+
++- **Language**: Python 3.9 - 3.13
+ - **Formatter**: black (line-length = 100)
+ - **Key dependencies**: pyensembl, biopython, matplotlib, pandas, numpy<2
+ - **CLI**: Click-based (`agfusion annotate`, `agfusion batch`, `agfusion download`)
+diff --git a/.github/instructions/python.instructions.md b/.github/instructions/python.instructions.md
+index 42ce630..869f3f3 100644
+--- a/.github/instructions/python.instructions.md
++++ b/.github/instructions/python.instructions.md
+@@ -8,7 +8,7 @@ applyTo: "**/*.py"
+ ## Code Style
+ 
+ - Format all Python code with **black** (`line-length = 100`)
+-- Target Python 3.7+
++- Target Python 3.9 - 3.13
+ - Run `black .` before committing
+ 
+ ## Module Responsibilities
+diff --git a/README.md b/README.md
+index 391a292..90b3dcd 100644
+--- a/README.md
++++ b/README.md
+@@ -6,35 +6,34 @@
+ [![DOI](https://img.shields.io/badge/DOI-10.1101%2F080903-lightgrey.svg?style=flat-square)](http://dx.doi.org/10.1101/080903)
+ [![Citations: 35](https://img.shields.io/badge/citations-21-brightgreen)](https://scholar.google.com/scholar?cites=10329835253652722473&as_sdt=5,33&sciodt=0,33&hl=en)
+ 
+-
+ # Annotate Gene Fusion (AGFusion)
++
+ **Checkout the webapp:** [https://www.agfusion.app](https://www.agfusion.app)
+ 
+ AGFusion (pronounced 'A G Fusion') is a python package for annotating gene fusions from the human or mouse genomes. AGFusion simply needs the reference genome, the two gene partners, and the fusion junction coordinates as input, and outputs the following:
+ 
+-* FASTA files of cDNA, CDS, and protein sequences.
+-* Visualizes the protein domain and exon architectures of the fusion transcripts.
+-* Saves tables listing the coordinates of protein features and exons included in the fusion.
+-* Optional exon structure and protein domain visualization of the wild-type  version of the fusion gene partners.
++- FASTA files of cDNA, CDS, and protein sequences.
++- Visualizes the protein domain and exon architectures of the fusion transcripts.
++- Saves tables listing the coordinates of protein features and exons included in the fusion.
++- Optional exon structure and protein domain visualization of the wild-type version of the fusion gene partners.
+ 
+ Some other things to know:
+ 
+-* AGFusion automatically predicts the functional effect of the gene fusion (e.g. in-frame, out-of-frame, etc.).
+-* Annotation is by default done only for canonical gene isoforms, but there is the option to annotate all gene non-canonical isoform combinations.
+-* All gene and protein annotation is from Ensembl
+-* Supports up to Ensembl release 95
+-
++- AGFusion automatically predicts the functional effect of the gene fusion (e.g. in-frame, out-of-frame, etc.).
++- Annotation is by default done only for canonical gene isoforms, but there is the option to annotate all gene non-canonical isoform combinations.
++- All gene and protein annotation is from Ensembl
++- Supports up to Ensembl release 115
+ 
+ ## Table of Contents
+ 
+ - [Installation](#installation)
+ - [Dependencies](#dependencies)
+ - [Examples](#examples)
+-  * [Basic Usage](#basic-usage)
+-  * [Plotting wild-type protein and exon structure](#plotting-wild-type-protein-and-exon-structure)
+-  * [Canonical gene isoforms](#canonical-gene-isoforms)
+-  * [Input from fusion-finding algorithms](#input-from-fusion-finding-algorithms)
+-  * [Graphical parameters](#graphical-parameters)
++  - [Basic Usage](#basic-usage)
++  - [Plotting wild-type protein and exon structure](#plotting-wild-type-protein-and-exon-structure)
++  - [Canonical gene isoforms](#canonical-gene-isoforms)
++  - [Input from fusion-finding algorithms](#input-from-fusion-finding-algorithms)
++  - [Graphical parameters](#graphical-parameters)
+ - [Building your own database](#building-your-own-database)
+ - [Troubleshooting](#troubleshooting)
+ - [License](#license)
+@@ -52,7 +51,7 @@ pip install agfusion
+ 
+ ```
+ For GRCh38/hg38:
+-pyensembl install --species homo_sapiens --release 95
++pyensembl install --species homo_sapiens --release 115
+ 
+ For GRCh37/hg19:
+ pyensembl install --species homo_sapiens --release 75
+@@ -74,12 +73,12 @@ For GRCm38/mm10:
+ agfusion download -g mm10
+ ```
+ 
+-You can view all supported species and ensembl releases with ```agfusion download -a```.
++You can view all supported species and ensembl releases with `agfusion download -a`.
+ 
+ # Dependencies
+ 
+-* Python 3.7 or higher
+-* Python package dependencies are listed in [requirements.txt](https://github.com/murphycj/AGFusion/blob/master/requirements.txt).
++- Python 3.7 or higher
++- Python package dependencies are listed in [requirements.txt](https://github.com/murphycj/AGFusion/blob/master/requirements.txt).
+ 
+ ## Examples
+ 
+@@ -141,24 +140,22 @@ agfusion annotate \
+ 
+ You can provide as input output files from fusion-finding algorithms. Currently supported algorithms are:
+ 
+-* [Arriba](https://github.com/suhrig/arriba)
+-* Bellerophontes
+-* BreakFusion
+-* ChimeraScan
+-* ChimeRScope
+-* [deFuse](https://github.com/amcpherson/defuse)
+-* EricScript
+-* [FusionCatcher](https://github.com/ndaniel/fusioncatcher)
+-* FusionHunter
+-* FusionMap
+-* InFusion
+-* [JAFFA](https://github.com/Oshlack/JAFFA)
+-* [LongGF](https://github.com/WGLab/LongGF)
+-* MapSplice (only if --gene-gtf specified)
+-* [STAR-Fusion](https://github.com/STAR-Fusion/STAR-Fusion)
+-* TopHat-Fusion
+-
+-
++- [Arriba](https://github.com/suhrig/arriba)
++- Bellerophontes
++- BreakFusion
++- ChimeraScan
++- ChimeRScope
++- [deFuse](https://github.com/amcpherson/defuse)
++- EricScript
++- [FusionCatcher](https://github.com/ndaniel/fusioncatcher)
++- FusionHunter
++- FusionMap
++- InFusion
++- [JAFFA](https://github.com/Oshlack/JAFFA)
++- [LongGF](https://github.com/WGLab/LongGF)
++- MapSplice (only if --gene-gtf specified)
++- [STAR-Fusion](https://github.com/STAR-Fusion/STAR-Fusion)
++- TopHat-Fusion
+ 
+ Below is an example for FusionCatcher.
+ 
+@@ -217,6 +214,7 @@ agfusion annotate \
+ ![alt tag](https://github.com/murphycj/AGFusion/blob/master/doc/ENSMUST00000122054-ENSMUST00000070330-rescale.png)
+ 
+ # Building your own database
++
+ AGFusion uses a pre-built SQLite database to annotation gene fusions; in addition to data from pyensembl. The SQLite databases are stored on AWS S3.
+ 
+ Follow the steps below if you want to build your own SQLite database:
+@@ -233,7 +231,6 @@ Follow the steps below if you want to build your own SQLite database:
+ 
+ **(1) Problem:** I get a warning message like the following:
+ 
+-
+ > 2017-08-28 15:02:51,377 - AGFusion - WARNING - No cDNA sequence available for AC073283.4! Will not print cDNA sequence for the AC073283.4-MSH2 fusion. You might be working with an outdated pyensembl. Update the package and rerun 'pyensembl install'
+ 
+ **Solution:** Run the following to update pyensembl package and database:
+@@ -247,6 +244,7 @@ pyensembl install --release (your-release) --species (your-species)
+ 
+ **(2) Problem:** Cannot run `agfusion download` due to `URLError`.
+ When downloading the database you may run into this error:
++
+ ```
+ urllib.error.URLError: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1108)>
+ ```
+@@ -255,10 +253,9 @@ urllib.error.URLError: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certifica
+ A potential solution for Mac users is from [here](https://stackoverflow.com/questions/27835619/urllib-and-ssl-certificate-verify-failed-error). You can run the following command:
+ 
+ ```
+-/Applications/Python\ 3.8/Install\ Certificates.command
++/Applications/Python\ 3.9/Install\ Certificates.command
+ ```
+ 
+-
+ # License
+ 
+ MIT license
+diff --git a/agfusion/database.py b/agfusion/database.py
+index d219910..0973827 100644
+--- a/agfusion/database.py
++++ b/agfusion/database.py
+@@ -11,9 +11,9 @@
+ logger = logging.getLogger("AGFusion")
+ 
+ try:
+-    import MySQLdb
++    import mysql.connector
+ except ImportError:
+-    logger.debug("Could not import MySQLdb.")
++    logger.debug("Could not import mysql.connector.")
+ 
+ 
+ class AGFusionDB:
+@@ -100,7 +100,11 @@ def __init__(self, db_dir, species, release, pfam, server):
+ 
+         self.logger.info("Connected to the database %s", abspath(self.database))
+ 
+-        self.ensembl_db = MySQLdb.connect(server, "anonymous")
++        try:
++            self.ensembl_db = mysql.connector.connect(host=server, user="anonymous", password="")
++        except mysql.connector.Error as err:
++            self.logger.error("Could not connect to Ensembl MySQL server at %s: %s", server, err)
++            sys.exit(1)
+         self.ensembl_cursor = self.ensembl_db.cursor()
+         self.ensembl_cursor.execute("use " + self.table + ";")
+ 
+diff --git a/agfusion/utils.py b/agfusion/utils.py
+index 5bbecac..e4343b2 100644
+--- a/agfusion/utils.py
++++ b/agfusion/utils.py
+@@ -13,7 +13,7 @@
+ # this is mostly contigent on the maximum ensembl release supported
+ # by pyensembl
+ 
+-MAX_ENSEMBL_RELEASE = 111
++MAX_ENSEMBL_RELEASE = 115
+ 
+ GENOME_SHORTCUTS = {
+     "GRCm38": ["mus_musculus", MAX_ENSEMBL_RELEASE],
+@@ -47,17 +47,23 @@
+ # ENSEMBL_MYSQL_TABLES['homo_sapiens'][61] = 'homo_sapiens_core_61_37f'
+ # ENSEMBL_MYSQL_TABLES['homo_sapiens'][62] = 'homo_sapiens_core_62_37g'
+ 
++prefix = "homo_sapiens_core_"
+ for i in range(63, MAX_ENSEMBL_RELEASE + 1):
+     if i < 76:
+-        ENSEMBL_MYSQL_TABLES["homo_sapiens"][i] = "homo_sapiens_core_" + str(i) + "_37"
++        suffix = "37"
+     else:
+-        ENSEMBL_MYSQL_TABLES["homo_sapiens"][i] = "homo_sapiens_core_" + str(i) + "_38"
++        suffix = "38"
++    ENSEMBL_MYSQL_TABLES["homo_sapiens"][i] = f"{prefix}{i}_{suffix}"
+ 
++prefix = "mus_musculus_core_"
+ for i in range(67, MAX_ENSEMBL_RELEASE + 1):
+     if i < 68:
+-        ENSEMBL_MYSQL_TABLES["mus_musculus"][i] = "mus_musculus_core_" + str(i) + "_37"
++        suffix = "37"
++    elif i < 103:
++        suffix = "38"
+     else:
+-        ENSEMBL_MYSQL_TABLES["mus_musculus"][i] = "mus_musculus_core_" + str(i) + "_38"
++        suffix = "39"
++    ENSEMBL_MYSQL_TABLES["mus_musculus"][i] = f"{prefix}{i}_{suffix}"
+ 
+ # min amino acid length of domain to plot it
+ 
+diff --git a/bin/build_dbs.py b/bin/build_dbs.py
+index 1a02dc5..e531c8e 100644
+--- a/bin/build_dbs.py
++++ b/bin/build_dbs.py
+@@ -2,45 +2,62 @@
+ Download and build the agfusion database for a range of releases.
+ """
+ 
++import logging
++import os
+ import subprocess
+ 
++import boto3
++from botocore.exceptions import ClientError
++
++logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
++logger = logging.getLogger(__name__)
++
++S3_BUCKET = "agfusion"
++PFAM_FILE = "Pfam-A.clans.tsv"
++
++s3_client = boto3.client("s3")
++
+ 
+ def run_command(command):
+-    """Run a command and print it."""
+-    print(f"Running: {command}")
++    """Run a command and log it."""
++    logger.info("Running: %s", command)
+     subprocess.run(command, shell=True, check=True)
+ 
+ 
++# Ensure the Pfam clans file is available locally
++if not os.path.exists(PFAM_FILE):
++    logger.info("Downloading s3://%s/%s", S3_BUCKET, PFAM_FILE)
++    s3_client.download_file(S3_BUCKET, PFAM_FILE, PFAM_FILE)
++
+ # species = "homo_sapiens"
+ species = "mus_musculus"
+ 
+-# Loop over releases from 96 to 110
+-for i in range(92, 112):
+-    # Check if the file exists on S3
+-    s3_check_command = f"aws s3 ls s3://agfusion/agfusion.{species}.{i}.db.gz"
+-    result = subprocess.run(
+-        s3_check_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False
+-    )
++# Loop over releases from 96 to 115
++for i in range(92, 116):
++    db_key = f"agfusion.{species}.{i}.db.gz"
+ 
+-    if result.returncode == 0:
+-        print(f"File for release {i} already exists in S3. Skipping...")
++    # Check if the file exists on S3
++    try:
++        s3_client.head_object(Bucket=S3_BUCKET, Key=db_key)
++        logger.info("File for release %d already exists in S3. Skipping...", i)
+         continue
++    except ClientError:
++        pass
+ 
+-    # continue
+-
+-    print(f"Building release {i}")
++    logger.info("Building release %d", i)
+ 
+     # Install the release using pyensembl
+     run_command(f"pyensembl install --release {i} --species {species}")
+ 
+     # Build the agfusion database
+-    run_command(f"agfusion build -d . -s {species} -r {i} --pfam Pfam-A.clans.tsv")
++    run_command(f"agfusion build -d . -s {species} -r {i} --pfam {PFAM_FILE}")
+ 
+     # Compress the database
+     run_command(f"gzip agfusion.{species}.{i}.db")
+ 
+     # Upload the compressed file to S3
+-    run_command(f"aws s3 cp agfusion.{species}.{i}.db.gz s3://agfusion")
++    logger.info("Uploading %s to s3://%s/%s", db_key, S3_BUCKET, db_key)
++    s3_client.upload_file(db_key, S3_BUCKET, db_key)
+ 
+     # Delete all files for the release from pyensembl
+     run_command(f"pyensembl delete-all-files --release {i} --species {species}")
+diff --git a/pylintrc b/pylintrc
+index 130a044..ee10d37 100644
+--- a/pylintrc
++++ b/pylintrc
+@@ -1,634 +1,874 @@
+ [MAIN]
+ 
+ # Analyse import fallback blocks. This can be used to support both Python 2 and
++
+ # 3 compatible code, which means that the block might have code that exists
++
+ # only in one or another interpreter, leading to false positives when analysed.
++
+ analyse-fallback-blocks=no
+ 
+ # Load and enable all available extensions. Use --list-extensions to see a list
++
+ # all available extensions.
++
+ #enable-all-extensions=
+ 
+ # In error mode, messages with a category besides ERROR or FATAL are
++
+ # suppressed, and no reports are done by default. Error mode is compatible with
++
+ # disabling specific errors.
++
+ #errors-only=
+ 
+ # Always return a 0 (non-error) status code, even if lint errors are found.
++
+ # This is primarily useful in continuous integration scripts.
++
+ #exit-zero=
+ 
+ # A comma-separated list of package or module names from where C extensions may
++
+ # be loaded. Extensions are loading into the active Python interpreter and may
++
+ # run arbitrary code.
++
+ extension-pkg-allow-list=
+ 
+ # A comma-separated list of package or module names from where C extensions may
++
+ # be loaded. Extensions are loading into the active Python interpreter and may
++
+ # run arbitrary code. (This is an alternative name to extension-pkg-allow-list
++
+ # for backward compatibility.)
++
+ extension-pkg-whitelist=
+ 
+ # Return non-zero exit code if any of these messages/categories are detected,
++
+ # even if score is above --fail-under value. Syntax same as enable. Messages
++
+ # specified are enabled, while categories only check already-enabled messages.
++
+ fail-on=
+ 
+ # Specify a score threshold under which the program will exit with error.
++
+ fail-under=10
+ 
+ # Interpret the stdin as a python script, whose filename needs to be passed as
++
+ # the module_or_package argument.
++
+ #from-stdin=
+ 
+ # Files or directories to be skipped. They should be base names, not paths.
++
+ ignore=CVS
+ 
+ # Add files or directories matching the regular expressions patterns to the
++
+ # ignore-list. The regex matches against paths and can be in Posix or Windows
++
+ # format. Because '\' represents the directory delimiter on Windows systems, it
++
+ # can't be used as an escape character.
++
+ ignore-paths=
+ 
+ # Files or directories matching the regular expression patterns are skipped.
++
+ # The regex matches against base names, not paths. The default value ignores
++
+ # Emacs file locks
++
+ ignore-patterns=^\.#
+ 
+ # List of module names for which member attributes should not be checked
++
+ # (useful for modules/projects where namespaces are manipulated during runtime
++
+ # and thus existing member attributes cannot be deduced by static analysis). It
++
+ # supports qualified module names, as well as Unix pattern matching.
++
+ ignored-modules=
+ 
+ # Python code to execute, usually for sys.path manipulation such as
++
+ # pygtk.require().
++
+ #init-hook=
+ 
+ # Use multiple processes to speed up Pylint. Specifying 0 will auto-detect the
++
+ # number of processors available to use, and will cap the count on Windows to
++
+ # avoid hangs.
++
+ jobs=1
+ 
+ # Control the amount of potential inferred values when inferring a single
++
+ # object. This can help the performance when dealing with large functions or
++
+ # complex, nested conditions.
++
+ limit-inference-results=100
+ 
+ # List of plugins (as comma separated values of python module names) to load,
++
+ # usually to register additional checkers.
++
+ load-plugins=
+ 
+ # Pickle collected data for later comparisons.
++
+ persistent=yes
+ 
+ # Minimum Python version to use for version dependent checks. Will default to
++
+ # the version used to run pylint.
+-py-version=3.8
++
++py-version=3.9
+ 
+ # Discover python modules and packages in the file system subtree.
++
+ recursive=no
+ 
+ # When enabled, pylint would attempt to guess common misconfiguration and emit
++
+ # user-friendly hints instead of false-positive error messages.
++
+ suggestion-mode=yes
+ 
+ # Allow loading of arbitrary C extensions. Extensions are imported into the
++
+ # active Python interpreter and may run arbitrary code.
++
+ unsafe-load-any-extension=no
+ 
+ # In verbose mode, extra non-checker-related info will be displayed.
+-#verbose=
+ 
++#verbose=
+ 
+ [BASIC]
+ 
+ # Naming style matching correct argument names.
++
+ argument-naming-style=snake_case
+ 
+ # Regular expression matching correct argument names. Overrides argument-
++
+ # naming-style. If left empty, argument names will be checked with the set
++
+ # naming style.
++
+ #argument-rgx=
+ 
+ # Naming style matching correct attribute names.
++
+ attr-naming-style=snake_case
+ 
+ # Regular expression matching correct attribute names. Overrides attr-naming-
++
+ # style. If left empty, attribute names will be checked with the set naming
++
+ # style.
++
+ #attr-rgx=
+ 
+ # Bad variable names which should always be refused, separated by a comma.
++
+ bad-names=foo,
+-          bar,
+-          baz,
+-          toto,
+-          tutu,
+-          tata
++bar,
++baz,
++toto,
++tutu,
++tata
+ 
+ # Bad variable names regexes, separated by a comma. If names match any regex,
++
+ # they will always be refused
++
+ bad-names-rgxs=
+ 
+ # Naming style matching correct class attribute names.
++
+ class-attribute-naming-style=any
+ 
+ # Regular expression matching correct class attribute names. Overrides class-
++
+ # attribute-naming-style. If left empty, class attribute names will be checked
++
+ # with the set naming style.
++
+ #class-attribute-rgx=
+ 
+ # Naming style matching correct class constant names.
++
+ class-const-naming-style=UPPER_CASE
+ 
+ # Regular expression matching correct class constant names. Overrides class-
++
+ # const-naming-style. If left empty, class constant names will be checked with
++
+ # the set naming style.
++
+ #class-const-rgx=
+ 
+ # Naming style matching correct class names.
++
+ class-naming-style=PascalCase
+ 
+ # Regular expression matching correct class names. Overrides class-naming-
++
+ # style. If left empty, class names will be checked with the set naming style.
++
+ #class-rgx=
+ 
+ # Naming style matching correct constant names.
++
+ const-naming-style=UPPER_CASE
+ 
+ # Regular expression matching correct constant names. Overrides const-naming-
++
+ # style. If left empty, constant names will be checked with the set naming
++
+ # style.
++
+ #const-rgx=
+ 
+ # Minimum line length for functions/classes that require docstrings, shorter
++
+ # ones are exempt.
++
+ docstring-min-length=-1
+ 
+ # Naming style matching correct function names.
++
+ function-naming-style=snake_case
+ 
+ # Regular expression matching correct function names. Overrides function-
++
+ # naming-style. If left empty, function names will be checked with the set
++
+ # naming style.
++
+ #function-rgx=
+ 
+ # Good variable names which should always be accepted, separated by a comma.
++
+ good-names=i,
+-           j,
+-           k,
+-           ex,
+-           Run,
+-           _
++j,
++k,
++ex,
++Run,
++\_
+ 
+ # Good variable names regexes, separated by a comma. If names match any regex,
++
+ # they will always be accepted
++
+ good-names-rgxs=
+ 
+ # Include a hint for the correct naming format with invalid-name.
++
+ include-naming-hint=no
+ 
+ # Naming style matching correct inline iteration names.
++
+ inlinevar-naming-style=any
+ 
+ # Regular expression matching correct inline iteration names. Overrides
++
+ # inlinevar-naming-style. If left empty, inline iteration names will be checked
++
+ # with the set naming style.
++
+ #inlinevar-rgx=
+ 
+ # Naming style matching correct method names.
++
+ method-naming-style=snake_case
+ 
+ # Regular expression matching correct method names. Overrides method-naming-
++
+ # style. If left empty, method names will be checked with the set naming style.
++
+ #method-rgx=
+ 
+ # Naming style matching correct module names.
++
+ module-naming-style=snake_case
+ 
+ # Regular expression matching correct module names. Overrides module-naming-
++
+ # style. If left empty, module names will be checked with the set naming style.
++
+ #module-rgx=
+ 
+ # Colon-delimited sets of names that determine each other's naming style when
++
+ # the name regexes allow several styles.
++
+ name-group=
+ 
+ # Regular expression which should only match function or class names that do
++
+ # not require a docstring.
+-no-docstring-rgx=^_
++
++no-docstring-rgx=^\_
+ 
+ # List of decorators that produce properties, such as abc.abstractproperty. Add
++
+ # to this list to register other decorators that produce valid properties.
++
+ # These decorators are taken in consideration only for invalid-name.
++
+ property-classes=abc.abstractproperty
+ 
+ # Regular expression matching correct type variable names. If left empty, type
++
+ # variable names will be checked with the set naming style.
++
+ #typevar-rgx=
+ 
+ # Naming style matching correct variable names.
++
+ variable-naming-style=snake_case
+ 
+ # Regular expression matching correct variable names. Overrides variable-
++
+ # naming-style. If left empty, variable names will be checked with the set
++
+ # naming style.
+-#variable-rgx=
+ 
++#variable-rgx=
+ 
+ [CLASSES]
+ 
+ # Warn about protected attribute access inside special methods
++
+ check-protected-access-in-special-methods=no
+ 
+ # List of method names used to declare (i.e. assign) instance attributes.
+-defining-attr-methods=__init__,
+-                      __new__,
+-                      setUp,
+-                      __post_init__
++
++defining-attr-methods=**init**,
++**new**,
++setUp,
++**post_init**
+ 
+ # List of member names, which should be excluded from the protected access
++
+ # warning.
+-exclude-protected=_asdict,
+-                  _fields,
+-                  _replace,
+-                  _source,
+-                  _make
++
++exclude-protected=\_asdict,
++\_fields,
++\_replace,
++\_source,
++\_make
+ 
+ # List of valid names for the first argument in a class method.
++
+ valid-classmethod-first-arg=cls
+ 
+ # List of valid names for the first argument in a metaclass class method.
+-valid-metaclass-classmethod-first-arg=cls
+ 
++valid-metaclass-classmethod-first-arg=cls
+ 
+ [DESIGN]
+ 
+ # List of regular expressions of class ancestor names to ignore when counting
++
+ # public methods (see R0903)
++
+ exclude-too-few-public-methods=
+ 
+ # List of qualified class names to ignore when counting class parents (see
++
+ # R0901)
++
+ ignored-parents=
+ 
+ # Maximum number of arguments for function / method.
++
+ max-args=20
+ 
+ # Maximum number of attributes for a class (see R0902).
++
+ max-attributes=50
+ 
+ # Maximum number of boolean expressions in an if statement (see R0916).
++
+ max-bool-expr=5
+ 
+ # Maximum number of branch for function / method body.
++
+ max-branches=12
+ 
+ # Maximum number of locals for function / method body.
++
+ max-locals=25
+ 
+ # Maximum number of parents for a class (see R0901).
++
+ max-parents=7
+ 
+ # Maximum number of public methods for a class (see R0904).
++
+ max-public-methods=20
+ 
+ # Maximum number of return / yield for function / method body.
++
+ max-returns=6
+ 
+ # Maximum number of statements in function / method body.
++
+ max-statements=100
+ 
+ # Minimum number of public methods for a class (see R0903).
+-min-public-methods=0
+ 
++min-public-methods=0
+ 
+ [EXCEPTIONS]
+ 
+ # Exceptions that will emit a warning when caught.
+-overgeneral-exceptions=BaseException,
+-                       Exception
+ 
++overgeneral-exceptions=BaseException,
++Exception
+ 
+ [FORMAT]
+ 
+ # Expected format of line ending, e.g. empty (any line ending), LF or CRLF.
++
+ expected-line-ending-format=
+ 
+ # Regexp for a line that is allowed to be longer than the limit.
+-ignore-long-lines=^\s*(# )?<?https?://\S+>?$
++
++ignore-long-lines=^\s\*(# )?<?https?://\S+>?$
+ 
+ # Number of spaces of indent required inside a hanging or continued line.
++
+ indent-after-paren=4
+ 
+-# String used as indentation unit. This is usually "    " (4 spaces) or "\t" (1
++# String used as indentation unit. This is usually " " (4 spaces) or "\t" (1
++
+ # tab).
+-indent-string='    '
++
++indent-string=' '
+ 
+ # Maximum number of characters on a single line.
++
+ max-line-length=100
+ 
+ # Maximum number of lines in a module.
++
+ max-module-lines=1000
+ 
+ # Allow the body of a class to be on the same line as the declaration if body
++
+ # contains single statement.
++
+ single-line-class-stmt=no
+ 
+ # Allow the body of an if to be on the same line as the test if there is no
++
+ # else.
+-single-line-if-stmt=no
+ 
++single-line-if-stmt=no
+ 
+ [IMPORTS]
+ 
+ # List of modules that can be imported at any level, not just the top level
++
+ # one.
++
+ allow-any-import-level=
+ 
+-# Allow wildcard imports from modules that define __all__.
++# Allow wildcard imports from modules that define **all**.
++
+ allow-wildcard-with-all=no
+ 
+ # Deprecated modules which should not be used, separated by a comma.
++
+ deprecated-modules=
+ 
+ # Output a graph (.gv or any supported image format) of external dependencies
++
+ # to the given file (report RP0402 must not be disabled).
++
+ ext-import-graph=
+ 
+ # Output a graph (.gv or any supported image format) of all (i.e. internal and
++
+ # external) dependencies to the given file (report RP0402 must not be
++
+ # disabled).
++
+ import-graph=
+ 
+ # Output a graph (.gv or any supported image format) of internal dependencies
++
+ # to the given file (report RP0402 must not be disabled).
++
+ int-import-graph=
+ 
+ # Force import order to recognize a module as part of the standard
++
+ # compatibility libraries.
++
+ known-standard-library=
+ 
+ # Force import order to recognize a module as part of a third party library.
++
+ known-third-party=enchant
+ 
+ # Couples of modules and preferred modules, separated by a comma.
+-preferred-modules=
+ 
++preferred-modules=
+ 
+ [LOGGING]
+ 
+ # The type of string formatting that logging methods do. `old` means using %
++
+ # formatting, `new` is for `{}` formatting.
++
+ logging-format-style=old
+ 
+ # Logging modules to check that the string format arguments are in logging
++
+ # function parameter format.
+-logging-modules=logging
+ 
++logging-modules=logging
+ 
+ [MESSAGES CONTROL]
+ 
+ # Only show warnings with the listed confidence levels. Leave empty to show
++
+ # all. Valid levels: HIGH, CONTROL_FLOW, INFERENCE, INFERENCE_FAILURE,
++
+ # UNDEFINED.
++
+ confidence=HIGH,
+-           CONTROL_FLOW,
+-           INFERENCE,
+-           INFERENCE_FAILURE,
+-           UNDEFINED
++CONTROL_FLOW,
++INFERENCE,
++INFERENCE_FAILURE,
++UNDEFINED
+ 
+ # Disable the message, report, category or checker with the given id(s). You
++
+ # can either give multiple identifiers separated by comma (,) or put this
++
+ # option multiple times (only on the command line, not in the configuration
++
+ # file where it should appear only once). You can also use "--disable=all" to
++
+ # disable everything first and then re-enable specific checks. For example, if
++
+ # you want to run only the similarities checker, you can use "--disable=all
++
+ # --enable=similarities". If you want to run only the classes checker, but have
++
+ # no Warning level messages displayed, use "--disable=all --enable=classes
++
+ # --disable=W".
++
+ disable=raw-checker-failed,
+-        bad-inline-option,
+-        locally-disabled,
+-        file-ignored,
+-        suppressed-message,
+-        useless-suppression,
+-        deprecated-pragma,
+-        use-symbolic-message-instead,
+-        consider-using-with,
+-        no-name-in-module,
+-        E0611,
+-        too-many-arguments,
+-        wrong-import-position,
+-        wrong-import-order,
+-        unspecified-encoding,
+-        too-many-nested-blocks,
+-        too-many-branches,
+-        invalid-name,
+-        import-outside-toplevel,
+-        too-many-lines,
+-        too-many-statements,
+-        keyword-arg-before-vararg,
+-        R1732
++bad-inline-option,
++locally-disabled,
++file-ignored,
++suppressed-message,
++useless-suppression,
++deprecated-pragma,
++use-symbolic-message-instead,
++consider-using-with,
++no-name-in-module,
++E0611,
++too-many-arguments,
++wrong-import-position,
++wrong-import-order,
++unspecified-encoding,
++too-many-nested-blocks,
++too-many-branches,
++invalid-name,
++import-outside-toplevel,
++too-many-lines,
++too-many-statements,
++keyword-arg-before-vararg,
++R1732
+ 
+ # Enable the message, report, category or checker with the given id(s). You can
++
+ # either give multiple identifier separated by comma (,) or put this option
++
+ # multiple time (only on the command line, not in the configuration file where
++
+ # it should appear only once). See also the "--disable" option for examples.
+-enable=c-extension-no-member
+ 
++enable=c-extension-no-member
+ 
+ [METHOD_ARGS]
+ 
+ # List of qualified names (i.e., library.method) which require a timeout
++
+ # parameter e.g. 'requests.api.get,requests.api.post'
+-timeout-methods=requests.api.delete,requests.api.get,requests.api.head,requests.api.options,requests.api.patch,requests.api.post,requests.api.put,requests.api.request
+ 
++timeout-methods=requests.api.delete,requests.api.get,requests.api.head,requests.api.options,requests.api.patch,requests.api.post,requests.api.put,requests.api.request
+ 
+ [MISCELLANEOUS]
+ 
+ # List of note tags to take in consideration, separated by a comma.
++
+ notes=FIXME,
+-      XXX,
+-      TODO
++XXX,
++TODO
+ 
+ # Regular expression of note tags to take in consideration.
+-notes-rgx=
+ 
++notes-rgx=
+ 
+ [REFACTORING]
+ 
+ # Maximum number of nested blocks for function / method body
++
+ max-nested-blocks=5
+ 
+ # Complete name of functions that never returns. When checking for
++
+ # inconsistent-return-statements if a never returning function is called then
++
+ # it will be considered as an explicit return statement and no message will be
++
+ # printed.
+-never-returning-functions=sys.exit,argparse.parse_error
+ 
++never-returning-functions=sys.exit,argparse.parse_error
+ 
+ [REPORTS]
+ 
+ # Python expression which should return a score less than or equal to 10. You
++
+ # have access to the variables 'fatal', 'error', 'warning', 'refactor',
++
+ # 'convention', and 'info' which contain the number of messages in each
++
+ # category, as well as 'statement' which is the total number of statements
++
+ # analyzed. This score is used by the global evaluation report (RP0004).
+-evaluation=max(0, 0 if fatal else 10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10))
++
++evaluation=max(0, 0 if fatal else 10.0 - ((float(5 _ error + warning + refactor + convention) / statement) _ 10))
+ 
+ # Template used to display messages. This is a python new-style format string
++
+ # used to format the message information. See doc for all details.
++
+ msg-template=
+ 
+ # Set the output format. Available formats are text, parseable, colorized, json
++
+ # and msvs (visual studio). You can also give a reporter class, e.g.
++
+ # mypackage.mymodule.MyReporterClass.
++
+ #output-format=
+ 
+ # Tells whether to display a full report or only the messages.
++
+ reports=no
+ 
+ # Activate the evaluation score.
+-score=yes
+ 
++score=yes
+ 
+ [SIMILARITIES]
+ 
+ # Comments are removed from the similarity computation
++
+ ignore-comments=yes
+ 
+ # Docstrings are removed from the similarity computation
++
+ ignore-docstrings=yes
+ 
+ # Imports are removed from the similarity computation
++
+ ignore-imports=yes
+ 
+ # Signatures are removed from the similarity computation
++
+ ignore-signatures=yes
+ 
+ # Minimum lines number of a similarity.
+-min-similarity-lines=4
+ 
++min-similarity-lines=4
+ 
+ [SPELLING]
+ 
+ # Limits count of emitted suggestions for spelling mistakes.
++
+ max-spelling-suggestions=4
+ 
+ # Spelling dictionary name. Available dictionaries: none. To make it work,
++
+ # install the 'python-enchant' package.
++
+ spelling-dict=
+ 
+ # List of comma separated words that should be considered directives if they
++
+ # appear at the beginning of a comment and should not be checked.
++
+ spelling-ignore-comment-directives=fmt: on,fmt: off,noqa:,noqa,nosec,isort:skip,mypy:
+ 
+ # List of comma separated words that should not be checked.
++
+ spelling-ignore-words=
+ 
+ # A path to a file that contains the private dictionary; one word per line.
++
+ spelling-private-dict-file=
+ 
+ # Tells whether to store unknown words to the private dictionary (see the
++
+ # --spelling-private-dict-file option) instead of raising a message.
+-spelling-store-unknown-words=no
+ 
++spelling-store-unknown-words=no
+ 
+ [STRING]
+ 
+ # This flag controls whether inconsistent-quotes generates a warning when the
++
+ # character used as a quote delimiter is used inconsistently within a module.
++
+ check-quote-consistency=no
+ 
+ # This flag controls whether the implicit-str-concat should generate a warning
++
+ # on implicit string concatenation in sequences defined over several lines.
+-check-str-concat-over-line-jumps=no
+ 
++check-str-concat-over-line-jumps=no
+ 
+ [TYPECHECK]
+ 
+ # List of decorators that produce context managers, such as
++
+ # contextlib.contextmanager. Add to this list to register other decorators that
++
+ # produce valid context managers.
++
+ contextmanager-decorators=contextlib.contextmanager
+ 
+ # List of members which are set dynamically and missed by pylint inference
++
+ # system, and so shouldn't trigger E1101 when accessed. Python regular
++
+ # expressions are accepted.
++
+ generated-members=
+ 
+ # Tells whether to warn about missing members when the owner of the attribute
++
+ # is inferred to be None.
++
+ ignore-none=yes
+ 
+ # This flag controls whether pylint should warn about no-member and similar
++
+ # checks whenever an opaque object is returned when inferring. The inference
++
+ # can return multiple potential results while evaluating a Python object, but
++
+ # some branches might not be evaluated, which results in partial inference. In
++
+ # that case, it might be useful to still emit no-member and other checks for
++
+ # the rest of the inferred objects.
++
+ ignore-on-opaque-inference=yes
+ 
+ # List of symbolic message names to ignore for Mixin members.
++
+ ignored-checks-for-mixins=no-member,
+-                          not-async-context-manager,
+-                          not-context-manager,
+-                          attribute-defined-outside-init,
+-                          consider-using-with
++not-async-context-manager,
++not-context-manager,
++attribute-defined-outside-init,
++consider-using-with
+ 
+ # List of class names for which member attributes should not be checked (useful
++
+ # for classes with dynamically set attributes). This supports the use of
++
+ # qualified names.
+-ignored-classes=optparse.Values,thread._local,_thread._local,argparse.Namespace
++
++ignored-classes=optparse.Values,thread.\_local,\_thread.\_local,argparse.Namespace
+ 
+ # Show a hint with possible names when a member name was not found. The aspect
++
+ # of finding the hint is based on edit distance.
++
+ missing-member-hint=yes
+ 
+ # The minimum edit distance a name should have in order to be considered a
++
+ # similar match for a missing member name.
++
+ missing-member-hint-distance=1
+ 
+ # The total number of similar names that should be taken in consideration when
++
+ # showing a hint for a missing member.
++
+ missing-member-max-choices=1
+ 
+ # Regex pattern to define which classes are considered mixins.
+-mixin-class-rgx=.*[Mm]ixin
++
++mixin-class-rgx=.\*[Mm]ixin
+ 
+ # List of decorators that change the signature of a decorated function.
+-signature-mutators=
+ 
++signature-mutators=
+ 
+ [VARIABLES]
+ 
+ # List of additional names supposed to be defined in builtins. Remember that
++
+ # you should avoid defining new builtins when possible.
++
+ additional-builtins=
+ 
+ # Tells whether unused global variables should be treated as a violation.
++
+ allow-global-unused-variables=yes
+ 
+ # List of names allowed to shadow builtins
++
+ allowed-redefined-builtins=
+ 
+ # List of strings which can identify a callback function by name. A callback
++
+ # name must start or end with one of those strings.
+-callbacks=cb_,
+-          _cb
++
++callbacks=cb\_,
++\_cb
+ 
+ # A regular expression matching the name of dummy variables (i.e. expected to
++
+ # not be used).
+-dummy-variables-rgx=_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_
++
++dummy-variables-rgx=_+$|(_[a-zA-Z0-9_]\*[a-zA-Z0-9]+?$)|dummy|^ignored*|^unused*
+ 
+ # Argument names that match this expression will be ignored.
+-ignored-argument-names=_.*|^ignored_|^unused_
+ 
+-# Tells whether we should check for unused import in __init__ files.
++ignored-argument-names=_.\*|^ignored_|^unused\_
++
++# Tells whether we should check for unused import in **init** files.
++
+ init-import=no
+ 
+ # List of qualified module names which can have objects that can redefine
++
+ # builtins.
++
+ redefining-builtins-modules=six.moves,past.builtins,future.builtins,builtins,io
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+index 6e52828..df72e44 100644
+--- a/requirements-dev.txt
++++ b/requirements-dev.txt
+@@ -5,3 +5,5 @@ black==22.10.0
+ click==8.0.4
+ pre-commit
+ isort
++boto3
++mysql-connector-python
+diff --git a/requirements.txt b/requirements.txt
+index da262f9..a536a95 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,5 +1,5 @@
+ matplotlib>=3.9.2
+ pandas==2.2.3
+ biopython>=1.79
+-pyensembl>=2.3.13
+-numpy<2
++pyensembl>=2.6.2
++numpy

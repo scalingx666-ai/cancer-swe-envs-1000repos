@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/BiaPyX__BiaPy-181"
+description = "Add 'biapy create-config': create a configuration adapted to the data"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BiaPy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "BiaPyX/BiaPy"
+ref = "7eac9dd7b255afc558e3e8f525e208d0045f7c1e"
+reference = "https://github.com/BiaPyX/BiaPy/pull/181"
+source_access = "auto"
+built_at = "2026-11-13T16:09:43.103985+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:64ddf8d0d704f9e327b19a9457290dc14bab7272107cd4ef5fdb830400662df3"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-10T11:05:35Z"
+diff_format = "unified"
+context_files = [
+    "biapy/__init__.py",
+    "biapy/_biapy.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 188
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

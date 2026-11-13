@@ -1,0 +1,26 @@
+{
+  "candidates": 4172,
+  "clean": 3313,
+  "noise_excluded": 859,
+  "final": 1000,
+  "min_star": 50,
+  "seed_included": 100,
+  "core_in_final": 443,
+  "active_since_2023": 856,
+  "star_buckets": {
+    ">=1000": 63,
+    "500-999": 93,
+    "200-499": 276,
+    "100-199": 369,
+    "50-99": 170,
+    "30-49": 0,
+    "20-29": 0,
+    "<20": 29
+  },
+  "tiers": {
+    "seed": 100,
+    "c50_active": 279,
+    "c50_any": 113,
+    "a50_active": 508
+  }
+}

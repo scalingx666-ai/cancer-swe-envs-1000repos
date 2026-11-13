@@ -1,0 +1,118 @@
+diff --git a/llms.txt b/llms.txt
+index 654e5ecd0..bc89a2767 100644
+--- a/llms.txt
++++ b/llms.txt
+@@ -83,7 +83,7 @@ Machine-readable YAML definitions used by sdrf-pipelines for validation. Each te
+ - sdrf-proteomics/tool-support.adoc - Tool Support Overview: annotators, validators, analysis tools
+   - https://github.com/bigbio/sdrf-pipelines - sdrf-pipelines: official Python CLI/library for SDRF validation
+   - https://lessdrf.streamlit.app/ - lesSDRF: web-based SDRF creation tool
+-  - https://cupcake-vanilla-demo.proteo.nexus/ - CupCAKE: web annotation platform with ontology integration
++  - https://github.com/noatgnu/cupcake - CupCAKE: web annotation platform with ontology integration
+   - https://quantms.org/ - quantms: Nextflow pipeline for quantitative proteomics
+   - https://www.maxquant.org/ - MaxQuant: desktop proteomics software with SDRF export
+   - https://github.com/wombat-p - Wombat-P: benchmarking platform for proteomics workflows
+diff --git a/psi-document/sdrf-proteomics-specification-v1.1.0-dev.pdf b/psi-document/sdrf-proteomics-specification-v1.1.0-dev.pdf
+index 84edd1ba2..bfe44318b 100644
+Binary files a/psi-document/sdrf-proteomics-specification-v1.1.0-dev.pdf and b/psi-document/sdrf-proteomics-specification-v1.1.0-dev.pdf differ
+diff --git a/sdrf-proteomics/README.adoc b/sdrf-proteomics/README.adoc
+index e20b8e581..beb94a861 100644
+--- a/sdrf-proteomics/README.adoc
++++ b/sdrf-proteomics/README.adoc
+@@ -990,7 +990,7 @@ SDRF template with shared sample metadata columns (organism, tissue, disease). T
+ | optional
+ | Broader anatomical grouping or system-level bucket for the sample, used alongside the organism part for higher-level grouping
+ | ontology: uberon, bto
+-| digestive system, nervous system, cardiovascular system, gastrointestinal tract
++| heart, liver, brain, gastrointestinal tract
+ 
+ | `characteristics[cell type]`
+ | recommended
+diff --git a/sdrf-proteomics/TERMS.tsv b/sdrf-proteomics/TERMS.tsv
+index 2980a32fe..c1e08a87f 100644
+--- a/sdrf-proteomics/TERMS.tsv
++++ b/sdrf-proteomics/TERMS.tsv
+@@ -139,6 +139,9 @@ ms3 max mz	comment	PRIDE:0001014	ms-proteomics	{number}m/z	MS method-defined max
+ ms1 scan range	comment	PRIDE:0001008	ms-proteomics	{number}m/z-{number}m/z	m/z scan range for MS1 spectra as an interval	true	true	false
+ ms2 scan range	comment	PRIDE:0001009	ms-proteomics	{number}m/z-{number}m/z	m/z scan range for MS2 spectra as an interval	true	true	false
+ ms3 scan range	comment	PRIDE:0001010	ms-proteomics	{number}m/z-{number}m/z	m/z scan range for MS3 spectra as an interval	true	true	false
++number of MS1 spectra	comment	MS:4000059	ms-proteomics, dia-acquisition	nonnegative integer (0 or [1-9][0-9]*); implicit UO:0000189 count unit	Measured number of MS1 spectra in the raw data file named by comment[data file], including empty scans; not the count of identified spectra or a cohort estimate.	true	false	false
++number of MS2 spectra	comment	MS:4000060	ms-proteomics, dia-acquisition	nonnegative integer (0 or [1-9][0-9]*); implicit UO:0000189 count unit	Measured number of MS2 spectra in the raw data file named by comment[data file], including empty scans; not the count of identified spectra or a cohort estimate.	true	false	false
++chromatography duration	comment	MS:4000053	ms-proteomics, dia-acquisition	finite nonnegative number + s (seconds, UO:0000010); e.g. 0 s, 3600.5 s, 1e-05 s	Observed raw-run retention-time span in seconds: maximum minus minimum finite spectrum retention time across all MS levels; not the planned gradient length.	true	false	false
+ sample type	characteristics	PRIDE:0000895	sample-metadata, single-cell, affinity-proteomics	PRIDE (children of PRIDE:0000895): study sample, single cell, environmental sample, reference, bridge, carrier, pooled, empty, negative control, positive control, bulk control, buffer control, plate control, quality control sample, calibrator, standard	Classification of the sample role in the experiment. Distinguishes study samples under investigation from controls, references, and other roles in multiplexed or plate-based experiments.	true	true	false
+ passage number	characteristics	EFO:0007061	cell-lines	integer or range	Passage number of the cell line	true	true	false
+ biorepository	characteristics	NCIT:C48800	cell-lines	free text	Repository or source from which the cell line was obtained	true	true	false
+diff --git a/sdrf-proteomics/TOOLS.adoc b/sdrf-proteomics/TOOLS.adoc
+index d7918c4f6..83b4f9213 100644
+--- a/sdrf-proteomics/TOOLS.adoc
++++ b/sdrf-proteomics/TOOLS.adoc
+@@ -61,7 +61,7 @@ a|
+ [[cupcake]]
+ === CupCAKE
+ 
+-https://cupcake-vanilla-demo.proteo.nexus/[CupCAKE] (Curation Portal for Curation, Annotation, and Knowledge Extraction) is a comprehensive platform for proteomics data annotation.
++https://github.com/noatgnu/cupcake[CupCAKE] (Curation Portal for Curation, Annotation, and Knowledge Extraction) is a comprehensive platform for proteomics data annotation.
+ 
+ |===
+ |Feature |Description
+@@ -69,11 +69,8 @@ https://cupcake-vanilla-demo.proteo.nexus/[CupCAKE] (Curation Portal for Curatio
+ |**Type**
+ |Web application
+ 
+-|**Demo URL**
+-|https://cupcake-vanilla-demo.proteo.nexus/
+-
+-|**Demo Credentials**
+-|Username: `demo` / Password: `demo123`
++|**Repository**
++|https://github.com/noatgnu/cupcake
+ 
+ |**Description**
+ |CupCAKE provides a web-based platform for annotating proteomics datasets with standardized metadata. It supports SDRF-Proteomics format and helps users create well-annotated sample metadata files.
+@@ -89,13 +86,12 @@ a|
+ |===
+ 
+ .Testing CupCAKE
+-To try CupCAKE with the demo instance:
++The project source is in the CupCAKE repository:
+ 
+-1. Navigate to https://cupcake-vanilla-demo.proteo.nexus/
+-2. Log in with username `demo` and password `demo123`
+-3. Create a new project or explore existing annotated datasets
+-4. Use the annotation interface to create SDRF files with guided templates
+-5. Export your annotations in SDRF-Proteomics format
++1. Open https://github.com/noatgnu/cupcake
++2. Create a new project or explore existing annotated datasets
++3. Use the annotation interface to create SDRF files with guided templates
++4. Export your annotations in SDRF-Proteomics format
+ 
+ [[validators]]
+ == Validators
+diff --git a/site/templates/template-page.html.j2 b/site/templates/template-page.html.j2
+index 19e4f225d..64597e881 100644
+--- a/site/templates/template-page.html.j2
++++ b/site/templates/template-page.html.j2
+@@ -67,12 +67,13 @@
+             display: flex; align-items: center; gap: 12px;
+             margin-bottom: 12px; flex-wrap: wrap;
+         }
+-        .toggle-btn {
++        .inherited-toggle-btn {
+             font-family: inherit; font-size: 0.85rem; font-weight: 500;
+             padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+             background: var(--bg-alt); color: var(--text); cursor: pointer;
++            white-space: nowrap;
+         }
+-        .toggle-btn:hover { background: #f0f3f6; border-color: var(--accent); }
++        .inherited-toggle-btn:hover { background: #f0f3f6; border-color: var(--accent); }
+         .column-stats { font-size: 0.85rem; color: var(--text-light); }
+ 
+         /* Column table */
+@@ -296,7 +297,7 @@
+             <h2>Columns</h2>
+             <div class="column-controls">
+                 {% if inherited_cols %}
+-                <button class="toggle-btn" id="toggle-inherited" onclick="toggleInherited()">
++                <button class="inherited-toggle-btn" id="toggle-inherited" onclick="toggleInherited()">
+                     Show inherited columns ({{ inherited_cols | length }})
+                 </button>
+                 {% endif %}

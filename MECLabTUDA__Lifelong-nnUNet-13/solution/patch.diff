@@ -1,0 +1,40 @@
+diff --git a/extract_predictions.py b/extract_predictions.py
+index 91e2b6f..2d66891 100644
+--- a/extract_predictions.py
++++ b/extract_predictions.py
+@@ -55,7 +55,7 @@
+             args += [str(x) for x in trained_on]
+             args += ['-f', fold, '-use_model']
+             args += [str(x) for x in use_model]
+-            args += ['-evaluate_on', str(evaluate_on), '-d', device, '-use_head', str(head), '--enable_tta']
++            args += ['-evaluate_on', str(evaluate_on), '-d', device, '-use_head', str(head)]
+             # print(args)
+             sys.argv = args
+             run_inference()
+\ No newline at end of file
+diff --git a/nnunet_ext/run/run_inference.py b/nnunet_ext/run/run_inference.py
+index 79bb5a8..6ea5684 100644
+--- a/nnunet_ext/run/run_inference.py
++++ b/nnunet_ext/run/run_inference.py
+@@ -42,7 +42,7 @@ def run_inference():
+     parser.add_argument("--overwrite_existing", required=False, default=False, action="store_true",
+                         help="Set this flag if the target folder contains predictions that you would like to overwrite")
+     parser.add_argument("--enable_tta", required=False, default=False, action="store_true",
+-                        help="set this flag to disable test time data augmentation via mirroring. Speeds up inference "
++                        help="set this flag to enable test time data augmentation via mirroring. Slows down inference "
+                              "by roughly factor 4 (2D) or 8 (3D)")
+     parser.add_argument("-p", help="plans identifier. Only change this if you created a custom experiment planner",
+                         default=default_plans_identifier, required=False)
+diff --git a/predict.ipynb b/predict.ipynb
+index f581f82..7bfa3a1 100644
+--- a/predict.ipynb
++++ b/predict.ipynb
+@@ -793,7 +793,7 @@
+     "    args += [str(x) for x in trained_on]\n",
+     "    args += ['-f', fold, '-use_model']\n",
+     "    args += [str(x) for x in use_model]\n",
+-    "    args += ['-evaluate_on', str(evaluate_on), '-d', device, '-use_head', str(head), '--enable_tta']\n",
++    "    args += ['-evaluate_on', str(evaluate_on), '-d', device, '-use_head', str(head)]\n",
+     "    # print(args)\n",
+     "    sys.argv = args\n",
+     "    run_inference()"

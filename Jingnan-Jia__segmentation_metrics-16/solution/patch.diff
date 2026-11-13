@@ -1,0 +1,25 @@
+diff --git a/README.md b/README.md
+index 1f05aa5..9050ef7 100644
+--- a/README.md
++++ b/README.md
+@@ -6,7 +6,6 @@
+ 
+ This is a simple package to compute different metrics for **Medical** image segmentation(images with suffix `.mhd`, `.mha`, `.nii`, `.nii.gz` or `.nrrd`), and write them to csv file.
+ 
+-
+ ## Summary
+ To assess the segmentation performance, there are several different methods. Two main methods are volume-based metrics and distance-based metrics.
+ 
+diff --git a/setup.py b/setup.py
+index 9a80124..9509aaa 100644
+--- a/setup.py
++++ b/setup.py
+@@ -5,7 +5,7 @@
+ 
+ setuptools.setup(
+     name="seg_metrics", # Replace with your own username
+-    version="1.0.19",
++    version="1.0.24",
+     author="Jingnan",
+     author_email="jiajingnan2222@gmail.com",
+     description="A package to compute different segmentation metrics for Medical images.",

@@ -1,0 +1,486 @@
+diff --git a/.gitignore b/.gitignore
+index ca0978b..7bfa22d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,2 +1,3 @@
+ /config.env
+ /venv/
++*.pyc
+\ No newline at end of file
+diff --git a/__pycache__/metrics.cpython-39.pyc b/__pycache__/metrics.cpython-39.pyc
+new file mode 100644
+index 0000000..6d5d752
+Binary files /dev/null and b/__pycache__/metrics.cpython-39.pyc differ
+diff --git a/config.env b/config.env
+index e2cbc74..a48c6f9 100644
+--- a/config.env
++++ b/config.env
+@@ -1,4 +1,4 @@
+-PC_CACHE_FOLDER =
+-PC_RESULTS_FOLDER =
+-PC_EVALUATION_DATA_ROOT_FOLDER =
+-PC_DEFAULT_BACKBONE =
+\ No newline at end of file
++PC_CACHE_FOLDER = '/scratch/groups/jamesz/pathtweets_data_20230211/data_validation_resize=224_embedding_caches'
++PC_RESULTS_FOLDER = '/oak/stanford/groups/jamesz/pathtweets/v2/plip_results_linear_2'
++PC_EVALUATION_DATA_ROOT_FOLDER = "/oak/stanford/groups/jamesz/pathtweets/v2/evaluation_datasets/seed=1_trainratio=0.70_size=224"
++PC_DEFAULT_BACKBONE = 
+\ No newline at end of file
+diff --git a/embedders/__pycache__/__init__.cpython-39.pyc b/embedders/__pycache__/__init__.cpython-39.pyc
+new file mode 100644
+index 0000000..62f7e59
+Binary files /dev/null and b/embedders/__pycache__/__init__.cpython-39.pyc differ
+diff --git a/embedders/__pycache__/factory.cpython-39.pyc b/embedders/__pycache__/factory.cpython-39.pyc
+new file mode 100644
+index 0000000..6961c8f
+Binary files /dev/null and b/embedders/__pycache__/factory.cpython-39.pyc differ
+diff --git a/embedders/__pycache__/internal_datasets.cpython-39.pyc b/embedders/__pycache__/internal_datasets.cpython-39.pyc
+new file mode 100644
+index 0000000..44ae8ce
+Binary files /dev/null and b/embedders/__pycache__/internal_datasets.cpython-39.pyc differ
+diff --git a/embedders/__pycache__/mudipath.cpython-39.pyc b/embedders/__pycache__/mudipath.cpython-39.pyc
+new file mode 100644
+index 0000000..551c6e3
+Binary files /dev/null and b/embedders/__pycache__/mudipath.cpython-39.pyc differ
+diff --git a/embedders/__pycache__/plip.cpython-39.pyc b/embedders/__pycache__/plip.cpython-39.pyc
+new file mode 100644
+index 0000000..d4f0140
+Binary files /dev/null and b/embedders/__pycache__/plip.cpython-39.pyc differ
+diff --git a/embedders/factory.py b/embedders/factory.py
+index 49d475f..ceb1669 100644
+--- a/embedders/factory.py
++++ b/embedders/factory.py
+@@ -10,11 +10,18 @@ class EmbedderFactory:
+     def __init__(self):
+         pass
+     
+-    def factory(self, name, path):
++    def factory(self, args):
++        name = args.model_name
++        path = args.backbone
++
+         device = "cuda" if torch.cuda.is_available() else "cpu"
+         if name == "plip":
+             model, preprocess = clip.load("ViT-B/32", device=device)
+-            model.load_state_dict(torch.load(path))
++            if device == 'cuda':
++                model.load_state_dict(torch.load(path))
++            elif device == 'cpu':
++                model.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
++                
+             model.eval()
+             return CLIPEmbedder(model, preprocess, name, path)
+ 
+diff --git a/embedders/mudipath.py b/embedders/mudipath.py
+index ec8857e..7eb1c9b 100644
+--- a/embedders/mudipath.py
++++ b/embedders/mudipath.py
+@@ -2,7 +2,7 @@
+ import re
+ import sys
+ from abc import abstractmethod
+-from utils.cacher import cache_hit_or_miss, cache_numpy_object
++from utils.cacher import cache_hit_or_miss, cache_numpy_object, cache_hit_or_miss_raw_filename, cache_numpy_object_raw_filename
+ from embedders.internal_datasets import CLIPImageDataset
+ from torch.utils.data import DataLoader
+ from torch.utils import model_zoo
+@@ -192,13 +192,17 @@ def __init__(self, model, preprocess, name, backbone):
+         self.backbone = backbone
+ 
+     def image_embedder(self, list_of_images, device="cuda", num_workers=1, batch_size=32, additional_cache_name=""):
+-        hit_or_miss = cache_hit_or_miss(self.name + "img" + additional_cache_name, self.backbone)
++        # name: model name (e.g., plip, clip, mudipath)
++        # additional_cache_name: name of the validation dataset (e.g., Kather_7K)
++        #hit_or_miss = cache_hit_or_miss(self.name + "img" + additional_cache_name, self.backbone)
++        hit_or_miss = cache_hit_or_miss_raw_filename(self.name + "img" + additional_cache_name, self.backbone)
+ 
+         if hit_or_miss is not None:
+             return hit_or_miss
+         else:
+             hit = self.embed_images(list_of_images, device=device, num_workers=num_workers, batch_size=batch_size)
+-            cache_numpy_object(hit, self.name + "img" + additional_cache_name, self.backbone)
++            #cache_numpy_object(hit, self.name + "img" + additional_cache_name, self.backbone)
++            cache_numpy_object_raw_filename(hit, self.name + "img" + additional_cache_name, self.backbone)
+             return hit
+ 
+     def embed_images(self, list_of_images, device="cuda", num_workers=1, batch_size=32):
+diff --git a/embedders/plip.py b/embedders/plip.py
+index 26f97f6..88663cc 100644
+--- a/embedders/plip.py
++++ b/embedders/plip.py
+@@ -4,7 +4,7 @@
+ import torch
+ from embedders.internal_datasets import *
+ from torch.utils.data import DataLoader
+-from utils.cacher import cache_hit_or_miss, cache_numpy_object
++from utils.cacher import cache_hit_or_miss, cache_numpy_object, cache_hit_or_miss_raw_filename, cache_numpy_object_raw_filename
+ 
+ class CLIPEmbedder:
+ 
+@@ -15,13 +15,13 @@ def __init__(self, model, preprocess, name, backbone):
+         self.backbone = backbone
+ 
+     def image_embedder(self, list_of_images, device="cuda", num_workers=1, batch_size=32, additional_cache_name=""):
+-        hit_or_miss = cache_hit_or_miss(self.name + "img" + additional_cache_name, self.backbone)
++        hit_or_miss = cache_hit_or_miss_raw_filename(self.name + "img" + additional_cache_name, self.backbone)
+ 
+         if hit_or_miss is not None:
+             return hit_or_miss
+         else:
+             hit = self.embed_images(list_of_images, device=device, num_workers=num_workers, batch_size=batch_size)
+-            cache_numpy_object(hit, self.name + "img" + additional_cache_name, self.backbone)
++            cache_numpy_object_raw_filename(hit, self.name + "img" + additional_cache_name, self.backbone)
+             return hit
+ 
+     def text_embedder(self, list_of_labels, device="cuda", num_workers=1, batch_size=32, additional_cache_name=""):
+diff --git a/evaluation/__pycache__/__init__.cpython-39.pyc b/evaluation/__pycache__/__init__.cpython-39.pyc
+new file mode 100644
+index 0000000..3b17e25
+Binary files /dev/null and b/evaluation/__pycache__/__init__.cpython-39.pyc differ
+diff --git a/evaluation/linear_probing/__pycache__/__init__.cpython-39.pyc b/evaluation/linear_probing/__pycache__/__init__.cpython-39.pyc
+new file mode 100644
+index 0000000..e38710c
+Binary files /dev/null and b/evaluation/linear_probing/__pycache__/__init__.cpython-39.pyc differ
+diff --git a/evaluation/linear_probing/__pycache__/linear_classifier.cpython-39.pyc b/evaluation/linear_probing/__pycache__/linear_classifier.cpython-39.pyc
+new file mode 100644
+index 0000000..f67a553
+Binary files /dev/null and b/evaluation/linear_probing/__pycache__/linear_classifier.cpython-39.pyc differ
+diff --git a/evaluation/linear_probing/linear_classifier.py b/evaluation/linear_probing/linear_classifier.py
+index a4089b0..2d89b64 100644
+--- a/evaluation/linear_probing/linear_classifier.py
++++ b/evaluation/linear_probing/linear_classifier.py
+@@ -17,7 +17,7 @@ def train_and_test(self, train_x: List, train_y: List, test_x: List, test_y: Lis
+         classifier = SGDClassifier(random_state=self.seed, loss="log_loss",
+                                    alpha=self.alpha, verbose=0,
+                                    penalty="l2", max_iter=10000, class_weight="balanced")
+-
++        
+         le = LabelEncoder()
+ 
+         train_y = le.fit_transform(train_y)
+diff --git a/parallel_on_sherlock/.gitignore b/parallel_on_sherlock/.gitignore
+new file mode 100644
+index 0000000..f6704db
+--- /dev/null
++++ b/parallel_on_sherlock/.gitignore
+@@ -0,0 +1,4 @@
++*.sh
++*.script
++*.err
++*.txt
+\ No newline at end of file
+diff --git a/parallel_on_sherlock/_gen_bash.py b/parallel_on_sherlock/_gen_bash.py
+new file mode 100644
+index 0000000..faaacf7
+--- /dev/null
++++ b/parallel_on_sherlock/_gen_bash.py
+@@ -0,0 +1,182 @@
++
++import sys, os, platform, copy
++import pandas as pd
++import numpy as np
++import itertools
++from collections import Counter
++from tqdm import tqdm
++opj = os.path.join
++
++
++if __name__ == '__main__':
++
++    override = True
++
++    partition = 'jamesz'
++    #partition = 'gpu'
++
++    train_dataset = 'All'
++    train_dataset = 'TRL' # TRL, TR, L
++
++    if partition == 'jamesz':
++        n = 8
++    elif partition == 'owners':
++        n = 20
++    elif partition == 'gpu':
++        n = 8
++
++    wd = '/oak/stanford/groups/jamesz/pathtweets/ML_scripts/part_5_linear_probing/path_eval'
++    bash_folder = opj(wd, 'parallel_on_sherlock', 'bash_%s_%s' % (partition, train_dataset))
++    os.makedirs(bash_folder, exist_ok=True)
++
++    resultdir = '/oak/stanford/groups/jamesz/pathtweets/v2/plip_results_linear_2'
++    os.makedirs(resultdir, exist_ok=True)
++
++    datasets = [
++                'Kather',
++                #'WSSS4LUAD_binary',
++                #'DigestPath',
++                #'PanNuke',
++                #'BreaKHis_benign_malignant',
++                #'GasHisSDB',
++                #'BreaKHis_8_subtypes',
++                ]
++    alphas = [0.1, 0.01, 0.001, 0.0001]
++
++    models = []
++    model_rootdir = '/oak/stanford/groups/jamesz/pathtweets/v2/plip_models'
++    for m in os.listdir(model_rootdir):
++        fp = opj(model_rootdir, m)
++        if fp.endswith('.pt'):
++            if train_dataset != 'All':
++                this_train_data = fp.split("comet_tags_['")[1].split('.csv')[0]
++                if this_train_data == train_dataset:
++                    models += [fp]
++                else:
++                    pass
++    
++    baseline_model_list = ['clip', 'mudipath']
++    models = models + baseline_model_list
++
++    #print('-----------------------------------------------------')
++    #print('List all available models (%d):' % len(models))
++    #for m in models: print(m)
++    #print('-----------------------------------------------------')
++
++    
++    if override:
++        print('remove all files in bash_folder')
++        filelist = [f for f in os.listdir(bash_folder)]
++        for f in filelist: os.remove(os.path.join(bash_folder, f))
++
++    all_combinations = itertools.product(
++                                        models,
++                                        datasets,
++                                        alphas,
++                                        )
++
++
++    text_list = []
++
++    n_finished = 0
++    n_total = 0
++    for combination in all_combinations:
++        modelfullpath, dataset, alpha = combination
++        n_total += 1
++        
++        if modelfullpath in baseline_model_list:
++            modelname = modelfullpath
++            backbone = 'default'
++        else:
++            modelname = 'plip'
++            backbone = modelfullpath # the backbone should be full path
++
++        os.makedirs(opj(resultdir, dataset, modelname, str(alpha)), exist_ok=True)
++        result_fullpath = opj(resultdir, dataset, modelname, str(alpha), '%s.csv' % backbone)
++        print(result_fullpath)
++        if os.path.exists(result_fullpath):
++            n_finished += 1
++            #os.remove(result_fullpath)
++            continue
++        bashtext = 'python linear_probing_evaluation.py' + \
++                    ' --backbone "%s"' % str(modelfullpath) + \
++                    ' --dataset "%s"' % str(dataset) + \
++                    ' --alpha "%s"' % str(alpha)
++        text_list.append(bashtext)
++    
++
++    print('-----------------------------------------------------')
++    print('Finished %d/%d, now working on %d combinations.' % ( n_finished, n_total, n_total-n_finished ) )
++    print('-----------------------------------------------------')
++    
++    if not override:
++        sys.exit()
++    n_text_list = np.array_split(np.array(text_list), n)
++
++    for i, tl in enumerate(n_text_list):
++        bashtext = "conda activate pathCLIP \n"
++        bashtext += "ml load py-numpy/1.20.3_py39 \n"
++        bashtext += "cd %s \n" % os.path.join(wd, 'scripts')
++        
++        if partition == 'gpu':
++            tl = np.array(tl)[::-1]
++
++
++
++        job_list = ''
++        for t in tl:
++            job_list += t + ';\n'
++        bashtext = bashtext + job_list
++        with open(os.path.join(bash_folder, 'run_bash_%d.sh' % (i+1)), 'w') as f:
++            f.write(bashtext)
++        # np.savetxt(os.path.join(bash_folder, 'run_bash_%d.sh' % (i+1)), tl, fmt = "%s")
++        # https://stackoverflow.com/questions/57044117/error-only-when-submitting-python-job-in-slurm
++        '''
++        To use the in-group GPU, you should use this flag:
++        -p jamesz
++        Otherwise, use:
++        -p gpu
++        '''
++        if partition == 'gpu':
++            gpu_config = "#SBATCH -p gpu \n" + \
++                        "#SBATCH -C GPU_BRD:GEFORCE \n" + \
++                        "#SBATCH -C GPU_MEM:16GB \n"
++        elif partition == 'jamesz':
++            #gpu_config = "#SBATCH -p jamesz \n" + \
++            #             '#SBATCH -C "GPU_SKU:RTX_2080Ti" \n'
++            gpu_config = "#SBATCH -p jamesz \n"
++        elif partition == 'owners':
++            gpu_config = "#SBATCH -p owners \n"
++
++
++        jobscript = "#!/bin/bash \n" + \
++                    gpu_config + \
++                    "#SBATCH --gpus-per-task=1 \n" + \
++                    "#SBATCH --gpus-per-node=1 \n" + \
++                    "#SBATCH -J L%d_%s \n" % (i+1, train_dataset) + \
++                    "#SBATCH -o L%d_%s.txt\n" % (i+1, train_dataset) + \
++                    "#SBATCH -e L%d_%s.err\n" % (i+1, train_dataset) + \
++                    "#SBATCH --time=47:59:00 \n" + \
++                    "#SBATCH --ntasks=1 \n" + \
++                    "#SBATCH --cpus-per-task=1 \n" + \
++                    "#SBATCH --mem-per-cpu=16G \n" + \
++                    "bash %s/run_bash_%d.sh" % (bash_folder ,i+1)
++                    
++        with open(os.path.join(bash_folder, 'job_%d.script' % (i+1)), 'w+') as f:
++            f.write(jobscript)
++
++
++    qsub = []
++    for i in range(n):
++        qsub.append('sbatch job_%d.script' % (i+1))
++    
++    np.savetxt(os.path.join(bash_folder, '_sbatch_all.sh'), qsub, fmt = "%s")
++
++    print('----------------------------')
++    print('Don\'t forget:')
++    print('conda activate pathCLIP')
++    print('----------------------------')
++
++
++
++
+diff --git a/scripts/linear_probing_evaluation.py b/scripts/linear_probing_evaluation.py
+index e0dd4ba..8381dde 100644
+--- a/scripts/linear_probing_evaluation.py
++++ b/scripts/linear_probing_evaluation.py
+@@ -18,9 +18,9 @@ def config():
+     #DEFAULT_BACKBONE = "/oak/stanford/groups/jamesz/fede/medical_clip/novel_models_for_path/epoch_3_2023-01-30 14:57:58.402744_prime_bracket_4833.pt"
+ 
+     parser = argparse.ArgumentParser()
+-    parser.add_argument("--model_name", default="plip", type=str)
++    parser.add_argument("--model_name", default="plip", type=str, choices=['plip', 'clip', 'mudipath'])
+     parser.add_argument("--backbone", default='default', type=str)
+-    parser.add_argument("--dataset", default="kather", type=str)
++    parser.add_argument("--dataset", default="Kather", type=str)
+     parser.add_argument("--batch-size", default=128, type=int)
+     parser.add_argument("--num-workers", default=4, type=int)
+     parser.add_argument("--seed", default=1, type=int)
+@@ -37,6 +37,11 @@ def config():
+ 
+     if args.model_name == "plip" and args.backbone == "default":
+         args.backbone = os.environ["PC_DEFAULT_BACKBONE"]
++    
++    print('Now working on:')
++    print(f'    Dataset: {args.dataset}')
++    print(f'    Model: {args.model_name}')
++    print(f'    Backbone: {args.backbone}')
+ 
+     train_dataset_name = args.dataset + "_train.csv"
+     test_dataset_name = args.dataset + "_test.csv"
+@@ -44,10 +49,11 @@ def config():
+     train_dataset = pd.read_csv(os.path.join(data_folder, train_dataset_name))
+     test_dataset = pd.read_csv(os.path.join(data_folder, test_dataset_name))
+ 
+-    embedder = EmbedderFactory().factory(args.model_name, args.backbone)
++    embedder = EmbedderFactory().factory(args) # change to args to parse additional configuration into CLIPEmbedder and DenseNetEmbedder
+ 
+-    train_x = embedder.image_embedder(train_dataset["image"].tolist(), additional_cache_name=train_dataset_name)
+-    test_x = embedder.image_embedder(test_dataset["image"].tolist(), additional_cache_name=test_dataset_name)
++    device = "cuda" if torch.cuda.is_available() else "cpu" # enable CPU feedforward
++    train_x = embedder.image_embedder(train_dataset["image"].tolist(), additional_cache_name=train_dataset_name, device=device)
++    test_x = embedder.image_embedder(test_dataset["image"].tolist(), additional_cache_name=test_dataset_name, device=device)
+ 
+     prober = LinearProber(alpha=args.alpha, seed=args.seed)
+ 
+@@ -61,3 +67,20 @@ def config():
+     rs = ResultsHandler(args.dataset, "linear_probing", additional_parameters)
+     rs.add(results)
+ 
++
++    ###############################################################
++    # below are new codes
++    ###############################################################
++    opj = os.path.join
++    savedir = opj(os.environ["PC_RESULTS_FOLDER"], args.dataset, args.model_name, str(args.alpha))
++    os.makedirs(savedir, exist_ok=True)
++    backbone = args.backbone
++    if args.model_name == 'plip':
++        backbone = os.path.basename(backbone)
++    save_filename = opj(savedir, '%s.csv' % backbone)
++
++    train_perf, test_perf = results
++    train_perf = pd.DataFrame(train_perf, index=[0])
++    test_perf = pd.DataFrame(test_perf, index=[1])
++    perf = pd.concat([train_perf, test_perf], axis=0)
++    perf.to_csv(save_filename)
+\ No newline at end of file
+diff --git a/utils/__pycache__/__init__.cpython-39.pyc b/utils/__pycache__/__init__.cpython-39.pyc
+new file mode 100644
+index 0000000..f6dc26e
+Binary files /dev/null and b/utils/__pycache__/__init__.cpython-39.pyc differ
+diff --git a/utils/__pycache__/cacher.cpython-39.pyc b/utils/__pycache__/cacher.cpython-39.pyc
+new file mode 100644
+index 0000000..0a78ce5
+Binary files /dev/null and b/utils/__pycache__/cacher.cpython-39.pyc differ
+diff --git a/utils/__pycache__/results_handler.cpython-39.pyc b/utils/__pycache__/results_handler.cpython-39.pyc
+new file mode 100644
+index 0000000..0543f17
+Binary files /dev/null and b/utils/__pycache__/results_handler.cpython-39.pyc differ
+diff --git a/utils/cacher.py b/utils/cacher.py
+index 55122bf..56e9992 100644
+--- a/utils/cacher.py
++++ b/utils/cacher.py
+@@ -18,10 +18,10 @@ def get_cache_name(name: str, path: str):
+     m.update(key.encode('utf-8'))
+ 
+     save_path = os.path.join(cache_folder, m.hexdigest())
++    print()
+ 
+     return save_path
+ 
+-
+ def cache_hit_or_miss(name: str, path: str):
+     save_path = get_cache_name(name, path)
+ 
+@@ -42,3 +42,33 @@ def cache_numpy_object(npa, name, path):
+ 
+     with open(f"{save_path}", 'wb') as f:
+         np.save(f, npa)
++
++
++
++###############################################################
++# below are new codes
++###############################################################
++def get_savepath(name, path):
++    modelname, dataset_name = name.split('img')
++    dataset_name = dataset_name.split('.csv')[0]
++    cache_folder = os.environ["PC_CACHE_FOLDER"]
++    cache_subfolder_data = os.path.join(cache_folder, dataset_name)
++    os.makedirs(cache_subfolder_data, exist_ok=True)
++    if modelname == 'plip':
++        path = os.path.basename(path)
++    save_path = os.path.join(cache_subfolder_data, path)
++    return save_path
++
++def cache_hit_or_miss_raw_filename(name: str, path: str):
++    save_path = get_savepath(name, path)
++    if os.path.exists(save_path):
++        print('[CACHE] Found existed embedding.')
++        return np.load(save_path)
++    else:
++        print('[CACHE] No existed embedding found. Need to generate embedding first.')
++        return None
++
++def cache_numpy_object_raw_filename(npa, name, path):
++    save_path = get_savepath(name, path)
++    with open(f"{save_path}", 'wb') as f:
++        np.save(f, npa)

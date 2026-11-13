@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/biodatageeks__polars-bio-501"
+description = "chore: prepare 0.37.0 release"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "polars-bio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "biodatageeks/polars-bio"
+ref = "875d990a9f45f52e92bcf2e242b1519ab953f28a"
+reference = "https://github.com/biodatageeks/polars-bio/pull/501"
+source_access = "auto"
+built_at = "2026-11-13T16:10:07.635446+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5cb214ae66c1945755277d7bd0a23e3787a9ed3540482fac63860c77902bae4f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-07T15:03:51Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "bioconda-recipe/README.md",
+    "bioconda-recipe/meta.yaml",
+    "docs/developers.md",
+    "polars_bio/__init__.py",
+    "polars_bio/_tabular_io.py",
+    "pyproject.toml",
+    "uv.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 79
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

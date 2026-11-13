@@ -1,0 +1,46 @@
+diff --git a/platipy/backend/application.py b/platipy/backend/application.py
+index 8ae978ad..65f3ceb9 100644
+--- a/platipy/backend/application.py
++++ b/platipy/backend/application.py
+@@ -87,7 +87,7 @@ def run_dicom_listener(self, listen_port=None, listen_ae_title=None):
+         """
+ 
+         from .models import Dataset, DataObject
+-        from . import db
++        from . import db, app
+ 
+         if listen_port is None:
+             listen_port = self.dicom_listener_port
+@@ -122,18 +122,23 @@ def series_recieved(dicom_path):
+                 logger.error("Series UID could not be determined... Stopping")
+                 return
+ 
+-            # Find the data objects with the given series UID and update them
+-            dos = DataObject.query.filter_by(series_instance_uid=series_uid).all()
++            with app.app_context():
+ 
+-            if len(dos) == 0:
+-                logger.error("No Data Object found with Series UID: %s ... Stopping", series_uid)
+-                return
++                # Find the data objects with the given series UID and update them
++                dos = DataObject.query.filter_by(series_instance_uid=series_uid).all()
++
++                if len(dos) == 0:
++                    logger.error(
++                        "No Data Object found with Series UID: %s ... Stopping",
++                        series_uid,
++                    )
++                    return
+ 
+-            for do in dos:
++                for do in dos:
+ 
+-                do.is_fetched = True
+-                do.path = str(dicom_path)
+-                db.session.commit()
++                    do.is_fetched = True
++                    do.path = str(dicom_path)
++                    db.session.commit()
+ 
+         try:
+             dicom_listener = DicomListener(

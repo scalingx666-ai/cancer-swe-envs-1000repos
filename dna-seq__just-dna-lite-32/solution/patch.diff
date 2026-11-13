@@ -1,0 +1,396 @@
+diff --git a/just-dna-pipelines/src/just_dna_pipelines/annotation/hf_logic.py b/just-dna-pipelines/src/just_dna_pipelines/annotation/hf_logic.py
+index f8391a1..2aff36d 100644
+--- a/just-dna-pipelines/src/just_dna_pipelines/annotation/hf_logic.py
++++ b/just-dna-pipelines/src/just_dna_pipelines/annotation/hf_logic.py
+@@ -105,7 +105,7 @@ def prepare_vcf_rsid_only(
+ 
+ 
+ class UnsupportedLeadTable(Exception):
+-    """A module's lead table carries no key this engine can join a VCF on.
++    """A module and VCF share no variant key this engine can join on.
+ 
+     Raised rather than returned so the per-module loop can tell "this family is not annotatable
+     yet" apart from "this module is broken", and skip it without failing the whole run.
+@@ -226,10 +226,10 @@ def _lead_join_strategy(lead_lf: pl.LazyFrame) -> tuple[str, str]:
+     today and the format keeps adding them, so a name-keyed switch would need editing every
+     release while a schema-keyed check absorbs new families for free.
+ 
+-    - `position` — `chrom`/`start` exist *and* hold at least one value. A table typed with
+-      coordinates but null throughout (any rsid-authored 0.4 table, since the compiler applies
+-      `resolution.csv` to `weights.parquet` alone) is not positionally joinable, and treating it
+-      as if it were annotates nothing instead of erroring.
++    - `position` — `chrom`/`start` exist *and* hold at least one value. A legacy table typed with
++      coordinates but null throughout is not positionally joinable, and treating it as if it were
++      annotates nothing instead of erroring. Compiler 0.6+ fills resolved coordinates onto every
++      variant-led table family; this fallback remains for older and unresolved artifacts.
+     - `rsid` — no usable coordinates, but `rsid` + `genotype` are there.
+     - `unsupported` — neither. `diplotypes`, `pgs`, `allele_function` and the binning families
+       carry no per-variant key at all; the caller skips them with the reason recorded rather than
+@@ -237,7 +237,11 @@ def _lead_join_strategy(lead_lf: pl.LazyFrame) -> tuple[str, str]:
+     """
+     schema = set(lead_lf.collect_schema().names())
+     if {"chrom", "start"}.issubset(schema) and bool(
+-        lead_lf.select(pl.col("chrom").is_not_null().any()).collect().item()
++        lead_lf.select(
++            (pl.col("chrom").is_not_null() & pl.col("start").is_not_null()).any()
++        )
++        .collect()
++        .item()
+     ):
+         return "position", "lead table carries coordinates"
+     if {"rsid", "genotype"}.issubset(schema):
+@@ -294,9 +298,8 @@ def annotate_vcf_with_module_weights(
+         weights_lf = scan_module_table(module_name, ModuleTable.LEAD, module_info=module_info)
+         weights_lf = _normalize_lead_genotype(weights_lf)
+ 
+-        # A position join needs coordinates, and the 0.4 table families are materialized verbatim
+-        # from their authored CSV — the compiler applies resolution.csv to weights.parquet only. So a
+-        # pharm_variants-led module reaches us with chrom/start null on every row and would join to
++        # A position join needs coordinates. Legacy variant-led artifacts may have chrom/start null
++        # on every row even when their authored resolution.csv knew the locus; those would join to
+         # nothing at all. Fall back to rsid rather than silently annotating zero variants, and stop
+         # outright when there is nothing to fall back on.
+         strategy, reason = _lead_join_strategy(weights_lf)
+@@ -315,18 +318,23 @@ def annotate_vcf_with_module_weights(
+             # Join on rsid + genotype (requires VCF to have rsids)
+             #
+             # A VCF whose ID column is empty throughout — DeepVariant output among others — matches
+-            # such a module on nothing at all. That is a property of the input, not a failure, but
+-            # it must not read as "this module found nothing in you".
++            # such a module on nothing at all. That is an *unassessable pairing*, not a biological
++            # zero: the same variant may be present at its coordinate while the VCF simply omits its
++            # dbSNP identifier. Stop before writing an empty parquet so the manifest/report can say
++            # why this module was not evaluated instead of claiming that it found no variants.
+             if not _vcf_has_rsids(vcf_lf):
++                reason = (
++                    "the module exposes only rsid + genotype join keys, but this VCF carries no "
++                    "rsIDs. Recompile the module with coordinate resolution (just-dna-compiler "
++                    ">=0.6) or use an ID-populated VCF"
++                )
+                 action.log(
+                     message_type="info",
+                     step="vcf_has_no_rsids",
+                     module=module_name,
+-                    reason=(
+-                        "this VCF carries no rsIDs, and the module can only be joined on rsid + "
+-                        "genotype, so no variant can match"
+-                    ),
++                    reason=reason,
+                 )
++                raise UnsupportedLeadTable(f"{module_name}: {reason}")
+ 
+             # Key on each identifier the record carries, not on the raw ID cell (RM64).
+             vcf_keyed = _vcf_rsid_join_keys(vcf_lf)
+diff --git a/just-dna-pipelines/src/just_dna_pipelines/annotation/report_logic.py b/just-dna-pipelines/src/just_dna_pipelines/annotation/report_logic.py
+index 1562c71..e90f115 100644
+--- a/just-dna-pipelines/src/just_dna_pipelines/annotation/report_logic.py
++++ b/just-dna-pipelines/src/just_dna_pipelines/annotation/report_logic.py
+@@ -1167,8 +1167,8 @@ def build_report_credits(
+ MODULE_DISPLAY_NAMES: dict[str, str] = build_display_names_dict(DISCOVERED_MODULES)
+ 
+ 
+-def _module_outputs_from_manifest(modules_dir: Path) -> dict[str, ModuleOutputMapping]:
+-    """Read the run's ``manifest.json`` → one ``ModuleOutputMapping`` per annotated module.
++def _annotation_manifest(modules_dir: Path) -> AnnotationManifest | None:
++    """Read the run's annotation manifest, or ``None`` when it is absent/unreadable.
+ 
+     Parsed through ``AnnotationManifest`` rather than as raw JSON on purpose: manifests written
+     before the engine learned about lead tables carry no ``lead_table`` key at all, and the model's
+@@ -1181,10 +1181,10 @@ def _module_outputs_from_manifest(modules_dir: Path) -> dict[str, ModuleOutputMa
+     """
+     manifest_path = modules_dir / "manifest.json"
+     if not manifest_path.exists():
+-        return {}
++        return None
+ 
+     try:
+-        manifest = AnnotationManifest.model_validate_json(
++        return AnnotationManifest.model_validate_json(
+             manifest_path.read_text(encoding="utf-8")
+         )
+     except (ValueError, OSError) as exc:
+@@ -1194,11 +1194,56 @@ def _module_outputs_from_manifest(modules_dir: Path) -> dict[str, ModuleOutputMa
+             path=str(manifest_path),
+             reason=str(exc),
+         )
++        return None
++
++
++def _module_outputs_from_manifest(modules_dir: Path) -> dict[str, ModuleOutputMapping]:
++    """Read the run's ``manifest.json`` → one output mapping per annotated module."""
++    manifest = _annotation_manifest(modules_dir)
++    if manifest is None:
+         return {}
+ 
+     return {m.module: m for m in manifest.modules}
+ 
+ 
++def _unavailable_modules(
++    manifest: AnnotationManifest | None,
++    module_names: list[str] | None,
++) -> list[dict[str, str]]:
++    """Modules the run could not assess, with the reason preserved for the report.
++
++    A skipped rsID-only module on an ID-less VCF is not a zero-result module. Failed modules have the
++    same reporting requirement: the annotation loop intentionally isolates one module's failure, so
++    the downstream report must not turn that isolation into silence.
++    """
++    if manifest is None:
++        return []
++
++    outcomes = {
++        name: {"status": "Not assessed", "reason": reason}
++        for name, reason in manifest.skipped_modules.items()
++    }
++    outcomes.update(
++        {
++            name: {"status": "Annotation failed", "reason": reason}
++            for name, reason in manifest.failed_modules.items()
++        }
++    )
++    ordered_names = module_names or [
++        *manifest.skipped_modules.keys(),
++        *manifest.failed_modules.keys(),
++    ]
++    return [
++        {
++            "module_name": name,
++            "display_name": get_module_display_name(name),
++            **outcomes[name],
++        }
++        for name in ordered_names
++        if name in outcomes
++    ]
++
++
+ def build_module_provenance(
+     module_names: list[str],
+     module_outputs: dict[str, ModuleOutputMapping],
+@@ -1270,21 +1315,43 @@ def generate_longevity_report(
+     with start_action(action_type="generate_longevity_report", modules_dir=str(modules_dir)):
+         # Discover module infos
+         module_infos = discover_hf_modules()
+-        module_outputs = _module_outputs_from_manifest(modules_dir)
++        run_manifest = _annotation_manifest(modules_dir)
++        module_outputs = (
++            {m.module: m for m in run_manifest.modules}
++            if run_manifest is not None
++            else {}
++        )
+         lead_tables = {name: m.lead_table for name, m in module_outputs.items()}
++        unavailable_modules = _unavailable_modules(run_manifest, module_names)
+ 
+         # Find available parquet files
+         available_modules: list[str] = []
+         if module_names:
+             for name in module_names:
+                 parquet_path = modules_dir / f"{name}_weights.parquet"
+-                if parquet_path.exists():
++                # When a manifest exists it is the authority for *this run*. A parquet left by an
++                # earlier run must not override a current skipped/failed outcome and leak stale rows
++                # into the report.
++                produced_this_run = run_manifest is None or name in module_outputs
++                if produced_this_run and parquet_path.exists():
+                     available_modules.append(name)
++        elif run_manifest is not None:
++            available_modules = [
++                name
++                for name in module_outputs
++                if (modules_dir / f"{name}_weights.parquet").exists()
++            ]
+         else:
+             for parquet_file in sorted(modules_dir.glob("*_weights.parquet")):
+                 mod_name = parquet_file.stem.replace("_weights", "")
+                 available_modules.append(mod_name)
+ 
++        reported_modules = list(available_modules)
++        for outcome in unavailable_modules:
++            name = outcome["module_name"]
++            if name not in reported_modules:
++                reported_modules.append(name)
++
+         # Build report data for each module
+         longevity_data: Optional[dict] = None
+         other_modules_data: list[dict] = []
+@@ -1330,14 +1397,15 @@ def generate_longevity_report(
+         template = env.get_template("longevity_report.html.j2")
+ 
+         html = template.render(
+-            report_title=report_title_for_modules(available_modules),
+-            report_description=report_description_for_modules(available_modules),
++            report_title=report_title_for_modules(reported_modules),
++            report_description=report_description_for_modules(reported_modules),
+             preview_row_limit=TABLE_PREVIEW_ROWS,
+             user_name=user_name,
+             sample_name=sample_name,
+             longevity=longevity_data,
+             other_modules=other_modules_data,
+             pgx_modules=pgx_modules_data,
++            unavailable_modules=unavailable_modules,
+             credits=credits,
+             module_provenance=module_provenance,
+             module_display_names=MODULE_DISPLAY_NAMES,
+diff --git a/just-dna-pipelines/src/just_dna_pipelines/annotation/templates/longevity_report.html.j2 b/just-dna-pipelines/src/just_dna_pipelines/annotation/templates/longevity_report.html.j2
+index 4d61a42..418dc3a 100644
+--- a/just-dna-pipelines/src/just_dna_pipelines/annotation/templates/longevity_report.html.j2
++++ b/just-dna-pipelines/src/just_dna_pipelines/annotation/templates/longevity_report.html.j2
+@@ -786,6 +786,9 @@ window.addEventListener("scroll", function() {
+             {% for mod in pgx_modules %}
+             <li><a href="#module-{{ mod.module_name }}">{{ mod.display_name }}</a></li>
+             {% endfor %}
++            {% for mod in unavailable_modules %}
++            <li><a href="#module-{{ mod.module_name }}">{{ mod.display_name }} · {{ mod.status | lower }}</a></li>
++            {% endfor %}
+             {% if module_provenance %}
+             <li><a href="#modules">Modules and versions</a></li>
+             {% endif %}
+@@ -905,6 +908,18 @@ window.addEventListener("scroll", function() {
+     </section>
+     {% endfor %}
+ 
++    {% for mod in unavailable_modules %}
++    <section class="report-section" id="module-{{ mod.module_name }}">
++        <p class="section-kicker">Module outcome</p>
++        <h2>{{ mod.display_name }}</h2>
++        <aside class="scientific-note">
++            <strong>{{ mod.status }}</strong>
++            <p>{{ mod.reason }}</p>
++            <p>No biological conclusion can be drawn from this module for this run.</p>
++        </aside>
++    </section>
++    {% endfor %}
++
+     {% if module_provenance %}
+     <section class="report-section" id="modules">
+         <p class="section-kicker">Reproducibility</p>
+diff --git a/just-dna-pipelines/tests/test_hf_modules.py b/just-dna-pipelines/tests/test_hf_modules.py
+index 8e5c036..8eaef61 100644
+--- a/just-dna-pipelines/tests/test_hf_modules.py
++++ b/just-dna-pipelines/tests/test_hf_modules.py
+@@ -37,6 +37,7 @@
+ )
+ from just_dna_pipelines.annotation.configs import HfModuleAnnotationConfig
+ from just_dna_pipelines.annotation.hf_logic import (
++    UnsupportedLeadTable,
+     annotate_vcf_with_module_weights,
+     prepare_vcf_for_module_annotation,
+ )
+@@ -1067,6 +1068,57 @@ def test_annotate_joins_vcf_lists_to_authored_strings(self, tmp_path: Path):
+         assert set(result["rsid"].unique()) == {"rs1"}
+         assert set(result["drug"].drop_nulls().to_list()) == {"atorvastatin"}
+ 
++    def test_resolved_table_matches_an_idless_vcf_by_position(self, tmp_path: Path):
++        """Compiler 0.6 fills coordinates onto table-led rows, avoiding an rsID-only false zero."""
++        lead = tmp_path / "pharm_variants.parquet"
++        pl.DataFrame({
++            "module": ["pgx"],
++            "rsid": ["rs41423247"],
++            "chrom": ["5"],
++            "start": [143399010],
++            "ref": ["G"],
++            "genotype": ["C/C"],
++            "drug": ["glucocorticoids"],
++            "conclusion": ["response association"],
++        }).write_parquet(lead)
++        info = ModuleInfo(
++            name="pgx", repo_id="local", path=str(tmp_path),
++            lead_table="pharm_variants", lead_url=str(lead),
++        )
++        vcf = pl.DataFrame({
++            "chrom": ["5"], "start": [143399010], "rsid": [""],
++            "ref": ["G"], "alt": ["C"], "genotype": [["C", "C"]],
++        }).lazy()
++
++        out, matched, _ = annotate_vcf_with_module_weights(
++            vcf, "pgx", tmp_path / "annotated.parquet", module_info=info
++        )
++
++        assert matched == 1
++        assert pl.read_parquet(out)["drug"].to_list() == ["glucocorticoids"]
++
++    def test_unresolved_table_is_unassessable_on_an_idless_vcf(self, tmp_path: Path):
++        """Missing IDs are missing join keys, not evidence that the genome has no module variants."""
++        lead = tmp_path / "pharm_variants.parquet"
++        pl.DataFrame({
++            "module": ["pgx"], "rsid": ["rs41423247"],
++            "chrom": [None], "start": [None], "genotype": ["C/C"],
++        }, schema_overrides={"chrom": pl.String, "start": pl.Int64}).write_parquet(lead)
++        info = ModuleInfo(
++            name="pgx", repo_id="local", path=str(tmp_path),
++            lead_table="pharm_variants", lead_url=str(lead),
++        )
++        vcf = pl.DataFrame({
++            "chrom": ["5"], "start": [143399010], "rsid": [""],
++            "ref": ["G"], "alt": ["C"], "genotype": [["C", "C"]],
++        }).lazy()
++
++        with pytest.raises(UnsupportedLeadTable, match="VCF carries no rsIDs"):
++            annotate_vcf_with_module_weights(
++                vcf, "pgx", tmp_path / "annotated.parquet", module_info=info
++            )
++        assert not (tmp_path / "annotated.parquet").exists()
++
+     def test_a_module_with_no_joinable_key_is_skipped_not_fatal(self, tmp_path):
+         """A diplotypes-led module must not take the run down; it used to raise ColumnNotFound."""
+         from just_dna_pipelines.annotation.hf_logic import (
+diff --git a/just-dna-pipelines/tests/test_report_logic.py b/just-dna-pipelines/tests/test_report_logic.py
+index d4bdd9b..3c32aca 100644
+--- a/just-dna-pipelines/tests/test_report_logic.py
++++ b/just-dna-pipelines/tests/test_report_logic.py
+@@ -371,7 +371,7 @@ def _render(**context) -> str:
+         # across the Python side, the pre-collapsed markup, and the inline JS constant.
+         "preview_row_limit": TABLE_PREVIEW_ROWS,
+         "user_name": "t", "sample_name": "s", "longevity": None,
+-        "other_modules": [], "pgx_modules": [], "credits": [],
++        "other_modules": [], "pgx_modules": [], "unavailable_modules": [], "credits": [],
+         "module_provenance": [],
+         "module_display_names": {}, "umami_script_tag": "",
+     }
+@@ -796,6 +796,7 @@ def test_pharmgkb_on_a_real_genome_produces_a_drug_keyed_section(tmp_path):
+ from just_dna_pipelines.annotation.report_logic import (
+     _module_outputs_from_manifest,
+     build_module_provenance,
++    generate_longevity_report,
+ )
+ 
+ 
+@@ -867,3 +868,39 @@ def test_a_run_with_no_manifest_still_reports_its_modules(tmp_path):
+     assert rows[0]["lead_table"] == "pharm_variants"
+     assert rows[0]["source_url"] == "/registered/pharmgkb"
+     assert rows[0]["version"] == ""
++
++
++def test_a_skipped_module_is_reported_as_unassessable_not_as_zero(tmp_path, monkeypatch):
++    """A stale parquet must not hide the current run's explicit skipped outcome."""
++    reason = (
++        "pgx: the module exposes only rsid + genotype join keys, but this VCF carries no rsIDs"
++    )
++    manifest = AnnotationManifest(
++        user_name="u",
++        sample_name="s",
++        source_vcf="/sample.vcf",
++        output_dir=str(tmp_path),
++        modules=[],
++        skipped_modules={"pgx": reason},
++    )
++    (tmp_path / "manifest.json").write_text(manifest.model_dump_json(indent=2))
++    # This file represents an older run. The current manifest, not directory history, decides what
++    # the report may render; its deliberately incomplete schema would crash if it were loaded.
++    pl.DataFrame({"stale": [True]}).write_parquet(tmp_path / "pgx_weights.parquet")
++
++    monkeypatch.setattr(
++        "just_dna_pipelines.annotation.report_logic.discover_hf_modules", dict
++    )
++    report = generate_longevity_report(
++        tmp_path,
++        tmp_path / "report.html",
++        module_names=["pgx"],
++        user_name="u",
++        sample_name="s",
++    )
++    html = report.read_text(encoding="utf-8")
++
++    assert "Not assessed" in html
++    assert reason in html
++    assert "No biological conclusion can be drawn" in html
++    assert "No annotated variants were found for this module" not in html

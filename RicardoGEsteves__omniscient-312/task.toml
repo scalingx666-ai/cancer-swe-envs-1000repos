@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/RicardoGEsteves__omniscient-312"
+description = "chore(deps): bump the all-dependencies group across 1 directory with 6 updates"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "omniscient",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "RicardoGEsteves/omniscient"
+ref = "8cf790ee56179b41a304c5f7504b83dcebb6ac18"
+reference = "https://github.com/RicardoGEsteves/omniscient/pull/312"
+source_access = "auto"
+built_at = "2026-11-13T16:23:45.636877+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:20923bf1b4d8a1db0d051f237e3bc060624621fd7f7565a2506f714bc0a38492"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-01-20T15:49:20Z"
+diff_format = "unified"
+context_files = [
+    "package-lock.json",
+    "package.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 218
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

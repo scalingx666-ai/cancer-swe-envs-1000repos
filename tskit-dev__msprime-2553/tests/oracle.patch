@@ -1,0 +1,46 @@
+diff --git a/.gitignore b/.gitignore
+index 1e0d02841..1ca06e4a7 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -95,4 +95,7 @@ tmp__NOBACKUP__
+ .DS_Store
+ 
+ # vscode stuff
+-.vscode
+\ No newline at end of file
++.vscode
++
++# airspeed velocity
++.asv
+diff --git a/asv.conf.json b/asv.conf.json
+index 3574b9f0d..e57e58782 100644
+--- a/asv.conf.json
++++ b/asv.conf.json
+@@ -13,6 +13,10 @@
+     // on the local branch as well as the upstream using asv publish
+     "branches": ["HEAD", "upstream/main"],
+ 
++    "build_command": [
++        "python -m pip wheel --no-deps --no-build-isolation -w {build_cache_dir} {build_dir}"
++    ],
++
+     // We include stdpopsim in the requirements matrix here because we use 
+     // in the benchmarking scripts to get recombination maps.
+     "matrix": {
+diff --git a/docs/development.md b/docs/development.md
+index 10551c429..03741314e 100644
+--- a/docs/development.md
++++ b/docs/development.md
+@@ -506,9 +506,10 @@ on how to write and run these tests.
+ 
+ Benchmarks to measure performance are in the `benchmarks` folder and are run using
+ [airspeed velocity](https://asv.readthedocs.io/en/stable/index.html).
+-A system that runs the benchmarks on each push to the main branch.
++A system runs the benchmarks on each push to the main branch.
+ These benchmarks can also be run locally to compare your branch with the main branch.
+-Your changes must be in a commit to be measured. To run the benchmarks:
++Your changes must be in a commit to be measured. Install asv using `uv tool install asv`,
++and then run the benchmarks:
+ 
+ ```
+ asv run HEAD...main~1

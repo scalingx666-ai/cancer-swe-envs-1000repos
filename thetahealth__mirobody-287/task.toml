@@ -1,0 +1,82 @@
+version = "1.0"
+
+[task]
+name = "default/thetahealth__mirobody-287"
+description = "github: add a general bug report form and fix setup instructions"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "mirobody",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "thetahealth/mirobody"
+ref = "8087fddcbcbbc64699ef2ff6a7c52deedaa77d17"
+reference = "https://github.com/thetahealth/mirobody/pull/287"
+source_access = "auto"
+built_at = "2026-11-13T16:40:07.809185+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ba8000e4867410efe0c63635e2ec9c027c4a3b9213dff0831223eea1bb7e879d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T09:49:11Z"
+diff_format = "unified"
+context_files = [
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/upload-no-indicators.yml",
+    ".github/ISSUE_TEMPLATE/wrong-term.yml",
+    ".github/workflows/test-build.yml",
+    "CHANGELOG.md",
+    "demo/README.md",
+    "demo/export.py",
+    "demo/generate.py",
+    "demo/test_export.py",
+    "demo/upload/mom_clinic_visit_2026-07.xlsx",
+    "demo/upload/you_checkup_photo_zh_2024-04.jpg",
+    "demo/upload/you_lab_report_zh_2023-03.pdf",
+    "demo/upload/you_lab_results_en_2025-03.xlsx",
+    "docs/quickstart.ja.md",
+    "docs/quickstart.md",
+    "docs/quickstart.zh-CN.md",
+    "docs/walkthrough.ja.md",
+    "docs/walkthrough.md",
+    "docs/walkthrough.zh-CN.md",
+    "mirobody/server/demo.py",
+    "skills/mirobody/SKILL.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 781
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

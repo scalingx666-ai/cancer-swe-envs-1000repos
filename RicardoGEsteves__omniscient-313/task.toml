@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/RicardoGEsteves__omniscient-313"
+description = "fix(deps): update all non-major dependencies"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "omniscient",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "RicardoGEsteves/omniscient"
+ref = "9abf3afd05048d80b90697a2fa121422eb0a4d40"
+reference = "https://github.com/RicardoGEsteves/omniscient/pull/313"
+source_access = "auto"
+built_at = "2026-11-13T16:23:43.121431+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f65014fac0404dec10771368b5079e57759792f7e702e87febb7a7d0957dc679"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-01-31T11:51:04Z"
+diff_format = "unified"
+context_files = [
+    "package.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 12
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

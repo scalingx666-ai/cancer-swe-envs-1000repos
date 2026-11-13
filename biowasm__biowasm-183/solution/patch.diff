@@ -1,0 +1,474 @@
+diff --git a/README.md b/README.md
+index 34d1a36..7d3a675 100644
+--- a/README.md
++++ b/README.md
+@@ -5,7 +5,7 @@
+ ![Tests](https://github.com/biowasm/biowasm/workflows/Tests/badge.svg)
+ ![Deploy](https://github.com/biowasm/biowasm/workflows/Deploy%20biowasm%20v3/badge.svg)
+ 
+-A repository of genomics tools, compiled from C/C++ to WebAssembly so they can run in a web browser.
++A repository of genomics tools, compiled from C, C++ and Rust to WebAssembly so they can run in a web browser.
+ 
+ ## Getting started
+ 
+@@ -37,7 +37,7 @@ A repository of genomics tools, compiled from C/C++ to WebAssembly so they can r
+ 
+ | Tool | Description | Link |
+ |-|-|-|
+-| biowasm | Recipes for compiling C/C++ genomics tools to WebAssembly | This repo |
++| biowasm | Recipes for compiling C, C++ and Rust genomics tools to WebAssembly | This repo |
+ | biowasm CDN | Free server hosting pre-compiled tools for use in your apps | [biowasm.com/cdn](https://biowasm.com/cdn) |
+ | Aioli | Tool for running these modules in a browser, inside WebWorkers | [biowasm/aioli](https://github.com/biowasm/aioli) |
+ 
+diff --git a/bin/shared.sh b/bin/shared.sh
+index 4b1d3ce..0bbf866 100644
+--- a/bin/shared.sh
++++ b/bin/shared.sh
+@@ -54,6 +54,25 @@ function EM_GNU_STRCASESTR_LINEAR() {
+ 	sed -i 's|if test ${gl_cv_func_strcasestr_linear+y}|if true|g' configure
+ }
+ 
++# Rust tools: install the toolchain pinned here and the Emscripten target. Rust links through
++# emcc, so EM_FLAGS still applies, but it has to reach the linker as -Clink-arg
++function EM_RUST() {
++	echo "Running EM_RUST..."
++	command -v cargo > /dev/null || {
++		curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION:-1.91.0}"
++		. "$HOME/.cargo/env"
++	}
++	rustup target add wasm32-unknown-emscripten
++	export CC_wasm32_unknown_emscripten=emcc
++	export AR_wasm32_unknown_emscripten=emar
++	export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=em++
++}
++
++# The EM_FLAGS a Rust build needs, as -Clink-arg for rustc. Extra args are appended
++function EM_RUST_FLAGS() {
++	printf -- "-Clink-arg=%s " $EM_FLAGS "$@"
++}
++
+ # Shared LZMA flags
+ LZMA_VERSION="5.2.5"
+ DIR_LZMA=../../htslib/src/xz-${LZMA_VERSION}/src/liblzma
+@@ -62,4 +81,4 @@ LDFLAGS_LZMA="-L${DIR_LZMA}/.libs"
+ 
+ # Export vars and functions
+ export EM_FLAGS EM_FLAGS_SIMD EMCC_CFLAGS EM_CONFIGURE_FLAGS EM_CMAKE_FLAGS CFLAGS_LZMA LDFLAGS_LZMA;
+-export -f EM_GNU_NANOSLEEP EM_GNU_STRCASESTR_LINEAR;
++export -f EM_GNU_NANOSLEEP EM_GNU_STRCASESTR_LINEAR EM_RUST EM_RUST_FLAGS;
+diff --git a/biowasm.json b/biowasm.json
+index b18fea4..412f3f3 100644
+--- a/biowasm.json
++++ b/biowasm.json
+@@ -535,6 +535,32 @@
+ 				}
+ 			]
+ 		},
++		{
++			"name": "perbase",
++			"url": "https://github.com/sstadick/perbase",
++			"programs": ["perbase"],
++			"description": "Fast Rust tool for per-base depth and nucleotide pileup analysis of BAM/CRAM files",
++			"categories": ["alignment", "quality-control"],
++			"versions": [
++				{
++					"version": "1.4.1",
++					"branch": "v1.4.1"
++				}
++			]
++		},
++		{
++			"name": "rammap",
++			"url": "https://github.com/jwanglab/rammap",
++			"programs": ["rammap"],
++			"description": "Pure-Rust SIMD sequence aligner and read mapper that mirrors minimap2's interface and output",
++			"categories": ["alignment"],
++			"versions": [
++				{
++					"version": "1.2.0",
++					"branch": "v1.2.0"
++				}
++			]
++		},
+ 		{
+ 			"name": "samtools",
+ 			"url": "https://github.com/samtools/samtools.git",
+diff --git a/biowasm.manifest.stg.json b/biowasm.manifest.stg.json
+index 2df8c12..f398984 100644
+--- a/biowasm.manifest.stg.json
++++ b/biowasm.manifest.stg.json
+@@ -271,6 +271,10 @@
+   "muscle/3.8.1551/muscle.wasm": "muscle/3.8.1551/muscle.wasm:e5cac542761446e76552cd44662b2422",
+   "muscle/5.1.0/muscle.js": "muscle/5.1.0/muscle.js:eb5ba9b209391e8ff5c9f669d3025686",
+   "muscle/5.1.0/muscle.wasm": "muscle/5.1.0/muscle.wasm:2ab361a864be9a40652a052cab69229e",
++  "perbase/1.4.1/perbase.js": "perbase/1.4.1/perbase.js:299f81da53a05d803935510c9f8d3fd9",
++  "perbase/1.4.1/perbase.wasm": "perbase/1.4.1/perbase.wasm:e7e0ee12434405aa15d513faf25fd6b9",
++  "rammap/1.2.0/rammap.js": "rammap/1.2.0/rammap.js:09dfda01027b5436ef7478aa481209b8",
++  "rammap/1.2.0/rammap.wasm": "rammap/1.2.0/rammap.wasm:1a87281f26533a60f0fd5dadd62fa033",
+   "samtools/1.10/samtools.data": "samtools/1.10/samtools.data:f35a875e664cd0a7f339f712df60c4c7",
+   "samtools/1.10/samtools.js": "samtools/1.10/samtools.js:232f068444e7776d173fa91681ffbc6b",
+   "samtools/1.10/samtools.wasm": "samtools/1.10/samtools.wasm:f33a6c1b5ff05e4729bca8bb27b9d672",
+diff --git a/biowasm.sizes.json b/biowasm.sizes.json
+index 6a8f22f..d6e57c6 100644
+--- a/biowasm.sizes.json
++++ b/biowasm.sizes.json
+@@ -257,6 +257,10 @@
+   "muscle/3.8.1551/muscle.wasm": 208264,
+   "muscle/5.1.0/muscle.js": 91777,
+   "muscle/5.1.0/muscle.wasm": 547907,
++  "perbase/1.4.1/perbase.js": 94250,
++  "perbase/1.4.1/perbase.wasm": 2777728,
++  "rammap/1.2.0/rammap.js": 77845,
++  "rammap/1.2.0/rammap.wasm": 1452022,
+   "samtools/1.10/samtools.data": 120057,
+   "samtools/1.10/samtools.js": 117520,
+   "samtools/1.10/samtools.wasm": 1048019,
+diff --git a/tools/perbase/compile.sh b/tools/perbase/compile.sh
+new file mode 100755
+index 0000000..c382a9c
+--- /dev/null
++++ b/tools/perbase/compile.sh
+@@ -0,0 +1,23 @@
++#!/bin/bash
++
++set -e
++
++# rust-htslib runs bindgen over htslib's headers, which needs libclang
++command -v clang-20 > /dev/null || {
++	sudo apt-get update
++	sudo apt-get install -y libclang-20-dev
++}
++EM_RUST
++embuilder build zlib
++
++SYSROOT=$(em-config CACHE)/sysroot
++export LIBCLANG_PATH=${LIBCLANG_PATH:-/usr/lib/llvm-20/lib}
++export BINDGEN_EXTRA_CLANG_ARGS_wasm32_unknown_emscripten="--sysroot=$SYSROOT -fvisibility=default"
++# Rust panics compile to Emscripten exceptions, so the catching they need cannot be disabled
++export RUSTFLAGS=$(EM_RUST_FLAGS -O2 -s DISABLE_EXCEPTION_CATCHING=0)
++
++cargo build --release --locked --target wasm32-unknown-emscripten -j4 \
++	--config "target.wasm32-unknown-emscripten.z.rustc-link-lib=['z']" \
++	--config "target.wasm32-unknown-emscripten.z.include='$SYSROOT/include'" \
++	--config "target.wasm32-unknown-emscripten.z.root='$SYSROOT'"
++cp target/wasm32-unknown-emscripten/release/perbase.{js,wasm} ../build/
+diff --git a/tools/perbase/examples/v1.4.1.html b/tools/perbase/examples/v1.4.1.html
+new file mode 100644
+index 0000000..5aaad1a
+--- /dev/null
++++ b/tools/perbase/examples/v1.4.1.html
+@@ -0,0 +1,40 @@
++<script src="https://biowasm.com/cdn/v3/aioli.js"></script>
++<script type="module">
++// perbase only reads indexed BAM/CRAM, so samtools turns the alignments below into one
++const CLI = await new Aioli(["perbase/1.4.1", "samtools/1.21"], { printInterleaved: false });
++
++// pair1's mates overlap at 21-30 and disagree at position 25 (A vs G); del1 has a 2bp deletion
++const reads = `@HD	VN:1.6	SO:coordinate
++@SQ	SN:chrT	LN:60
++pair1	99	chrT	1	60	30M	=	21	50	ACGTTGCATGCAAGTCCGATTAGCATAGGA	IIIIIIIIIIIIIIIIIIIIIIIIIIIIII
++del1	0	chrT	5	60	10M2D10M	*	0	0	TGCATGCAAGCGATTAGCAT	IIIIIIIIIIIIIIIIIIII
++pair1	147	chrT	21	60	30M	=	1	-50	TAGCGTAGGATCCAGTTCAGGCATCGATCG	IIIIIIIIIIIIIIIIIIIIIIIIIIIIII
++ins1	16	chrT	31	60	5M2I10M	*	0	0	TCCAGTTTTCAGGCATC	IIIIIIIIIIIIIIIII
++dup1	1024	chrT	41	60	15M	*	0	0	GCATCGATCGGATAG	IIIIIIIIIIIIIII
++lowq1	0	chrT	46	5	15M	*	0	0	GATCGGATAGCTTAC	IIIIIIIIIIIIIII
++`;
++await CLI.mount([
++	{ name: "reads.sam", data: reads },
++	{ name: "ref.fa", data: ">chrT\nACGTTGCATGCAAGTCCGATTAGCATAGGATCCAGTTCAGGCATCGATCGGATAGCTTAC\n" },
++	{ name: "ref.fa.fai", data: "chrT\t60\t6\t60\t61\n" },
++	{ name: "regions.bed", data: "chrT\t19\t30\n" }
++]);
++await CLI.exec("samtools view -b -o reads.bam reads.sam");
++await CLI.exec("samtools index reads.bam");
++
++// Per-base nucleotide counts over a BED region, counting overlapping mates once.
++// With the IUPAC strategy, the A/G disagreement at position 25 is reported as R.
++const output = await CLI.exec("perbase base-depth --mate-fix --mate-resolution-strategy IUPAC --ref-fasta ref.fa --bed-file regions.bed reads.bam");
++
++// Depth only, with adjacent positions of equal depth merged into [POS, END) ranges
++const output2 = await CLI.exec("perbase only-depth reads.bam");
++
++document.getElementById("output").textContent = output.stdout;
++document.getElementById("output2").textContent = output2.stdout;
++</script>
++
++<h4>Output of <code>perbase base-depth</code>:</h4>
++<pre id="output">Loading...</pre>
++
++<h4>Output of <code>perbase only-depth</code>:</h4>
++<pre id="output2">Loading...</pre>
+diff --git a/tools/perbase/patches/v1.4.1.patch b/tools/perbase/patches/v1.4.1.patch
+new file mode 100644
+index 0000000..2ae3b53
+--- /dev/null
++++ b/tools/perbase/patches/v1.4.1.patch
+@@ -0,0 +1,146 @@
++--- a/src/lib/par_granges.rs
+++++ b/src/lib/par_granges.rs
++@@ -3,18 +3,17 @@
++ //! Iterates over chunked genomic regions in parallel.
++ use anyhow::{Context, Result, anyhow};
++ use bio::io::bed;
++-use crossbeam::channel::{Receiver, bounded};
+++use crossbeam::channel::{Receiver, unbounded};
++ use lazy_static::lazy_static;
++ use log::*;
++ use num_cpus;
++-use rayon::prelude::*;
++ use rust_htslib::{
++     bam::{HeaderView, IndexedReader, Read},
++     bcf::{Read as bcfRead, Reader},
++ };
++ use rust_lapper::{Interval, Lapper};
++ use serde::Serialize;
++-use std::{convert::TryInto, path::PathBuf, thread};
+++use std::{convert::TryInto, path::PathBuf};
++ 
++ const BYTES_INA_GIGABYTE: usize = 1024 * 1024 * 1024;
++ 
++@@ -69,8 +68,6 @@ pub struct ParGranges<R: 'static + RegionProcessor + Send + Sync> {
++     chunksize: u32,
++     /// A modifier to apply to the channel size formular that is (BYTES_INA_GIGABYTE * channel_size_modifier) * threads / size_of(R::P)
++     channel_size_modifier: f64,
++-    /// The rayon threadpool to operate in
++-    pool: rayon::ThreadPool,
++     /// The implementation of [RegionProcessor] that will be used to process regions
++     processor: R,
++ }
++@@ -111,10 +108,6 @@ impl<R: RegionProcessor + Send + Sync> ParGranges<R> {
++ 
++         // Keep two around for main thread and thread running the pool
++         let threads = std::cmp::max(threads.saturating_sub(2), 1);
++-        let pool = rayon::ThreadPoolBuilder::new()
++-            .num_threads(threads)
++-            .build()
++-            .unwrap();
++ 
++         info!("Using {} worker threads.", threads);
++         Self {
++@@ -126,7 +119,6 @@ impl<R: RegionProcessor + Send + Sync> ParGranges<R> {
++             threads,
++             chunksize: chunksize.unwrap_or(CHUNKSIZE),
++             channel_size_modifier: channel_size_modifier.unwrap_or(CHANNEL_SIZE_MODIFIER),
++-            pool,
++             processor,
++         }
++     }
++@@ -181,9 +173,9 @@ impl<R: RegionProcessor + Send + Sync> ParGranges<R> {
++ 
++         self.validate()?;
++ 
++-        let (snd, rxv) = bounded(channel_size);
++-        thread::spawn(move || {
++-            self.pool.install(|| {
+++        let (snd, rxv) = unbounded();
+++        (move || {
+++            (|| {
++                 info!("Reading from {:?}", self.reads);
++                 let mut reader = IndexedReader::from_path(&self.reads).expect("Indexed BAM/CRAM");
++                 // If passed add ref_fasta
++@@ -241,8 +233,7 @@ impl<R: RegionProcessor + Send + Sync> ParGranges<R> {
++                             "Batch Processing {}:{}-{}",
++                             tid_name, chunk_start, chunk_end
++                         );
++-                        let (r, _) = rayon::join(
++-                            || {
+++                        let r = (|| {
++                                 // Must be a vec so that par_iter works and results stay in order
++                                 let ivs: Vec<Interval<u32, ()>> =
++                                     Lapper::<u32, ()>::find(&intervals, chunk_start, chunk_end)
++@@ -253,19 +244,18 @@ impl<R: RegionProcessor + Send + Sync> ParGranges<R> {
++                                             val: (),
++                                         })
++                                         .collect();
++-                                ivs.into_par_iter()
+++                                ivs.into_iter()
++                                     .flat_map(|iv| {
++                                         trace!("Processing {}:{}-{}", tid_name, iv.start, iv.stop);
++                                         self.processor.process_region(tid, iv.start, iv.stop)
++                                     })
++                                     .collect()
++-                            },
++-                            || {
+++                            })();
+++                            (|| {
++                                 result.into_iter().for_each(|p| {
++                                     snd.send(p).expect("Sent a serializable to writer")
++                                 })
++-                            },
++-                        );
+++                            })();
++                         result = r;
++                     }
++                     // Send final set of results
++@@ -273,8 +263,10 @@ impl<R: RegionProcessor + Send + Sync> ParGranges<R> {
++                         .into_iter()
++                         .for_each(|p| snd.send(p).expect("Sent a serializable to writer"));
++                 }
++-            });
++-        });
+++            })();
+++        })();
+++        // The one thread here persists between main() calls, so its reader would too
+++        crate::utils::clear_indexed_reader();
++         Ok(rxv)
++     }
++ 
++--- a/src/lib/utils.rs
+++++ b/src/lib/utils.rs
++@@ -55,6 +55,11 @@ pub fn with_indexed_reader<T>(
++     })
++ }
++ 
+++/// Drop the cached reader, which the one thread here keeps alive between `main()` calls.
+++pub fn clear_indexed_reader() {
+++    INDEXED_READER.with(|cell| cell.borrow_mut().take());
+++}
+++
++ /// Set rayon global thread pool size.
++ ///
++ /// # Errors
++@@ -161,6 +166,8 @@ pub fn get_writer<P: AsRef<Path>>(
++     threads: usize,
++     compression_level: u32,
++ ) -> Result<csv::Writer<Box<dyn Write>>> {
+++    // Everything runs on the calling thread here
+++    let threads = threads.min(1);
++     let raw_writer: Box<dyn Write> = match &path {
++         Some(path) if path.as_ref().to_str().unwrap() != "-" => {
++             let writer = BufWriter::new(File::create(path)?);
++--- a/src/main.rs
+++++ b/src/main.rs
++@@ -34,7 +34,8 @@ impl Subcommand {
++ }
++ 
++ fn main() -> Result<()> {
++-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+++    // main() runs repeatedly in one instance, and the logger can only be installed once
+++    let _ = env_logger::Builder::from_env(Env::default().default_filter_or("info")).try_init();
++     if let Err(err) = Args::from_args().subcommand.run() {
++         if utils::is_broken_pipe(&err) {
++             std::process::exit(0);
+diff --git a/tools/rammap/compile.sh b/tools/rammap/compile.sh
+new file mode 100755
+index 0000000..dc25aac
+--- /dev/null
++++ b/tools/rammap/compile.sh
+@@ -0,0 +1,9 @@
++#!/bin/bash
++
++set -e
++
++EM_RUST
++
++export RUSTFLAGS="-Ctarget-feature=+simd128 $(EM_RUST_FLAGS -sDEFAULT_TO_CXX)"
++cargo build --release --locked --target wasm32-unknown-emscripten -p rammap --bin rammap --no-default-features
++cp target/wasm32-unknown-emscripten/release/rammap.{js,wasm} ../build/
+diff --git a/tools/rammap/examples/v1.2.0.html b/tools/rammap/examples/v1.2.0.html
+new file mode 100644
+index 0000000..568fba5
+--- /dev/null
++++ b/tools/rammap/examples/v1.2.0.html
+@@ -0,0 +1,30 @@
++<script src="https://biowasm.com/cdn/v3/aioli.js"></script>
++<script type="module">
++const CLI = await new Aioli(["rammap/1.2.0"], {
++	printInterleaved: false
++});
++
++// A 1.2kb reference with three exons (chr1:101-250, 451-600, 801-950) separated by GT..AG introns
++await CLI.mount([
++	{ name: "ref.fa", data: ">chr1\nAGGTAAGGTGGTTGAGATCTGGACTTTTGACGCCTGGAGCCCGCAGTGCTCCTCGAAAAGTAGCCATGCCTTGGGCTGCT\nCCCAGGCGCTCCGTTGTTCTAGTGCTTTCACCAGCCAAGTATAGTTGGACGTTCGAAGTTGAGTTTCCTGAAATACCTAG\nCCCATGTAGCCGGACATAGTCTAGTAGTGTATCCCACCCCTCCCCATTTTATTGCTTGTCAGGGAGGGACCGACTAGTGA\nGGCTCCCACTGTAAAAGGTCTGGGTCACTTGTGTCTCGCAGCTTATCTGCGGAGAACGGAGCCACAAGGTGCCAACCCCT\nGTGGTGCGTCGATCTGTTTCTTATCACGGCTGAGATTTTGTGACGAGTAATGGTCTGGAGAGCCAGTACGCTAGAGCCTT\nTTAGAGATGTGACCAAGATCTGCGGCTAGTGCGATACCTACGCTGTCAAGGCTCTCAGGACTCTCAGATGACCCAGGCGT\nTTTGGACCTGAGCCGCTCTCAAATCAACCGAGGAACACGACGGGGACCAGTTTGCCGCTTACATCTACTCAACAGGGTCC\nAGGCCCATTACTTGCAGACAGGGTCTCGTCTCGGAGTGATGTGATTACGCCAAAAGCGAACGCGACGAAAGGTCTAATCC\nTAATAATCCTGTGCTGATGAAGGAAGATTATGTTCCAGTTCATGTCGGTGCCGCCTGGACAGATGCGGCCATAAAGCTGA\nGATTGCCCTGCGTCCGCTGGCATCACAAGCCGAGGTACAAACAATCAACTGTAATATTGTGATTGTGTTTTGTAAGCAAG\nTAGGGGGCACGCAACAGAAGGCCGAACGATTTTCGGCCAACTCCGGCGGGACACGGGCGTCGGGACTGGGAAGCCCCCAG\nAGATCACCTGTCGCCCAGAAGGTCTGAACGGCGCGTGCTAGAGAACGCCCACAGCCCTGGTTCGTGTCCACCGTTTGCTT\nAAAGCTCAAAAAAGGTGCCTAACAGAATTGCGACACTATTCTAGCTCACGTCCAGGCCATGTCTTGCTCGGGCTTCGGAC\nAGGCGTATGCCGTCTATGCCTGGCCCCACTCGGGCTCCCCCCGTCTTACCCTGAAAAGTTGAGGGCACATTTAGGCATGA\nTCTGTCTCAGTACACGTCGTCTTCCGGACTGAACACATCGCACAGAGGCCTAAGGCGCATTCTGGCTGTCTGCTTACTTG\n" },
++	// Two read pairs from 350bp fragments at chr1:151-500 and chr1:701-1050; each R1 carries one SNP
++	{ name: "r1.fq", data: "@pair1/1\nAAATACCTAGCCCATGTAGCCGGACATAGTCTAGTAGTGTCTCCCACCCCTCCCCATTTTATTGCTTGTCAGGGAGGGACCGACTAGTGAGGCTCCCACT\n+\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n@pair2/1\nAGATGCGGCCATAAAGCTGAGATTGCCCTGCGTCCGCTGGAATCACAAGCCGAGGTACAAACAATCAACTGTAATATTGTGATTGTGTTTTGTAAGCAAG\n+\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n" },
++	{ name: "r2.fq", data: "@pair1/2\nGAGAGCGGCTCAGGTCCAAAACGCCTGGGTCATCTGAGAGTCCTGAGAGCCTTGACAGCGTAGGTATCGCACTAGCCGCAGATCTTGGTCACATCTCTAA\n+\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n@pair2/2\nGCATACGCCTGTCCGAAGCCCGAGCAAGACATGGCCTGGACGTGAGCTAGAATAGTGTCGCAATTCTGTTAGGCACCTTTTTTGAGCTTTAAGCAAACGG\n+\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n" },
++	// The spliced transcript: the three exons joined together
++	{ name: "tx.fa", data: ">transcript1\nAGTGCTTTCACCAGCCAAGTATAGTTGGACGTTCGAAGTTGAGTTTCCTGAAATACCTAGCCCATGTAGCCGGACATAGT\nCTAGTAGTGTATCCCACCCCTCCCCATTTTATTGCTTGTCAGGGAGGGACCGACTAGTGAGGCTCCCACTGCTCTCAGGA\nCTCTCAGATGACCCAGGCGTTTTGGACCTGAGCCGCTCTCAAATCAACCGAGGAACACGACGGGGACCAGTTTGCCGCTT\nACATCTACTCAACAGGGTCCAGGCCCATTACTTGCAGACAGGGTCTCGTCTCGGAGTGATTAGGGGGCACGCAACAGAAG\nGCCGAACGATTTTCGGCCAACTCCGGCGGGACACGGGCGTCGGGACTGGGAAGCCCCCAGAGATCACCTGTCGCCCAGAA\nGGTCTGAACGGCGCGTGCTAGAGAACGCCCACAGCCCTGGTTCGTGTCCA\n" }
++]);
++
++// Map paired-end short reads to SAM
++const pairs = await CLI.exec("rammap -x sr -a ref.fa r1.fq r2.fq");
++document.getElementById("pairs").textContent = pairs.stdout;
++
++// Spliced alignment: the CIGAR's N operations should skip exactly the two introns
++const spliced = await CLI.exec("rammap -x splice -a ref.fa tx.fa");
++document.getElementById("spliced").textContent = spliced.stdout;
++</script>
++
++<h4>Output of <code>rammap -x sr -a ref.fa r1.fq r2.fq</code>:</h4>
++<pre id="pairs">Loading...</pre>
++
++<h4>Output of <code>rammap -x splice -a ref.fa tx.fa</code>:</h4>
++<pre id="spliced">Loading...</pre>
+diff --git a/tools/rammap/patches/v1.2.0.patch b/tools/rammap/patches/v1.2.0.patch
+new file mode 100644
+index 0000000..511cb1b
+--- /dev/null
++++ b/tools/rammap/patches/v1.2.0.patch
+@@ -0,0 +1,27 @@
++diff --git a/rammap-core/Cargo.toml b/rammap-core/Cargo.toml
++index cf8d92b..28e899c 100644
++--- a/rammap-core/Cargo.toml
+++++ b/rammap-core/Cargo.toml
++@@ -10,7 +10,7 @@ readme.workspace = true
++ # the crate is imported as `rammap`
++ [lib]
++ name = "rammap"
++-crate-type = ["cdylib", "rlib"]
+++crate-type = ["rlib"]
++ 
++ [features]
++ default = ["parallel"]
++diff --git a/rammap/src/main.rs b/rammap/src/main.rs
++index bb668a8..579d075 100644
++--- a/rammap/src/main.rs
+++++ b/rammap/src/main.rs
++@@ -441,7 +441,8 @@ fn main() -> anyhow::Result<()> {
++         } else {
++             log::LevelFilter::Warn
++         })
++-        .init();
+++        .try_init()
+++        .ok();
++ 
++     run(args.align)
++ }
+diff --git a/web/src/routes/+page.svelte b/web/src/routes/+page.svelte
+index 182bc7a..0a26324 100644
+--- a/web/src/routes/+page.svelte
++++ b/web/src/routes/+page.svelte
+@@ -109,7 +109,7 @@ const USERS = [
+ 		<div class="h-100 p-5 rounded-3">
+ 			<h2 class="fs-4 fw-bold">Supported Tools</h2>
+ 			<p>
+-				Biowasm supports many C/C++ bioinformatics tools (<LinkPackage tool="samtools" />, <LinkPackage tool="bedtools" />, <LinkPackage tool="bcftools" />, <LinkPackage tool="bowtie2" />, <LinkPackage tool="minimap2" />, <LinkPackage tool="fastp" />, <LinkPackage tool="wgsim" />, etc.)
++				Biowasm supports many C, C++ and Rust bioinformatics tools (<LinkPackage tool="samtools" />, <LinkPackage tool="bedtools" />, <LinkPackage tool="bcftools" />, <LinkPackage tool="bowtie2" />, <LinkPackage tool="minimap2" />, <LinkPackage tool="fastp" />, <LinkPackage tool="wgsim" />, <LinkPackage tool="perbase" />, <LinkPackage tool="rammap" />, etc.)
+ 				and general data wrangling utilities (<LinkPackage tool="jq" />, <LinkPackage tool="gawk" />, <LinkPackage tool="grep" />, <LinkPackage tool="sed" />, etc.)
+ 			</p>
+ 			<a href={CONFIG.url} class="btn btn-outline-primary" type="button">
+diff --git a/web/src/routes/documentation/+page.svelte b/web/src/routes/documentation/+page.svelte
+index 8b63f0a..2bb11ae 100644
+--- a/web/src/routes/documentation/+page.svelte
++++ b/web/src/routes/documentation/+page.svelte
+@@ -67,7 +67,7 @@ $: activeHash = $page.url.hash || NAV[0].href;
+ 	<!-- ================================================================================ -->
+ 	<h4 id="introduction">Introduction</h4>
+ 	<p>
+-		The biowasm project compiles popular C/C++ genomics tools to <a href="https://developer.mozilla.org/en-US/docs/WebAssembly" target="_blank">WebAssembly</a> so they can run in a web browser. Biowasm includes a JavaScript library called <strong>Aioli</strong> that helps you run these tools with very little setup, as we'll see below.
++		The biowasm project compiles popular C, C++ and Rust genomics tools to <a href="https://developer.mozilla.org/en-US/docs/WebAssembly" target="_blank">WebAssembly</a> so they can run in a web browser. Biowasm includes a JavaScript library called <strong>Aioli</strong> that helps you run these tools with very little setup, as we'll see below.
+ 	</p>
+ 
+ 
+diff --git a/web/tests/test_cdn.cy.js b/web/tests/test_cdn.cy.js
+index ac54a22..17f97a2 100644
+--- a/web/tests/test_cdn.cy.js
++++ b/web/tests/test_cdn.cy.js
+@@ -1,5 +1,7 @@
+ const EXAMPLE_SAM = `@SQ	SN:ref	LN:45\n@SQ	SN:ref2	LN:40\nr001	163	ref	7	30	8M4I4M1D3M	=	37	39	TTAGATAAAGAGGATACTG	*	XX:B:S,12561,2,20,112\nr002	0	ref	9	30	1S2I6M1P1I1P1I4M2I	*	0	0	AAAAGATAAGGGATAAA	*\nr003	0	ref	9	30	5H6M	*	0	0	AGCTAA	*\nr004	0	ref	16	30	6M14N1I5M	*	0	0	ATAGCTCTCAGC	*\nr003	16	ref	29	30	6H5M	*	0	0	TAGGC	*\nr001	83	ref	37	30	9M	=	7	-39	CAGCGCCAT	*\nx1	0	ref2	1	30	20M	*	0	0	aggttttataaaacaaataa	????????????????????\nx2	0	ref2	2	30	21M	*	0	0	ggttttataaaacaaataatt	?????????????????????\nx3	0	ref2	6	30	9M4I13M	*	0	0	ttataaaacAAATaattaagtctaca	??????????????????????????\nx4	0	ref2	10	30	25M	*	0	0	CaaaTaattaagtctacagagcaac	?????????????????????????\nx5	0	ref2	12	30	24M	*	0	0	aaTaattaagtctacagagcaact	????????????????????????\nx6	0	ref2	14	30	23M	*	0	0	Taattaagtctacagagcaacta	???????????????????????`;
+ const EXPECTED_OUTPUTS = {
++	"tools/perbase/examples/v1.4.1.html": [`REF\tPOS\tREF_BASE\tDEPTH\tA\tC\tG\tT\tN\tR\tY\tS\tW\tK\tM\tINS\tDEL\tREF_SKIP\tFAIL\tCOUNT_OF_MATE_RESOLUTIONS\tNEAR_MAX_DEPTH\nchrT\t20\tT\t2\t0\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\tfalse\nchrT\t21\tT\t2\t0\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t22\tA\t2\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t23\tG\t2\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t24\tC\t2\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t25\tA\t2\t1\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t26\tT\t2\t0\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t27\tA\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t28\tG\t1\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t29\tG\t1\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t30\tA\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse`, `REF\tPOS\tEND\tDEPTH\nchrT\t1\t5\t1\nchrT\t5\t21\t2\nchrT\t21\t27\t3\nchrT\t27\t41\t2\nchrT\t41\t51\t3\nchrT\t51\t56\t2\nchrT\t56\t61\t1`],
++	"tools/rammap/examples/v1.2.0.html": [`@HD\tVN:1.6\tSO:unsorted\tGO:query\n@SQ\tSN:chr1\tLN:1200\n@PG\tID:rammap\tPN:rammap\tVN:1.2.0\tCL:rammap -x sr -a ref.fa r1.fq r2.fq\npair1\t99\tchr1\t151\t60\t100M\t=\t401\t350\tAAATACCTAGCCCATGTAGCCGGACATAGTCTAGTAGTGTCTCCCACCCCTCCCCATTTTATTGCTTGTCAGGGAGGGACCGACTAGTGAGGCTCCCACT\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:1\tms:i:190\tAS:i:190\tnn:i:0\ttp:A:P\tcm:i:7\ts1:i:154\ts2:i:0\tde:f:0.0100\trl:i:0\npair1\t147\tchr1\t401\t60\t100M\t=\t151\t-350\tTTAGAGATGTGACCAAGATCTGCGGCTAGTGCGATACCTACGCTGTCAAGGCTCTCAGGACTCTCAGATGACCCAGGCGTTTTGGACCTGAGCCGCTCTC\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:0\tms:i:200\tAS:i:200\tnn:i:0\ttp:A:P\tcm:i:13\ts1:i:154\ts2:i:0\tde:f:0\trl:i:0\npair2\t99\tchr1\t701\t60\t100M\t=\t951\t350\tAGATGCGGCCATAAAGCTGAGATTGCCCTGCGTCCGCTGGAATCACAAGCCGAGGTACAAACAATCAACTGTAATATTGTGATTGTGTTTTGTAAGCAAG\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:1\tms:i:190\tAS:i:190\tnn:i:0\ttp:A:P\tcm:i:9\ts1:i:168\ts2:i:0\tde:f:0.0100\trl:i:0\npair2\t147\tchr1\t951\t60\t100M\t=\t701\t-350\tCCGTTTGCTTAAAGCTCAAAAAAGGTGCCTAACAGAATTGCGACACTATTCTAGCTCACGTCCAGGCCATGTCTTGCTCGGGCTTCGGACAGGCGTATGC\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:0\tms:i:200\tAS:i:200\tnn:i:0\ttp:A:P\tcm:i:11\ts1:i:168\ts2:i:0\tde:f:0\trl:i:0`, `transcript1\t0\tchr1\t101\t60\t150M200N150M200N150M\t*\t0\t0\tAGTGCTTTCACCAGCCAAGTATAGTTGGACGTTCGAAGTTGAGTTTCCTGAAATACCTAGCCCATGTAGCCGGACATAGTCTAGTAGTGTATCCCACCCCTCCCCATTTTATTGCTTGTCAGGGAGGGACCGACTAGTGAGGCTCCCACTGCTCTCAGGACTCTCAGATGACCCAGGCGTTTTGGACCTGAGCCGCTCTCAAATCAACCGAGGAACACGACGGGGACCAGTTTGCCGCTTACATCTACTCAACAGGGTCCAGGCCCATTACTTGCAGACAGGGTCTCGTCTCGGAGTGATTAGGGGGCACGCAACAGAAGGCCGAACGATTTTCGGCCAACTCCGGCGGGACACGGGCGTCGGGACTGGGAAGCCCCCAGAGATCACCTGTCGCCCAGAAGGTCTGAACGGCGCGTGCTAGAGAACGCCCACAGCCCTGGTTCGTGTCCA\t*\tNM:i:0\tms:i:450\tAS:i:380\tnn:i:0\tts:A:+\ttp:A:P\tcm:i:144\ts1:i:428\ts2:i:0\tde:f:0\trl:i:0`],
+ 	"tools/diamond/examples/v2.2.8.html": [`d4at5a1\td3f66a_\t37.1\t286\t2.25e-62\t189\nd4at5a1\td4i4ea_\t38.0\t279\t1.73e-61\t186\nd4at5a1\td1ad5a3\t35.5\t282\t1.62e-55\t171\nd4at5a1\td3poza_\t32.6\t282\t2.98e-46\t148\nd4nima_\td1geea_\t28.9\t242\t1.03e-28\t99.8\nd4nima_\td3o38a_\t29.6\t250\t7.42e-24\t86.7\nd4nima_\td3uxya_\t29.5\t254\t1.91e-22\t82.4\nd4nima_\td3un1a1\t28.5\t249\t5.68e-19\t72.8`],
+ 	"tools/infernal/examples/infernal-1.1.5.html": [`       1 tRNA5                       5     3.73     74    72   21    2 0.783 0.489 `, `# STOCKHOLM 1.0\n#=GF AU Infernal 1.1.5\n\nmrum-tRNA.1         GGAGCUAUAGCUCAAU.GGC.AGAGCGUUUGGCUGACAU........................................CCAAAAGGUUAUGGGUUCGAUUCCCUUUAGCCCCA\n#=GR mrum-tRNA.1 PP ****************.***.******************........................................***********************************\nmrum-tRNA.6         GCUUCUAUGGGGUAAUcGGCaAACCCAUCGGACUUUCGA........................................UCCGAUAA-UCCGGGUUCAAAUCCCGGUAGAAGCA\n#=GR mrum-tRNA.6 PP ***************************************........................................********.9*************************\nmrum-tRNA.9         GCCGGGGUGGCUCAGCuGGUuAGAGCGCACGGCUC----auaggguaacuaagcgugcucugacuuuuuuccugggauaCCGUGAGAUCGCGGGUUCGAAUCCCGCCCCCGGCA\n#=GR mrum-tRNA.9 PP ********************************995....678************************************************************************\n#=GC SS_cons        (((((((,,<<<<___.___._>>>>,<<<<<_______~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~>>>>>,,,,,<<<<<_______>>>>>))))))):\n#=GC RF             gCcggcAUAGcgcAgU.GGu.AgcgCgccagccUgucAa~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~gcuggAGgUCCgggGUUCGAUUCcccGUgccgGca\n//`],
+ 	// Test tool-specific code examples

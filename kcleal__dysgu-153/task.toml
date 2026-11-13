@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/kcleal__dysgu-153"
+description = "fixing BND conversion"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "dysgu",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kcleal/dysgu"
+ref = "48c475d86e3277567b016d38aa72e98b3af327e7"
+reference = "https://github.com/kcleal/dysgu/pull/153"
+source_access = "auto"
+built_at = "2026-11-13T16:23:39.955210+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9575b2c38668b6a121dd340ca139e8765a4742033ecdeacec664e104946f9138"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-12-11T13:16:56Z"
+diff_format = "unified"
+context_files = [
+    "scripts/convert2bnd.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 10
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/nyukat__BIRADS_classifier-2"
+description = "Refactor and add PyTorch models"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BIRADS_classifier",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nyukat/BIRADS_classifier"
+ref = "64ec03637d99e366a583479883646729efec4d2b"
+reference = "https://github.com/nyukat/BIRADS_classifier/pull/2"
+source_access = "auto"
+built_at = "2026-11-13T15:43:16.541258+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:65cc037a964566dabe5c2b813509ecdcb4399fd6fa54362618e4f1066184743f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-06-26T21:53:44Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "birads_prediction.py",
+    "birads_prediction_tf.py",
+    "birads_prediction_torch.py",
+    "convert_model.py",
+    "layers.py",
+    "layers_tf.py",
+    "layers_torch.py",
+    "models_tf.py",
+    "models_torch.py",
+    "saved_models/model.p",
+    "test_inference.py",
+    "utils.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 985
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

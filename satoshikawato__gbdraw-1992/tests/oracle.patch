@@ -1,0 +1,227 @@
+diff --git a/changelog.d/fix-cmf-followup-clear-rerender.md b/changelog.d/fix-cmf-followup-clear-rerender.md
+new file mode 100644
+index 000000000..c2e8828aa
+--- /dev/null
++++ b/changelog.d/fix-cmf-followup-clear-rerender.md
+@@ -0,0 +1,12 @@
++- Changed: the Web's **Clear LOSAT results** button now says the count is the
++  project's ("Clear the project's 5 LOSAT results"). It clears the LOSAT
++  results of every drawing in the project, so its count can be larger than the
++  list of results the shown drawing's panel shows.
++- Fixed: in a Linear drawing of the Web app, a rerender of the shown figure
++  (rotating a record to a feature, Align, Align at a feature) no longer writes
++  the comparisons of the last Generate into the drawing's settings; the next
++  Generate uses the comparisons the settings held, as a Circular drawing already
++  does for its comparison rings (OV-3314).
++- Fixed: a Session 31–39 whose LOSAT comparison rings were moved after the last
++  Generate opened with the genetic codes of the rings swapped; each ring now
++  opens with its own code (OV-3179).
+diff --git a/gbdraw/web/index.html b/gbdraw/web/index.html
+index 6f0c09ed4..adfa4314a 100644
+--- a/gbdraw/web/index.html
++++ b/gbdraw/web/index.html
+@@ -4117,7 +4117,7 @@ <h1 class="sr-only">gbdraw</h1>
+ 
+                             <section v-if="linearComparisonUi.sectionKeys.advanced.includes('losat-cache')" class="min-w-0 space-y-2 border-t border-slate-200 pt-3">
+                                 <div class="linear-primary-label">{{ t('LOSAT cache') }}</div>
+-                                <button type="button" @click="clearLosatCache" class="btn btn-danger w-full text-xs" :disabled="!semanticMutationAvailable || (clearableLosatResultCount === 0)" :aria-describedby="clearableLosatResultCount === 0 ? 'linear-losat-cache-reason' : null"><i class="ph ph-trash" aria-hidden="true"></i> {{ clearableLosatResultCount === 0 ? t('Clear LOSAT results') : tn(clearableLosatResultCount, 'Clear {count} LOSAT result', 'Clear {count} LOSAT results') }}</button>
++                                <button type="button" @click="clearLosatCache" class="btn btn-danger w-full text-xs" :disabled="!semanticMutationAvailable || (clearableLosatResultCount === 0)" :aria-describedby="clearableLosatResultCount === 0 ? 'linear-losat-cache-reason' : null"><i class="ph ph-trash" aria-hidden="true"></i> {{ clearableLosatResultCount === 0 ? t('Clear LOSAT results') : tn(clearableLosatResultCount, 'Clear the project\'s {count} LOSAT result', 'Clear the project\'s {count} LOSAT results') }}</button>
+                                 <p v-if="clearableLosatResultCount === 0" id="linear-losat-cache-reason" class="ui-hint">{{ t('No LOSAT results yet') }}</p>
+                             </section>
+ 
+@@ -4500,7 +4500,7 @@ <h1 class="sr-only">gbdraw</h1>
+                                         <i class="ph ph-download-simple" aria-hidden="true"></i> {{ t('Save Raw LOSAT TSV') }}
+                                     </button>
+                                     <button @click="clearLosatCache" class="btn btn-danger text-xs flex-auto" :disabled="!semanticMutationAvailable || (clearableLosatResultCount === 0)" :aria-describedby="clearableLosatResultCount === 0 ? 'circular-losat-cache-reason' : null">
+-                                        <i class="ph ph-trash" aria-hidden="true"></i> {{ clearableLosatResultCount === 0 ? t('Clear LOSAT results') : tn(clearableLosatResultCount, 'Clear {count} LOSAT result', 'Clear {count} LOSAT results') }}
++                                        <i class="ph ph-trash" aria-hidden="true"></i> {{ clearableLosatResultCount === 0 ? t('Clear LOSAT results') : tn(clearableLosatResultCount, 'Clear the project\'s {count} LOSAT result', 'Clear the project\'s {count} LOSAT results') }}
+                                     </button>
+                                 </div>
+                                 <p v-if="losatResultRows.length === 0" id="circular-losat-cache-reason" class="ui-hint">{{ clearableLosatResultCount === 0 ? t('No LOSAT results yet') : t('No LOSAT results in this drawing') }}</p>
+diff --git a/gbdraw/web/js/services/config.js b/gbdraw/web/js/services/config.js
+index d1ce4b7dc..aa1534ec9 100644
+--- a/gbdraw/web/js/services/config.js
++++ b/gbdraw/web/js/services/config.js
+@@ -2265,13 +2265,14 @@ const overlayCanonicalObject = (stored, canonical) => {
+ /**
+  * @param {Record<string, unknown>} projectedConfig
+  * @param {unknown} storedConfig Unvalidated.
+- * @param {{ hasCanonicalProteinPipeline?: boolean }} [options]
++ * @param {{ hasCanonicalProteinPipeline?: boolean, ringTables?: readonly ConservationSourcePlace<ConservationFile>[] }} [options]
++ *   `ringTables`: the projection's ring tables (`files.c_conservation_blasts`), at whose places its rings are.
+  * @returns {Record<string, unknown>}
+  */
+ const restoreStoredNonCanonicalConfig = (
+   projectedConfig,
+   storedConfig,
+-  { hasCanonicalProteinPipeline = false } = {}
++  { hasCanonicalProteinPipeline = false, ringTables = [] } = {}
+ ) => {
+   const restored = cloneJsonData(projectedConfig);
+   if (!isPlainObject(storedConfig)) return restored;
+@@ -2341,8 +2342,11 @@ const restoreStoredNonCanonicalConfig = (
+   const series = conservation.series;
+   const storedSeries = storedConservation.series;
+   if (Array.isArray(series) && Array.isArray(storedSeries)) {
+-    conservation.series = series.map((/** @type {unknown} */ entry, /** @type {number} */ index) => {
+-      const storedEntry = storedSeries[index];
++    // Each projected ring is the request's ring at its table's place; it takes the code of the stored entry the one
++    // matcher pairs with that table, so a move of the rings after the Generate keeps each ring's code (OV-3179).
++    const { places } = conservationSourcesOfSeries(ringTables, { series: storedSeries });
++    conservation.series = series.map((/** @type {unknown} */ entry, /** @type {number} */ place) => {
++      const storedEntry = storedSeries[places.indexOf(place)];
+       if (!isPlainObject(entry) || !isPlainObject(storedEntry)) return entry;
+       if (!Object.prototype.hasOwnProperty.call(storedEntry, 'losat_gencode')) return entry;
+       return { ...entry, losat_gencode: cloneJsonData(storedEntry.losat_gencode) };
+@@ -3131,7 +3135,7 @@ const readDraftOverCommittedRequest = (projection, storedConfig, keepsOtherMode)
+     ...restoreStoredNonCanonicalConfig(
+       projection.config,
+       storedConfig,
+-      { hasCanonicalProteinPipeline: Boolean(projection.pipelineState) }
++      { hasCanonicalProteinPipeline: Boolean(projection.pipelineState), ringTables: projection.files.c_conservation_blasts ?? [] }
+     ),
+     rules: applySpecificRuleProvenance(
+       projection.config.rules,
+@@ -4719,7 +4723,8 @@ const deserializeCanonicalComparisons = (
+  * }} options
+  *   `drawing`: the drawing Generate drew, whose comparison and ring files the request's resources replace;
+  *   `conservationPairs`: the hash pairs of the request's conservation rings (`conservationHashPairs`), or
+- *   `'committed'` for a candidate of the committed request that ran no conservation search (its pairs stay);
++ *   `'committed'` for a candidate of the committed request that ran no conservation search (its pairs stay, and the
++ *   draft's Linear comparisons stay as the draft has them);
+  *   `installRings`: the candidate is a Circular Generate that searched rings (`adoptCircularRingResult` decides it
+  *   from the rings that Generate searched). Only such a candidate installs the rings' tables, genomes and series into
+  *   the draft; any other (a Linear Generate, a Generate that searched no ring, a rotation, an alignment, a placement)
+@@ -4753,7 +4758,8 @@ export const adoptCanonicalRenderArtifacts = (
+    *   projectedConservation: Record<string, any> | undefined, series: Record<string, any>[]
+    * } | null} */
+   let nextCircularState = null;
+-  if (projection.mode === 'linear') {
++  if (projection.mode === 'linear' && conservationPairs !== 'committed') {
++    // A candidate of the committed request leaves the draft's comparisons as the draft has them (R1 (c), OV-3314).
+     nextLinearComparisons = deserializeCanonicalComparisons(
+       projection.files.linearCanonicalComparisons,
+       { adoptCanonicalPayloads: preserveAdoptedResources }
+diff --git a/tests/web/run-analysis-simple-path.test.mjs b/tests/web/run-analysis-simple-path.test.mjs
+index 62df9cdd6..9b8224299 100644
+--- a/tests/web/run-analysis-simple-path.test.mjs
++++ b/tests/web/run-analysis-simple-path.test.mjs
+@@ -1668,12 +1668,13 @@ test('a ring comparison genome of two files is one read of both, kept for those
+ });
+ 
+ // #1777 review 9 and round 12 (OV-3203, OV-3204): Save Raw LOSAT TSV reads the shown drawing's results; both
+-// panels' "Clear N LOSAT results" count the searches Clear removes, the whole cache (PD-OI-022), a search only a
+-// deleted drawing names included (round 15, OV-3211).
++// panels' "Clear the project's N LOSAT results" count the searches Clear removes, the whole cache (PD-OI-022), a
++// search only a deleted drawing names included (round 15, OV-3211).
+ test('Save Raw LOSAT TSV reads the shown drawing\'s results and both Clear buttons count the project\'s searches', () => {
+   const html = readFileSync(new URL('../../gbdraw/web/index.html', import.meta.url), 'utf8');
+   assert.equal(html.includes('losatCacheInfo'), false);
+-  assert.equal(html.match(/tn\(clearableLosatResultCount, 'Clear \{count\} LOSAT result'/g)?.length, 2);
++  // The count is the project's, and the button says so (Owner Q2=A, 2026-11-10): one wording in both panels.
++  assert.equal(html.match(/tn\(clearableLosatResultCount, 'Clear the project\\'s \{count\} LOSAT result', 'Clear the project\\'s \{count\} LOSAT results'\)/g)?.length, 2);
+   assert.equal(html.match(/@click="clearLosatCache"[^>]*:disabled="!semanticMutationAvailable \|\| \(clearableLosatResultCount === 0\)"/g)?.length, 2);
+   assert.match(html, /@click="downloadLosatCache"[^>]*:disabled="losatResultRows\.length === 0" :aria-describedby="losatResultRows\.length === 0 \? 'circular-losat-cache-reason' : null"/);
+   // Round 13 (OV-3206): each reason is true. The Circular hint gives Save Raw's reason: dev's hint while the project
+diff --git a/tests/web/session-losat-cache-validation.test.mjs b/tests/web/session-losat-cache-validation.test.mjs
+index 5824a33bc..97d1d2c54 100644
+--- a/tests/web/session-losat-cache-validation.test.mjs
++++ b/tests/web/session-losat-cache-validation.test.mjs
+@@ -598,6 +598,13 @@ protein-a\tprotein-b\t95\t20\t1\t0\t10\t30\t50\t70\t1e-20\t120
+   assert.equal(state.selectedOrthogroupAlignmentFeature.value, '');
+ 
+   modeDrawing(state, 'linear').files.linearCanonicalComparisons = [];
++  // OV-3314: a candidate of the committed request (Rotate record to feature, Align, Align at feature) replaces only
++  // the committed Session; the draft's comparisons stay as the draft has them, here the empty list a decision leaves.
++  adoptCanonicalRenderArtifacts(getCommittedCanonicalSession(), {
++    adoptOwnedRequest: true, drawing: modeDrawing(state, 'linear'), conservationPairs: 'committed'
++  });
++  assert.deepEqual(modeDrawing(state, 'linear').files.linearCanonicalComparisons, []);
++  assert.equal(getCommittedCanonicalSession().renderRequest.comparisons.length, 4, 'the committed request keeps its comparisons');
+   // Generate adopts what Load committed: the request of schema 9.
+   adoptCanonicalRenderArtifacts({ renderRequest: committed.renderRequest, resources: committed.resources }, { drawing: modeDrawing(state, 'linear') });
+   const collinearityName = committed.resources[committedComparisons[2].resourceId].name;
+@@ -1941,3 +1948,83 @@ for (const key of ['__proto__', 'constructor', 'prototype']) {
+     assert.deepEqual(alerts, []);
+   });
+ }
++
++// OV-3179: a Session 31-39 Load reads the stored draft over its committed request's projection, and each projected
++// ring takes the stored draft's genetic code of its own ring, paired by the one matcher, not by index. The document is
++// the Web Session 39 of whitelist-tab-keyword.v39 with two TLOSATX rings in the shape the main cdd31013 Web writer
++// gave them (the bytes of conservation-fasta.v39): each ring's table (`addText`: kind `conservation-blast-file`, the
++// name `<genome>.circular_conservation.tlosatx.tsv` behind its resource ID, no original name), its genome in the
++// request and in `webFiles.conservationLosatFastaSources` (`addFile`: kind `conservation-fasta-file`, the prefixed name
++// and the original one), and a draft as that writer's Generate adoption left it: entry k at table k's place under
++// table k's projected name (the projection drops the resource-ID prefix, then and now), with the source key of its
++// genome from before the Generate.
++const fixture = (name) => JSON.parse(gunzipSync(readFileSync(new URL(`../fixtures/sessions/${name}`, import.meta.url))));
++const LOSAT_RINGS = [{ ring: 'ring-a', label: 'Ring A', code: 11 }, { ring: 'ring-b', label: 'Ring B', code: 4 }];
++/** @param {(series: object[]) => object[]} editDraft What the user did to the draft's series after the Generate. */
++const losatRingSession39 = (editDraft) => {
++  const document = fixture('whitelist-tab-keyword.v39.gbdraw-session.json.gz');
++  const { resources: ringBytes } = fixture('conservation-fasta.v39.gbdraw-session.json.gz');
++  const table = ringBytes['conservation-blast-files-1'];
++  const genome = ringBytes['conservation-fasta-files-1'];
++  const originalNames = document.webFiles.resourceOriginalNames;
++  const tableName = (ring) => `${ring}.circular_conservation.tlosatx.tsv`;
++  const ids = LOSAT_RINGS.map(({ ring }, index) => {
++    const tableId = `conservation-resolved-blast-${index + 1}`;
++    document.resources[tableId] = { kind: 'conservation-blast-file', name: `${tableId}-${tableName(ring)}`,
++      type: 'text/tab-separated-values', size: table.size, lastModified: 0, encoding: 'base64', data: table.data };
++    const genomeIds = [`conservation-resolved-fasta-${index + 1}`, `conservation-losat-fasta-files-${index + 1}`];
++    genomeIds.forEach((id) => {
++      document.resources[id] = { ...genome, kind: 'conservation-fasta-file', name: `${id}-${ring}.fna` };
++      originalNames[id] = `${ring}.fna`;
++    });
++    return { tableId, genomeId: genomeIds[0], losatId: genomeIds[1] };
++  });
++  Object.assign(document.renderRequest.diagramOptions, {
++    conservationBlastFiles: ids.map(({ tableId }) => ({ resourceId: tableId, representation: 'file' })),
++    conservationFastaFiles: ids.map(({ genomeId }) => ({ resourceId: genomeId, representation: 'file' })),
++    conservationReference: 'subject',
++    conservationLabels: LOSAT_RINGS.map(({ label }) => label),
++    conservationColors: LOSAT_RINGS.map(() => '#D9EAF7'),
++    conservationRingWidth: null,
++    conservationRingGap: null
++  });
++  Object.assign(document.webFiles, {
++    conservationBlastSource: 'losat-cache', conservationLosatFastaSources: ids.map(({ losatId }) => losatId)
++  });
++  const adopted = LOSAT_RINGS.map(({ ring, label, code }, index) => ({
++    sourceKey: `${ring}.fna|${genome.size}|${genome.lastModified}|0`, fileName: tableName(ring),
++    sourceIndex: index, label, color: '#d9eaf7', losat_gencode: code
++  }));
++  Object.assign(document.config.circularConservation, {
++    enabled: true, source: 'losat', losat_program: 'tblastx', reference: 'subject',
++    labels: LOSAT_RINGS.map(({ label }) => label).join(','), series: editDraft(adopted)
++  });
++  return document;
++};
++const loadedRingCodes = async (document) => {
++  const result = await importSession(await sessionLoadEvent(document), {
++    transformLegacyResultSvg, confirmLoadRepairs: async () => true
++  });
++  assert.equal(result.status, 'ok', JSON.stringify(result.error));
++  return state.activeDrawing().circularConservation.series.map(({ label, losat_gencode: code }) => ({ label, code }));
++};
++const OWN_CODES = LOSAT_RINGS.map(({ label, code }) => ({ label, code }));
++
++// Move series inward after the Generate: each entry keeps its table's name, so the matcher's name pass pairs it (its
++// place would give the same pairing).
++test('a Session 39 saved after a move of its LOSAT rings loads each ring with its own genetic code', async () => {
++  assert.deepEqual(await loadedRingCodes(losatRingSession39((series) => [...series].reverse())), OWN_CODES,
++    'each ring keeps its own genetic code');
++});
++
++// Move series inward, then Add comparison sequence: that writer cleared the derived tables and reconciled the series
++// against the genome files, so each entry carries its genome's name, which no table has, and its genome's place,
++// which is its table's place (the request lists the genomes in table order). The matcher's place pass decides; the
++// added genome has no table and no ring.
++test('a Session 39 saved after a move and Add comparison sequence loads each ring with its own genetic code', async () => {
++  const document = losatRingSession39((series) => [
++    ...[...series].reverse().map((entry) => ({ ...entry, fileName: entry.sourceKey.split('|')[0] })),
++    { sourceKey: 'ring-c.fna|24|5|0', fileName: 'ring-c.fna', sourceIndex: 2, label: 'ring-c', color: '#d9eaf7', losat_gencode: 2 }
++  ]);
++  assert.deepEqual(await loadedRingCodes(document), OWN_CODES, 'each ring keeps its own genetic code');
++});

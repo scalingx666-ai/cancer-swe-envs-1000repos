@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/dotnetbio__bio-31"
+description = "Fix Tests"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "bio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "dotnetbio/bio"
+ref = "eada7d0f9274b74dc1fa368f74ff90870f2cc231"
+reference = "https://github.com/dotnetbio/bio/pull/31"
+source_access = "auto"
+built_at = "2026-11-13T16:16:37.033565+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f05808ba83bb18f04a4d68730472f9de79947729f294def75e93ec75d9c48d48"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-09-26T23:17:30Z"
+diff_format = "unified"
+context_files = [
+    "Tests/Bio.Tests/IO/Bed/BEDOperationsTests.cs",
+    "Tests/Bio.Tests/IO/GenBank/GenBankTests.cs",
+    "Tests/Bio.Tests/IO/Gff/GffTests.cs",
+    "Tests/Bio.Tests/IO/Xsv/XsvSparseTests.cs",
+    "Tests/Bio.Tests/Util/Utility.cs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 163
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

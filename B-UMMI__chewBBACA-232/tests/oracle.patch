@@ -1,0 +1,264 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index e50b10a1..302cbd55 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,10 @@
+ # Changelog
+ 
++## 3.5.2 - 2026-03-03
++
++- Fixed issue in the PrepExternalSchema module related to the addition of loci prefixes to sequence headers when the original schema did not use prefixes (e.g., schemas from [cgMLST.org](https://www.cgmlst.org/ncs)).
++- Fixed issue in the PrepExternalSchema module related to saving some alleles to the final FASTA files in the incorrect orientation.
++
+ ## 3.5.1 - 2026-01-06
+ 
+ chewBBACA no longer checks if input files have unique basename prefixes shorter than 30 characters. In the past, this was performed to ensure that sequence identifiers did not exceed the character limit (50 characters) enforced by BLAST when creating a database. The main changes to file name processing are the following:
+diff --git a/CHEWBBACA/AlleleCall/allele_call.py b/CHEWBBACA/AlleleCall/allele_call.py
+index f2e43838..6e10bfd6 100644
+--- a/CHEWBBACA/AlleleCall/allele_call.py
++++ b/CHEWBBACA/AlleleCall/allele_call.py
+@@ -2308,7 +2308,7 @@ def allele_calling(fasta_files, schema_directory, temp_directory,
+ 											config['CPU cores'], False)
+ 
+ 	# Translated representative FASTA files mapped to loci basenames
+-	repprot_to_locibase = {file[1]: fo.file_basename(file[0], False).replace('_short', '') for file in protein_files}
++	repprot_to_locibase = {file[1]: fo.file_basename(file[1], False).split('_short')[0] for file in protein_files}
+ 	# Translated representative FASTA files for loci being called
+ 	repprot_fastas = [k for k, v in repprot_to_locibase.items() if v in loci_basenames.values()]
+ 
+diff --git a/CHEWBBACA/PrepExternalSchema/adapt_schema.py b/CHEWBBACA/PrepExternalSchema/adapt_schema.py
+index a6973cec..3a62f826 100644
+--- a/CHEWBBACA/PrepExternalSchema/adapt_schema.py
++++ b/CHEWBBACA/PrepExternalSchema/adapt_schema.py
+@@ -229,11 +229,11 @@ def adapt_loci(loci, schema_path, schema_short_path, bsr, min_len,
+ 		# Create temp directory for the current gene
+ 		fo.create_directory(locus_temp_dir)
+ 
+-		# Import DNA sequences
+-		dna_seqs = fao.import_sequences(locus)
+-		total_sequences = len(dna_seqs)
+ 		# Translate sequences
+-		_, protein_file, _, invalid = fao.translate_fasta(locus, locus_temp_dir, table_id)
++		dna_file, protein_file, _, invalid = fao.translate_fasta(locus, locus_temp_dir, table_id, True)
++		# Import DNA sequences only after translating to avoid importing sequences that cannot be translated
++		dna_seqs = fao.import_sequences(dna_file)
++		total_sequences = len(dna_seqs) + len(invalid)
+ 		prot_seqs = fao.import_sequences(protein_file)
+ 		# Get the IDs of alleles that could not be translated
+ 		excluded = set([s[0] for s in invalid])
+@@ -248,6 +248,8 @@ def adapt_loci(loci, schema_path, schema_short_path, bsr, min_len,
+ 			invalid += [[s, ct.ALM_MSG.format(st_percentage, allele_sizes[s], modes_concat)] for s in alm]
+ 			invalid += [[s, ct.ASM_MSG.format(st_percentage, allele_sizes[s], modes_concat)] for s in asm]
+ 
++		invalid = [[i[0] if locus_id in i[0] else f'{locus_id}_{i[0]}', i[1]] for i in invalid]
++
+ 		invalid_alleles.extend(invalid)
+ 
+ 		# Remove excluded alleles
+@@ -418,7 +420,9 @@ def adapt_loci(loci, schema_path, schema_short_path, bsr, min_len,
+ 			final_representatives = list(prot_seqs.keys())
+ 
+ 		# Write schema file with all alleles
+-		locus_data = [[k, v] for k, v in dna_seqs.items()]
++		# Add locus identifier as prefix to sequence IDs
++		# Some external schemas, such as schemas from cgMLST.org, do not include the locus identifier in the sequence headers
++		locus_data = [[k, v] if locus_id in k else [f'{locus_id}_{k}', v] for k, v in dna_seqs.items()]
+ 		locus_lines = fao.fasta_lines(ct.FASTA_RECORD_TEMPLATE, locus_data)
+ 		fo.write_lines(locus_lines, locus_file)
+ 
+@@ -426,12 +430,13 @@ def adapt_loci(loci, schema_path, schema_short_path, bsr, min_len,
+ 		valid_sequences = len(locus_lines)
+ 
+ 		# Write schema file with representatives
+-		locus_rep_data = [[r, dna_seqs[r]] for r in final_representatives]
++		# Do not forget to add locus identifier as prefix to sequence IDs if it is not included in the original ID
++		locus_rep_data = [[r, dna_seqs[r]] if locus_id in r else [f'{locus_id}_{r}', dna_seqs[r]] for r in final_representatives]
+ 		locus_rep_lines = fao.fasta_lines(ct.FASTA_RECORD_TEMPLATE,
+ 										  locus_rep_data)
+ 		fo.write_lines(locus_rep_lines, locus_short_file)
+ 
+-		# get number of representatives
++		# Determine the number of representatives for current locus
+ 		representatives_number = len(locus_rep_lines)
+ 
+ 		summary_stats.append([locus_id,
+@@ -518,7 +523,7 @@ def main(input_files, output_directories, cpu_cores, blast_score_ratio,
+ 	schema_basename = fo.file_basename(schema_path.rstrip('/'))
+ 	parent_directory = os.path.dirname(schema_path)
+ 
+-	# write file with alleles that were determined to be invalid
++	# Write file with alleles that were determined to be invalid
+ 	invalid_alleles = [sub[0] for sub in invalid_data]
+ 	invalid_alleles = list(itertools.chain.from_iterable(invalid_alleles))
+ 	invalid_alleles_file = os.path.join(parent_directory,
+diff --git a/CHEWBBACA/__init__.py b/CHEWBBACA/__init__.py
+index 34a6888d..ec7c0add 100644
+--- a/CHEWBBACA/__init__.py
++++ b/CHEWBBACA/__init__.py
+@@ -1,2 +1,2 @@
+ 
+-__version__ = "3.5.1"
++__version__ = "3.5.2"
+diff --git a/CHEWBBACA/docs/conf.py b/CHEWBBACA/docs/conf.py
+index ad9fc48a..b1582aff 100644
+--- a/CHEWBBACA/docs/conf.py
++++ b/CHEWBBACA/docs/conf.py
+@@ -22,7 +22,7 @@
+ author = 'Rafael Mamede'
+ 
+ # The full version, including alpha/beta/rc tags
+-release = '3.5.1'
++release = '3.5.2'
+ 
+ # -- General configuration ---------------------------------------------------
+ 
+diff --git a/CHEWBBACA/docs/user/getting_started/installation.rst b/CHEWBBACA/docs/user/getting_started/installation.rst
+index 96dd2bc0..d2946f9a 100644
+--- a/CHEWBBACA/docs/user/getting_started/installation.rst
++++ b/CHEWBBACA/docs/user/getting_started/installation.rst
+@@ -8,7 +8,7 @@ Install the latest released version using `conda <https://anaconda.org/bioconda/
+ 
+ ::
+ 
+-	conda create -c bioconda -c conda-forge -n chewie "chewbbaca=3.5.1"
++	conda create -c bioconda -c conda-forge -n chewie "chewbbaca=3.5.2"
+ 
+ If you're having issues installing chewBBACA through conda, please verify that you are using
+ conda>=22.11, and enable the libmamba solver, which might speed up the installation process.
+@@ -16,7 +16,7 @@ You can also install `mamba <https://mamba.readthedocs.io/en/latest/index.html>`
+ 
+ ::
+ 
+-	mamba create -c bioconda -c conda-forge -n chewie "chewbbaca=3.5.1"
++	mamba create -c bioconda -c conda-forge -n chewie "chewbbaca=3.5.2"
+ 
+ After creating the environment, you can use chewBBACA by activating the environment with the following command:
+ 
+diff --git a/CHEWBBACA/utils/fasta_operations.py b/CHEWBBACA/utils/fasta_operations.py
+index 198bbdc4..b87d23f1 100644
+--- a/CHEWBBACA/utils/fasta_operations.py
++++ b/CHEWBBACA/utils/fasta_operations.py
+@@ -471,7 +471,7 @@ def fasta_stats(fasta_file):
+ 	return [fasta_file, total_seqs, min_length, max_length, mean_length]
+ 
+ 
+-def translate_fasta(input_fasta, output_directory, translation_table):
++def translate_fasta(input_fasta, output_directory, translation_table, write_dna=False):
+ 	"""Translate DNA sequences in a FASTA file.
+ 
+ 	Parameters
+@@ -499,27 +499,40 @@ def translate_fasta(input_fasta, output_directory, translation_table):
+ 		be translated. Each sublist includes a sequence identifier
+ 		and a exception message.
+ 	"""
+-	records = sequence_generator(input_fasta)
+-	translated_records = [[rec.id,
+-						  sm.translate_dna(str(rec.seq), translation_table, 0)]
+-						  for rec in records]
+-
+-	# Only keep records that could be translated
+-	valid = [[record[0], str(record[1][0][0])]
+-			 for record in translated_records
+-			 if type(record[1]) == list]
++	records = import_sequences(input_fasta)
++	translated_records = [[seqid,
++						   sm.translate_dna(seq, translation_table, 0)]
++						  for seqid, seq in records.items()]
+ 
+ 	# Also need to get exceptions for alleles that could not be translated
+-	invalid = [[record[0], record[1]]
+-			   for record in translated_records
+-			   if type(record[1]) == str]
+-
+-	valid_lines = fasta_lines(ct.FASTA_RECORD_TEMPLATE, valid)
++	invalid = [[rec[0], rec[1]]
++			   for rec in translated_records
++			   if type(rec[1]) == str]
+ 
+-	basename = fo.file_basename(input_fasta, False) + '_protein.fasta'
+-	protein_file = fo.join_paths(output_directory, [basename])
+-	fo.write_lines(valid_lines, protein_file)
+-
+-	translated = len(valid_lines)
++	# Only keep records that could be translated
++	valid_proteins = [[rec[0], str(rec[1][0][0])]
++			 		  for rec in translated_records
++			 		  if type(rec[1]) == list]
++
++	# Save protein sequences to a FASTA file
++	valid_proteins_lines = fasta_lines(ct.FASTA_RECORD_TEMPLATE, valid_proteins)
++	translated = len(valid_proteins_lines)
++	protein_file_basename = fo.file_basename(input_fasta, False) + '_protein.fasta'
++	protein_file_path = fo.join_paths(output_directory, [protein_file_basename])
++	fo.write_lines(valid_proteins_lines, protein_file_path)
++
++	if write_dna is True:
++		# Identify DNA sequences that could be translated
++		valid_dna = [[rec[0], str(rec[1][0][1])]
++					 for rec in translated_records
++					 if type(rec[1]) == list]
++
++		# Save DNA sequences that could be translated to a FASTA file if there were any invalid sequences
++		valid_dna_lines = fasta_lines(ct.FASTA_RECORD_TEMPLATE, valid_dna)
++		dna_file_basename = fo.file_basename(input_fasta)
++		dna_file_path = fo.join_paths(output_directory, [dna_file_basename])
++		fo.write_lines(valid_dna_lines, dna_file_path)
++	else:
++		dna_file_path = None
+ 
+-	return [input_fasta, protein_file, translated, invalid]
++	return [dna_file_path, protein_file_path, translated, invalid]
+diff --git a/CITATION.cff b/CITATION.cff
+index 3e75f3f8..e09e622f 100644
+--- a/CITATION.cff
++++ b/CITATION.cff
+@@ -13,7 +13,7 @@ authors:
+     given-names: João
+   - family-names: Ramirez
+     given-names: Mário
+-version: 3.5.1
++version: 3.5.2
+ date-released: "2024-08-06"
+ keywords:
+   - bioinformatics
+diff --git a/README.md b/README.md
+index 2202b079..65764f0d 100644
+--- a/README.md
++++ b/README.md
+@@ -17,20 +17,10 @@ BLAST Score Ratio as proposed by [Rasko DA et al.](http://bmcbioinformatics.biom
+ 
+ ## News
+ 
+-## 3.5.1 - 2026-01-06
++## 3.5.2 - 2026-03-03
+ 
+-chewBBACA no longer checks if input files have unique basename prefixes shorter than 30 characters. In the past, this was performed to ensure that sequence identifiers did not exceed the character limit (50 characters) enforced by BLAST when creating a database. The main changes to file name processing are the following:
+-
+-- chewBBACA uses the file basename without the file extension as unique identifier (e.g. `GCF_008632635.1.fasta` is converted to `GCF_008632635.1`), instead of trying to determine the shortest unique prefix that can be used to identify each input file. It is still necessary for each file to have a unique identifier after the removal of the file extension (e.g. `GCF_008632635.1.fasta` and `GCF_008632635.1.fna` have different file extensions but the same identifier after removing the file extension, which is not allowed).
+-- The CreateSchema module uses the input file basenames without the file extension to define the identifiers for the loci in the created schemas (e.g. loci initially identified in the genomes `GCF_008632635.1.fasta` and `GCA_000006785.2_ASM678v2.fasta` are named as `GCF_008632635.1-proteinN.fasta` and `GCA_000006785.2_ASM678v2-proteinN.fasta`, respectively). We still recommend using short and unique file names without special characters (e.g.: `!@#?$^*()+`) for conciseness and to avoid potential issues.
+-- The AlleleCall module accepts and uses the new loci identifier format used by the CreateSchema module. The input genome or CDS files can also have basenames of any length as long as the basename without the file extension for each input file is unique. The output files created by the AlleleCall module use the full unique basenames (e.g. for the genome `GCA_000006785.2_ASM678v2.fasta`, the genome identifier used in the output files will be `GCA_000006785.2_ASM678v2`, instead of `GCA_000006785` used up until chewBBACA v3.5.0).
+-- The PrepExternalSchema module accepts schemas containing loci FASTA files with basenames longer than 30 characters.
+-
+-Additionally, the CDS identifiers are converted to a different format (`lcl|SEQ1`, `lcl|SEQ2`...`lcl|SEQN`) before creating a BLAST database with `makeblastdb` and the `-parse_seqids` option to avoid issues related to some sequence identifiers being interpretd and modified (e.g. interpretd as PDB Chain IDs) when creating a database, resulting in errors when an identifier is modified and no longer matches the original identifier. This allowed to remove the check to verify that unique prefixes are not modified by BLAST during database creation.
+-
+-Additional changes:
+-
+-- Added the `--output-masked` option to the AlleleCall module to create a TSV file with the masked profiles (`INF-` prefixes are removed and the NIPH, NIPHEM, ASM, ALM, PLOT3, PLOT5, LOTSC, and PAMA classes are converted to `0`).
++- Fixed issue in the PrepExternalSchema module related to the addition of loci prefixes to sequence headers when the original schema did not use prefixes (e.g., schemas from [cgMLST.org](https://www.cgmlst.org/ncs)).
++- Fixed issue in the PrepExternalSchema module related to saving some alleles to the final FASTA files in the incorrect orientation.
+ 
+ Check our [Changelog](https://github.com/B-UMMI/chewBBACA/blob/master/CHANGELOG.md) to learn about the latest changes.
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index 5e55e5ac..f89cd04d 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "chewBBACA"
+-version = "3.5.1"
++version = "3.5.2"
+ requires-python = ">=3.8"
+ dependencies = [
+     "numpy~=1.24.3",

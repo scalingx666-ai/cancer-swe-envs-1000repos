@@ -1,0 +1,13 @@
+diff --git a/libdeflate/arm_crc32_impl.h b/libdeflate/arm_crc32_impl.h
+index c82530d6..74486f16 100644
+--- a/libdeflate/arm_crc32_impl.h
++++ b/libdeflate/arm_crc32_impl.h
+@@ -220,7 +220,7 @@ crc32_pmull_aligned(u32 remainder, const uint8x16_t *p, size_t nr_segs)
+ }
+ #define IMPL_ALIGNMENT		16
+ #define IMPL_SEGMENT_SIZE	16
+-#include "../crc32_vec_template.h"
++#include "./crc32_vec_template.h"
+ #endif /* PMULL implementation */
+ 
+ #ifdef DISPATCH

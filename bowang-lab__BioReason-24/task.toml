@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/bowang-lab__BioReason-24"
+description = "Fix SFT supervision and other critical bugs across the codebase"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BioReason",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bowang-lab/BioReason"
+ref = "4dd776849d9212e09f1dc802d73598ac3f490b0e"
+reference = "https://github.com/bowang-lab/BioReason/pull/24"
+source_access = "auto"
+built_at = "2026-11-13T15:56:16.024185+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:898ee3add6a1db6710f7b7dcd043d5c7fa6b296fac16e4609d3b2ada09e665c3"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-28T22:14:44Z"
+diff_format = "unified"
+context_files = [
+    "bioreason/dataset/kegg.py",
+    "bioreason/models/dna_llm.py",
+    "bioreason/trainer/grpo_config.py",
+    "bioreason/trainer/grpo_trainer.py",
+    "eval_kegg_dna_vllm.py",
+    "reason.py",
+    "train_dna_only.py",
+    "train_dna_qwen.py",
+    "train_grpo.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 205
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

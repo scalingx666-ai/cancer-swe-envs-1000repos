@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/nanoporetech__dorado-602"
+description = "Add ModelInfo structure for kit 10.4.1 4kHz 260bps data"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "dorado",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nanoporetech/dorado"
+ref = "a7fb3e3d4afa7a11cb52422e7eecb1a2cdb7860f"
+reference = "https://github.com/nanoporetech/dorado/pull/602"
+source_access = "auto"
+built_at = "2026-11-13T15:49:21.811184+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:76dc2923b958de94bff06c025b6f0ae6277e0336c0505a1da3d89fa3b699b435"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-02-04T20:25:57Z"
+diff_format = "unified"
+context_files = [
+    "dorado/models/models.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

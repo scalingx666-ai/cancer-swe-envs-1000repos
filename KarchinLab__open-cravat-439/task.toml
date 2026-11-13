@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/KarchinLab__open-cravat-439"
+description = "Fix Celery workers on macOS with billiard 4.3+"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "open-cravat",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "KarchinLab/open-cravat"
+ref = "854336ae7c876566009777e55ccd4aeec6d5291f"
+reference = "https://github.com/KarchinLab/open-cravat/pull/439"
+source_access = "auto"
+built_at = "2026-11-13T15:34:23.222689+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:04ebee07d6973e8daece760964bd5998641d42479e06c3c6e2396863bfbe911f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-19T15:11:30Z"
+diff_format = "unified"
+context_files = [
+    "cravat/gui/README.md",
+    "cravat/gui/job_manager.py",
+    "cravat/gui/workers.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 39
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

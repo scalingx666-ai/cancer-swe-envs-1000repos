@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/InsightSoftwareConsortium__ITK-7157"
+description = "BUG: Fail Azure Linux dependency install step on first error"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "ITK",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "InsightSoftwareConsortium/ITK"
+ref = "7872171e7ceacc81e82f9a76c8a4394e22ae62ef"
+reference = "https://github.com/InsightSoftwareConsortium/ITK/pull/7157"
+source_access = "auto"
+built_at = "2026-11-13T15:46:20.657957+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5ad31c3a1be9e9297c02e6251fe9e5f681c3e4bafff249fb483241ff8d05781f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T00:11:24Z"
+diff_format = "unified"
+context_files = [
+    "Testing/ContinuousIntegration/AzurePipelinesLinux.yml",
+    "Testing/ContinuousIntegration/AzurePipelinesLinuxPython.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

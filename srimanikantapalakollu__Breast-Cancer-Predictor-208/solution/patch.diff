@@ -1,0 +1,77 @@
+diff --git a/.github/ISSUE_TEMPLATE/bug.yaml b/.github/ISSUE_TEMPLATE/bug.yaml
+new file mode 100644
+index 0000000..b8c8b45
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/bug.yaml
+@@ -0,0 +1,18 @@
++name: 🐛 Bug
++description: Report an issue to help improve the project.
++labels: ['bug']
++body:
++  - type: textarea
++    id: description
++    attributes:
++      label: Description
++      description: A brief description of the question or issue, also include what you tried and what didn't work
++    validations:
++      required: true
++  - type: textarea
++    id: screenshots
++    attributes:
++      label: Screenshots
++      description: Please add screenshots if applicable
++    validations:
++      required: false
+\ No newline at end of file
+diff --git a/.github/ISSUE_TEMPLATE/doc_issue.yaml b/.github/ISSUE_TEMPLATE/doc_issue.yaml
+new file mode 100644
+index 0000000..b3e0c04
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/doc_issue.yaml
+@@ -0,0 +1,19 @@
++name: 📄 Documentation issue
++description: Found an issue in the documentation? You can use this one!
++title: '[DOCS] <description>'
++labels: ['documentation']
++body:
++  - type: textarea
++    id: description
++    attributes:
++      label: Description
++      description: Description of the question or issue, also include what you tried and what didn't work
++    validations:
++      required: true
++  - type: textarea
++    id: screenshots
++    attributes:
++      label: Screenshots
++      description: Screenshots if applicable
++    validations:
++      required: false
+\ No newline at end of file
+diff --git a/.github/ISSUE_TEMPLATE/feature_request.yml b/.github/ISSUE_TEMPLATE/feature_request.yml
+new file mode 100644
+index 0000000..9e87101
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/feature_request.yml
+@@ -0,0 +1,19 @@
++name: 💡 General Feature Request
++description: Have a new idea/feature? Please suggest!
++title: '[FEATURE] <description>'
++labels: ['feature']
++body:
++  - type: textarea
++    id: description
++    attributes:
++      label: Description
++      description: Description of the enhancement you propose, also include what you tried and what worked.
++    validations:
++      required: true
++  - type: textarea
++    id: screenshots
++    attributes:
++      label: Screenshots
++      description: Screenshots if applicable
++    validations:
++      required: false
+\ No newline at end of file

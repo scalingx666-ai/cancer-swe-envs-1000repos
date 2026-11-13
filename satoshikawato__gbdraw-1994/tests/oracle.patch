@@ -1,0 +1,1180 @@
+diff --git a/gbdraw/web/js/app/app-setup.js b/gbdraw/web/js/app/app-setup.js
+index 31f6b226b..9fb106b5d 100644
+--- a/gbdraw/web/js/app/app-setup.js
++++ b/gbdraw/web/js/app/app-setup.js
+@@ -2535,7 +2535,7 @@ export const createAppSetup = () => {
+   });
+ 
+   const {
+-    rememberShownResultInventory, drawingSwitchBusy, drawingSwitchAvailable, errorDrawingId, showDrawingNow, selectDrawing
++    installArrivingSlot, drawingSwitchBusy, drawingSwitchAvailable, errorDrawingId, showDrawingNow, selectDrawing
+   } = createDrawingSwitch({
+     state, results, selectedResultIndex, errorLog, failedGeneratePreservedResult, sessionOperationAvailability,
+     historyAvailability: history.historyAvailability, historyRestoring: () => history.restoring.value,
+@@ -2549,8 +2549,7 @@ export const createAppSetup = () => {
+     clearActiveRuntime: previewRuntime.clearActiveRuntime, getResultIdentity: previewRuntime.getResultIdentity,
+     presentSelectedResult: previewRuntime.presentSelectedResult,
+     rememberResultInventory: legendActions.rememberResultInventory, artifactSlotsSwap: artifactSlots.swap,
+-    captureArtifactSlot: historySnapshots.captureArtifactSlot, installArtifactSlot: historySnapshots.installArtifactSlot,
+-    adoptShownSetInventory: legendActions.adoptShownSetInventory
++    captureArtifactSlot: historySnapshots.captureArtifactSlot, installArtifactSlot: historySnapshots.installArtifactSlot
+   });
+   // The operations on the drawing list, each one project step (R11, R16-2).
+   const drawingList = createDrawingList({
+@@ -2616,13 +2615,13 @@ export const createAppSetup = () => {
+   const drawingSwitchBusyReason = computed(() => tm(drawingSwitchBusy()?.reason || ''));
+   // Session Load: the loaded Session's artifact slots, before its preview
+   // mounts. `opening` is the shown drawing's slot when its set is not the
+-  // committed one; each `stashed` slot waits in its drawing. The stash starts
+-  // again with the loaded Session. The Legend owner takes the shown set's inventory.
++  // committed one (Load installed the committed set itself); each `stashed`
++  // slot waits in its drawing. The stash starts again with the loaded Session.
++  // The opening slot installs as a switch installs the arriving one.
+   /** @param {LoadedArtifactSlots} slots */
+   const installLoadedArtifactSlots = ({ opening, stashed }) => {
+     artifactSlots.replaceLoaded(stashed);
+-    if (opening) historySnapshots.installArtifactSlot(opening, { drawing: state.drawingOf(opening.drawingId) });
+-    rememberShownResultInventory(opening);
++    if (opening) installArrivingSlot(opening);
+   };
+ 
+   const { requestPaletteChange, selectPalette, requestResetColors } = resultsManager;
+diff --git a/gbdraw/web/js/app/drawing-switch.js b/gbdraw/web/js/app/drawing-switch.js
+index 6f374b3a2..a517fb669 100644
+--- a/gbdraw/web/js/app/drawing-switch.js
++++ b/gbdraw/web/js/app/drawing-switch.js
+@@ -3,8 +3,8 @@
+ // (`selectDrawing`), its work without the gate (`showDrawingNow`, which the
+ // drawing list's steps call), why a switch waits (`drawingSwitchBusy`), the
+ // drawing an operation error names, and the swap of the artifact slots with
+-// the arriving Result's Legend inventory, which Session Load also keeps
+-// (`rememberShownResultInventory`). The composition root passes the state, its
++// the install of the arriving slot, which Session Load also uses for the slot
++// it opens on (`installArrivingSlot`). The composition root passes the state, its
+ // refs, the members of History, the artifact slots, the preview runtime, the
+ // Legend and feature editors, the feature selection, the Preview search and
+ // the notice banner, and the install of the shown drawing
+@@ -12,6 +12,7 @@
+ import { normalizeUserFacingError } from '../utils/error-normalization.js';
+ /** @import { UserFacingError } from '../utils/error-normalization.js' */
+ import { msg } from '../utils/i18n.js';
++import { createArtifactSlot } from '../services/artifact-slot.js';
+ /** @import { DrawingState, SessionBusy, WebState } from '../state.js' */
+ /** @import { DrawingId, DrawingIdentity } from '../services/drawing-view.js' */
+ /** @import { ArtifactSlot } from '../services/artifact-slot.js' */
+@@ -60,8 +61,8 @@ const RULE_WRITE_BUSY = Object.freeze({ status: 'busy', reason: 'A color rule ed
+  * @property {(departing: Readonly<ArtifactSlot>, arrivingId: DrawingId) => Readonly<ArtifactSlot> | null} artifactSlotsSwap
+  *   Keeps the departing slot and takes the arriving drawing's, or null.
+  * @property {() => Readonly<ArtifactSlot>} captureArtifactSlot The displayed artifact as a slot.
+- * @property {(slot: Readonly<ArtifactSlot> | null, options: { drawing: DrawingIdentity }) => void} installArtifactSlot
+- * @property {() => void} adoptShownSetInventory The Legend owner's: a drawing showing no Result has no inventory.
++ * @property {(slot: Readonly<ArtifactSlot>, options: { drawing: DrawingIdentity }) => void} installArtifactSlot
++ *   Installs the slot, with its Legend inventory and colors.
+  */
+ 
+ /**
+@@ -75,32 +76,29 @@ export const createDrawingSwitch = ({
+   ruleWritePending, suspendSpecificRulePatternDrafts, clearFeatureSelection, rememberDepartingResultProjection,
+   auxiliaryImportFailureOnArrival, resetModeTransientUi, installShownDrawing, dismissNotice, switchDrawingSearch,
+   rebindAnnotationRecords, clearActiveRuntime, getResultIdentity, presentSelectedResult, rememberResultInventory,
+-  artifactSlotsSwap, captureArtifactSlot, installArtifactSlot, adoptShownSetInventory
++  artifactSlotsSwap, captureArtifactSlot, installArtifactSlot
+ }) => {
+-  // E1: shows the artifact of drawing `nextId`. Keeps the displayed one in
+-  // the departing drawing's slot and installs the arriving slot, or an empty
+-  // one. The Legend owner
+-  // keeps each Result's inventory (OV-47): the arriving Result's goes to it,
+-  // and the binder adopts it when the Result is displayed, as for a batch
+-  // Result. The owner then gives a drawing showing no Result none (OV-3282).
+-  /** @param {Readonly<ArtifactSlot> | null} slot The installed slot; null: none (an empty slot, or the set a Load restored). */
+-  const rememberShownResultInventory = (slot) => {
++  // E1: installs the arriving slot as the displayed artifact, with its Legend
++  // inventory and colors. The Legend owner also keeps each Result's inventory
++  // (OV-47): the arriving Result's goes to it, and the binder adopts it when
++  // the Result is displayed, as for a batch Result.
++  /** @param {Readonly<ArtifactSlot>} slot */
++  const installArrivingSlot = (slot) => {
++    installArtifactSlot(slot, { drawing: state.drawingOf(slot.drawingId) });
+     const shown = results.value[Number(selectedResultIndex.value) || 0];
+-    if (shown && slot) rememberResultInventory(getResultIdentity(shown), [...slot.legendInventory]);
+-    adoptShownSetInventory();
++    if (shown) rememberResultInventory(getResultIdentity(shown), [...slot.legend.originalOrder]);
+   };
+   /**
+-   * The displayed artifact is kept under the drawing it belongs to, which is
+-   * the arriving drawing when the shown drawing displayed the arriving one's.
++   * Shows the artifact of `arrivingDrawing`: keeps the displayed one under the
++   * drawing it belongs to, which is the arriving drawing when the shown
++   * drawing displayed the arriving one's, and installs the arriving drawing's
++   * slot, or its empty slot when it has no artifact yet.
+    * @param {DrawingIdentity} arrivingDrawing
+-   * @returns {Readonly<ArtifactSlot> | null} The installed slot (null: the drawing has no artifact yet).
+    */
+   const swapArtifactSlots = (arrivingDrawing) => {
+     clearActiveRuntime();
+-    const arriving = artifactSlotsSwap(captureArtifactSlot(), arrivingDrawing.id);
+-    installArtifactSlot(arriving, { drawing: arrivingDrawing });
+-    rememberShownResultInventory(arriving);
+-    return arriving;
++    installArrivingSlot(artifactSlotsSwap(captureArtifactSlot(), arrivingDrawing.id)
++      ?? createArtifactSlot({ drawing: arrivingDrawing, values: {} }));
+   };
+ 
+   // PD-OI-090 (R10, R15): the one switch between the drawings, in one task.
+@@ -182,5 +180,5 @@ export const createDrawingSwitch = ({
+     return { status: 'ok' };
+   };
+ 
+-  return { rememberShownResultInventory, drawingSwitchBusy, drawingSwitchAvailable, errorDrawingId, showDrawingNow, selectDrawing };
++  return { installArrivingSlot, drawingSwitchBusy, drawingSwitchAvailable, errorDrawingId, showDrawingNow, selectDrawing };
+ };
+diff --git a/gbdraw/web/js/app/legend/entry-actions.js b/gbdraw/web/js/app/legend/entry-actions.js
+index 5741b7140..35def2ce3 100644
+--- a/gbdraw/web/js/app/legend/entry-actions.js
++++ b/gbdraw/web/js/app/legend/entry-actions.js
+@@ -50,7 +50,6 @@ import {
+ /** @import { KeptLegendRow, LegendRow } from '../../services/drawing/paint.js' */
+ import { diffLegendIntents, legendColorCopies, legendRowRules } from '../../services/specific-color-rules.js';
+ import { rekeyLegendRowIds } from '../../services/legend-draft-rows.js';
+-import { writeShownSetInventory } from '../../services/artifact-slot.js';
+ import { displayedLegendRowContext } from '../../services/feature-visibility.js';
+ 
+ /** @param {unknown} value */
+@@ -173,11 +172,6 @@ const inAnsweredLegendOrder = (items, added, legendOrder, keyOf, reorder) => {
+   return { items: rows, placed };
+ };
+ 
+-// After an artifact install (a switch, a Load): a drawing showing no Result
+-// has no inventory (OV-3282). The owner's `adoptShownSetInventory` runs it.
+-/** @param {Pick<LegendEntryActionsOptions['state'], 'results' | 'originalLegendOrder'>} state */
+-const adoptShownSetInventoryOf = (state) => writeShownSetInventory(state, state.originalLegendOrder.value);
+-
+ // The Legend entry owner (U3a, R1): its writers edit the drawing's Legend
+ // intent (`legendEntries`, `deletedLegendEntries`, the override stores) and
+ // write no row; the editor intent shows the intent on the displayed Result
+@@ -1046,7 +1040,6 @@ export const createLegendEntryActions = ({
+   return {
+     adoptRestoredLegend,
+     adoptResultInventory,
+-    adoptShownSetInventory: adoptShownSetInventoryOf.bind(null, { results, originalLegendOrder }),
+     captureResultInventory,
+     deleteLegendEntry,
+     extractLegendEntries,
+diff --git a/gbdraw/web/js/services/artifact-slot.js b/gbdraw/web/js/services/artifact-slot.js
+index 7b560e1bf..297c1e67e 100644
+--- a/gbdraw/web/js/services/artifact-slot.js
++++ b/gbdraw/web/js/services/artifact-slot.js
+@@ -21,7 +21,7 @@ export const FEATURE_EDITOR_STATUS_IDLE = Object.freeze({ status: 'idle', error:
+  * E1: the generated artifact of one drawing, which each drawing keeps while
+  * another is shown. The state ref of every key and the value an empty slot
+  * installs, given the mode of the slot's drawing and the current value: the displayed-Result
+- * part of the owner set, the selected Result, the feature-editor status, the generated Legend colors and
++ * part of the owner set, the selected Result, the feature-editor status, the generated
+  * stroke defaults, the alignment Reset receipt (it binds the
+  * committed Linear Session), and the protein identity manifest its LOSAT
+  * protein rows resolve in (D-197). Draft and project state stays shared: the specific
+@@ -58,7 +58,6 @@ export const ARTIFACT_SLOT_EMPTY = Object.freeze({
+   appliedPaletteName: (_mode, current) => current,
+   appliedPaletteColors: (_mode, current) => current,
+   similarityAlignmentResetReceipt: () => null,
+-  originalLegendColors: () => ({}),
+   originalSvgStroke: () => ({ color: null, width: null }),
+   proteinIdentityManifest: () => emptyProteinIdentityManifest()
+ });
+@@ -70,10 +69,10 @@ export const ARTIFACT_SLOT_KEYS = Object.freeze(/** @type {(keyof typeof ARTIFAC
+  * @typedef {object} ArtifactSlot
+  * @property {DrawingId} drawingId The drawing whose artifact it is (its mode is the drawing's).
+  * @property {Readonly<Record<string, any>>} values The value of every `ARTIFACT_SLOT_KEYS` key.
+- * @property {readonly PythonLegendKey[]} legendInventory The selected Result's generated Legend inventory
+- *   (`originalLegendOrder`). The Legend owner keeps each Result's inventory (OV-47), so an install
+- *   does not write it: the mode transition hands it to the Legend owner, which adopts it when the
+- *   Result is displayed.
++ * @property {Readonly<ShownSetLegend>} legend The selected Result's generated Legend inventory and
++ *   colors (`originalLegendOrder`, `originalLegendColors`), the inventory by the rule of
++ *   `resultSetInventory`. The slot install installs them (`installShownSetLegend`); the Legend owner
++ *   also keeps each Result's inventory (OV-47), so the mode transition hands the inventory to it too.
+  * @property {any} matchSequenceOwner The match-sequence registry's trusted owner, or null.
+  * @property {Record<string, any> | null} runtimeState The runtime owner's state (committed Session, CLI helper files).
+  * @property {Readonly<Record<string, any>> | null} transportIdentity The History transport identity of the artifact.
+@@ -83,7 +82,8 @@ export const ARTIFACT_SLOT_KEYS = Object.freeze(/** @type {(keyof typeof ARTIFAC
+ /**
+  * The artifact slots a Session Load installs before its preview mounts:
+  * `opening`, the artifact the Session opens on when it is not the committed
+- * set's, and `stashed`, the ones kept for the drawings not shown.
++ * set's (null: the shown set is the committed one, which Load installed), and
++ * `stashed`, the ones kept for the drawings not shown.
+  * @typedef {{ opening: Readonly<ArtifactSlot> | null, stashed: readonly Readonly<ArtifactSlot>[] }} LoadedArtifactSlots
+  */
+ 
+@@ -98,10 +98,11 @@ export const ARTIFACT_SLOT_KEYS = Object.freeze(/** @type {(keyof typeof ARTIFAC
+ export const resultSetInventory = (results, inventory) => (results.length > 0 ? [...inventory] : []);
+ 
+ /**
+- * The shown Result set's generated Legend inventory and colors, as a restore
+- * (a Session Load, its rollback, a History step) brings them.
++ * The shown Result set's generated Legend inventory and colors, as an
++ * artifact slot holds them and a restore (a Session Load, its rollback, a
++ * History step) brings them.
+  * @typedef {object} ShownSetLegend
+- * @property {PythonLegendKey[]} originalOrder The inventory the set was drawn with.
++ * @property {readonly PythonLegendKey[]} originalOrder The inventory the set was drawn with.
+  * @property {Record<string, string>} originalColors Python's color of each generated row, by its key.
+  */
+ /**
+@@ -113,41 +114,32 @@ export const resultSetInventory = (results, inventory) => (results.length > 0 ?
+  */
+ 
+ /**
+- * The one writer of the displayed inventory after an artifact install, after
+- * the install wrote the shown Results: `inventory` by the rule of
+- * `resultSetInventory`. The Legend owner calls it after a switch and a Load
+- * (`adoptShownSetInventory`), and `installShownSetLegend` for a restore.
+- * @param {Pick<ShownSetLegendRefs, 'results' | 'originalLegendOrder'>} refs
+- * @param {readonly PythonLegendKey[]} inventory
+- */
+-export const writeShownSetInventory = (refs, inventory) => {
+-  refs.originalLegendOrder.value = resultSetInventory(refs.results.value, inventory);
+-};
+-
+-/**
+- * A restore's install of the shown set's inventory and colors (a Session
+- * Load, its rollback, a History step), after it wrote the Results. The colors
+- * have one more install: an artifact slot install writes them as a slot key
+- * (`installArtifactSlot` in `history-snapshot.js`), while the slot's
+- * inventory goes beside its values (`legendInventory`).
++ * The one install of the shown set's inventory and colors, after the
++ * install wrote the Results: an artifact slot install (a switch, a Load that
++ * opens on another set, its rollback; `installArtifactSlot` in
++ * `history-snapshot.js`) and a restore (a Session Load, its rollback, a
++ * History step). The inventory by the rule of `resultSetInventory`, the
++ * colors by reference.
+  * @param {ShownSetLegendRefs} refs
+- * @param {ShownSetLegend} legend
++ * @param {Readonly<ShownSetLegend>} legend
+  */
+ export const installShownSetLegend = (refs, { originalOrder, originalColors }) => {
+   refs.originalLegendColors.value = originalColors;
+-  writeShownSetInventory(refs, originalOrder);
++  refs.originalLegendOrder.value = resultSetInventory(refs.results.value, originalOrder);
+ };
+ 
+ /**
+  * A slot of `drawing`'s artifact; a value it is not given is the empty
+- * slot's for the drawing's mode.
+- * @param {{ drawing: DrawingIdentity, values: ArtifactSlot['values'], legendInventory?: ArtifactSlot['legendInventory'],
++ * slot's for the drawing's mode, and a slot given no `legend` has no
++ * inventory and its own empty colors, which the Legend owner fills in place
++ * after a draw.
++ * @param {{ drawing: DrawingIdentity, values: ArtifactSlot['values'], legend?: Readonly<ShownSetLegend>,
+  *   matchSequenceOwner?: ArtifactSlot['matchSequenceOwner'], runtimeState?: ArtifactSlot['runtimeState'],
+  *   transportIdentity?: ArtifactSlot['transportIdentity'], retainedBytes?: number }} slot
+  * @returns {Readonly<ArtifactSlot>}
+  */
+ export const createArtifactSlot = ({
+-  drawing, values, legendInventory = [], matchSequenceOwner = null, runtimeState = null,
++  drawing, values, legend = { originalOrder: [], originalColors: {} }, matchSequenceOwner = null, runtimeState = null,
+   transportIdentity = null, retainedBytes = 0
+ }) => {
+   // The cast widens the key list, so that a field of any name can be looked up in it.
+@@ -158,7 +150,10 @@ export const createArtifactSlot = ({
+     values: Object.freeze(Object.fromEntries(ARTIFACT_SLOT_KEYS.map((key) => [
+       key, Object.hasOwn(values, key) ? values[key] : ARTIFACT_SLOT_EMPTY[key](drawing.mode, null)
+     ]))),
+-    legendInventory: Object.freeze(resultSetInventory(Object.hasOwn(values, 'results') ? values.results : [], legendInventory)),
++    legend: Object.freeze({
++      originalOrder: Object.freeze(resultSetInventory(Object.hasOwn(values, 'results') ? values.results : [], legend.originalOrder)),
++      originalColors: legend.originalColors
++    }),
+     matchSequenceOwner,
+     runtimeState,
+     transportIdentity,
+@@ -177,7 +172,7 @@ export const createArtifactSlot = ({
+ const withArtifactSlotValues = (slot, drawing, values) => createArtifactSlot({
+   drawing,
+   values: { ...slot?.values, ...values },
+-  legendInventory: slot?.legendInventory,
++  legend: slot?.legend,
+   matchSequenceOwner: slot?.matchSequenceOwner ?? null,
+   runtimeState: slot?.runtimeState ?? null,
+   transportIdentity: slot?.transportIdentity ?? null,
+diff --git a/gbdraw/web/js/services/config.js b/gbdraw/web/js/services/config.js
+index d1ce4b7dc..4284ecab4 100644
+--- a/gbdraw/web/js/services/config.js
++++ b/gbdraw/web/js/services/config.js
+@@ -376,7 +376,7 @@ export const buildLosatExecutionData = () => cloneJsonData(Object.fromEntries(
+ /** @import { DroppedLegendRecord, PythonLegendKey, PythonLegendRow } from './legend-svg.js' */
+ /** @import { SessionResourceDrawing, SessionResourceSource } from './session-resources.js' */
+ /** @import { LoadedTrackSettings } from './track-legend-rows.js' */
+-/** @import { ArtifactSlot, LoadedArtifactSlots } from './artifact-slot.js' */
++/** @import { ArtifactSlot, LoadedArtifactSlots, ShownSetLegend } from './artifact-slot.js' */
+ /** @import { LinearComparisonResolvedEdge } from './linear-comparisons.js' */
+ /** @import { DiagramMode, DrawingState, DrawingTab, LinearSeq, SessionBusy } from '../state.js' */
+ /** @import { DrawingId, DrawingIdentity } from './drawing-view.js' */
+@@ -405,7 +405,7 @@ export const buildLosatExecutionData = () => cloneJsonData(Object.fromEntries(
+ /** @import { ConservationFile, ConservationSourcePlace, RawConservationSeriesEntry } from './conservation-series.js' */
+ /** @import { DepthFileSlots, DepthSlotFile } from './depth-track-state.js' */
+ 
+-/** @import { FallbackUiData, FeatureEditsData, OffsetData } from './history-snapshot.js' */
++/** @import { EditorStateData, FallbackUiData, FeatureEditsData, OffsetData } from './history-snapshot.js' */
+ 
+ // A saved `ui` or `features` object (a Session's, a mode slice's, a History
+ // snapshot's) has one unvalidated view, declared with History's fallback
+@@ -1082,9 +1082,15 @@ const admittedFeatureCatalog = (catalog) => {
+   return isAdoptedFeatureCatalog(rawCatalog) ? rawCatalog : null;
+ };
+ 
++/**
++ * The shown Result's editor artifacts, the project part of an editor state.
++ * @typedef {Pick<EditorStateData, 'originalSvgStroke' | 'alignmentResetReceipt' | 'featureCatalog'>
++ *   & { legend: ShownSetLegend }} EditorArtifactData
++ */
+ // The shown Result's editor artifacts as `applyEditorArtifactData` reads
+ // them: the project part of `buildEditorStateData`. The catalog stays by
+ // reference (R11).
++/** @returns {EditorArtifactData} */
+ const editorArtifactData = () => ({
+   legend: {
+     originalOrder: cloneJsonArray(state.originalLegendOrder.value),
+@@ -1098,7 +1104,7 @@ const editorArtifactData = () => ({
+   featureCatalog: admittedFeatureCatalog(state.featureCatalog?.value)
+ });
+ 
+-/** @param {DrawingState} drawing */
++/** @param {DrawingState} drawing @returns {EditorStateData} */
+ export const buildEditorStateData = (drawing) => {
+   const paint = captureLegendPaint(drawing.slices.paint);
+   const artifact = editorArtifactData();
+@@ -1482,25 +1488,18 @@ const readStoredRecordIdReadings = async (data, table, readings, repairs) => {
+   repairs.push(...unresolved.map(({ path, recordId }) => loadRepair({ code: 'record-id-unresolved', path, effect: 'changed', stored: recordId })));
+ };
+ 
+-/** @param {DrawingState} drawing */
+-export const applyEditorStateData = (
+-  drawing,
+-  editorState = {},
+-  { normalized: alreadyNormalized = false } = {}
+-) => {
+-  const normalized = alreadyNormalized
+-    ? editorState
+-    : normalizeEditorStateData(editorState);
+-
+-  applyEditorArtifactData(normalized);
+-  applyDrawingEditorData(drawing, normalized);
++// History's restore of an editor state it captured, installed as it is.
++/** @param {DrawingState} drawing @param {EditorStateData} editorState */
++export const applyEditorStateData = (drawing, editorState) => {
++  applyEditorArtifactData(editorState);
++  applyDrawingEditorData(drawing, editorState);
+ };
+ 
+ // The shown Result's editor artifacts: its alignment Reset receipt, generated
+ // Legend inventory and colors (`installShownSetLegend`, by the rule of a set
+ // without a Result), stroke defaults, and feature catalog. The caller has
+ // installed the Results.
+-/** @param {Record<string, any>} normalized The result of `normalizeEditorStateData`. */
++/** @param {EditorArtifactData} normalized */
+ const applyEditorArtifactData = (normalized) => {
+   if (state.similarityAlignmentResetReceipt) {
+     state.similarityAlignmentResetReceipt.value = normalized.alignmentResetReceipt ?? null;
+@@ -1515,7 +1514,7 @@ const applyEditorArtifactData = (normalized) => {
+ // The Legend and stroke edits of a drawing, already normalized.
+ /**
+  * @param {DrawingState} drawing
+- * @param {Record<string, any>} normalized The result of `normalizeEditorStateData`.
++ * @param {Record<string, any>} normalized The result of `normalizeEditorStateData`, or a captured editor state.
+  */
+ const applyDrawingEditorData = (drawing, normalized) => {
+   const { legend, featureStrokes } = normalized;
+@@ -3469,12 +3468,11 @@ const buildLoadedArtifactSlot = (set, {
+       appliedPaletteName: String(ui.appliedPaletteName || 'default'),
+       appliedPaletteColors: cloneColors(readPaletteColors(ui.appliedPaletteColors).value),
+       similarityAlignmentResetReceipt: editorState.alignmentResetReceipt ?? null,
+-      originalLegendColors: keptLegend.originalColors,
+       originalSvgStroke: editorState.originalSvgStroke,
+       // The set's own manifest, adopted once it validates (D-197).
+       proteinIdentityManifest: loadedProteinIdentityManifest(set.proteinIdentityManifest, { adoptCurrent: true })
+     },
+-    legendInventory: keptLegend.originalOrder,
++    legend: keptLegend,
+     matchSequenceOwner: state.matchSequenceRegistry?.buildSourceOwner?.([
+       ...(features.sequenceSources || []), ...restoredSequenceSources
+     ]) || null,
+@@ -6492,6 +6490,7 @@ const applySessionFeatureRecoveryPlan = (plan) => {
+ // the composition root keeps. `mode` is the artifact's diagram mode.
+ /**
+  * @typedef {Readonly<Record<string, any>> & {
++ *   legend: Readonly<ShownSetLegend>,
+  *   mode: 'circular' | 'linear',
+  *   committedCanonicalSession: any,
+  *   activeSessionResourceTable: any,
+@@ -6507,7 +6506,7 @@ const displayedArtifactView = (drawing) => Object.freeze({
+   ...Object.fromEntries(ARTIFACT_SLOT_KEYS.map((key) => [key, state[key].value])),
+   // The displayed Result's edits are written into its text when Save reads it (R1).
+   results: previewRuntimePorts.currentResults(),
+-  originalLegendOrder: state.originalLegendOrder.value,
++  legend: { originalOrder: state.originalLegendOrder.value, originalColors: state.originalLegendColors.value },
+   mode: drawing.mode,
+   committedCanonicalSession,
+   activeSessionResourceTable,
+@@ -6519,7 +6518,7 @@ const displayedArtifactView = (drawing) => Object.freeze({
+  */
+ const stashedArtifactView = (slot) => Object.freeze({
+   ...slot.values,
+-  originalLegendOrder: slot.legendInventory,
++  legend: slot.legend,
+   mode: state.drawingOf(slot.drawingId).mode,
+   committedCanonicalSession: slot.runtimeState?.canonical?.committedCanonicalSession ?? null,
+   activeSessionResourceTable: slot.runtimeState?.canonical?.activeSessionResourceTable ?? null,
+@@ -6565,8 +6564,8 @@ const serializeArtifactResults = (view) => logicalResultsOf(view.results);
+ const buildArtifactEditorState = (view) => {
+   return {
+     legend: {
+-      originalOrder: cloneJsonArray(view.originalLegendOrder),
+-      originalColors: cloneStringMap(view.originalLegendColors)
++      originalOrder: [...view.legend.originalOrder],
++      originalColors: cloneStringMap(view.legend.originalColors)
+     },
+     originalSvgStroke: {
+       color: view.originalSvgStroke?.color ?? null,
+diff --git a/gbdraw/web/js/services/history-snapshot.js b/gbdraw/web/js/services/history-snapshot.js
+index 790aeef26..cad43c2ba 100644
+--- a/gbdraw/web/js/services/history-snapshot.js
++++ b/gbdraw/web/js/services/history-snapshot.js
+@@ -1,6 +1,7 @@
+ // @ts-check
+ /** @import { InputFileRef, InputFileStore } from './history-files.js' */
+-/** @import { ArtifactSlot, FeatureEditorStatus } from './artifact-slot.js' */
++/** @import { ArtifactSlot, FeatureEditorStatus, ShownSetLegend, ShownSetLegendRefs } from './artifact-slot.js' */
++/** @import { FeatureCatalog } from './feature-catalog.js' */
+ /** @import { DrawnInputSummary } from './input-summary.js' */
+ /** @import { ExtractedFeature } from './feature-metadata-extraction.js' */
+ /** @import { AlignmentResetCanonical, AlignmentResetReceipt } from './session-active-config-contract.js' */
+@@ -21,7 +22,7 @@ import { diagnosticError } from '../utils/error-normalization.js';
+ import { normalizeLayoutPreferences } from './layout-preferences.js';
+ import { recordStructuralMetric } from './runtime-test-hooks.js';
+ import {
+-  ARTIFACT_SLOT_EMPTY, ARTIFACT_SLOT_KEYS, FEATURE_EDITOR_STATUS_IDLE, createArtifactSlot, createArtifactSlotStore
++  ARTIFACT_SLOT_EMPTY, ARTIFACT_SLOT_KEYS, FEATURE_EDITOR_STATUS_IDLE, createArtifactSlot, createArtifactSlotStore, installShownSetLegend
+ } from './artifact-slot.js';
+ import { toRaw } from '../utils/vue-raw.js';
+ import { losatEvidenceAfterStep, losatRowsAfterStep, losatRowsOfDrawing } from './losat-cache.js';
+@@ -94,6 +95,39 @@ const editedIntentPartOf = (path, value) => (
+  *   featureStrokes?: { overrides?: unknown } | null
+  * }} EditorIntentData
+  */
++/**
++ * The Legend of an editor state: the drawing's Legend paint (its rows and
++ * their edits) and the shown set's generated Legend (`ShownSetLegend`).
++ * @typedef {ShownSetLegend & {
++ *   entries: LegendEntry[],
++ *   deletedEntries: KeptLegendEntry[],
++ *   dormantEntries: KeptLegendEntry[],
++ *   colorOverrides: Record<string, string>,
++ *   strokeOverrides: Record<string, StrokeOverride>,
++ *   addedCaptions: string[]
++ * }} EditorStateLegend
++ */
++/**
++ * The editor state that a capture writes (`buildEditorStateData` in config.js,
++ * a generated artifact handle here) and a restore installs as it is
++ * (`applyEditorStateData`): the drawing's Legend and stroke edits, and the
++ * shown set's generated Legend, stroke defaults, alignment Reset receipt and
++ * feature catalog.
++ * @typedef {object} EditorStateData
++ * @property {EditorStateLegend} legend
++ * @property {{ overrides: Record<string, StrokeOverride> }} featureStrokes
++ * @property {{ color: string | null, width: number | null }} originalSvgStroke
++ * @property {AlignmentResetReceipt | null} alignmentResetReceipt
++ * @property {FeatureCatalog | null} featureCatalog
++ */
++/**
++ * A checkpoint's editor state: the checkpoint keeps the catalog beside it (`checkpointFeatureCatalogs`).
++ * @typedef {Omit<EditorStateData, 'featureCatalog'>} CheckpointEditorState
++ */
++/**
++ * A generated artifact handle's editor state: its owner set holds the receipt and the catalog.
++ * @typedef {Omit<EditorStateData, 'alignmentResetReceipt' | 'featureCatalog'>} HandleEditorState
++ */
+ /** @typedef {{ selectedOrthogroupId?: unknown, selectedOrthogroupAlignmentFeature?: unknown }} OrthogroupIntentData */
+ /** @typedef {{ orthogroupNameOverrides?: unknown, orthogroupDescriptionOverrides?: unknown, orthogroupDormantOverrides?: unknown }} GroupNameIntentData */
+ /** @typedef {{ mode?: unknown, defaultSource?: unknown, edges?: unknown }} LinearComparisonPlanData */
+@@ -139,7 +173,7 @@ const editedIntentPartOf = (path, value) => (
+  * @property {IntentUiData} [ui]
+  * @property {HistorySnapshotData[]} [results]
+  * @property {FeatureEditsData & { extractedFeatures?: unknown, featureRecordIds?: unknown }} [features]
+- * @property {EditorIntentData} [editorState]
++ * @property {CheckpointEditorState} [editorState] Absent without the editor capture port.
+  * @property {OrthogroupIntentData & GroupNameIntentData & { groups?: unknown }} [orthogroupState]
+  * @property {{ lastRunInfo?: unknown, pairwiseMatchFactors?: unknown }} [runState]
+  */
+@@ -155,7 +189,7 @@ const editedIntentPartOf = (path, value) => (
+  * @typedef {object} GeneratedArtifactIntent
+  * @property {IntentUiData} ui
+  * @property {FeatureEditsData} features
+- * @property {EditorIntentData & { originalSvgStroke?: unknown }} editorState
++ * @property {HandleEditorState} editorState
+  * @property {OrthogroupIntentData & GroupNameIntentData} orthogroupState
+  * @property {unknown} alignmentState
+  * @property {PresentationData} presentation
+@@ -241,6 +275,10 @@ const replacePlainObject = (target, source) => {
+   });
+ };
+ 
++// A checkpoint keeps the catalog of its captured editor state beside it.
++/** @param {EditorStateData} editorState @returns {CheckpointEditorState} */
++const withoutCatalog = ({ featureCatalog: _catalog, ...editorState }) => editorState;
++
+ /** @param {FeatureEditsData} [features] */
+ const buildFeatureIntentData = (features = {}) => ({
+   featureColorOverrides: clonePlainObject(features.featureColorOverrides),
+@@ -356,6 +394,32 @@ const applyEditorIntentData = (drawing, editorState = {}) => {
+   });
+ };
+ 
++/**
++ * A generated artifact handle's editor state as captured, with its owner
++ * set's receipt and catalog, installed as it is.
++ * @template {DrawingView} D
++ * @param {D} drawing
++ * @param {HandleEditorState | undefined} editorState
++ * @param {{ readonly similarityAlignmentResetReceipt?: AlignmentResetReceipt | null,
++ *   readonly featureCatalog?: FeatureCatalog | null } | null | undefined} ownerSet
++ * @param {{ state: HistorySnapshotState, applyEditorStateData: ((drawing: D, editorState: EditorStateData) => unknown) | null }} restore
++ */
++const restoreHandleEditorState = (drawing, editorState, ownerSet, { state, applyEditorStateData }) => {
++  if (!editorState) return;
++  /** @type {EditorStateData} */
++  const trusted = {
++    ...cloneJsonData(editorState),
++    alignmentResetReceipt: ownerSet?.similarityAlignmentResetReceipt ?? null,
++    featureCatalog: ownerSet?.featureCatalog || null
++  };
++  if (typeof applyEditorStateData === 'function') {
++    applyEditorStateData(drawing, trusted);
++    return;
++  }
++  applyEditorIntentData(drawing, trusted);
++  setGeneratedArtifactRef(state.featureCatalog, trusted.featureCatalog);
++};
++
+ /**
+  * @param {Record<string, any>} state
+  * @param {OrthogroupIntentData} [orthogroupState]
+@@ -809,7 +873,8 @@ const applyFilesData = (state, drawing, filesData, fileStore) => {
+  * (state.js `DrawingState`); the service reads them as a `DrawingView`.
+  * @template {DrawingView} [D=DrawingView]
+  * @typedef {object} HistorySnapshotServiceOptions
+- * @property {Record<string, any> & { drawingOf: (id: DrawingId) => D, drawingList: () => readonly D[] }} state App state (state.js; not yet typed).
++ * @property {Record<string, any> & { drawingOf: (id: DrawingId) => D, drawingList: () => readonly D[] } & ShownSetLegendRefs} state
++ *   App state (state.js; not yet typed but for these members).
+  * @property {HistorySnapshotFileStore} fileStore
+  *   The file store that holds the files an intent and a checkpoint name.
+  * @property {() => Promise<unknown>} [nextTick] Vue `nextTick`, awaited between restore steps.
+@@ -825,9 +890,9 @@ const applyFilesData = (state, drawing, filesData, fileStore) => {
+  * @property {((drawing: D) => HistorySnapshotData) | null} [buildFeatureStateData] The feature-override capture.
+  * @property {((drawing: D, features: HistorySnapshotData) => unknown) | null} [applyFeatureStateData]
+  *   The feature-override restore.
+- * @property {((drawing: D) => HistorySnapshotData) | null} [buildEditorStateData] The legend and stroke editor capture.
+- * @property {((drawing: D, editorState: HistorySnapshotData, options: { normalized: boolean }) => unknown) | null} [applyEditorStateData]
+- *   The editor restore; `normalized` marks a state that is installed as captured.
++ * @property {((drawing: D) => EditorStateData) | null} [buildEditorStateData] The legend and stroke editor capture.
++ * @property {((drawing: D, editorState: EditorStateData) => unknown) | null} [applyEditorStateData]
++ *   The editor restore, which installs a captured state as it is.
+  * @property {((drawing: D) => HistorySnapshotData) | null} [buildOrthogroupStateData] The orthogroup capture.
+  * @property {((drawing: D, orthogroupState: HistorySnapshotData,
+  *   options: { catalogFeatureState: FeatureCatalogFeatureState | null }) => unknown) | null} [applyOrthogroupStateData]
+@@ -855,7 +920,7 @@ const applyFilesData = (state, drawing, filesData, fileStore) => {
+ // SE-01/N-20 (R11): a checkpoint never copies or signs the Generate-owned
+ // feature catalog. It keeps the admitted catalog by reference, and History
+ // retains each checkpoint object as captured.
+-/** @type {WeakMap<ArtifactCheckpointData, unknown>} */
++/** @type {WeakMap<ArtifactCheckpointData, FeatureCatalog | null>} */
+ const checkpointFeatureCatalogs = new WeakMap();
+ // The catalog's features are its admission's (`featureStateFromCatalog`),
+ // the objects Generate and Load install and the rule matches are recorded on
+@@ -1232,7 +1297,10 @@ export const createHistorySnapshotService = ({
+       values: Object.fromEntries(ARTIFACT_SLOT_KEYS.map((key) => [
+         key, key === 'results' ? results : toRaw(getGeneratedArtifactRef(state[key], null))
+       ])),
+-      legendInventory: getGeneratedArtifactRef(state.originalLegendOrder, []) || [],
++      legend: {
++        originalOrder: getGeneratedArtifactRef(state.originalLegendOrder, []) || [],
++        originalColors: toRaw(getGeneratedArtifactRef(state.originalLegendColors, {})) || {}
++      },
+       matchSequenceOwner: state.matchSequenceRegistry?.captureTrustedOwner?.() || null,
+       runtimeState: generatedArtifactRuntimeOwner?.capture?.() || null,
+       transportIdentity: currentGeneratedArtifactIdentity,
+@@ -1240,31 +1308,33 @@ export const createHistorySnapshotService = ({
+     });
+   };
+ 
+-  // Installs `drawing`'s slot, or its empty slot (no Result, no committed
+-  // Session, the defaults of the drawing's mode), as the displayed artifact;
+-  // a null value of the slot installs the empty slot's. Nothing outside the
+-  // slot changes, so the draft, the editor intent and the caches stay shared.
++  // Installs `drawing`'s slot as the displayed artifact (a slot made with no
++  // values is its empty slot: no Result, no committed Session, the defaults of
++  // the drawing's mode); a null value of the slot installs the empty slot's.
++  // Its Legend inventory and colors install through their one install
++  // (`installShownSetLegend`), after its Results. Nothing
++  // outside the slot changes, so the draft, the editor intent and the caches
++  // stay shared.
+   /**
+-   * @param {Readonly<ArtifactSlot> | null} slot
++   * @param {Readonly<ArtifactSlot>} slot
+    * @param {{ drawing: DrawingIdentity, ui?: { canvasPan?: { x: number, y: number } } }} options
+    *   `ui.canvasPan` is the pan the runtime owner's viewport reset keeps.
+    */
+   const installArtifactSlot = (slot, { drawing, ui = {} }) => {
+-    if (slot && slot.drawingId !== drawing.id) {
++    if (slot.drawingId !== drawing.id) {
+       throw diagnosticError('RESULT_INVALID', { reason: 'DRAWING_MISMATCH', drawingId: drawing.id, artifactDrawingId: slot.drawingId }, { stage: 'result-admission', operation: 'installArtifactSlot' });
+     }
+     ARTIFACT_SLOT_KEYS.forEach((key) => {
+-      setGeneratedArtifactRef(state[key], slot?.values[key]
++      setGeneratedArtifactRef(state[key], slot.values[key]
+         ?? ARTIFACT_SLOT_EMPTY[key](drawing.mode, getGeneratedArtifactRef(state[key], null)));
+     });
++    installShownSetLegend(state, slot.legend);
+     setGeneratedArtifactRef(state.generatedDrawingId, drawing.id);
+-    if (slot?.matchSequenceOwner) state.matchSequenceRegistry?.replaceTrustedOwner?.(slot.matchSequenceOwner);
++    if (slot.matchSequenceOwner) state.matchSequenceRegistry?.replaceTrustedOwner?.(slot.matchSequenceOwner);
+     else state.matchSequenceRegistry?.reset?.();
+-    generatedArtifactRuntimeOwner?.restore?.(slot?.runtimeState ?? null, { ui });
+-    currentGeneratedArtifactIdentity = /** @type {HistorySnapshotTransportIdentity | null} */ (
+-      slot?.transportIdentity ?? null
+-    );
+-    currentGeneratedArtifactRetainedBytes = slot?.retainedBytes ?? 0;
++    generatedArtifactRuntimeOwner?.restore?.(slot.runtimeState, { ui });
++    currentGeneratedArtifactIdentity = /** @type {HistorySnapshotTransportIdentity | null} */ (slot.transportIdentity);
++    currentGeneratedArtifactRetainedBytes = slot.retainedBytes;
+   };
+ 
+   // OV-2212: the shown artifact is still the one the fingerprint names while
+@@ -1420,17 +1490,14 @@ export const createHistorySnapshotService = ({
+       ...labelTextEditsData(drawing.slices.labelTables)
+     };
+     const paint = captureLegendPaint(drawing.slices.paint);
++    /** @type {HandleEditorState} */
+     const editorState = {
+       legend: {
+         entries: paint.legendEntries,
+         deletedEntries: paint.deletedLegendEntries,
+         dormantEntries: paint.dormantLegendEntries,
+-        originalOrder: cloneJsonData(
+-          getGeneratedArtifactRef(state.originalLegendOrder, [])
+-        ) || [],
+-        originalColors: clonePlainObject(
+-          getGeneratedArtifactRef(state.originalLegendColors, {})
+-        ),
++        originalOrder: [...state.originalLegendOrder.value],
++        originalColors: { ...state.originalLegendColors.value },
+         colorOverrides: paint.legendColorOverrides,
+         strokeOverrides: paint.legendStrokeOverrides,
+         addedCaptions: paint.addedLegendCaptions
+@@ -1564,21 +1631,7 @@ export const createHistorySnapshotService = ({
+       );
+       applyGroupNameIntentData(drawing, mutableIntent.orthogroupState);
+ 
+-      const trustedEditorState = {
+-        ...cloneJsonData({
+-          legend: mutableIntent.editorState?.legend || {},
+-          featureStrokes: mutableIntent.editorState?.featureStrokes || {},
+-          originalSvgStroke: mutableIntent.editorState?.originalSvgStroke || {}
+-        }),
+-        alignmentResetReceipt: handle.ownerSet?.similarityAlignmentResetReceipt ?? null,
+-        featureCatalog: handle.ownerSet?.featureCatalog || null
+-      };
+-      if (typeof applyEditorStateData === 'function') {
+-        applyEditorStateData(drawing, trustedEditorState, { normalized: true });
+-      } else {
+-        applyEditorIntentData(drawing, trustedEditorState);
+-        setGeneratedArtifactRef(state.featureCatalog, trustedEditorState.featureCatalog);
+-      }
++      restoreHandleEditorState(drawing, mutableIntent.editorState, handle.ownerSet, { state, applyEditorStateData });
+       const presentation = mutableIntent.presentation || {};
+       setGeneratedArtifactRef(state.resultGenerationKey, presentation.resultGenerationKey ?? 0);
+       setGeneratedArtifactRef(state.resultPanelTab, presentation.resultPanelTab || 'preview');
+@@ -1664,7 +1717,7 @@ export const createHistorySnapshotService = ({
+       : buildFallbackFeatureStateData(state, drawing);
+     const editorState = typeof buildEditorStateData === 'function'
+       ? buildEditorStateData(drawing)
+-      : {};
++      : null;
+     const orthogroupState = typeof buildOrthogroupStateData === 'function'
+       ? buildOrthogroupStateData(drawing)
+       : buildFallbackOrthogroupStateData(state, drawing);
+@@ -1705,13 +1758,10 @@ export const createHistorySnapshotService = ({
+       applyFallbackOrthogroupStateData(state, drawing, snapshot?.orthogroupState || {});
+     }
+ 
+-    if (typeof applyEditorStateData === 'function') {
++    if (typeof applyEditorStateData === 'function' && snapshot.editorState) {
+       // The checkpoint holds the editor state as captured: install a copy as
+       // is, so a value such as the Result's named stroke color stays unchanged.
+-      applyEditorStateData(drawing, {
+-        ...cloneJsonData(snapshot?.editorState || {}),
+-        featureCatalog
+-      }, { normalized: true });
++      applyEditorStateData(drawing, { ...cloneJsonData(snapshot.editorState), featureCatalog });
+     }
+ 
+     if (typeof applyRunStateData === 'function') {
+@@ -1919,8 +1969,8 @@ export const createHistorySnapshotService = ({
+   /** @param {DrawingId} drawingId */
+   const buildArtifactCheckpoint = (drawingId) => {
+     const drawing = state.drawingOf(drawingId);
+-    const generated = buildGeneratedArtifactSnapshot(drawing);
+-    const { featureCatalog = null, ...editorState } = generated.editorState || {};
++    const { editorState: captured, ...generated } = buildGeneratedArtifactSnapshot(drawing);
++    const featureCatalog = captured ? captured.featureCatalog : null;
+     const checkpoint = cloneJsonData({
+       config: buildDrawingConfig(drawing),
+       files: buildFilesData(drawing),
+@@ -1928,7 +1978,7 @@ export const createHistorySnapshotService = ({
+       ...generated,
+       features: checkpointFeatureCopy(generated.features, featureCatalog),
+       ...(generated.ui ? { ui: withoutSessionUi(generated.ui) } : {}),
+-      editorState
++      ...(captured ? { editorState: withoutCatalog(captured) } : {})
+     });
+     checkpointFeatureCatalogs.set(checkpoint, featureCatalog);
+     return checkpoint;
+diff --git a/tests/web/artifact-slots.test.mjs b/tests/web/artifact-slots.test.mjs
+index a2bb88d2c..49972e79e 100644
+--- a/tests/web/artifact-slots.test.mjs
++++ b/tests/web/artifact-slots.test.mjs
+@@ -19,9 +19,10 @@ const { state } = await import('../../gbdraw/web/js/state.js');
+ await (await import('./helpers/drawing-state.mjs')).addStartLinearDrawing();
+ const { adoptCanonicalRenderArtifacts, canonicalRenderArtifactOwner, installShownDrawing } = await import('../../gbdraw/web/js/services/config.js');
+ const { createHistorySnapshotService } = await import('../../gbdraw/web/js/services/history-snapshot.js');
+-const { ARTIFACT_SLOT_KEYS, createArtifactSlotStore } = await import('../../gbdraw/web/js/services/artifact-slot.js');
++const { ARTIFACT_SLOT_KEYS, createArtifactSlot, createArtifactSlotStore } = await import('../../gbdraw/web/js/services/artifact-slot.js');
+ const { createInputFileStore } = await import('../../gbdraw/web/js/services/history-files.js');
+-const { readFile } = await import('node:fs/promises');
++const { createDrawingSwitch } = await import('../../gbdraw/web/js/app/drawing-switch.js');
++const { readdir, readFile } = await import('node:fs/promises');
+ 
+ const snapshots = createHistorySnapshotService({ state, fileStore: createInputFileStore(), currentResults: () => state.results.value });
+ snapshots.setGeneratedArtifactRuntimeOwner({
+@@ -36,7 +37,7 @@ const SWAPPED = [
+   'pairwiseMatchFactors',
+   'editableLabels', 'generatedLegendPosition', 'generatedMultiRecordCanvas',
+   'generatedCircularPlotTitlePosition', 'appliedPaletteName', 'appliedPaletteColors',
+-  'similarityAlignmentResetReceipt', 'originalLegendColors', 'originalSvgStroke',
++  'similarityAlignmentResetReceipt', 'originalSvgStroke',
+   // D-197: the manifest the drawing's LOSAT protein rows resolve in.
+   'proteinIdentityManifest'
+ ];
+@@ -45,8 +46,8 @@ const KEPT = [
+   'pendingPaletteName', 'pendingPaletteColors', 'losatCache', 'losatDerivedCache', 'losatCacheInfo',
+   'legacyProteinRawCandidates', 'legacyProteinDerivedEvidence',
+   'similarityAlignmentPlan', 'linearRecordTranslations', 'legendEntries', 'deletedLegendEntries',
+-  // The Legend owner keeps each Result's inventory; the slot carries it as `legendInventory`.
+-  'originalLegendOrder'
++  // The slot carries the generated Legend inventory and colors beside its values (`legend`).
++  'originalLegendOrder', 'originalLegendColors'
+ ];
+ 
+ // The kept members of the app state and of the shown mode's drawing.
+@@ -71,7 +72,7 @@ const fillCircularArtifact = async () => {
+     generatedMultiRecordCanvas: true, generatedCircularPlotTitlePosition: 'top',
+     appliedPaletteName: 'tableau', appliedPaletteColors: { CDS: '#111111' },
+     similarityAlignmentResetReceipt: null,
+-    originalLegendColors: { CDS: '#111111' }, originalSvgStroke: { color: '#000000', width: 1 },
++    originalSvgStroke: { color: '#000000', width: 1 },
+     proteinIdentityManifest: { schema: 2, proteinSets: {}, recordAnalyses: {}, recordInstances: {} }
+   };
+   Object.entries(values).forEach(([key, value]) => { state[key].value = value; });
+@@ -82,13 +83,16 @@ const fillCircularArtifact = async () => {
+     legacyProteinRawCandidates: { schema: 1, entries: [] },
+     legacyProteinDerivedEvidence: { schema: 1, entries: [] }, similarityAlignmentPlan: { groupId: 'g' },
+     linearRecordTranslations: [{ recordKey: 'r', x: 1, y: 2 }], legendEntries: [{ caption: 'CDS' }],
+-    deletedLegendEntries: [{ caption: 'gene' }], originalLegendOrder: ['CDS', 'tRNA']
++    deletedLegendEntries: [{ caption: 'gene' }]
+   };
++  const legend = { originalOrder: ['CDS', 'tRNA'], originalColors: { CDS: '#111111' } };
++  state.originalLegendOrder.value = legend.originalOrder;
++  state.originalLegendColors.value = legend.originalColors;
+   Object.entries(kept).forEach(([key, value]) => { memberOf(key).value = value; });
+   state.activeDrawing().manualSpecificRules.splice(0, state.activeDrawing().manualSpecificRules.length, { qual: 'product', val: 'x', color: '#333333', cap: 'X' });
+   modeDrawing(state, 'linear').linearSeqs.splice(0, modeDrawing(state, 'linear').linearSeqs.length, { uid: 'seq-1', region_reverse: true, windows: [] });
+   state.matchSequenceRegistry.register({ origin: 'linear-record', sourceKey: 'k1', recordId: 'R1', sequence: 'ACGT' });
+-  return { values, kept };
++  return { values, kept, legend };
+ };
+ 
+ test('the artifact slot names exactly the displayed-Result part of the generated artifact', () => {
+@@ -97,15 +101,16 @@ test('the artifact slot names exactly the displayed-Result part of the generated
+ });
+ 
+ test('an empty slot clears only the artifact, and the captured slot comes back by reference', async () => {
+-  const { values, kept } = await fillCircularArtifact();
++  const { values, kept, legend } = await fillCircularArtifact();
+   const committed = canonicalRenderArtifactOwner.capture();
+   const registryOwner = state.matchSequenceRegistry.captureTrustedOwner();
+   const rules = [...state.activeDrawing().manualSpecificRules];
+ 
+   const circular = snapshots.captureArtifactSlot();
+   assert.ok(Object.isFrozen(circular));
+-  assert.deepEqual(circular.legendInventory, ['CDS', 'tRNA']);
+-  snapshots.installArtifactSlot(null, { drawing: modeDrawing(state, 'linear') });
++  assert.deepEqual(circular.legend.originalOrder, ['CDS', 'tRNA']);
++  assert.strictEqual(circular.legend.originalColors, legend.originalColors);
++  snapshots.installArtifactSlot(createArtifactSlot({ drawing: modeDrawing(state, 'linear'), values: {} }), { drawing: modeDrawing(state, 'linear') });
+ 
+   // The arriving empty Linear slot: no Result, its own mode, no committed Session.
+   assert.deepEqual(state.results.value, []);
+@@ -118,6 +123,8 @@ test('an empty slot clears only the artifact, and the captured slot comes back b
+   // An empty slot keeps the applied palette: it has no Result to project.
+   assert.equal(state.appliedPaletteName.value, 'tableau');
+   assert.strictEqual(state.appliedPaletteColors.value, values.appliedPaletteColors);
++  assert.deepEqual(state.originalLegendOrder.value, []);
++  assert.deepEqual(state.originalLegendColors.value, {});
+   // Draft and project state stays.
+   Object.entries(kept).forEach(([key, value]) => assert.strictEqual(memberOf(key).value, value, key));
+   assert.deepEqual(state.activeDrawing().manualSpecificRules, rules);
+@@ -127,6 +134,8 @@ test('an empty slot clears only the artifact, and the captured slot comes back b
+   const linear = snapshots.captureArtifactSlot();
+   snapshots.installArtifactSlot(circular, { drawing: modeDrawing(state, 'circular') });
+   SWAPPED.forEach((key) => assert.strictEqual(state[key].value, values[key], key));
++  assert.deepEqual(state.originalLegendOrder.value, legend.originalOrder);
++  assert.strictEqual(state.originalLegendColors.value, legend.originalColors);
+   assert.strictEqual(canonicalRenderArtifactOwner.capture().committedCanonicalSession, committed.committedCanonicalSession);
+   assert.strictEqual(canonicalRenderArtifactOwner.capture().activeSessionResourceTable, committed.activeSessionResourceTable);
+   // D-15-124: the request's conservation hash pairs wait in its slot with it.
+@@ -158,7 +167,7 @@ test('a Generate after a switch reads no decoration of the other mode\'s Result'
+   const { captureDecorationContinuity } = await import('../../gbdraw/web/js/app/legend-layout/decoration-continuity.js');
+   const { values } = await fillCircularArtifact();
+   const circular = snapshots.captureArtifactSlot();
+-  snapshots.installArtifactSlot(null, { drawing: modeDrawing(state, 'linear') });
++  snapshots.installArtifactSlot(createArtifactSlot({ drawing: modeDrawing(state, 'linear'), values: {} }), { drawing: modeDrawing(state, 'linear') });
+   const capture = () => captureDecorationContinuity({
+     canonical: { renderRequest: { mode: 'linear', records: [] }, resources: {} },
+     results: state.results.value,
+@@ -194,7 +203,6 @@ test('a step whose alignment receipt does not bind fails before anything is appl
+ 
+ // Review alignment compares its mode's own Result whichever mode is shown (OV-622, D-45).
+ test('a value of a drawing\'s artifact is read from the shown one, or from the slot that keeps it', async () => {
+-  const { createArtifactSlot } = await import('../../gbdraw/web/js/services/artifact-slot.js');
+   const linearResult = { name: 'linear.svg' };
+   const otherLinearResult = { name: 'other.svg' };
+   const circularResult = { name: 'circular.svg' };
+@@ -242,14 +250,11 @@ test('a null applied palette restored in the shown drawing keeps the displayed p
+ // REVIEW-1 M1: one store keeps the hidden drawings' artifacts, and only its
+ // named operations change it; an entry's key is its slot's drawing.
+ test('the slot store keeps a hidden drawing\'s artifact through its named operations', async () => {
+-  const { createArtifactSlot } = await import('../../gbdraw/web/js/services/artifact-slot.js');
+   const circular = modeDrawing(state, 'circular');
+   const linear = modeDrawing(state, 'linear');
+   const store = createArtifactSlotStore();
+-  const circularSlot = createArtifactSlot({ drawing: circular, values: { results: [{ name: 'c.svg' }] }, legendInventory: ['CDS'] });
+-  assert.deepEqual(circularSlot.legendInventory, ['CDS']);
+-  // OV-3282: a slot without a Result holds no Legend inventory, whatever it was given.
+-  assert.deepEqual(createArtifactSlot({ drawing: linear, values: { results: [] }, legendInventory: ['CDS'] }).legendInventory, []);
++  const circularSlot = createArtifactSlot({ drawing: circular, values: { results: [{ name: 'c.svg' }] }, legend: { originalOrder: ['CDS'], originalColors: {} } });
++  assert.deepEqual(circularSlot.legend.originalOrder, ['CDS']);
+   assert.equal(store.swap(circularSlot, 'linear'), null, 'a drawing with no artifact yet has no slot');
+   assert.deepEqual(store.kept(), [circularSlot]);
+   const linearSlot = createArtifactSlot({ drawing: linear, values: { results: [{ name: 'l.svg' }] } });
+@@ -362,7 +367,7 @@ test('an unchanged Generate in a drawing records no step after a Generate in ano
+   const show = async (id) => {
+     slots.set(state.generatedDrawingId.value, snapshots.captureArtifactSlot());
+     installShownDrawing(id);
+-    snapshots.installArtifactSlot(slots.get(id) ?? null, { drawing: modeDrawing(state, id) });
++    snapshots.installArtifactSlot(slots.get(id) ?? createArtifactSlot({ drawing: modeDrawing(state, id), values: {} }), { drawing: modeDrawing(state, id) });
+     if (!baselines.has(id)) await histories[id].initializeIntentBaseline();
+     baselines.add(id);
+   };
+@@ -434,3 +439,136 @@ test('a Result gives back each window orientation of a Linear card whose windows
+   snapshots.installGeneratedArtifactOwnerSet(ownerSet, { drawing: linear });
+   assert.deepEqual(linear.linearSeqs[0].windows.map((entry) => entry.reverseComplement), [true, false]);
+ });
++
++// A slot holds its set's generated Legend inventory and colors beside its
++// values (`legend`), and its install is their install (`installShownSetLegend`,
++// the one install of the shown set's Legend): the inventory by the rule of a
++// set without a Result, the colors by reference. An empty slot has neither.
++test('a slot install installs the slot\'s Legend inventory and colors', async () => {
++  const circular = modeDrawing(state, 'circular');
++  const linear = modeDrawing(state, 'linear');
++  assert.ok(!ARTIFACT_SLOT_KEYS.includes('originalLegendColors'), 'the colors sit beside the inventory, not among the values');
++  const colors = { CDS: '#123456' };
++  const slot = createArtifactSlot({ drawing: circular, values: { results: [{ name: 'c.svg' }] }, legend: { originalOrder: ['CDS'], originalColors: colors } });
++  assert.deepEqual(slot.legend.originalOrder, ['CDS']);
++  assert.strictEqual(slot.legend.originalColors, colors);
++  state.originalLegendOrder.value = ['stale'];
++  state.originalLegendColors.value = { stale: '#000000' };
++  snapshots.installArtifactSlot(slot, { drawing: circular });
++  assert.deepEqual(state.originalLegendOrder.value, ['CDS'], 'the slot\'s inventory is installed with its Result');
++  assert.strictEqual(state.originalLegendColors.value, colors);
++  const captured = snapshots.captureArtifactSlot();
++  assert.deepEqual(captured.legend.originalOrder, ['CDS']);
++  assert.strictEqual(captured.legend.originalColors, colors, 'a capture keeps the colors by reference');
++  // A slot without a Result holds no inventory, whatever it was given; the empty slot has no colors either.
++  const noResult = createArtifactSlot({ drawing: linear, values: { results: [] }, legend: { originalOrder: ['CDS'], originalColors: colors } });
++  assert.deepEqual(noResult.legend.originalOrder, []);
++  const empty = createArtifactSlot({ drawing: linear, values: {} });
++  snapshots.installArtifactSlot(empty, { drawing: linear });
++  assert.deepEqual(state.originalLegendOrder.value, []);
++  assert.deepEqual(state.originalLegendColors.value, {});
++  assert.notStrictEqual(createArtifactSlot({ drawing: linear, values: {} }).legend.originalColors, empty.legend.originalColors,
++    'each empty slot has its own colors, which the Legend owner fills in place after a draw');
++});
++
++// The drawing switch with History's slot capture and install, the slot store,
++// and the install of the shown drawing; its other ports do nothing. `installs`
++// holds the displayed Legend inventory and colors right after each slot install.
++const legendSwitch = () => {
++  const store = createArtifactSlotStore();
++  const installs = [];
++  const remembered = new Map();
++  const drawingSwitch = createDrawingSwitch({
++    state, results: state.results, selectedResultIndex: state.selectedResultIndex, errorLog: state.errorLog,
++    failedGeneratePreservedResult: { value: false }, sessionOperationAvailability: () => null,
++    historyAvailability: () => null, historyRestoring: () => false, traversalPending: () => false,
++    settlePendingIntent: async () => {}, refreshCurrentIntent: async () => {}, adoptSessionReset: (reset) => reset(),
++    ruleWritePending: () => false, suspendSpecificRulePatternDrafts: () => {}, clearFeatureSelection: () => {},
++    rememberDepartingResultProjection: () => {}, auxiliaryImportFailureOnArrival: () => null,
++    resetModeTransientUi: () => {}, installShownDrawing, dismissNotice: () => {}, switchDrawingSearch: () => {},
++    rebindAnnotationRecords: () => {}, clearActiveRuntime: () => {}, getResultIdentity: (result) => result.name,
++    presentSelectedResult: () => {}, rememberResultInventory: (identity, inventory) => remembered.set(identity, inventory),
++    artifactSlotsSwap: store.swap, captureArtifactSlot: snapshots.captureArtifactSlot,
++    installArtifactSlot: (slot, options) => {
++      snapshots.installArtifactSlot(slot, options);
++      installs.push({ order: [...state.originalLegendOrder.value], colors: state.originalLegendColors.value });
++    }
++  });
++  return { ...drawingSwitch, store, installs, remembered };
++};
++
++// The switch installs the arriving set's Legend inventory and colors with its
++// slot, so the two agree at every point: the departing drawing's inventory
++// never stands next to the arriving drawing's colors until the binder adopts.
++test('a drawing switch installs the arriving set\'s Legend inventory and colors with its slot', async () => {
++  installShownDrawing('circular');
++  const { legend: circularLegend } = await fillCircularArtifact();
++  const linearColors = { rRNA: '#abcdef' };
++  const { showDrawingNow, store, installs, remembered } = legendSwitch();
++  const linearSlot = createArtifactSlot({
++    drawing: modeDrawing(state, 'linear'), values: { results: [{ name: 'l.svg' }] },
++    legend: { originalOrder: ['rRNA'], originalColors: linearColors }
++  });
++  assert.equal(store.swap(linearSlot, 'circular'), null);
++  showDrawingNow('linear');
++  assert.deepEqual(installs.at(-1), { order: ['rRNA'], colors: linearColors }, 'the arriving drawing\'s inventory and colors');
++  assert.deepEqual(state.originalLegendOrder.value, ['rRNA']);
++  assert.deepEqual(remembered.get('l.svg'), ['rRNA'], 'the Legend owner keeps the arriving Result\'s inventory');
++  showDrawingNow('circular');
++  assert.deepEqual(installs.at(-1).order, circularLegend.originalOrder);
++  assert.strictEqual(installs.at(-1).colors, circularLegend.originalColors, 'the departing slot kept the colors by reference');
++  // A drawing with no artifact yet arrives with the empty slot: no inventory, no colors.
++  store.replaceLoaded([]);
++  showDrawingNow('linear');
++  assert.deepEqual(installs.at(-1), { order: [], colors: {} });
++  installShownDrawing('circular');
++});
++
++// Session Load opens on a set that is not the committed one: the restore
++// wrote the committed set's Results, inventory and colors, and the opening
++// slot replaces all three in one install (`installLoadedArtifactSlots` calls
++// the switch's `installArrivingSlot`).
++test('a Load opening on another Result set installs that set\'s Legend inventory and colors', async () => {
++  const circular = modeDrawing(state, 'circular');
++  installShownDrawing('circular');
++  snapshots.installArtifactSlot(createArtifactSlot({
++    drawing: circular, values: { results: [{ name: 'committed.svg' }] },
++    legend: { originalOrder: ['CDS', 'gene'], originalColors: { CDS: '#010101', gene: '#020202' } }
++  }), { drawing: circular });
++  const openingColors = { tRNA: '#030303' };
++  const opening = createArtifactSlot({
++    drawing: circular, values: { results: [{ name: 'opening.svg' }] },
++    legend: { originalOrder: ['tRNA'], originalColors: openingColors }
++  });
++  const { installArrivingSlot, installs, remembered } = legendSwitch();
++  installArrivingSlot(opening);
++  assert.deepEqual(installs.at(-1), { order: ['tRNA'], colors: openingColors });
++  assert.deepEqual(state.originalLegendOrder.value, ['tRNA']);
++  assert.deepEqual(remembered.get('opening.svg'), ['tRNA']);
++  const appSetup = await readFile('gbdraw/web/js/app/app-setup.js', 'utf8');
++  const load = appSetup.match(/const installLoadedArtifactSlots = \(\{ opening, stashed \}\) => \{([\s\S]*?)\n {2}\};/);
++  assert.ok(load, 'the composition root keeps its Load install of the artifact slots');
++  assert.match(load[1], /installArrivingSlot\(opening\)/, 'Load installs its opening slot through the switch\'s install');
++  assert.doesNotMatch(load[1], /installArtifactSlot/, 'and through no other install');
++});
++
++// The one writer of the displayed Legend colors outside the Legend owner's
++// edit paths is `installShownSetLegend`; a slot install reaches it through the
++// slot's `legend`, and no slot value writes the colors.
++test('installShownSetLegend is the one writer of the displayed Legend colors outside the Legend owner', async () => {
++  assert.ok(!ARTIFACT_SLOT_KEYS.includes('originalLegendColors'));
++  const root = 'gbdraw/web/js';
++  const writers = {};
++  for (const entry of await readdir(root, { recursive: true })) {
++    if (!entry.endsWith('.js')) continue;
++    const source = await readFile(`${root}/${entry}`, 'utf8');
++    const count = source.match(/originalLegendColors\.value(?:\[[^\]]*\])?\s*=(?!=)/g)?.length ?? 0;
++    if (count > 0) writers[entry] = count;
++  }
++  assert.deepEqual(writers, { 'services/artifact-slot.js': 1, 'app/legend/entry-actions.js': 2 });
++  const slotSource = await readFile(`${root}/services/artifact-slot.js`, 'utf8');
++  const install = slotSource.match(/export const installShownSetLegend = [\s\S]*?\n\};/);
++  assert.match(install?.[0] ?? '', /originalLegendColors\.value = /, 'the slot module\'s write is installShownSetLegend\'s');
++  const historySource = await readFile(`${root}/services/history-snapshot.js`, 'utf8');
++  assert.match(historySource, /installShownSetLegend\(state, slot\.legend\)/, 'a slot install writes the colors through it');
++});
+diff --git a/tests/web/explicit-any-ratchet.test.mjs b/tests/web/explicit-any-ratchet.test.mjs
+index 5b3c0abfa..097dd05c7 100644
+--- a/tests/web/explicit-any-ratchet.test.mjs
++++ b/tests/web/explicit-any-ratchet.test.mjs
+@@ -61,7 +61,7 @@ const EXPLICIT_ANY_BASELINE = {
+   'app/track-slot-edits.js': 4,
+   'services/annotation-state.js': 1,
+   'services/artifact-slot.js': 7,
+-  'services/config.js': 62,
++  'services/config.js': 61,
+   'services/depth-track-state.js': 1,
+   'services/diagram-generation.js': 1,
+   'services/feature-catalog.js': 3,
+diff --git a/tests/web/function-size-ratchet.test.mjs b/tests/web/function-size-ratchet.test.mjs
+index f703a2d79..9a8bcdbb7 100644
+--- a/tests/web/function-size-ratchet.test.mjs
++++ b/tests/web/function-size-ratchet.test.mjs
+@@ -73,7 +73,7 @@ const MAX_FUNCTION_STATEMENTS = 85;
+ const FUNCTION_STATEMENTS = {
+   'app/align-at-feature.js::createFeatureAnchorAction': 94,
+   'app/annotations.js::createAnnotationEditor': 218,
+-  'app/app-setup.js::createAppSetup': 1101,
++  'app/app-setup.js::createAppSetup': 1100,
+   'app/candidate-render.js::compilePlanBundle': 227,
+   'app/circular-record-controls.js::createCircularSourceEdits': 86,
+   'app/circular-track-slots.js::createCircularTrackSlotEditor': 857,
+@@ -129,7 +129,7 @@ const FUNCTION_STATEMENTS = {
+   'services/diagram-resource-staging.js::createDiagramResourceTransport': 87,
+   'services/feature-catalog.js::validateAndProjectCatalogItem': 203,
+   'services/feature-override-identity.js::migrateLegacyFeatureOverrides': 94,
+-  'services/history-snapshot.js::createHistorySnapshotService': 398,
++  'services/history-snapshot.js::createHistorySnapshotService': 395,
+   'services/history.js::createHistoryManager': 897,
+   'services/history.js::createHistoryRouter': 449,
+   'services/legend-layout.js::buildCircularLegendLayout': 97,
+@@ -156,7 +156,7 @@ const FUNCTION_STATEMENTS = {
+ };
+ 
+ const COMPOSITION_ROOT_LOGIC_STATEMENTS = {
+-  'app/app-setup.js::createAppSetup': 626,
++  'app/app-setup.js::createAppSetup': 625,
+   'app/feature-editor.js::createFeatureEditor': 0,
+   'app/legend-layout.js::createLegendLayout': 56,
+   'app/legend.js::createLegendManager': 21
+diff --git a/tests/web/history-config-restore.test.mjs b/tests/web/history-config-restore.test.mjs
+index 1d2577fda..4359a1a8e 100644
+--- a/tests/web/history-config-restore.test.mjs
++++ b/tests/web/history-config-restore.test.mjs
+@@ -281,7 +281,7 @@ console.log('History restores nullable config values and preserves key guards.')
+ 
+   applyEditorStateData(state.activeDrawing(), buildEditorStateData(state.activeDrawing()));
+   assert.strictEqual(liveCatalog(), catalog, 'Session rollback restores the admitted catalog');
+-  applyEditorStateData(state.activeDrawing(), { featureCatalog: structuredClone(catalog) });
++  applyEditorStateData(state.activeDrawing(), { ...buildEditorStateData(state.activeDrawing()), featureCatalog: structuredClone(catalog) });
+   assert.equal(state.featureCatalog.value, null, 'an unadmitted catalog never enters state');
+   state.featureCatalog.value = null;
+   state.extractedFeatures.value = [];
+@@ -318,7 +318,8 @@ console.log('History restores nullable config values and preserves key guards.')
+   assert.deepEqual(state.originalLegendColors.value, { CDS: '#112233' }, 'the restore installs the captured colors');
+ 
+   state.results.value = [{ name: 'diagram.svg', content: '<svg />' }];
+-  applyEditorStateData(state.activeDrawing(), { legend: { originalOrder: ['CDS'], originalColors: {} } });
++  const captured = buildEditorStateData(state.activeDrawing());
++  applyEditorStateData(state.activeDrawing(), { ...captured, legend: { ...captured.legend, originalOrder: ['CDS'], originalColors: {} } });
+   assert.deepEqual(state.originalLegendOrder.value, ['CDS'], 'a restore with a Result installs its inventory');
+   state.results.value = [];
+   state.originalLegendOrder.value = [];
+diff --git a/tests/web/history.test.mjs b/tests/web/history.test.mjs
+index add321141..df104c108 100644
+--- a/tests/web/history.test.mjs
++++ b/tests/web/history.test.mjs
+@@ -2059,8 +2059,7 @@ const createLayoutPreferences = () => ({
+       state.selectedFeatureRecordIdx.value = features.selectedFeatureRecordIdx;
+       Object.assign(state.featureColorOverrides, features.featureColorOverrides);
+     },
+-    applyEditorStateData: (_drawing, editorState, options) => {
+-      assert.equal(options.normalized, true);
++    applyEditorStateData: (_drawing, editorState) => {
+       state.legendEntries.value = editorState.legend.entries;
+       state.featureCatalog.value = editorState.featureCatalog;
+     },
+@@ -3758,6 +3757,7 @@ for (const previousSuppressed of [false, true]) {
+   const linear = drawingFixture('linear');
+   const state = withModeDrawings({
+     mode: ref('linear'), results: ref([]), semanticFileWatchersSuppressed: ref(false),
++    originalLegendOrder: ref([]), originalLegendColors: ref({}),
+     files: {}, linearSeqs: [], linearComparisonPlan: { mode: 'none', defaultSource: 'losat', edges: [] }
+   }, { circular, linear });
+   const snapshots = createHistorySnapshotService({ state, fileStore: createInputFileStore(), currentResults: () => state.results.value, nextTick: async () => {} });
+@@ -3786,6 +3786,7 @@ for (const previousSuppressed of [false, true]) {
+   const linear2 = drawingFixture('linear-2', 'linear');
+   const state = withModeDrawings({
+     mode: ref('circular'), results: ref([]), selectedResultIndex: ref(0), semanticFileWatchersSuppressed: ref(false),
++    originalLegendOrder: ref([]), originalLegendColors: ref({}),
+     files: {}, linearSeqs: [], linearComparisonPlan: { mode: 'none', defaultSource: 'losat', edges: [] }
+   }, { circular, linear });
+   withModeDrawings({}, { circular: linear2, linear: linear2 }); // gives linear-2 its slice handles
+@@ -3800,7 +3801,7 @@ for (const previousSuppressed of [false, true]) {
+   assert.equal(snapshots.displayedArtifactDrawing().id, 'linear-2', 'an installed slot names its drawing');
+   assert.equal(snapshots.captureArtifactSlot().drawingId, 'linear-2', 'the capture keeps it under that drawing');
+   const handle = snapshots.captureGeneratedArtifactHandle(linear2);
+-  snapshots.installArtifactSlot(null, { drawing: linear });
++  snapshots.installArtifactSlot(createArtifactSlot({ drawing: linear, values: {} }), { drawing: linear });
+   assert.equal(snapshots.displayedArtifactDrawing().id, 'linear');
+   await snapshots.restoreGeneratedArtifactHandle(handle);
+   assert.equal(snapshots.displayedArtifactDrawing().id, 'linear-2', 'Undo/Redo restores the Result of linear-2');
+diff --git a/tests/web/legend-sync.test.mjs b/tests/web/legend-sync.test.mjs
+index c7d2cbef2..08265afc2 100644
+--- a/tests/web/legend-sync.test.mjs
++++ b/tests/web/legend-sync.test.mjs
+@@ -40,6 +40,7 @@ const { createLegendEntryActions } = await import(
+ const { displayedLegendRowColors } = await import(pathToFileURL(join(tempRoot, 'app', 'candidate-render.js')));
+ const { draftLegendRows, legendRowIds } = await import(pathToFileURL(join(tempRoot, 'services', 'legend-draft-rows.js')));
+ const { legendEntryKey } = await import(pathToFileURL(join(tempRoot, 'services', 'drawing', 'paint.js')));
++const { installShownSetLegend } = await import(pathToFileURL(join(tempRoot, 'services', 'artifact-slot.js')));
+ const { createLegendStrokeActions } = await import(
+   pathToFileURL(join(tempRoot, 'app', 'legend', 'stroke-actions.js'))
+ );
+@@ -663,14 +664,12 @@ const mockLegendEntry = (caption, color, x) => {
+   actions.rememberResultInventory('result-3', ['A', 'Coding', 'Own']);
+   actions.adoptResultInventory('result-3');
+   assert.deepEqual(state.originalLegendOrder.value, ['A', 'Coding', 'Own']);
+-  // OV-3282: after an artifact install, a drawing showing a Result keeps the
+-  // displayed inventory and one showing none has none; each Result keeps its
+-  // own for when it is displayed again.
+-  actions.adoptShownSetInventory();
+-  assert.deepEqual(state.originalLegendOrder.value, ['A', 'Coding', 'Own']);
++  // OV-3282: an artifact install of a set showing no Result installs no
++  // inventory (`installShownSetLegend`); each Result keeps its own for when it
++  // is displayed again.
+   const shownResults = state.results.value;
+   state.results.value = [];
+-  actions.adoptShownSetInventory();
++  installShownSetLegend(state, { originalOrder: ['A', 'Coding', 'Own'], originalColors: {} });
+   assert.deepEqual(state.originalLegendOrder.value, []);
+   state.results.value = shownResults;
+   actions.adoptResultInventory('result-3');
+diff --git a/tests/web/session-definition-rehydration.test.mjs b/tests/web/session-definition-rehydration.test.mjs
+index 2b44b3904..7d5b5f200 100644
+--- a/tests/web/session-definition-rehydration.test.mjs
++++ b/tests/web/session-definition-rehydration.test.mjs
+@@ -57,11 +57,12 @@ assert.equal(state.featureEditorStatusText.value, `${loadedFeatureCount} feature
+ // last Load or Generate in any drawing wrote. A drawing switch swaps the artifact slots.
+ const { createHistorySnapshotService } = await import('../../gbdraw/web/js/services/history-snapshot.js');
+ const { createInputFileStore } = await import('../../gbdraw/web/js/services/history-files.js');
++const { createArtifactSlot } = await import('../../gbdraw/web/js/services/artifact-slot.js');
+ const slotSnapshots = createHistorySnapshotService({ state, fileStore: createInputFileStore(), currentResults: () => state.results.value });
+ // The Load made no Linear drawing (D-15-120); the offer tab makes it.
+ (await (await import('./helpers/drawing-state.mjs')).modeDrawingsAdder())();
+ const circularSlot = slotSnapshots.captureArtifactSlot();
+-slotSnapshots.installArtifactSlot(null, { drawing: modeDrawing(state, 'linear') });
++slotSnapshots.installArtifactSlot(createArtifactSlot({ drawing: modeDrawing(state, 'linear'), values: {} }), { drawing: modeDrawing(state, 'linear') });
+ assert.equal(state.featureEditorStatusText.value, 'No features ready', 'the Linear drawing has no Result');
+ slotSnapshots.installArtifactSlot(circularSlot, { drawing: modeDrawing(state, 'circular') });
+ assert.equal(state.featureEditorStatusText.value, `${loadedFeatureCount} features ready`);

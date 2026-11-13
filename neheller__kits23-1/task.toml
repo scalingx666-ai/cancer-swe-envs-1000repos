@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/neheller__kits23-1"
+description = "metrics, ranking and segmentations as uint8"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "kits23",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "neheller/kits23"
+ref = "f2699006dac37c5196df1cf8393ff46d2e636658"
+reference = "https://github.com/neheller/kits23/pull/1"
+source_access = "auto"
+built_at = "2026-11-13T15:35:24.133505+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7c80d19cee12bac2d6cbf4039626f134e59550d7e00e5461e2f3721b1821e482"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-04-13T23:03:00Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "README.md",
+    "changelog.md",
+    "kits23/_version.py",
+    "kits23/annotation/import.py",
+    "kits23/configuration/labels.py",
+    "kits23/download.py",
+    "kits23/entrypoints.py",
+    "kits23/evaluation/__init__.py",
+    "kits23/evaluation/dice.py",
+    "kits23/evaluation/entry_point.py",
+    "kits23/evaluation/generate_bool_masks_for_hec.py",
+    "kits23/evaluation/metrics.py",
+    "kits23/evaluation/ranking.py",
+    "setup.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 447
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

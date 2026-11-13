@@ -1,0 +1,178 @@
+diff --git a/BALSAMIC/constants/rules.py b/BALSAMIC/constants/rules.py
+index 779977498..922d94de2 100644
+--- a/BALSAMIC/constants/rules.py
++++ b/BALSAMIC/constants/rules.py
+@@ -54,7 +54,6 @@
+         "qc": [
+             "snakemake_rules/quality_control/fastp_tga.rule",
+             "snakemake_rules/quality_control/picard.rule",
+-            "snakemake_rules/quality_control/sambamba_depth.rule",
+             "snakemake_rules/quality_control/mosdepth.rule",
+             "snakemake_rules/concatenation/concatenation.rule",
+             "snakemake_rules/umi/qc_umi.rule",
+@@ -90,7 +89,6 @@
+         "qc": [
+             "snakemake_rules/quality_control/fastp_tga.rule",
+             "snakemake_rules/quality_control/picard.rule",
+-            "snakemake_rules/quality_control/sambamba_depth.rule",
+             "snakemake_rules/quality_control/mosdepth.rule",
+             "snakemake_rules/umi/qc_umi.rule",
+             "snakemake_rules/quality_control/somalier.rule",
+diff --git a/BALSAMIC/snakemake_rules/quality_control/multiqc.rule b/BALSAMIC/snakemake_rules/quality_control/multiqc.rule
+index 19ee7e395..c40ecd98f 100644
+--- a/BALSAMIC/snakemake_rules/quality_control/multiqc.rule
++++ b/BALSAMIC/snakemake_rules/quality_control/multiqc.rule
+@@ -94,13 +94,6 @@ else:
+         multiqc_input.extend(expand(qc_dir + "fastp/normal.{sample}_qualitytrim_fastp.json",sample=normal_sample))
+         multiqc_input.extend(expand(qc_dir + "fastp/normal.{sample}_qualitytrim_fastp.html",sample=normal_sample))
+ 
+-    # sambamba metrics
+-    multiqc_input.extend(expand(qc_dir + "tumor.{sample}.cov.bed", sample=tumor_sample))
+-    multiqc_input.extend(expand(qc_dir + "tumor.{sample}.exon.cov.bed", sample=tumor_sample))
+-    if config['analysis']['analysis_type'] == "paired":
+-        multiqc_input.extend(expand(qc_dir + "normal.{sample}.cov.bed",sample=normal_sample))
+-        multiqc_input.extend(expand(qc_dir + "normal.{sample}.exon.cov.bed",sample=normal_sample))
+-
+     # mosdepth metrics
+     mosdepth_metrics_wildcard = ["mosdepth.global.dist.txt", "mosdepth.region.dist.txt",
+                                  "mosdepth.summary.txt", "per-base.bed.gz", "regions.bed.gz"]
+diff --git a/BALSAMIC/snakemake_rules/quality_control/sambamba_depth.rule b/BALSAMIC/snakemake_rules/quality_control/sambamba_depth.rule
+deleted file mode 100644
+index 9e73b78dc..000000000
+--- a/BALSAMIC/snakemake_rules/quality_control/sambamba_depth.rule
++++ /dev/null
+@@ -1,69 +0,0 @@
+-# vim: syntax=python tabstop=4 expandtab
+-# coding: utf-8
+-
+-
+-
+-rule sambamba_panel_depth:
+-    input:
+-        bam = lambda wildcards: config_model.get_final_bam_name(bam_dir = bam_dir, sample_name = wildcards.sample),
+-        bed = config["panel"]["capture_kit"]
+-    output:
+-        qc_dir + "{sample_type}.{sample}.cov.bed"
+-    benchmark:
+-        Path(benchmark_dir, "sambamba_panel_depth_" + "{sample_type}_{sample}.tsv").as_posix()
+-    singularity:
+-        Path(singularity_image, config["bioinfo_tools"].get("sambamba") + ".sif").as_posix()
+-    params:
+-        base_qual = 10,
+-        cov_start = 50,
+-        cov_end = 1000,
+-        cov_step = 50,
+-        filter_string="'not (unmapped or mate_is_unmapped) and not duplicate and not failed_quality_control and mapping_quality > 10'",
+-        sample = '{sample}'
+-    message:
+-        "Calculate depth statistics using sambamba for sample {params.sample}"
+-    shell:
+-        """
+-covStr=`seq {params.cov_start} {params.cov_step} {params.cov_end} | xargs -n1 echo -n \" --cov-threshold\"`;
+-
+-sambamba depth region \
+---regions {input.bed} \
+---min-base-quality={params.base_qual} \
+---filter {params.filter_string} \
+---nthreads {threads} \
+-`echo $covStr` {input.bam} > {output}; 
+-        """
+-
+-
+-rule sambamba_exon_depth:
+-    input:
+-        bam = lambda wildcards: config_model.get_final_bam_name(bam_dir = bam_dir, sample_name = wildcards.sample),
+-        bed = refgene_bed
+-    output:
+-        qc_dir + "{sample_type}.{sample}.exon.cov.bed"
+-    benchmark:
+-        Path(benchmark_dir, "sambamba_exon_depth_" + "{sample_type}_{sample}.tsv").as_posix()
+-    singularity:
+-        Path(singularity_image, config["bioinfo_tools"].get("sambamba") + ".sif").as_posix()
+-    params:
+-        base_qual = 10,
+-        cov_1 = "50",
+-        cov_2 = "100",
+-        cov_3 = "150",
+-        cov_4 = "200",
+-        cov_5 = "250",
+-        filter_string = "'not (unmapped or mate_is_unmapped) and not duplicate and not failed_quality_control and mapping_quality > 10'",
+-        sample = '{sample}'
+-    message:
+-        "Calculate exon depth stastics using sambamba for sample {params.sample}"
+-    shell:
+-        """
+-sambamba depth region \
+---regions {input.bed} \
+---min-base-quality={params.base_qual} \
+---filter {params.filter_string} \
+---cov-threshold {params.cov_1} --cov-threshold {params.cov_2} \
+---cov-threshold {params.cov_3} --cov-threshold {params.cov_4} \
+---cov-threshold {params.cov_5} \
+---nthreads {threads} {input.bam} > {output};
+-        """
+diff --git a/CHANGELOG.rst b/CHANGELOG.rst
+index 4e67e2514..725105159 100644
+--- a/CHANGELOG.rst
++++ b/CHANGELOG.rst
+@@ -1,3 +1,18 @@
++[X.X.X]
++-------
++Added:
++^^^^^^
++
++Changed:
++^^^^^^^^
++
++Removed:
++^^^^^^^^
++* removed all sambamba rules https://github.com/Clinical-Genomics/BALSAMIC/pull/1679
++
++Fixed:
++^^^^^^
++
+ [19.0.0]
+ -------
+ 
+diff --git a/docs/balsamic_methods.rst b/docs/balsamic_methods.rst
+index a8a9bdc25..7de8c0c58 100644
+--- a/docs/balsamic_methods.rst
++++ b/docs/balsamic_methods.rst
+@@ -11,7 +11,7 @@ Adapter sequences are trimmed using fastp v0.23.2 :superscript:`3` and then UMI
+ Trimmed reads were mapped to the reference genome hg19 using sentieon-tools :superscript:`15`.
+ The resulting BAM is quality controlled using samtools v1.15.1 :superscript:`26`, and AlignmentStat, InsertSizeMetricAlgo, GCBias, MeanQualityByCycle, QualDistribution and BaseDistributionByCycle from sentieon-tools :superscript:`15`.
+ Duplicate reads are collapsed using the UMI function in Dedup from sentieon-tools :superscript:`15`, and invalid mates are corrected with tools collate and fixmate from samtools v1.15.1 :superscript:`26`.
+-Coverage metrics are collected from the final BAM using Sambamba v0.8.2 :superscript:`27`, Mosdepth v0.3.3 :superscript:`28` and CollectHsMetrics from Picard tools v2.27.1 :superscript:`6`.
++Coverage metrics are collected from the final BAM using Mosdepth v0.3.3 :superscript:`28` and CollectHsMetrics from Picard tools v2.27.1 :superscript:`6`.
+ Results of the quality controlled steps were summarized by MultiQC v1.31 :superscript:`7`.
+ Small somatic mutations (SNVs and INDELs) and SVs were called using VarDict 2019.06.04 :superscript:`8` and Sentieon TNscope :superscript:`16` and normalised using bcftools norm before being filtered using the criteria (*MQ >= 30, DP >= 50 (20 for exome-samples), VD >= 5, Minimum AF >= 0.005, Maximum AF < 1, GNOMADAF_popmax <= 0.005, swegen AF < 0.01*) and then merged using a custom python script.
+ Only those variants that fulfilled the filtering criteria and scored as `PASS` in the VCF file were reported.
+diff --git a/docs/bioinfo_softwares.rst b/docs/bioinfo_softwares.rst
+index 172a009ba..b6a5c9d8f 100644
+--- a/docs/bioinfo_softwares.rst
++++ b/docs/bioinfo_softwares.rst
+@@ -106,12 +106,6 @@ picard
+ :Article: `-`
+ :Version: `2.27.1`
+ 
+-sambamba
+-~~~~~~~~
+-:Source code: `GitHub` `<https://github.com/biod/sambamba>`_
+-:Article: `Bioinformatics` `<https://pubmed.ncbi.nlm.nih.gov/25697820/>`_
+-:Version: `0.8.2`
+-
+ samtools
+ ~~~~~~~~
+ :Source code: `GitHub` `<https://github.com/samtools/samtools>`_
+diff --git a/docs/resources.rst b/docs/resources.rst
+index 900ab3ecf..5f50db178 100644
+--- a/docs/resources.rst
++++ b/docs/resources.rst
+@@ -108,7 +108,6 @@ Methods and tools
+    * **DuplicateReadFilter**: remove duplicated from flag set by MarkDuplicates
+ 
+ #. **Samtools**: Reading/writing/editing/indexing/viewing SAM/BAM/CRAM format http://www.htslib.org/
+-#. **Sambamba**: Tools for working with SAM/BAM/CRAM data http://lomereiter.github.io/sambamba/
+ #. **bcftools**: Reading/writing BCF2/VCF/gVCF files and calling/filtering/summarising SNP and short indel sequence variants http://www.htslib.org/doc/bcftools.html
+ #. **vcftools**: VCFtools is a program package designed for working with VCF files, such as those generated by the 1000 Genomes Project. https://vcftools.github.io/index.html
+ #. **Delly2**: An integrated structural variant prediction method that can discover, genotype and visualize deletions, tandem duplications, inversions and translocations https://github.com/dellytools/delly

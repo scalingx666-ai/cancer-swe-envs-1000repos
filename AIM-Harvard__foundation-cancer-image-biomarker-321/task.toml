@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/AIM-Harvard__foundation-cancer-image-biomarker-321"
+description = "Fixes"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "foundation-cancer-image-biomarker",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AIM-Harvard/foundation-cancer-image-biomarker"
+ref = "c5e1f4fe51ae1e3096aafac7026d64b860802d7f"
+reference = "https://github.com/AIM-Harvard/foundation-cancer-image-biomarker/pull/321"
+source_access = "auto"
+built_at = "2026-11-13T15:35:41.293731+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6d799927e40bdb189db19fe87f7e10c5e1bc45263496cfb99a9d0f37804c5d9d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-03-05T22:50:54Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/publish.yml",
+    "poetry.lock",
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 351
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

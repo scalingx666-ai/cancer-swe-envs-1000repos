@@ -1,0 +1,1110 @@
+diff --git a/README.md b/README.md
+index 938b4d0..6c64615 100644
+--- a/README.md
++++ b/README.md
+@@ -1,23 +1,26 @@
+ # High-resolution breast cancer screening with multi-view deep convolutional neural networks
+ ## Introduction
+-This is an implementation of the model used for [BI-RADS](https://breast-cancer.ca/bi-rads/) classification as described in our paper ["High-resolution breast cancer screening with multi-view deep convolutional neural networks"](https://arxiv.org/abs/1703.07047). The implementation allows users to get the BI-RADS prediction by applying our pretrained CNN model on standrad screening mammogram exam with four views. As a part of this repository, we provide a sample exam (in `images` directory).
++This is an implementation of the model used for [BI-RADS](https://breast-cancer.ca/bi-rads/) classification as described in our paper ["High-resolution breast cancer screening with multi-view deep convolutional neural networks"](https://arxiv.org/abs/1703.07047). The implementation allows users to get the BI-RADS prediction by applying our pretrained CNN model on standard screening mammogram exam with four views. As a part of this repository, we provide a sample exam (in `images` directory). The model is implemented in both TensorFlow and PyTorch.
+ 
+ ## Prerequisites
+ 
+-* Python (3.6), TensorFlow (1.5.0), NumPy (1.14.3), SciPy (1.0.0)
+-* NVIDIA GPU (we used Tesla M40).
++* Python (3.6)
++* TensorFlow (1.5.0) or PyTorch (0.4.0)
++* NumPy (1.14.3)
++* SciPy (1.0.0)
++* Pillow (5.1.0)
+ 
+ ## Data
+ 
+ To use the pretrained model, the input is required to consist of four images, one for each view (L-CC, L-MLO, R-CC, R-MLO). Each image has to have the size of 2600x2000 pixels. The images in the provided sample exam were already cropped to the correct size.
+ 
+ ## How to run the code
+-Available options can be found at the bottom of the file `birads_prediction.py`. Please keep `input_size = (2600, 2000)` as the provided pretrained models were trained with images in this resolution. You may need to change `gpu_number`.
++Available options can be found at the bottom of the files `birads_prediction_tf.py` or `birads_prediction_torch.py`. Please keep `input_size = (2600, 2000)` as the provided pretrained models were trained with images in this resolution.
+ 
+ Run the following command to use the model.
+ 
+-```
+-python birads_prediction.py
++```bash
++python birads_prediction_(tf|torch).py
+ ```
+ 
+ You should get the following output:
+@@ -29,6 +32,24 @@ BI-RADS prediction:
+         BI-RADS 2:      0.4007566
+ ```
+ 
++## Converting TensorFlow Models
++
++This repository contains saved checkpoints of the original TensorFlow models. We include a script for converting from TensorFlow checkpoints to PyTorch pickles.
++
++```bash
++python convert_model.py \
++    saved_models/model.ckpt \
++    saved_models/model.p
++```
++
++## Tests
++
++Tests require `pytest` and `pytest-xdist` (pip).
++
++```bash
++pytest -v --forked --numprocesses=1
++```
++
+ ## Reference
+ 
+ If you found this code useful, please cite our paper:
+diff --git a/birads_prediction.py b/birads_prediction.py
+deleted file mode 100644
+index 6a16279..0000000
+--- a/birads_prediction.py
++++ /dev/null
+@@ -1,112 +0,0 @@
+-import tensorflow as tf
+-import numpy
+-from scipy import misc
+-
+-import models
+-
+-def load_images(image_path, view):
+-    """
+-    Function that loads and preprocess input images
+-    :param image_path:
+-    :param view:
+-    :return:
+-    """
+-
+-    def normalise_single_image(image):
+-        image -= numpy.mean(image)
+-        image /= numpy.std(image)
+-
+-    image = misc.imread(image_path + view + '.png')
+-    image = image.astype(numpy.float32)
+-    normalise_single_image(image)
+-    image = numpy.expand_dims(image, axis = 0)
+-    image = numpy.expand_dims(image, axis = 3)
+-
+-    return image
+-
+-def sample_prediction(parameters):
+-    """
+-    Function that creates a model, loads the parameters, and makes a prediction
+-    :param parameters:
+-    :return:
+-    """
+-    tf.set_random_seed(7)
+-
+-    with tf.device('/' + parameters['device_type']):
+-        # initialize input holders
+-        x_L_CC = tf.placeholder(tf.float32,
+-                                shape = [None, parameters['input_size'][0], parameters['input_size'][1], 1])
+-        x_R_CC = tf.placeholder(tf.float32,
+-                                shape = [None, parameters['input_size'][0], parameters['input_size'][1], 1])
+-        x_L_MLO = tf.placeholder(tf.float32,
+-                                 shape = [None, parameters['input_size'][0], parameters['input_size'][1], 1])
+-        x_R_MLO = tf.placeholder(tf.float32,
+-                                 shape = [None, parameters['input_size'][0], parameters['input_size'][1], 1])
+-        x = (x_L_CC, x_R_CC, x_L_MLO, x_R_MLO)
+-
+-        # holders for dropout and Guassian noise
+-        nodropout_probability = tf.placeholder(tf.float32, shape = ())
+-        Gaussian_noise_std = tf.placeholder(tf.float32, shape = ())
+-
+-        # construct models
+-        model = models.BaselineBreastModel(parameters, x, nodropout_probability, Gaussian_noise_std)
+-        y_prediction_birads = model.y_prediction_birads
+-
+-    # allocate computation resources
+-    if parameters['device_type'] == 'gpu':
+-        session_config = tf.ConfigProto()
+-        session_config.gpu_options.visible_device_list = str(parameters['gpu_number'])
+-    elif parameters['device_type'] == 'cpu':
+-        session_config = tf.ConfigProto(device_count={'GPU': 0})
+-
+-    # create a tf session
+-    session = tf.Session(config = session_config)
+-    session.run(tf.global_variables_initializer())
+-
+-    # loads the pre-trained parameters if it's provided
+-    if parameters['initial_parameters'] is not None:
+-        saver = tf.train.Saver(max_to_keep = None)
+-        saver.restore(session, save_path = parameters['initial_parameters'])
+-
+-    # load input images
+-    datum_L_CC = load_images(parameters['image_path'], 'L-CC')
+-    datum_R_CC = load_images(parameters['image_path'], 'R-CC')
+-    datum_L_MLO = load_images(parameters['image_path'], 'L-MLO')
+-    datum_R_MLO = load_images(parameters['image_path'], 'R-MLO')
+-
+-    # populate feed_dict for TF session
+-    feed_dict_by_model = {nodropout_probability: 1.0, Gaussian_noise_std: 0.0}
+-    feed_dict_by_model[x_L_CC] = datum_L_CC
+-    feed_dict_by_model[x_R_CC] = datum_R_CC
+-    feed_dict_by_model[x_L_MLO] = datum_L_MLO
+-    feed_dict_by_model[x_R_MLO] = datum_R_MLO
+-
+-    # run the session for a prediction
+-    prediction_birads = session.run(y_prediction_birads, feed_dict = feed_dict_by_model)
+-    birads0_prob = prediction_birads[0][0]
+-    birads1_prob = prediction_birads[0][1]
+-    birads2_prob = prediction_birads[0][2]
+-
+-    # nicely prints out the predictions
+-    print('BI-RADS prediction:\n' +
+-          '\tBI-RADS 0:\t' + str(birads0_prob) + '\n' +
+-          '\tBI-RADS 1:\t' + str(birads1_prob) + '\n' +
+-          '\tBI-RADS 2:\t' + str(birads2_prob))
+-
+-if __name__ == "__main__":
+-
+-    # global settings
+-    parameters = dict(
+-        device_type='gpu',
+-        # specify which GPU for training
+-        gpu_number = 1,
+-        # size of the input images
+-        input_size = (2600, 2000),
+-        # path to the input images
+-        image_path = 'images/',
+-        # directory to the saved parameters
+-        initial_parameters = 'saved_models/model.ckpt'
+-    )
+-
+-    # do a sample prediction
+-    sample_prediction(parameters)
+diff --git a/birads_prediction_tf.py b/birads_prediction_tf.py
+new file mode 100644
+index 0000000..d403aa4
+--- /dev/null
++++ b/birads_prediction_tf.py
+@@ -0,0 +1,106 @@
++import argparse
++import tensorflow as tf
++
++import models_tf as models
++import utils
++
++
++def inference(parameters, verbose=True):
++    """
++    Function that creates a model, loads the parameters, and makes a prediction
++    :param parameters: dictionary of parameters
++    :param verbose: Whether to print predicted probabilities
++    :return: Predicted probabilities for each class 
++    """
++    tf.set_random_seed(7)
++
++    with tf.Graph().as_default():
++        with tf.device('/' + parameters['device_type']):
++            # initialize input holders
++            x_l_cc = tf.placeholder(tf.float32,
++                                    shape=[None, parameters['input_size'][0], parameters['input_size'][1], 1])
++            x_r_cc = tf.placeholder(tf.float32,
++                                    shape=[None, parameters['input_size'][0], parameters['input_size'][1], 1])
++            x_l_mlo = tf.placeholder(tf.float32,
++                                     shape=[None, parameters['input_size'][0], parameters['input_size'][1], 1])
++            x_r_mlo = tf.placeholder(tf.float32,
++                                     shape=[None, parameters['input_size'][0], parameters['input_size'][1], 1])
++            x = (x_l_cc, x_r_cc, x_l_mlo, x_r_mlo)
++
++            # holders for dropout and Gaussian noise
++            nodropout_probability = tf.placeholder(tf.float32, shape=())
++            gaussian_noise_std = tf.placeholder(tf.float32, shape=())
++
++            # construct models
++            model = models.BaselineBreastModel(parameters, x, nodropout_probability, gaussian_noise_std)
++            y_prediction_birads = model.y_prediction_birads
++
++        # allocate computation resources
++        if parameters['device_type'] == 'gpu':
++            session_config = tf.ConfigProto()
++            session_config.gpu_options.visible_device_list = str(parameters['gpu_number'])
++        elif parameters['device_type'] == 'cpu':
++            session_config = tf.ConfigProto(device_count={'GPU': 0})
++        else:
++            raise RuntimeError(parameters['device_type'])
++
++        with tf.Session(config=session_config) as session:
++            session.run(tf.global_variables_initializer())
++
++            # loads the pre-trained parameters if it's provided
++            if parameters['model_path'] is not None:
++                saver = tf.train.Saver(max_to_keep=None)
++                saver.restore(session, save_path=parameters['model_path'])
++
++            # load input images
++            datum_l_cc = utils.load_images(parameters['image_path'], 'L-CC')
++            datum_r_cc = utils.load_images(parameters['image_path'], 'R-CC')
++            datum_l_mlo = utils.load_images(parameters['image_path'], 'L-MLO')
++            datum_r_mlo = utils.load_images(parameters['image_path'], 'R-MLO')
++
++            # populate feed_dict for TF session
++            # No dropout and no gaussian noise in inference
++            feed_dict_by_model = {
++                nodropout_probability: 1.0,
++                gaussian_noise_std: 0.0,
++                x_l_cc: datum_l_cc,
++                x_r_cc: datum_r_cc,
++                x_l_mlo: datum_l_mlo,
++                x_r_mlo: datum_r_mlo,
++            }
++
++            # run the session for a prediction
++            prediction_birads = session.run(y_prediction_birads, feed_dict=feed_dict_by_model)
++
++            if verbose:
++                # nicely prints out the predictions
++                birads0_prob = prediction_birads[0][0]
++                birads1_prob = prediction_birads[0][1]
++                birads2_prob = prediction_birads[0][2]
++                print('BI-RADS prediction:\n' +
++                      '\tBI-RADS 0:\t' + str(birads0_prob) + '\n' +
++                      '\tBI-RADS 1:\t' + str(birads1_prob) + '\n' +
++                      '\tBI-RADS 2:\t' + str(birads2_prob))
++
++            return prediction_birads[0]
++
++
++if __name__ == "__main__":
++
++    parser = argparse.ArgumentParser(description='Run Inference')
++    parser.add_argument('--model_path', default='saved_models/model.ckpt')
++    parser.add_argument('--device-type', default="cpu")
++    parser.add_argument('--gpu_number', default=0)
++    parser.add_argument('--image-path', default="images/")
++    args = parser.parse_args()
++
++    parameters_ = {
++        "model_path": args.model_path,
++        "device_type": args.device_type,
++        "gpu_number": args.gpu_number,
++        "image_path": args.image_path,
++        "input_size": (2600, 2000),
++    }
++
++    # do a sample prediction
++    inference(parameters_)
+diff --git a/birads_prediction_torch.py b/birads_prediction_torch.py
+new file mode 100644
+index 0000000..b52d629
+--- /dev/null
++++ b/birads_prediction_torch.py
+@@ -0,0 +1,72 @@
++import argparse
++import torch
++
++import models_torch as models
++import utils
++
++
++def inference(parameters, verbose=True):
++    """
++    Function that creates a model, loads the parameters, and makes a prediction
++    :param parameters: dictionary of parameters
++    :param verbose: Whether to print predicted probabilities
++    :return: Predicted probabilities for each class
++    """
++    # resolve device
++    device = torch.device(
++        "cuda:{}".format(parameters["gpu_number"]) if parameters["device_type"] == "gpu"
++        else "cpu"
++    )
++
++    # construct models
++    model = models.BaselineBreastModel(nodropout_probability=1.0, gaussian_noise_std=0.0).to(device)
++    model.load_state_dict(torch.load(parameters["model_path"]))
++
++    # load input images and prepare data
++    datum_l_cc = utils.load_images(parameters['image_path'], 'L-CC')
++    datum_r_cc = utils.load_images(parameters['image_path'], 'R-CC')
++    datum_l_mlo = utils.load_images(parameters['image_path'], 'L-MLO')
++    datum_r_mlo = utils.load_images(parameters['image_path'], 'R-MLO')
++    x = {
++        "L-CC": torch.Tensor(datum_l_cc).permute(0, 3, 1, 2).to(device),
++        "L-MLO": torch.Tensor(datum_l_mlo).permute(0, 3, 1, 2).to(device),
++        "R-CC": torch.Tensor(datum_r_cc).permute(0, 3, 1, 2).to(device),
++        "R-MLO": torch.Tensor(datum_r_mlo).permute(0, 3, 1, 2).to(device),
++    }
++
++    # run prediction
++    with torch.no_grad():
++        prediction_birads = model(x).cpu().numpy()
++
++    if verbose:
++        # nicely prints out the predictions
++        birads0_prob = prediction_birads[0][0]
++        birads1_prob = prediction_birads[0][1]
++        birads2_prob = prediction_birads[0][2]
++        print('BI-RADS prediction:\n' +
++              '\tBI-RADS 0:\t' + str(birads0_prob) + '\n' +
++              '\tBI-RADS 1:\t' + str(birads1_prob) + '\n' +
++              '\tBI-RADS 2:\t' + str(birads2_prob))
++
++    return prediction_birads[0]
++
++
++if __name__ == "__main__":
++
++    parser = argparse.ArgumentParser(description='Run Inference')
++    parser.add_argument('--model_path', default='saved_models/pytorch_model.p')
++    parser.add_argument('--device-type', default="cpu")
++    parser.add_argument('--gpu-number', default=0)
++    parser.add_argument('--image-path', default="images/")
++    args = parser.parse_args()
++
++    parameters_ = {
++        "model_path": args.model_path,
++        "device_type": args.device_type,
++        "gpu_number": int(args.gpu_number),
++        "image_path": args.image_path,
++        "input_size": (2600, 2000),
++    }
++
++    # do a sample prediction
++    inference(parameters_)
+diff --git a/convert_model.py b/convert_model.py
+new file mode 100644
+index 0000000..90b6242
+--- /dev/null
++++ b/convert_model.py
+@@ -0,0 +1,52 @@
++import argparse
++import torch
++import tensorflow as tf
++
++import models_torch
++
++
++def tf_to_torch(input_path, output_path):
++    """
++    Convert TensorFlow checkpoint to PyTorch model pickle
++    :param input_path: path to TensorFlow checkpoint
++    :param output_path: path to save PyTorch model pickle
++    """
++    g = tf.Graph()
++    bbmodel = models_torch.BaselineBreastModel(nodropout_probability=1.0)
++    with tf.Session(graph=g, config=tf.ConfigProto(allow_soft_placement=True)) as sess:
++        saver = tf.train.import_meta_graph(input_path + ".meta")
++        saver.restore(sess, input_path)
++        var_dict = {
++            var.name: var
++            for var in g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
++        }
++        for conv_name, conv_layer in bbmodel.conv_layer_dict.items():
++            for view in ["CC", "MLO"]:
++                conv_layer.ops[view].weight.data = torch.Tensor(sess.run(
++                    var_dict["{}_{}/weights:0".format(conv_name, view)]
++                )).permute(3, 2, 0, 1)
++                conv_layer.ops[view].bias.data = torch.Tensor(sess.run(
++                    var_dict["{}_{}/biases:0".format(conv_name, view)]
++                ))
++        bbmodel.fc1.weight.data = torch.Tensor(sess.run(
++            var_dict["fully_connected/weights:0"]
++        ).T)
++        bbmodel.fc1.bias.data = torch.Tensor(sess.run(
++            var_dict["fully_connected/biases:0"]
++        ))
++        bbmodel.fc2.weight.data = torch.Tensor(sess.run(
++            var_dict["fully_connected_1/weights:0"]
++        ).T)
++        bbmodel.fc2.bias.data = torch.Tensor(sess.run(
++            var_dict["fully_connected_1/biases:0"]
++        ))
++        torch.save(bbmodel.state_dict(), output_path)
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(description='Convert from TensorFlow checkpoints to PyTorch pickles')
++    parser.add_argument('input_path')
++    parser.add_argument('output_path')
++    args = parser.parse_args()
++
++    tf_to_torch(args.input_path, args.output_path)
+diff --git a/layers.py b/layers.py
+deleted file mode 100644
+index 02ecea3..0000000
+--- a/layers.py
++++ /dev/null
+@@ -1,117 +0,0 @@
+-import tensorflow as tf
+-
+-def all_views_conv_layer(input_layer, layer_name, number_of_filters = 32, filter_size = [3, 3], stride = [1, 1],
+-                         padding = 'VALID', biases_initializer = tf.zeros_initializer()):
+-  
+-    input_L_CC, input_R_CC, input_L_MLO, input_R_MLO = input_layer
+-
+-    with tf.variable_scope(layer_name + "_CC") as CC_scope:
+-        h_L_CC = tf.contrib.layers.convolution2d(inputs = input_L_CC, num_outputs = number_of_filters,
+-                                                 kernel_size = filter_size, stride = stride, padding = padding,
+-                                                 scope = CC_scope, biases_initializer = biases_initializer)
+-        h_R_CC = tf.contrib.layers.convolution2d(inputs = input_R_CC, num_outputs = number_of_filters,
+-                                                 kernel_size = filter_size, stride = stride, padding = padding, reuse = True,
+-                                                 scope = CC_scope, biases_initializer = biases_initializer)
+-
+-    with tf.variable_scope(layer_name + "_MLO") as MLO_scope:
+-        h_L_MLO = tf.contrib.layers.convolution2d(inputs = input_L_MLO, num_outputs = number_of_filters,
+-                                                  kernel_size = filter_size, stride = stride, padding = padding,
+-                                                  scope = MLO_scope, biases_initializer = biases_initializer)
+-        h_R_MLO = tf.contrib.layers.convolution2d(inputs = input_R_MLO, num_outputs = number_of_filters,
+-                                                  kernel_size = filter_size, stride = stride, padding = padding, reuse = True,
+-                                                  scope = MLO_scope, biases_initializer = biases_initializer)
+-
+-    h = (h_L_CC, h_R_CC, h_L_MLO, h_R_MLO)
+-
+-    return h
+-
+-def all_views_max_pool(input_layer, stride = [2, 2]):
+-  
+-    input_L_CC, input_R_CC, input_L_MLO, input_R_MLO = input_layer
+-
+-    output_L_CC = tf.nn.max_pool(input_L_CC, ksize = [1, stride[0], stride[1], 1], strides = [1, stride[0], stride[1], 1],
+-                                 padding = 'SAME')
+-    output_R_CC = tf.nn.max_pool(input_R_CC, ksize = [1, stride[0], stride[1], 1], strides = [1, stride[0], stride[1], 1],
+-                                 padding = 'SAME')
+-    output_L_MLO = tf.nn.max_pool(input_L_MLO, ksize = [1, stride[0], stride[1], 1], strides = [1, stride[0], stride[1], 1],
+-                                  padding = 'SAME')
+-    output_R_MLO = tf.nn.max_pool(input_R_MLO, ksize = [1, stride[0], stride[1], 1], strides = [1, stride[0], stride[1], 1],
+-                                  padding = 'SAME')
+-
+-    output = (output_L_CC, output_R_CC, output_L_MLO, output_R_MLO)
+-
+-    return output
+-
+-def all_views_global_avg_pool(input_layer):
+-  
+-    input_L_CC, input_R_CC, input_L_MLO, input_R_MLO = input_layer
+-
+-    input_layer_shape = input_L_CC.get_shape()
+-    pooling_shape = [1, input_layer_shape[1], input_layer_shape[2], 1]
+-
+-    output_L_CC = tf.nn.avg_pool(input_L_CC, ksize = pooling_shape, strides=pooling_shape, padding = 'SAME')
+-    output_R_CC = tf.nn.avg_pool(input_R_CC, ksize = pooling_shape, strides=pooling_shape, padding = 'SAME')
+-    output_L_MLO = tf.nn.avg_pool(input_L_MLO, ksize = pooling_shape, strides=pooling_shape, padding = 'SAME')
+-    output_R_MLO = tf.nn.avg_pool(input_R_MLO, ksize = pooling_shape, strides=pooling_shape, padding = 'SAME')
+-
+-    output = (output_L_CC, output_R_CC, output_L_MLO, output_R_MLO)
+-
+-    return output
+-
+-def all_views_flattening_layer(input_layer):
+-  
+-    input_L_CC, input_R_CC, input_L_MLO, input_R_MLO = input_layer
+-
+-    input_layer_shape = input_L_CC.get_shape()
+-    input_layer_size = int(input_layer_shape[1]) * int(input_layer_shape[2]) * int(input_layer_shape[3])
+-
+-    h_L_CC_flat = tf.reshape(input_L_CC, [-1, input_layer_size])
+-    h_R_CC_flat = tf.reshape(input_R_CC, [-1, input_layer_size])
+-    h_L_MLO_flat = tf.reshape(input_L_MLO, [-1, input_layer_size])
+-    h_R_MLO_flat = tf.reshape(input_R_MLO, [-1, input_layer_size])
+-
+-    h_flat = tf.concat(axis = 1, values = [h_L_CC_flat, h_R_CC_flat, h_L_MLO_flat, h_R_MLO_flat])
+-
+-    return h_flat
+-
+-def fc_layer(input_layer, number_of_units = 128, activation_fn = tf.nn.relu, reuse = None, scope = None):
+-
+-    h = tf.contrib.layers.fully_connected(inputs = input_layer, num_outputs = number_of_units, activation_fn = activation_fn,
+-                                          reuse = reuse, scope = scope)
+-
+-    return h
+-
+-def softmax_layer(input_layer, number_of_outputs = 3):
+-  
+-    with tf.variable_scope('fully_connected_1') as fully_scope:
+-        y_prediction = tf.contrib.layers.fully_connected(inputs = input_layer, num_outputs = number_of_outputs,
+-                                                         activation_fn = tf.nn.softmax, scope = fully_scope)
+-        
+-    return y_prediction
+-
+-def dropout_layer(input_layer, nodropout_probability):
+-  
+-    output = tf.nn.dropout(input_layer, nodropout_probability)
+-
+-    return output
+-
+-def Gaussian_noise_layer(input_layer, std):
+-  
+-    noise = tf.random_normal(tf.shape(input_layer), mean = 0.0, stddev = std, dtype = tf.float32)
+-
+-    output = tf.add_n([input_layer, noise])
+-
+-    return output
+-
+-def all_views_Gaussian_noise_layer(input_layer, std):
+-  
+-    input_L_CC, input_R_CC, input_L_MLO, input_R_MLO = input_layer
+-
+-    output_L_CC = Gaussian_noise_layer(input_L_CC, std)
+-    output_R_CC = Gaussian_noise_layer(input_R_CC, std)
+-    output_L_MLO = Gaussian_noise_layer(input_L_MLO, std)
+-    output_R_MLO = Gaussian_noise_layer(input_R_MLO, std)
+-
+-    output = (output_L_CC, output_R_CC, output_L_MLO, output_R_MLO)
+-    
+-    return output
+diff --git a/layers_tf.py b/layers_tf.py
+new file mode 100644
+index 0000000..8dba38d
+--- /dev/null
++++ b/layers_tf.py
+@@ -0,0 +1,135 @@
++import tensorflow as tf
++
++
++def all_views_conv_layer(input_layer, layer_name, number_of_filters=32, filter_size=(3, 3), stride=(1, 1),
++                         padding='VALID', biases_initializer=tf.zeros_initializer()):
++    """Convolutional layers across all 4 views"""
++  
++    input_l_cc, input_r_cc, input_l_mlo, input_r_mlo = input_layer
++
++    with tf.variable_scope(layer_name + "_CC") as cc_cope:
++        h_l_cc = tf.contrib.layers.convolution2d(inputs=input_l_cc, num_outputs=number_of_filters,
++                                                 kernel_size=filter_size, stride=stride, padding=padding,
++                                                 scope=cc_cope, biases_initializer=biases_initializer)
++        h_r_cc = tf.contrib.layers.convolution2d(inputs=input_r_cc, num_outputs=number_of_filters,
++                                                 kernel_size=filter_size, stride=stride, padding=padding, reuse=True,
++                                                 scope=cc_cope, biases_initializer=biases_initializer)
++
++    with tf.variable_scope(layer_name + "_MLO") as mlo_cope:
++        h_l_mlo = tf.contrib.layers.convolution2d(inputs=input_l_mlo, num_outputs=number_of_filters,
++                                                  kernel_size=filter_size, stride=stride, padding=padding,
++                                                  scope=mlo_cope, biases_initializer=biases_initializer)
++        h_r_mlo = tf.contrib.layers.convolution2d(inputs=input_r_mlo, num_outputs=number_of_filters,
++                                                  kernel_size=filter_size, stride=stride, padding=padding, reuse=True,
++                                                  scope=mlo_cope, biases_initializer=biases_initializer)
++
++    h = (h_l_cc, h_r_cc, h_l_mlo, h_r_mlo)
++
++    return h
++
++
++def all_views_max_pool(input_layer, stride=(2, 2)):
++    """Max-pool across all 4 views"""
++  
++    input_l_cc, input_r_cc, input_l_mlo, input_r_mlo = input_layer
++
++    output_l_cc = tf.nn.max_pool(input_l_cc, ksize=[1, stride[0], stride[1], 1], strides=[1, stride[0], stride[1], 1],
++                                 padding='SAME')
++    output_r_cc = tf.nn.max_pool(input_r_cc, ksize=[1, stride[0], stride[1], 1], strides=[1, stride[0], stride[1], 1],
++                                 padding='SAME')
++    output_l_mlo = tf.nn.max_pool(input_l_mlo, ksize=[1, stride[0], stride[1], 1], strides=[1, stride[0], stride[1], 1],
++                                  padding='SAME')
++    output_r_mlo = tf.nn.max_pool(input_r_mlo, ksize=[1, stride[0], stride[1], 1], strides=[1, stride[0], stride[1], 1],
++                                  padding='SAME')
++
++    output = (output_l_cc, output_r_cc, output_l_mlo, output_r_mlo)
++
++    return output
++
++
++def all_views_global_avg_pool(input_layer):
++    """Average-pool across all 4 views"""
++  
++    input_l_cc, input_r_cc, input_l_mlo, input_r_mlo = input_layer
++
++    input_layer_shape = input_l_cc.get_shape()
++    pooling_shape = [1, input_layer_shape[1], input_layer_shape[2], 1]
++
++    output_l_cc = tf.nn.avg_pool(input_l_cc, ksize=pooling_shape, strides=pooling_shape, padding='SAME')
++    output_r_cc = tf.nn.avg_pool(input_r_cc, ksize=pooling_shape, strides=pooling_shape, padding='SAME')
++    output_l_mlo = tf.nn.avg_pool(input_l_mlo, ksize=pooling_shape, strides=pooling_shape, padding='SAME')
++    output_r_mlo = tf.nn.avg_pool(input_r_mlo, ksize=pooling_shape, strides=pooling_shape, padding='SAME')
++
++    output = (output_l_cc, output_r_cc, output_l_mlo, output_r_mlo)
++
++    return output
++
++
++def all_views_flattening_layer(input_layer):
++    """Flatten and concatenate all activations from all 4 views"""
++  
++    input_l_cc, input_r_cc, input_l_mlo, input_r_mlo = input_layer
++
++    input_layer_shape = input_l_cc.get_shape()
++    input_layer_size = int(input_layer_shape[1]) * int(input_layer_shape[2]) * int(input_layer_shape[3])
++
++    h_l_cc_flat = tf.reshape(input_l_cc, [-1, input_layer_size])
++    h_r_cc_flat = tf.reshape(input_r_cc, [-1, input_layer_size])
++    h_l_mlo_flat = tf.reshape(input_l_mlo, [-1, input_layer_size])
++    h_r_mlo_flat = tf.reshape(input_r_mlo, [-1, input_layer_size])
++
++    h_flat = tf.concat(axis=1, values=[h_l_cc_flat, h_r_cc_flat, h_l_mlo_flat, h_r_mlo_flat])
++
++    return h_flat
++
++
++def fc_layer(input_layer, number_of_units=128, activation_fn=tf.nn.relu, reuse=None, scope=None):
++    """Fully connected layer"""
++
++    h = tf.contrib.layers.fully_connected(inputs=input_layer, num_outputs=number_of_units, activation_fn=activation_fn,
++                                          reuse=reuse, scope=scope)
++
++    return h
++
++
++def softmax_layer(input_layer, number_of_outputs=3):
++    """Softmax layer"""
++  
++    with tf.variable_scope('fully_connected_1') as fully_scope:
++        y_prediction = tf.contrib.layers.fully_connected(inputs=input_layer, num_outputs=number_of_outputs,
++                                                         activation_fn=tf.nn.softmax, scope=fully_scope)
++        
++    return y_prediction
++
++
++def dropout_layer(input_layer, nodropout_probability):
++    """Dropout layer"""
++  
++    output = tf.nn.dropout(input_layer, nodropout_probability)
++
++    return output
++
++
++def gaussian_noise_layer(input_layer, std):
++    """Additive gaussian noise layer"""
++  
++    noise = tf.random_normal(tf.shape(input_layer), mean=0.0, stddev=std, dtype=tf.float32)
++
++    output = tf.add_n([input_layer, noise])
++
++    return output
++
++
++def all_views_gaussian_noise_layer(input_layer, std):
++    """Add gaussian noise across all 4 views"""
++  
++    input_l_cc, input_r_cc, input_l_mlo, input_r_mlo = input_layer
++
++    output_l_cc = gaussian_noise_layer(input_l_cc, std)
++    output_r_cc = gaussian_noise_layer(input_r_cc, std)
++    output_l_mlo = gaussian_noise_layer(input_l_mlo, std)
++    output_r_mlo = gaussian_noise_layer(input_r_mlo, std)
++
++    output = (output_l_cc, output_r_cc, output_l_mlo, output_r_mlo)
++    
++    return output
+diff --git a/layers_torch.py b/layers_torch.py
+new file mode 100644
+index 0000000..cc44e41
+--- /dev/null
++++ b/layers_torch.py
+@@ -0,0 +1,101 @@
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++
++
++class AllViewsGaussianNoise(nn.Module):
++    """Add gaussian noise across all 4 views"""
++
++    def __init__(self, gaussian_noise_std):
++        super(AllViewsGaussianNoise, self).__init__()
++        self.gaussian_noise_std = gaussian_noise_std
++
++    def forward(self, x):
++        if self.gaussian_noise_std:
++            return x
++
++        device = x["L-CC"].get_device() if x["L-CC"].is_cuda else torch.device("cpu")
++
++        return {
++            k: v + torch.Tensor(*v.shape).normal_(std=self.gaussian_noise_std).to(device)
++            for k, v in x.items()
++        }
++
++
++class AllViewsConvLayer(nn.Module):
++    """Convolutional layers across all 4 views"""
++
++    def __init__(self, in_channels, number_of_filters=32, filter_size=(3, 3), stride=(1, 1)):
++        super(AllViewsConvLayer, self).__init__()
++        self.cc = nn.Conv2d(
++            in_channels=in_channels,
++            out_channels=number_of_filters,
++            kernel_size=filter_size,
++            stride=stride,
++        )
++        self.mlo = nn.Conv2d(
++            in_channels=in_channels,
++            out_channels=number_of_filters,
++            kernel_size=filter_size,
++            stride=stride,
++        )
++
++    def forward(self, x):
++        return {
++            "L-CC": F.relu(self.cc(x["L-CC"])),
++            "L-MLO": F.relu(self.mlo(x["L-MLO"])),
++            "R-CC": F.relu(self.cc(x["R-CC"])),
++            "R-MLO": F.relu(self.mlo(x["R-MLO"])),
++        }
++
++    @property
++    def ops(self):
++        return {
++            "CC": self.cc,
++            "MLO": self.mlo,
++        }
++
++
++class AllViewsMaxPool(nn.Module):
++    """Max-pool across all 4 views"""
++
++    def __init__(self):
++        super(AllViewsMaxPool, self).__init__()
++
++    def forward(self, x, stride=(2, 2), padding=(0, 0)):
++        return {
++            "L-CC": F.max_pool2d(
++                x["L-CC"], kernel_size=stride, stride=stride, padding=padding),
++            "L-MLO": F.max_pool2d(
++                x["L-MLO"], kernel_size=stride, stride=stride, padding=padding),
++            "R-CC": F.max_pool2d(
++                x["R-CC"], kernel_size=stride, stride=stride, padding=padding),
++            "R-MLO": F.max_pool2d(
++                x["R-MLO"], kernel_size=stride, stride=stride, padding=padding),
++        }
++
++
++class AllViewsAvgPool(nn.Module):
++    """Average-pool across all 4 views"""
++
++    def __init__(self):
++        super(AllViewsAvgPool, self).__init__()
++
++    def forward(self, x):
++        return {
++            k: v.view(v.size()[:2] + (-1,)).mean(-1)
++            for k, v in x.items()
++        }
++
++
++class AllViewsPad(nn.Module):
++    """Pad tensor across all 4 views"""
++
++    def __init__(self):
++        super(AllViewsPad, self).__init__()
++
++    def forward(self, x, pad):
++        return {
++            k: F.pad(v, pad)
++            for k, v in x.items()
++        }
+diff --git a/models.py b/models_tf.py
+similarity index 53%
+rename from models.py
+rename to models_tf.py
+index 2a8e67c..34d1506 100644
+--- a/models.py
++++ b/models_tf.py
+@@ -1,47 +1,50 @@
+-import layers
++import layers_tf as layers
+ 
+-def baseline(x, parameters, nodropout_probability = None, Gaussian_noise_std = None):
+ 
+-    if Gaussian_noise_std is not None:
+-        x = layers.all_views_Gaussian_noise_layer(x, Gaussian_noise_std)
++def baseline(x, parameters, nodropout_probability=None, gaussian_noise_std=None):
++
++    if gaussian_noise_std is not None:
++        x = layers.all_views_gaussian_noise_layer(x, gaussian_noise_std)
+ 
+     # first conv sequence
+-    h = layers.all_views_conv_layer(x, 'conv1', number_of_filters = 32, filter_size = [3, 3], stride = [2, 2])
++    h = layers.all_views_conv_layer(x, 'conv1', number_of_filters=32, filter_size=[3, 3], stride=[2, 2])
+ 
+     # second conv sequence
+-    h = layers.all_views_max_pool(h, stride = [3, 3])
+-    h = layers.all_views_conv_layer(h, 'conv2a', number_of_filters = 64, filter_size = [3, 3], stride = [2, 2])
+-    h = layers.all_views_conv_layer(h, 'conv2b', number_of_filters = 64, filter_size = [3, 3], stride = [1, 1])
+-    h = layers.all_views_conv_layer(h, 'conv2c', number_of_filters = 64, filter_size = [3, 3], stride = [1, 1])
++    h = layers.all_views_max_pool(h, stride=[3, 3])
++    h = layers.all_views_conv_layer(h, 'conv2a', number_of_filters=64, filter_size=[3, 3], stride=[2, 2])
++    h = layers.all_views_conv_layer(h, 'conv2b', number_of_filters=64, filter_size=[3, 3], stride=[1, 1])
++    h = layers.all_views_conv_layer(h, 'conv2c', number_of_filters=64, filter_size=[3, 3], stride=[1, 1])
+ 
+     # third conv sequence
+-    h = layers.all_views_max_pool(h, stride = [2, 2])
+-    h = layers.all_views_conv_layer(h, 'conv3a', number_of_filters = 128, filter_size = [3, 3], stride = [1, 1])
+-    h = layers.all_views_conv_layer(h, 'conv3b', number_of_filters = 128, filter_size = [3, 3], stride = [1, 1])
+-    h = layers.all_views_conv_layer(h, 'conv3c', number_of_filters = 128, filter_size = [3, 3], stride = [1, 1])
++    h = layers.all_views_max_pool(h, stride=[2, 2])
++    h = layers.all_views_conv_layer(h, 'conv3a', number_of_filters=128, filter_size=[3, 3], stride=[1, 1])
++    h = layers.all_views_conv_layer(h, 'conv3b', number_of_filters=128, filter_size=[3, 3], stride=[1, 1])
++    h = layers.all_views_conv_layer(h, 'conv3c', number_of_filters=128, filter_size=[3, 3], stride=[1, 1])
+ 
+     # fourth conv sequence
+-    h = layers.all_views_max_pool(h, stride = [2, 2])
+-    h = layers.all_views_conv_layer(h, 'conv4a', number_of_filters = 128, filter_size = [3, 3], stride = [1, 1])
+-    h = layers.all_views_conv_layer(h, 'conv4b', number_of_filters = 128, filter_size = [3, 3], stride = [1, 1])
+-    h = layers.all_views_conv_layer(h, 'conv4c', number_of_filters = 128, filter_size = [3, 3], stride = [1, 1])
++    h = layers.all_views_max_pool(h, stride=[2, 2])
++    h = layers.all_views_conv_layer(h, 'conv4a', number_of_filters=128, filter_size=[3, 3], stride=[1, 1])
++    h = layers.all_views_conv_layer(h, 'conv4b', number_of_filters=128, filter_size=[3, 3], stride=[1, 1])
++    h = layers.all_views_conv_layer(h, 'conv4c', number_of_filters=128, filter_size=[3, 3], stride=[1, 1])
+ 
+     # fifth conv sequence
+     h = layers.all_views_max_pool(h, stride=[2, 2])
+-    h = layers.all_views_conv_layer(h, 'conv5a', number_of_filters = 256, filter_size = [3, 3], stride = [1, 1])
+-    h = layers.all_views_conv_layer(h, 'conv5b', number_of_filters = 256, filter_size = [3, 3], stride = [1, 1])
+-    h = layers.all_views_conv_layer(h, 'conv5c', number_of_filters = 256, filter_size = [3, 3], stride = [1, 1])
++    h = layers.all_views_conv_layer(h, 'conv5a', number_of_filters=256, filter_size=[3, 3], stride=[1, 1])
++    h = layers.all_views_conv_layer(h, 'conv5b', number_of_filters=256, filter_size=[3, 3], stride=[1, 1])
++    h = layers.all_views_conv_layer(h, 'conv5c', number_of_filters=256, filter_size=[3, 3], stride=[1, 1])
+ 
++    # Pool, flatten, and fully connected layers
+     h = layers.all_views_global_avg_pool(h)
+     h = layers.all_views_flattening_layer(h)
+-    h = layers.fc_layer(h, number_of_units = 1024)
++    h = layers.fc_layer(h, number_of_units=1024)
+     h = layers.dropout_layer(h, nodropout_probability)
+ 
+     y_prediction_birads = layers.softmax_layer(h, number_of_outputs=3)
+ 
+     return y_prediction_birads
+ 
++
+ class BaselineBreastModel:
+ 
+-    def __init__(self, parameters, x, nodropout_probability = None, Gaussian_noise_std = None):
+-        self.y_prediction_birads = baseline(x, parameters, nodropout_probability, Gaussian_noise_std)
++    def __init__(self, parameters, x, nodropout_probability=None, gaussian_noise_std=None):
++        self.y_prediction_birads = baseline(x, parameters, nodropout_probability, gaussian_noise_std)
+diff --git a/models_torch.py b/models_torch.py
+new file mode 100644
+index 0000000..cbb3cd4
+--- /dev/null
++++ b/models_torch.py
+@@ -0,0 +1,122 @@
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++import collections as col
++
++import layers_torch as layers
++
++
++class BaselineBreastModel(nn.Module):
++    def __init__(self, nodropout_probability=None, gaussian_noise_std=None):
++        super(BaselineBreastModel, self).__init__()
++        self.conv_layer_dict = col.OrderedDict()
++
++        # first conv sequence
++        self.conv_layer_dict["conv1"] = layers.AllViewsConvLayer(
++            1, number_of_filters=32, filter_size=(3, 3), stride=(2, 2),
++        )
++
++        # second conv sequence
++        self.conv_layer_dict["conv2a"] = layers.AllViewsConvLayer(
++            32, number_of_filters=64, filter_size=(3, 3), stride=(2, 2),
++        )
++        self.conv_layer_dict["conv2b"] = layers.AllViewsConvLayer(
++            64, number_of_filters=64, filter_size=(3, 3), stride=(1, 1),
++        )
++        self.conv_layer_dict["conv2c"] = layers.AllViewsConvLayer(
++            64, number_of_filters=64, filter_size=(3, 3), stride=(1, 1),
++        )
++
++        # third conv sequence
++        self.conv_layer_dict["conv3a"] = layers.AllViewsConvLayer(
++            64, number_of_filters=128, filter_size=(3, 3), stride=(1, 1),
++        )
++        self.conv_layer_dict["conv3b"] = layers.AllViewsConvLayer(
++            128, number_of_filters=128, filter_size=(3, 3), stride=(1, 1),
++        )
++        self.conv_layer_dict["conv3c"] = layers.AllViewsConvLayer(
++            128, number_of_filters=128, filter_size=(3, 3), stride=(1, 1),
++        )
++
++        # fourth conv sequence
++        self.conv_layer_dict["conv4a"] = layers.AllViewsConvLayer(
++            128, number_of_filters=128, filter_size=(3, 3), stride=(1, 1),
++        )
++        self.conv_layer_dict["conv4b"] = layers.AllViewsConvLayer(
++            128, number_of_filters=128, filter_size=(3, 3), stride=(1, 1),
++        )
++        self.conv_layer_dict["conv4c"] = layers.AllViewsConvLayer(
++            128, number_of_filters=128, filter_size=(3, 3), stride=(1, 1),
++        )
++
++        # fifth conv sequence
++        self.conv_layer_dict["conv5a"] = layers.AllViewsConvLayer(
++            128, number_of_filters=256, filter_size=(3, 3), stride=(1, 1),
++        )
++        self.conv_layer_dict["conv5b"] = layers.AllViewsConvLayer(
++            256, number_of_filters=256, filter_size=(3, 3), stride=(1, 1),
++        )
++        self.conv_layer_dict["conv5c"] = layers.AllViewsConvLayer(
++            256, number_of_filters=256, filter_size=(3, 3), stride=(1, 1),
++        )
++        self._conv_layer_ls = nn.ModuleList(self.conv_layer_dict.values())
++
++        # Pool, flatten, and fully connected layers
++        self.all_views_max_pool = layers.AllViewsMaxPool()
++        self.all_views_avg_pool = layers.AllViewsAvgPool()
++        self.fc1 = nn.Linear(256 * 4, 256 * 4)
++        self.fc2 = nn.Linear(256 * 4, 3)
++
++        self.all_views_pad = layers.AllViewsPad()
++        self.gaussian_noise_layer = layers.AllViewsGaussianNoise(gaussian_noise_std)
++        self.dropout = nn.Dropout(p=1 - nodropout_probability)
++
++    def forward(self, x):
++        x = self.gaussian_noise_layer(x)
++
++        # first conv sequence
++        x = self.conv_layer_dict["conv1"](x)
++
++        # second conv sequence
++        x = self.all_views_max_pool(x, stride=(3, 3))
++        x = self.conv_layer_dict["conv2a"](x)
++        x = self.conv_layer_dict["conv2b"](x)
++        x = self.conv_layer_dict["conv2c"](x)
++
++        # third conv sequence
++        x = self.all_views_max_pool(x, stride=(2, 2))
++        x = self.conv_layer_dict["conv3a"](x)
++        x = self.conv_layer_dict["conv3b"](x)
++        x = self.conv_layer_dict["conv3c"](x)
++
++        # WARNING: This is technically correct, but not robust to model architecture changes.
++        #          Need a more robust solution for dealing with "SAME" padding, which is not
++        #            available in PyTorch.
++        x = self.all_views_pad(x, pad=(0, 1, 0, 0))
++
++        # fourth conv sequence
++        x = self.all_views_max_pool(x, stride=(2, 2))
++        x = self.conv_layer_dict["conv4a"](x)
++        x = self.conv_layer_dict["conv4b"](x)
++        x = self.conv_layer_dict["conv4c"](x)
++
++        # fifth conv sequence
++        x = self.all_views_max_pool(x, stride=(2, 2))
++        x = self.conv_layer_dict["conv5a"](x)
++        x = self.conv_layer_dict["conv5b"](x)
++        x = self.conv_layer_dict["conv5c"](x)
++        x = self.all_views_avg_pool(x)
++
++        # Pool, flatten, and fully connected layers
++        x = torch.cat([
++            x["L-CC"],
++            x["R-CC"],
++            x["L-MLO"],
++            x["R-MLO"],
++        ], dim=1)
++        x = F.relu(self.fc1(x))
++        x = self.dropout(x)
++        x = self.fc2(x)
++        x = F.softmax(x, dim=1)
++
++        return x
+diff --git a/saved_models/model.p b/saved_models/model.p
+new file mode 100644
+index 0000000..2e820f1
+Binary files /dev/null and b/saved_models/model.p differ
+diff --git a/test_inference.py b/test_inference.py
+new file mode 100644
+index 0000000..2ba9d52
+--- /dev/null
++++ b/test_inference.py
+@@ -0,0 +1,63 @@
++import birads_prediction_tf
++import birads_prediction_torch
++
++import numpy as np
++
++
++GOLDEN = (0.21831559, 0.38092783, 0.4007566)
++
++
++def get_tf_cpu():
++    return birads_prediction_tf.inference({
++        "model_path": 'saved_models/model.ckpt',
++        "device_type": "cpu",
++        "gpu_number": 0,
++        "image_path": "images/",
++        "input_size": (2600, 2000),
++    })
++
++
++def get_tf_gpu():
++    return birads_prediction_tf.inference({
++        "model_path": 'saved_models/model.ckpt',
++        "device_type": "gpu",
++        "gpu_number": 0,
++        "image_path": "images/",
++        "input_size": (2600, 2000),
++    })
++
++
++def get_torch_cpu():
++    return birads_prediction_torch.inference({
++        "model_path": 'saved_models/model.p',
++        "device_type": "cpu",
++        "gpu_number": 0,
++        "image_path": "images/",
++        "input_size": (2600, 2000),
++    })
++
++
++def get_torch_gpu():
++    return birads_prediction_torch.inference({
++        "model_path": 'saved_models/model.p',
++        "device_type": "gpu",
++        "gpu_number": 0,
++        "image_path": "images/",
++        "input_size": (2600, 2000),
++    })
++
++
++def test_tf_golden_equal():
++    assert np.allclose(get_tf_cpu(), GOLDEN)
++
++
++def test_torch_golden_equal():
++    assert np.allclose(get_torch_cpu(), GOLDEN)
++
++
++def test_tf_cpu_gpu_equal():
++    assert np.allclose(get_tf_cpu(), get_tf_gpu())
++
++
++def test_torch_cpu_gpu_equal():
++    assert np.allclose(get_torch_cpu(), get_torch_gpu())
+diff --git a/utils.py b/utils.py
+new file mode 100644
+index 0000000..7df2d22
+--- /dev/null
++++ b/utils.py
+@@ -0,0 +1,23 @@
++import numpy as np
++from scipy import misc
++
++
++def load_images(image_path, view):
++    """
++    Function that loads and preprocess input images
++    :param image_path:
++    :param view: L-CC / R-CC / L-MLO / R-MLO
++    :return: Batch x Height x Width x Channels array
++    """
++
++    def normalise_single_image(image_):
++        image_ -= np.mean(image_)
++        image_ /= np.std(image_)
++
++    image = misc.imread(image_path + view + '.png')
++    image = image.astype(np.float32)
++    normalise_single_image(image)
++    image = np.expand_dims(image, axis=0)
++    image = np.expand_dims(image, axis=3)
++
++    return image

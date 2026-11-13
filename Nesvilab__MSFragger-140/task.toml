@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/Nesvilab__MSFragger-140"
+description = "Initial tutorial update for v15.0 release"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "MSFragger",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Nesvilab/MSFragger"
+ref = "a79ea0f0ea3f1df2e84b14f671c0ec4636fd71f2"
+reference = "https://github.com/Nesvilab/MSFragger/pull/140"
+source_access = "auto"
+built_at = "2026-11-13T16:20:23.463650+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9b0c86f2b8ed4e86d58acb603c94ceffb668b966181db51271f24d9c755fbb6a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-03-10T18:20:49Z"
+diff_format = "unified"
+context_files = [
+    "images/fragpipe_tutorial-config.png",
+    "images/fragpipe_tutorial-database.png",
+    "images/fragpipe_tutorial-diaumpire.png",
+    "images/fragpipe_tutorial-labelquant-annotate.png",
+    "images/fragpipe_tutorial-labelquant.png",
+    "images/fragpipe_tutorial-lfq.png",
+    "images/fragpipe_tutorial-msfragger.png",
+    "images/fragpipe_tutorial-ptmshepherd.png",
+    "images/fragpipe_tutorial-run.png",
+    "images/fragpipe_tutorial-validation.png",
+    "images/fragpipe_tutorial-workflow.png",
+    "tutorial_fragpipe.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 78
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,29 @@
+diff --git a/bin/pyTMB.py b/bin/pyTMB.py
+index 340adb1..f969f6d 100755
+--- a/bin/pyTMB.py
++++ b/bin/pyTMB.py
+@@ -412,6 +412,8 @@ def argsParse():
+             #######################
+ 
+             # Variant Allele Frequency
++            # Note: For multi-allelic variants, filters out only if ALL alts fail threshold.
++            # Variant passes if ANY alt meets the VAF threshold.
+             fval = getTag(variant, callerFlags['freq'])
+             if fval is not None and len(fval[fval < args.vaf]) == len(variant.ALT):
+                 debugInfo = ",".join([debugInfo, "VAF"])
+@@ -420,6 +422,7 @@ def argsParse():
+                     continue
+ 
+             # Sequencing Depth
++            # Note: For multi-allelic variants, filters out only if ALL alts fail threshold.
+             dval = getTag(variant, callerFlags['depth'])
+             if dval is not None and len(dval[dval < args.minDepth]) == len(variant.ALT):
+                 debugInfo = ",".join([debugInfo, "DEPTH"])
+@@ -428,6 +431,7 @@ def argsParse():
+                     continue
+ 
+             # Alternative allele Depth
++            # Note: For multi-allelic variants, filters out only if ALL alts fail threshold.
+             ad = getTag(variant, callerFlags['altDepth']).flatten()
+             # If AD = REF + ALTs, remove the first (REF) value
+             if len(ad) == (len(variant.ALT) + 1):

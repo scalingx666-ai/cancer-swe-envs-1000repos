@@ -1,0 +1,51 @@
+diff --git a/snake/common/copy_number/copy_number_snake.py b/snake/common/copy_number/copy_number_snake.py
+index 55f56c6..53c51a9 100644
+--- a/snake/common/copy_number/copy_number_snake.py
++++ b/snake/common/copy_number/copy_number_snake.py
+@@ -417,7 +417,7 @@ def getContigNames():
+     benchmark:
+         '{sample}.annotated.benchmark'
+     shell:
+-        '{config[tools][bedtools][intersect][call]} intersect -a {input.inRes} -b {input.inDB} -wa -wb > {output.out}.temp1.txt ; ' +
+-        '{config[tools][bedtools][intersect][call]} intersect -a {input.inRes} -b {input.inDB} -v -wa > {output.out}.temp2.txt ; ' +
++        '{config[tools][bedtools][call]} intersect -a {input.inRes} -b {input.inDB} -wa -wb > {output.out}.temp1.txt ; ' +
++        '{config[tools][bedtools][call]} intersect -a {input.inRes} -b {input.inDB} -v -wa > {output.out}.temp2.txt ; ' +
+         'cat {output.out}.temp1.txt {output.out}.temp2.txt | sort -k1,1 -k2,2n > {output.out}'
+ 
+diff --git a/snake/common/variants/variants_snake.py b/snake/common/variants/variants_snake.py
+index 97a550a..d35d9bc 100644
+--- a/snake/common/variants/variants_snake.py
++++ b/snake/common/variants/variants_snake.py
+@@ -20,7 +20,7 @@
+     threads:
+         config['tools']['bedtools']['merge']['threads']
+     shell:
+-        ('{config[tools][bedtools][merge][call]} ' +
++        ('{config[tools][bedtools][call] merge } ' +
+         '-i {input.regions} ' +
+         '> {output.flat_bed}')
+ 
+diff --git a/snake/config.json b/snake/config.json
+index 0422e49..289331d 100644
+--- a/snake/config.json
++++ b/snake/config.json
+@@ -721,9 +721,9 @@
+             "time": "60",
+             "threads": 1
+         },
+-	 "bedtools": {
++	"bedtools": {
++	"call": "/path/to/bedtools ",
+         "intersect": {
+-                "call": "/path/to/bedtools intersect ",
+                 "params": "",
+                 "scratch": "1000",
+                 "mem": "1000",
+@@ -731,7 +731,6 @@
+                 "threads": 1
+             },
+         "merge": {
+-                "call": "/path/to/bedtools merge ",
+                 "params": "",
+                 "scratch": "1000",
+                 "mem": "1000",

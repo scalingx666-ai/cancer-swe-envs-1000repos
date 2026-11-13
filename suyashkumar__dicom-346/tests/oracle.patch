@@ -1,0 +1,173 @@
+diff --git a/parse.go b/parse.go
+index b8318f68..c09faa0b 100644
+--- a/parse.go
++++ b/parse.go
+@@ -252,9 +252,7 @@ func (p *Parser) Next() (*Element, error) {
+ 	if elem.Tag == tag.SpecificCharacterSet {
+ 		encodingNames := MustGetStrings(elem.Value)
+ 		cs, err := charset.ParseSpecificCharacterSet(encodingNames)
+-		if err != nil {
+-			// unable to parse character set, hard error
+-			// TODO: add option continue, even if unable to parse
++		if err != nil && !p.reader.opts.allowUnknownSpecificCharacterSet {
+ 			return nil, err
+ 		}
+ 		p.reader.rawReader.SetCodingSystem(cs)
+@@ -262,7 +260,6 @@ func (p *Parser) Next() (*Element, error) {
+ 
+ 	p.dataset.Elements = append(p.dataset.Elements, elem)
+ 	return elem, nil
+-
+ }
+ 
+ // GetMetadata returns just the set of metadata elements that have been parsed
+@@ -286,6 +283,7 @@ type parseOptSet struct {
+ 	skipPixelData                      bool
+ 	skipProcessingPixelDataValue       bool
+ 	allowMissingMetaElementGroupLength bool
++	allowUnknownSpecificCharacterSet   bool
+ }
+ 
+ func toParseOptSet(opts ...ParseOption) parseOptSet {
+@@ -311,6 +309,16 @@ func AllowMissingMetaElementGroupLength() ParseOption {
+ 	}
+ }
+ 
++// AllowUnknownSpecificCharacterSet allows the parser to ignore an error when the specific
++// character set is not found in the supported character set list
++// (https://dicom.nema.org/medical/dicom/2016d/output/chtml/part02/sect_D.6.2.html).
++// Allowing the unknown specific character set will default to UTF-8 encoding.
++func AllowUnknownSpecificCharacterSet() ParseOption {
++	return func(set *parseOptSet) {
++		set.allowUnknownSpecificCharacterSet = true
++	}
++}
++
+ // SkipMetadataReadOnNewParserInit makes NewParser skip trying to parse metadata. This will make the Parser default to implicit little endian byte order.
+ // Any metatata tags found in the dataset will still be available when parsing.
+ func SkipMetadataReadOnNewParserInit() ParseOption {
+diff --git a/parse_test.go b/parse_test.go
+index b61efa00..498fd892 100644
+--- a/parse_test.go
++++ b/parse_test.go
+@@ -11,6 +11,7 @@ import (
+ 	"testing"
+ 
+ 	"github.com/suyashkumar/dicom/pkg/tag"
++	"github.com/suyashkumar/dicom/pkg/uid"
+ 
+ 	"github.com/suyashkumar/dicom/pkg/frame"
+ 
+@@ -191,6 +192,49 @@ func TestParseFile_SkipProcessingPixelDataValue(t *testing.T) {
+ 	})
+ }
+ 
++func TestParseFile_AllowUnknownSpecificCharacterSet(t *testing.T) {
++	file, err := os.CreateTemp("", "unknown_specific_character_set.dcm")
++	if err != nil {
++		t.Fatalf("Unexpected error when creating tempfile: %v", err)
++	}
++
++	transferSyntaxUIDElement, err := dicom.NewElement(tag.TransferSyntaxUID, []string{uid.ImplicitVRLittleEndian})
++	if err != nil {
++		t.Fatalf("Unexpected error when creating transfer syntax uid element: %v", err)
++	}
++	specificCharacterSetElement, err := dicom.NewElement(tag.SpecificCharacterSet, []string{"UNKNOWN"})
++	if err != nil {
++		t.Fatalf("Unexpected error when creating specific character set element: %v", err)
++	}
++	patientNameElement, err := dicom.NewElement(tag.PatientName, []string{"Bob", "Jones"})
++	if err != nil {
++		t.Fatalf("Unexpected error when creating patient name element: %v", err)
++	}
++	unknownCharacterSetDataset := dicom.Dataset{Elements: []*dicom.Element{
++		transferSyntaxUIDElement,
++		specificCharacterSetElement,
++		patientNameElement,
++	}}
++	err = dicom.Write(file, unknownCharacterSetDataset)
++	if err != nil {
++		t.Errorf("Unexpected error writing dataset: %v", unknownCharacterSetDataset)
++	}
++	file.Close()
++
++	t.Run("WithoutAllowUnknownSpecificCharacterSet", func(t *testing.T) {
++		dataset, err := dicom.ParseFile(file.Name(), nil)
++		if err == nil {
++			t.Errorf("Expected error parsing dataset: %v", dataset)
++		}
++	})
++	t.Run("WithAllowUnknownSpecificCharacterSet", func(t *testing.T) {
++		dataset, err := dicom.ParseFile(file.Name(), nil, dicom.AllowUnknownSpecificCharacterSet())
++		if err != nil {
++			t.Errorf("Unexpected error parsing dataset: %v", dataset)
++		}
++	})
++}
++
+ // BenchmarkParse runs sanity benchmarks over the sample files in testdata.
+ func BenchmarkParse(b *testing.B) {
+ 	cases := []struct {
+@@ -218,7 +262,6 @@ func BenchmarkParse(b *testing.B) {
+ 			for _, f := range files {
+ 				if !f.IsDir() && strings.HasSuffix(f.Name(), ".dcm") {
+ 					b.Run(f.Name(), func(b *testing.B) {
+-
+ 						dcm, err := os.Open("./testdata/" + f.Name())
+ 						if err != nil {
+ 							b.Errorf("Unable to open %s. Error: %v", f.Name(), err)
+@@ -235,7 +278,6 @@ func BenchmarkParse(b *testing.B) {
+ 						for i := 0; i < b.N; i++ {
+ 							_, _ = dicom.Parse(bytes.NewBuffer(data), int64(len(data)), nil, tc.opts...)
+ 						}
+-
+ 					})
+ 				}
+ 			}
+@@ -251,7 +293,6 @@ func BenchmarkParser_NextAPI(b *testing.B) {
+ 	for _, f := range files {
+ 		if !f.IsDir() && strings.HasSuffix(f.Name(), ".dcm") {
+ 			b.Run(f.Name(), func(b *testing.B) {
+-
+ 				dcm, err := os.Open("./testdata/" + f.Name())
+ 				if err != nil {
+ 					b.Errorf("Unable to open %s. Error: %v", f.Name(), err)
+diff --git a/pkg/charset/charset.go b/pkg/charset/charset.go
+index 53a164f9..86c345cb 100644
+--- a/pkg/charset/charset.go
++++ b/pkg/charset/charset.go
+@@ -75,9 +75,9 @@ var htmlEncodingNames = map[string]string{
+ }
+ 
+ // ParseSpecificCharacterSet converts DICOM character encoding names, such as
+-// "ISO-IR 100" to encoding.Decoder(s). It will return nil, nil for the default (7bit
+-// ASCII) encoding. Cf. P3.2
+-// D.6.2. https://dicom.nema.org/medical/dicom/2016d/output/chtml/part02/sect_D.6.2.html
++// "ISO-IR 100" to encoding.Decoder(s). It will return nil, nil for the default (UTF-8)
++// encoding. Cf. P3.2 D.6.2.
++// https://dicom.nema.org/medical/dicom/2016d/output/chtml/part02/sect_D.6.2.html
+ func ParseSpecificCharacterSet(encodingNames []string) (CodingSystem, error) {
+ 	var decoders []*encoding.Decoder
+ 	for _, name := range encodingNames {
+diff --git a/pkg/dicomio/reader.go b/pkg/dicomio/reader.go
+index a927c5dd..dd64c2a2 100644
+--- a/pkg/dicomio/reader.go
++++ b/pkg/dicomio/reader.go
+@@ -33,7 +33,7 @@ type Reader struct {
+ 	limitStack []int64
+ 	// cs represents the CodingSystem to use when reading the string. If a
+ 	// particular encoding.Decoder within this CodingSystem is nil, assume
+-	// ASCII.
++	// UTF-8.
+ 	cs charset.CodingSystem
+ }
+ 
+@@ -129,7 +129,7 @@ func internalReadString(data []byte, d *encoding.Decoder) (string, error) {
+ 		return "", nil
+ 	}
+ 	if d == nil {
+-		// Assume ASCII
++		// Assume UTF-8
+ 		return string(data), nil
+ 	}
+ 	bytes, err := d.Bytes(data)

@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/opensim-org__opensim-core-4477"
+description = "Add TableUtilities element screening and DataTable::removeRows"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "opensim-core",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "opensim-org/opensim-core"
+ref = "01683ac33568a3cb5eef2e445c7815f8220e8905"
+reference = "https://github.com/opensim-org/opensim-core/pull/4477"
+source_access = "auto"
+built_at = "2026-11-13T15:48:06.953494+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b9ea8ba16721766b3f7416b4b0202482109585054b9220d2795aef7ff94ddc74"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-06T19:06:43Z"
+diff_format = "unified"
+context_files = [
+    "Bindings/preliminaries.i",
+    "CHANGELOG.md",
+    "OpenSim/Common/DataTable.h",
+    "OpenSim/Common/TableUtilities.cpp",
+    "OpenSim/Common/TableUtilities.h",
+    "OpenSim/Common/tests/CMakeLists.txt",
+    "OpenSim/Common/tests/testDataTable.cpp",
+    "OpenSim/Common/tests/testTableUtilities.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 522
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,126 @@
+diff --git a/MuSiC2-0.2.tar.gz b/MuSiC2-0.2.tar.gz
+index b4d7d48..fa2de13 100644
+Binary files a/MuSiC2-0.2.tar.gz and b/MuSiC2-0.2.tar.gz differ
+diff --git a/lib/TGI/MuSiC2/CalcBmr.pm b/lib/TGI/MuSiC2/CalcBmr.pm
+index e606bef..c99f538 100644
+--- a/lib/TGI/MuSiC2/CalcBmr.pm
++++ b/lib/TGI/MuSiC2/CalcBmr.pm
+@@ -53,7 +53,7 @@ sub new {
+     $this->{_SKIP_SILENT} = 1;
+     $this->{_NOSKIP_SILENT} = 0;
+     $this->{_BMR_OUTPUT} = 0;
+-    $this->{_BP_CLASS_TYPES} = 'AT,CpG,CG';
++    $this->{_BP_CLASS_TYPES} = 'AT,CG,CpG';
+ 
+     bless $this, $class;
+     $this->process();
+@@ -790,7 +790,7 @@ OPTIONAL INPUTS
+     Comma-delimited list of genes to ignore for background mutation rates 
+   bp-class-types
+     Comma-delimited list of bp types.
+-    Default value 'AT,CpG,CG'
++    Default value 'AT,CG,CpG'
+ 
+ REQUIRED OUTPUTS
+   bmr-output
+diff --git a/lib/TGI/MuSiC2/CalcBmr_music2.pm b/lib/TGI/MuSiC2/CalcBmr_music2.pm
+index 8465ba8..0b328a6 100644
+--- a/lib/TGI/MuSiC2/CalcBmr_music2.pm
++++ b/lib/TGI/MuSiC2/CalcBmr_music2.pm
+@@ -51,7 +51,7 @@ sub new {
+     $this->{_SKIP_SILENT} = 1;
+     $this->{_NOSKIP_SILENT} = 0;
+     $this->{_BMR_OUTPUT} = 0;
+-    $this->{_BP_CLASS_TYPES} = 'AT,CpG,GC';
++    $this->{_BP_CLASS_TYPES} = 'AT,CG,GpC';
+ 
+     bless $this, $class;
+     $this->process();
+diff --git a/lib/TGI/MuSiC2/CalcBmr_prag.pm b/lib/TGI/MuSiC2/CalcBmr_prag.pm
+index f238c16..94753ab 100644
+--- a/lib/TGI/MuSiC2/CalcBmr_prag.pm
++++ b/lib/TGI/MuSiC2/CalcBmr_prag.pm
+@@ -51,7 +51,7 @@ sub new {
+     $this->{_SKIP_SILENT} = 1;
+     $this->{_NOSKIP_SILENT} = 0;
+     $this->{_BMR_OUTPUT} = 0;
+-    $this->{_BP_CLASS_TYPES} = 'AT,CpG,GC';
++    $this->{_BP_CLASS_TYPES} = 'AT,CG,GpC';
+ 
+     bless $this, $class;
+     $this->process();
+@@ -763,7 +763,7 @@ OPTIONAL INPUTS
+     Comma-delimited list of genes to ignore for background mutation rates 
+   bp-class-types
+     Comma-delimited list of bp types.
+-    Default value 'AT,CpG,CG'
++    Default value 'AT,CG,CpG'
+ 
+ REQUIRED OUTPUTS
+   bmr-output
+diff --git a/lib/TGI/MuSiC2/CalcCovg.pm b/lib/TGI/MuSiC2/CalcCovg.pm
+index bb5d422..38d1764 100644
+--- a/lib/TGI/MuSiC2/CalcCovg.pm
++++ b/lib/TGI/MuSiC2/CalcCovg.pm
+@@ -18,7 +18,7 @@ sub new {
+     $this->{_OUTPUT_DIR} = undef;
+     $this->{_CMD_LIST_FILE} = undef;
+     $this->{_CMD_PREFIX} = undef;
+-    $this->{_BP_CLASS_TYPES} = 'AT,CpG,CG';
++    $this->{_BP_CLASS_TYPES} = 'AT,CG,CpG';
+     $this->{_NOR_MIN_DEPTH} = 6;
+     $this->{_TUM_MIN_DEPTH} = 8;
+     $this->{_MIN_MAPQ} = 20;
+@@ -102,7 +102,7 @@ sub process {
+     } else {
+         $totCovgFh = IO::File->new( $tot_covg_file, ">" );
+         ## process bp class types here
+-        # instead of using fixed AT, CpG, CG types
++        # instead of using fixed AT, CG, CpG types
+         #
+         #
+         $totCovgFh->print( "#Sample\tCovered_Bases\t" );
+@@ -263,7 +263,7 @@ OPTIONAL INPUTS
+     The minimum mapping quality of reads to consider towards read depth counts 
+   bp-class-types
+     Bp class types for coverage calculating,delimited by comma
+-    Default value 'AT,CpG,CG' if not specified
++    Default value 'AT,CG,CpG' if not specified
+ 
+ DESCRIPTION
+     This script counts bases with sufficient coverage in the ROIs of each gene in the given pairs
+diff --git a/lib/TGI/MuSiC2/CalcCovgHelper.pm b/lib/TGI/MuSiC2/CalcCovgHelper.pm
+index 1cd4ecb..6977428 100644
+--- a/lib/TGI/MuSiC2/CalcCovgHelper.pm
++++ b/lib/TGI/MuSiC2/CalcCovgHelper.pm
+@@ -17,7 +17,7 @@ sub new {
+     $this->{_REF_SEQ}  = undef;
+     $this->{_NOR_TUM_PAIR} = undef;
+     $this->{_OUTPUT_FILE} = undef;
+-    $this->{_BP_CLASS_TYPES} = 'AT,CpG,CG';
++    $this->{_BP_CLASS_TYPES} = 'AT,CG,CpG';
+     $this->{_NOR_MIN_DEPTH} = 6;
+     $this->{_TUM_MIN_DEPTH} = 8;
+     $this->{_MIN_MAPQ} = 20;
+@@ -145,7 +145,7 @@ OPTIONAL INPUTS
+     Default value '20' if not specified
+   bp-class-types
+     Bp class types for coverage calculating,delimited by comma
+-    Default value 'AT,CpG,CG' if not specified
++    Default value 'AT,CG,CpG' if not specified
+ 
+ DESCRIPTION
+     This script counts bases with sufficient coverage in the ROIs of each gene in the given pair of
+diff --git a/lib/TGI/MuSiC2/CalcWigCovg.pm b/lib/TGI/MuSiC2/CalcWigCovg.pm
+index a5febba..71079c3 100644
+--- a/lib/TGI/MuSiC2/CalcWigCovg.pm
++++ b/lib/TGI/MuSiC2/CalcWigCovg.pm
+@@ -18,7 +18,7 @@ sub new {
+     $this->{_REF_SEQ}  = undef;
+     $this->{_WIG_LIST} = undef;
+     $this->{_OUTPUT_DIR} = undef;
+-    $this->{_BP_CLASS_TYPES} = 'AT,CpG,CG';
++    $this->{_BP_CLASS_TYPES} = 'AT,CG,CpG';
+     $this->{_NOR_MIN_DEPTH} = 6;
+     $this->{_TUM_MIN_DEPTH} = 8;
+     $this->{_MIN_MAPQ} = 20;

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/sanger-pathogens__Roary-513"
+description = "Remove reference to roary email"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "Roary",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "sanger-pathogens/Roary"
+ref = "170636bc943de29d8a800b547d08efe98c7d39bd"
+reference = "https://github.com/sanger-pathogens/Roary/pull/513"
+source_access = "auto"
+built_at = "2026-11-13T15:57:30.026288+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:2bf92924c261205b8cec2dbbfa57e4060b8935fe8264b2db8f5938e3b078a210"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-06-09T11:12:43Z"
+diff_format = "unified"
+context_files = [
+    "index.html",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

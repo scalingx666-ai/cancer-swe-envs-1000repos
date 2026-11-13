@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/ratschlab__DeepSpotM-5"
+description = "docs: fix citation metadata and the broken weights-license link"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "DeepSpotM",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ratschlab/DeepSpotM"
+ref = "00ee08d4fa5a49012bbba4c1a538f2c63b8d2b76"
+reference = "https://github.com/ratschlab/DeepSpotM/pull/5"
+source_access = "auto"
+built_at = "2026-11-13T15:39:50.804057+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6a0128cda5f6ef77ac349d601db335d2a5ebfe6f45424c40905868209a505295"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-03T14:40:00Z"
+diff_format = "unified"
+context_files = [
+    "CITATION.cff",
+    "README.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 49
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

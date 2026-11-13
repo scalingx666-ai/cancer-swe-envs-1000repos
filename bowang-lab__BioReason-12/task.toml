@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/bowang-lab__BioReason-12"
+description = "Cleaned up Data Notebooks"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BioReason",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bowang-lab/BioReason"
+ref = "e74aa1cf06445aada1e48281840f83403b832b64"
+reference = "https://github.com/bowang-lab/BioReason/pull/12"
+source_access = "auto"
+built_at = "2026-11-13T15:56:21.668548+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:913fc50aa514dae7a7b34b27a972322d0d39bc5e18fb5b77f6dce782086cfcde"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-06-14T03:19:50Z"
+diff_format = "unified"
+context_files = [
+    "data/BioReasoning_DataCuration_KEGG.ipynb",
+    "data/Clinvar_Coding.ipynb",
+    "data/Clinvar_SNV_Non_SNV.ipynb",
+    "data/Dataset Figures.ipynb",
+    "data/KEGG_Data_1.ipynb",
+    "data/KEGG_Data_2.ipynb",
+    "data/KEGG_Data_3.ipynb",
+    "data/README.md",
+    "data/VEP.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 27286
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

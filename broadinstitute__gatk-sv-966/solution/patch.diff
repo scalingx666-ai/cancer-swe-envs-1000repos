@@ -1,0 +1,360 @@
+diff --git a/inputs/templates/terra_workspaces/single_sample/workspace.tsv.tmpl b/inputs/templates/terra_workspaces/single_sample/workspace.tsv.tmpl
+index 57165cb77..d5332da04 100644
+--- a/inputs/templates/terra_workspaces/single_sample/workspace.tsv.tmpl
++++ b/inputs/templates/terra_workspaces/single_sample/workspace.tsv.tmpl
+@@ -67,8 +67,6 @@ reference_gd_gaps_bed	{{ reference_resources.gd_gaps_bed }}
+ reference_gd_gtf	{{ reference_resources.gd_gtf }}
+ reference_gd_custom_mask_bed	{{ reference_resources.gd_custom_mask_bed }}
+ reference_gd_hard_inclusion_bed	{{ reference_resources.gd_hard_inclusion_bed }}
+-reference_gd_transition_matrix	{{ reference_resources.gd_transition_matrix }}
+-reference_gd_breakpoint_transition_matrix	{{ reference_resources.gd_breakpoint_transition_matrix }}
+ reference_HERVK	{{ reference_resources.hervk_reference }}
+ reference_LINE1	{{ reference_resources.line1_reference }}
+ reference_intron	{{ reference_resources.intron_reference }}
+diff --git a/src/sv_shell/filter_genotypes.sh b/src/sv_shell/filter_genotypes.sh
+index fa4a90108..6082c8c5e 100644
+--- a/src/sv_shell/filter_genotypes.sh
++++ b/src/sv_shell/filter_genotypes.sh
+@@ -37,7 +37,9 @@ vcf=$(jq -r ".vcf" "$input_json")
+ ploidy_table=$(jq -r ".ploidy_table" "$input_json")
+ no_call_rate_cutoff=$(jq -r ".no_call_rate_cutoff" "$input_json")
+ sl_cutoff_table=$(jq -r ".sl_cutoff_table" "$input_json")
+-sl_filter_args=$(jq -r ".sl_filter_args" "$input_json")
++# Optional, as in FilterGenotypes.wdl. SVShell.wdl drops empty inputs, so an unset value
++# arrives as a missing key, which a bare `jq -r` would turn into the literal string "null".
++sl_filter_args=$(jq -r '.sl_filter_args // ""' "$input_json")
+ header_drop_fields=$(jq -r '.header_drop_fields // "FILTER/LOW_QUALITY,FORMAT/TRUTH_CN_EQUAL,FORMAT/GT_FILTER,FORMAT/CONC_ST,INFO/STATUS,INFO/TRUTH_AC,INFO/TRUTH_AN,INFO/TRUTH_AF,INFO/TRUTH_VID,INFO/CNV_CONCORDANCE,INFO/GENOTYPE_CONCORDANCE,INFO/HET_PPV,INFO/HET_SENSITIVITY,INFO/HOMVAR_PPV,INFO/HOMVAR_SENSITIVITY,INFO/MINSL,INFO/NON_REF_GENOTYPE_CONCORDANCE,INFO/SL_MAX,INFO/SL_MEAN,INFO/VAR_PPV,INFO/VAR_SENSITIVITY,INFO/VAR_SPECIFICITY"' "$input_json")
+ 
+ 
+diff --git a/src/sv_shell/refine_complex_variants.sh b/src/sv_shell/refine_complex_variants.sh
+index d0dd8c3f4..faa37eacf 100644
+--- a/src/sv_shell/refine_complex_variants.sh
++++ b/src/sv_shell/refine_complex_variants.sh
+@@ -93,12 +93,9 @@ VcfToBed_bed_output="$(realpath "${vcf_basename}.bed.gz")"
+ # ---------------------------------------------------------------------------------------------------------------------
+ SplitCpxCtx_prefix=$(basename "${VcfToBed_bed_output}" .bed.gz)
+ 
+-## The commented out lines in the following are from WDL, however, running them needs disabling pipefail.
+-## The alternatives in the following use substitution that do not need disabling pipefail.
+-# zcat ~{bed} | head -1 > ~{prefix}.cpx_ctx.bed
+-# filterColumn=$(zcat "${VcfToBed_bed_output}" | head -1 | tr "\t" "\n" | awk '$1=="FILTER" {print NR}')
+-head -1 < <(zcat "${VcfToBed_bed_output}") > ${SplitCpxCtx_prefix}.cpx_ctx.bed
+-filterColumn=$(head -1 < <(zcat "${VcfToBed_bed_output}") | tr "\t" "\n" | awk '$1=="FILTER" {print NR}')
++zcat "${VcfToBed_bed_output}" | head -1 > "${SplitCpxCtx_prefix}.cpx_ctx.bed" || true
++
++filterColumn=$(zcat "${VcfToBed_bed_output}" | head -1 | tr "\t" "\n" | awk '$1=="FILTER" {print NR}' || true)
+ 
+ zcat "${VcfToBed_bed_output}" | awk 'NR > 1' | { grep CPX || true; } | awk -v filter_column="${filterColumn}" '$filter_column !~ /UNRESOLVED/' >> "${SplitCpxCtx_prefix}.cpx_ctx.bed"
+ 
+diff --git a/src/sv_shell/wgd.sh b/src/sv_shell/wgd.sh
+index a6f8495fe..6e2aa1643 100644
+--- a/src/sv_shell/wgd.sh
++++ b/src/sv_shell/wgd.sh
+@@ -40,12 +40,7 @@ bincov_matrix=$(jq -r ".bincov_matrix" "${input_json}")
+ 
+ # --- build matrix
+ 
+-# Note that in the WDL version, 'set -eu' so zcat exiting
+-# after head does not result in pipe fail. Since we want to
+-# use 'set -Eeuo pipefail' consistently throughout all the
+-# scripts, we're using '|| true' in the following to avoid
+-# pipe fail. There are a few other alternatives, but this
+-# is the easiest.
++# head exits early, so zcat can get SIGPIPE under pipefail; ignore it, as in WGD.wdl
+ zcat "${bincov_matrix}" | head -n 1 > header.txt || true
+ sed -i 's/#//g' header.txt
+ 
+diff --git a/src/svtk/svtk/__init__.py b/src/svtk/svtk/__init__.py
+index e0d80e8d5..51270f9df 100644
+--- a/src/svtk/svtk/__init__.py
++++ b/src/svtk/svtk/__init__.py
+@@ -1,3 +1,11 @@
++# TODO: this import is the reason svtk needs an old setuptools. Recent setuptools
++# releases dropped pkg_resources, so every svtk command dies on this line unless
++# something holds setuptools back. That is 'setuptools<81' in setup.py
++# install_requires, plus the cap in dockerfiles/sv-pipeline/Dockerfile. Replacing
++# it removes the constraint instead of renewing it: importlib.metadata for the
++# version below, importlib.resources for the resource_filename() call sites in
++# cli/rdtest2vcf.py, cli/standardize_vcf.py, utils/rdtest.py and vcfcluster.py.
++# See PR #959, which put the cap in install_requires.
+ from pkg_resources import get_distribution
+ 
+ __all__ = []
+diff --git a/wdl/AnnotateExternalAFPerShard.wdl b/wdl/AnnotateExternalAFPerShard.wdl
+index 4beac4af8..393a8f214 100644
+--- a/wdl/AnnotateExternalAFPerShard.wdl
++++ b/wdl/AnnotateExternalAFPerShard.wdl
+@@ -180,7 +180,7 @@ task SplitRefBed {
+     
+     command <<<
+         set -eu
+-        zcat ~{bed} | head -1 > header
++        zcat ~{bed} | head -1 > header || true
+         set -o pipefail
+         cat header <(zcat ~{bed} | awk '{if ($1=="~{contig}" && $6=="DEL") print}') > ~{prefix}.~{contig}.DEL.bed
+         cat header <(zcat ~{bed} | awk '{if ($1=="~{contig}" && $6=="DUP") print}') > ~{prefix}.~{contig}.DUP.bed
+diff --git a/wdl/CollectCoverage.wdl b/wdl/CollectCoverage.wdl
+index 3f47d0f57..a0c19defa 100644
+--- a/wdl/CollectCoverage.wdl
++++ b/wdl/CollectCoverage.wdl
+@@ -131,6 +131,7 @@ task CondenseReadCounts {
+         fi
+       fi
+ 
++      # awk exits early, so zcat can get SIGPIPE (rc 141) on large inputs; ignore it like the probes below
+       existing_sample_id=$(zcat ~{counts} | awk -F "\t" '/^@RG/ {
+           for (i = 1; i <= NF; ++i) {
+             if ($i ~ /^SM:/) {
+@@ -139,7 +140,7 @@ task CondenseReadCounts {
+               exit
+             }
+           }
+-        }')
++        }' || true)
+ 
+       output_sample_id="${existing_sample_id}"
+       emit_picard=true
+diff --git a/wdl/GATKSVPipelineSingleSample.wdl b/wdl/GATKSVPipelineSingleSample.wdl
+index 42606de21..9ed10e547 100644
+--- a/wdl/GATKSVPipelineSingleSample.wdl
++++ b/wdl/GATKSVPipelineSingleSample.wdl
+@@ -687,9 +687,11 @@ workflow GATKSVPipelineSingleSample {
+       sd_locs_vcf = sd_locs_vcf,
+       ref_panel_baf = ref_panel_baf,
+       ref_panel_baf_index = ref_panel_baf_index,
++      reference_dict = reference_dict,
+       sample_id = sample_id,
+       batch = batch,
+-      sv_pipeline_docker = sv_pipeline_docker
++      sv_pipeline_docker = sv_pipeline_docker,
++      panel_samples = ref_samples
+   }
+ 
+   call evidenceqc.EvidenceQC as EvidenceQC {
+@@ -873,6 +875,7 @@ workflow GATKSVPipelineSingleSample {
+         vcf = FilterSample.out,
+         vcf_index = FilterSample.out + ".tbi",
+         prefix = sample_id,
++        sample_id = sample_id,
+         gd_output_tarballs = [GD.gd_output_tarball],
+         ploidy_tables = [CreatePloidyTableFromPed.out],
+         gd_table = gd_table,
+@@ -1632,11 +1635,16 @@ task ConcatBaf {
+     File sd_locs_vcf
+     File ref_panel_baf
+     File ref_panel_baf_index
++    File reference_dict
+     String sample_id
+     String batch
+     String sv_pipeline_docker
++    # Samples in ref_panel_baf, merged in alongside the case
++    Array[String] panel_samples = []
+   }
+ 
++  Array[String] baf_samples = flatten([[sample_id], panel_samples])
++
+   output {
+     File merged_baf = "~{batch}.baf.txt.gz"
+     File merged_baf_index = "~{batch}.baf.txt.gz.tbi"
+@@ -1661,9 +1669,12 @@ task ConcatBaf {
+     echo "~{sample_id}.baf.txt.gz" > evidence.list
+     echo "~{ref_panel_baf}" >> evidence.list
+ 
+-    echo "~{sample_id}" > samples.list
++    # PrintSVEvidence keeps only the samples named here, so list the panel as well as the case
++    mv ~{write_lines(baf_samples)} samples.list
+ 
+-    /gatk/gatk --java-options "-Xmx2g" PrintSVEvidence \
++    # Text BAF files have no header dictionary, so --sequence-dictionary is required
++    java -Xmx2g -jar ${GATK_JAR} PrintSVEvidence \
++      --sequence-dictionary ~{reference_dict} \
+       -F evidence.list \
+       --sample-names samples.list \
+       -O "~{batch}.baf.txt.gz"
+diff --git a/wdl/IntegrateGDVcf.wdl b/wdl/IntegrateGDVcf.wdl
+index 4d26da2ad..318de5c98 100644
+--- a/wdl/IntegrateGDVcf.wdl
++++ b/wdl/IntegrateGDVcf.wdl
+@@ -22,12 +22,14 @@ import "TasksMakeCohortVcf.wdl" as tasks_cohort
+ #   gd_table            - GD regions table (same file used for GD calling)
+ #   par_bed             - PAR regions BED
+ #   contig_list         - List of contigs to scatter over (one per line)
++#   sample_id           - Optional; single-sample mode only (see IntegrateGDVcfTask)
+ 
+ workflow IntegrateGDVcf {
+   input {
+     File vcf
+     File vcf_index
+     String prefix
++    String? sample_id
+     Array[File] gd_output_tarballs
+     Array[File] ploidy_tables  # TODO : use joint ploidy table from JoinRawCalls
+     File gd_table
+@@ -56,6 +58,7 @@ workflow IntegrateGDVcf {
+         vcf = vcf,
+         vcf_index = vcf_index,
+         prefix = prefix,
++        sample_id = sample_id,
+         contig = contig,
+         combined_gd_calls = PrepareGDCallsTask.combined_gd_calls,
+         combined_ploidy = PrepareGDCallsTask.combined_ploidy,
+@@ -171,6 +174,7 @@ task IntegrateGDVcfTask {
+     File vcf
+     File vcf_index
+     String prefix
++    String? sample_id
+     String contig
+     File combined_gd_calls
+     File combined_ploidy
+@@ -184,6 +188,10 @@ task IntegrateGDVcfTask {
+ 
+   Float vcf_size = size(vcf, "GiB")
+ 
++  String out_vcf = if defined(sample_id)
++    then "~{prefix}.~{contig}.integrate_gd.filtered.vcf.gz"
++    else "~{prefix}.~{contig}.integrate_gd.vcf.gz"
++
+   RuntimeAttr default_attr = object {
+     cpu_cores: 1,
+     mem_gb: 4.0,
+@@ -225,6 +233,34 @@ task IntegrateGDVcfTask {
+       --temp-dir $(pwd) \
+       ~{default="" integrate_args}
+ 
++    # Single-sample only: drop rows where the case is hom-ref, and add EVIDENCE=RD to GD
++    # rows that lack it (Final_VCF_Metrics requires EVIDENCE). Cohort runs leave sample_id
++    # unset and keep the integrator's output as is.
++    if ~{if defined(sample_id) then "true" else "false"}; then
++      gd_out="~{prefix}.~{contig}.integrate_gd.vcf.gz"
++      gd_filtered="~{out_vcf}"
++      bcftools view -h "${gd_out}" > gd_header.txt
++      if ! grep -q '^##INFO=<ID=EVIDENCE,' gd_header.txt; then
++        echo "ERROR: ${gd_out} carries no EVIDENCE INFO header; refusing to stamp records" >&2
++        exit 1
++      fi
++      sampleIndex=`bcftools view -h "${gd_out}" | grep '^#CHROM' | cut -f10- | tr "\t" "\n" | awk '$1 == "~{sample_id}" {found=1; print NR - 1} END { if (found != 1) { print "sample not found"; exit 1; }}'`
++      bcftools view \
++          -e "GT[${sampleIndex}]=\"ref\"" \
++          -O v \
++          "${gd_out}" \
++      | awk \
++          '$0 ~ /^#/ { print $0; next; }
++          $8 ~ /EVIDENCE=/ { print $0; next; }
++          { for(i=1; i<8; ++i) printf "%s\t", $i;
++            printf "%s;EVIDENCE=RD", $8;
++            for(i=9; i<=NF; ++i) printf "\t%s", $i;
++            printf "\n"
++          }' \
++      | bgzip -c > "${gd_filtered}"
++      tabix -p vcf "${gd_filtered}"
++    fi
++
+   >>>
+ 
+   runtime {
+@@ -239,7 +275,7 @@ task IntegrateGDVcfTask {
+   }
+ 
+   output {
+-    File integrated_vcf = "~{prefix}.~{contig}.integrate_gd.vcf.gz"
+-    File integrated_vcf_index = "~{prefix}.~{contig}.integrate_gd.vcf.gz.tbi"
++    File integrated_vcf = out_vcf
++    File integrated_vcf_index = "~{out_vcf}.tbi"
+   }
+ }
+diff --git a/wdl/RefineComplexVariants.wdl b/wdl/RefineComplexVariants.wdl
+index 3c0fa0300..d8e69d8b2 100644
+--- a/wdl/RefineComplexVariants.wdl
++++ b/wdl/RefineComplexVariants.wdl
+@@ -418,9 +418,9 @@ task SplitCpxCtx {
+     command <<<
+         set -eu
+ 
+-        zcat ~{bed} | head -1 > ~{prefix}.cpx_ctx.bed
++        zcat ~{bed} | head -1 > ~{prefix}.cpx_ctx.bed || true
+ 
+-        filterColumn=$(zcat ~{bed} | head -1 | tr "\t" "\n" | awk '$1=="FILTER" {print NR}')
++        filterColumn=$(zcat ~{bed} | head -1 | tr "\t" "\n" | awk '$1=="FILTER" {print NR}' || true)
+ 
+         set -o pipefail
+ 
+diff --git a/wdl/SVShell.wdl b/wdl/SVShell.wdl
+index f507c787c..51f8cb86a 100644
+--- a/wdl/SVShell.wdl
++++ b/wdl/SVShell.wdl
+@@ -273,7 +273,7 @@ task RunSVShell {
+     File HERVK_reference
+     File LINE1_reference
+     File intron_reference
+-    File? par_bed
++    File par_bed
+     File rmsk
+     File segdups
+     Int gcnv_qs_cutoff
+@@ -307,9 +307,11 @@ task RunSVShell {
+     File protein_coding_gtf
+     File noncoding_bed
+     Int annotation_sv_per_shard
+-    File? external_af_ref_bed
+-    String? external_af_ref_bed_prefix
+-    Array[String]? external_af_population
++    # Required: src/sv_shell/annotate_vcf.sh always runs external-AF annotation and ComputeAFs
++    # with --par, unlike the WDL AnnotateVcf where these are optional.
++    File external_af_ref_bed
++    String external_af_ref_bed_prefix
++    Array[String] external_af_population
+     Int min_pe_cpx
+     Int min_pe_ctx
+     File gq_recalibrator_model_file
+@@ -447,9 +449,9 @@ task RunSVShell {
+       --arg protein_coding_gtf "~{protein_coding_gtf}" \
+       --arg noncoding_bed "~{noncoding_bed}" \
+       --argjson annotation_sv_per_shard ~{annotation_sv_per_shard} \
+-      --arg external_af_ref_bed "~{select_first([external_af_ref_bed, ""])}" \
+-      --arg external_af_ref_bed_prefix "~{select_first([external_af_ref_bed_prefix, ""])}" \
+-      --argjson external_af_population "$(jq -R . < ~{write_lines(select_first([external_af_population, []]))} | jq -s .)" \
++      --arg external_af_ref_bed "~{external_af_ref_bed}" \
++      --arg external_af_ref_bed_prefix "~{external_af_ref_bed_prefix}" \
++      --argjson external_af_population "$(jq -R . < ~{write_lines(external_af_population)} | jq -s .)" \
+       --argjson min_pe_cpx ~{min_pe_cpx} \
+       --argjson min_pe_ctx ~{min_pe_ctx} \
+       --arg gq_recalibrator_model_file "~{gq_recalibrator_model_file}" \
+diff --git a/wdl/TasksMakeCohortVcf.wdl b/wdl/TasksMakeCohortVcf.wdl
+index d489831e8..93b165a9c 100644
+--- a/wdl/TasksMakeCohortVcf.wdl
++++ b/wdl/TasksMakeCohortVcf.wdl
+@@ -319,7 +319,7 @@ task ConcatBeds {
+ 
+     # note head -n1 stops reading early and sends SIGPIPE to zcat,
+     # so setting pipefail here would result in early termination
+-    zcat ~{shard_bed_files[0]} | head -n1 > header.txt
++    zcat ~{shard_bed_files[0]} | head -n1 > header.txt || true
+ 
+     # no more early stopping
+     set -o pipefail
+diff --git a/wdl/Vapor.wdl b/wdl/Vapor.wdl
+index 22973d834..846c8a3ac 100644
+--- a/wdl/Vapor.wdl
++++ b/wdl/Vapor.wdl
+@@ -254,7 +254,7 @@ task ConcatVapor {
+   command <<<
+     set -eu
+ 
+-    zcat ~{shard_bed_files[0]} | head -n1 > header.txt
++    zcat ~{shard_bed_files[0]} | head -n1 > header.txt || true
+     # note head -n1 stops reading early and sends SIGPIPE to zcat,
+     # so setting pipefail here would result in early termination
+ 
+diff --git a/wdl/WGD.wdl b/wdl/WGD.wdl
+index d6c67c1cd..78a5fc939 100644
+--- a/wdl/WGD.wdl
++++ b/wdl/WGD.wdl
+@@ -62,7 +62,7 @@ task BuildWGDMatrix {
+   command <<<
+ 
+     set -eu
+-    zcat ~{bincov_matrix} | head -n 1 > header.txt
++    zcat ~{bincov_matrix} | head -n 1 > header.txt || true
+     sed -i 's/#//g' header.txt
+     
+     set -o pipefail

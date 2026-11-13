@@ -1,0 +1,612 @@
+diff --git a/Bindings/preliminaries.i b/Bindings/preliminaries.i
+index 3f6567dd2f..24e02e1979 100644
+--- a/Bindings/preliminaries.i
++++ b/Bindings/preliminaries.i
+@@ -8,6 +8,11 @@
+ %template(StdVectorInt)      std::vector<int>;
+ %template(StdVectorDouble)   std::vector<double>;
+ %template(StdVectorString)   std::vector<std::string>;
++%template(StdVectorBool)     std::vector<bool>;
++
++%include "std_pair.i"
++%template(StdPairIntInt)       std::pair<int, int>;
++%template(StdVectorPairIntInt) std::vector<std::pair<int, int>>;
+ 
+ %include "std_map.i"
+ %include <std_shared_ptr.i>
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index e204954c65..5269213292 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -57,6 +57,7 @@ The property `moment_arm_threshold` has been removed, and the methods `get/setMo
+   without GCC installed at that prefix (#4447).
+ - Added the `mirror_axis` property to `EllipsoidJoint`, which mirrors the joint about the plane normal to the given axis ('x', 'y', or 'z') of the parent frame. This is useful for constructing a left-side joint from the description of its right-side counterpart (or vice versa). (#4475)
+ - Fixed several discarded calls to `SimTK::Vec3::normalize()`, which returns a normalized copy rather than normalizing in place and so had no effect. `CustomJoint` kinematics may change slightly for models read from the pre-4.0 `TransformAxis` format, and `CMC_Task::setDirection_0()`/`setDirection_1()` now normalize their argument as documented. (#4475)
++- Added `TableUtilities::findNonFiniteElements()` and `TableUtilities::hampel()` for locating the non-finite and outlying elements of a `TimeSeriesTable`, and `DataTable::removeRows()` for removing a set of rows simultaneously. (#4477)
+ 
+ 
+ v4.6
+diff --git a/OpenSim/Common/DataTable.h b/OpenSim/Common/DataTable.h
+index 5daf5ae86f..2ff1a1327f 100644
+--- a/OpenSim/Common/DataTable.h
++++ b/OpenSim/Common/DataTable.h
+@@ -807,6 +807,39 @@ class DataTable_ : public AbstractDataTable {
+         return removeRowAtIndex((int)std::distance(_indData.cbegin(), iter));
+     }
+ 
++    /** Remove the rows marked `true` in `rowsToRemove`, which must have one
++    entry per row. The surviving rows keep their order, and the column labels
++    and table metadata are unchanged.
++
++    This is linear in the number of rows, whereas removing rows one at a time
++    with removeRowAtIndex() is quadratic, since each removal shifts every row
++    that follows it.
++
++    \throws IncorrectNumRows If `rowsToRemove` does not have one entry per row.
++                                                                              */
++    void removeRows(const std::vector<bool>& rowsToRemove) {
++        OPENSIM_THROW_IF(rowsToRemove.size() != getNumRows(),
++                         IncorrectNumRows,
++                         static_cast<size_t>(getNumRows()),
++                         rowsToRemove.size());
++
++        // Compact the surviving rows toward the front. A row is only ever
++        // moved to an index at or before the one it is read from, so a write
++        // never clobbers a row that has yet to be read.
++        size_t irowKeep = 0;
++        for (size_t irow = 0; irow < rowsToRemove.size(); ++irow) {
++            if (rowsToRemove[irow]) { continue; }
++            if (irow != irowKeep) {
++                _indData[irowKeep] = _indData[irow];
++                _depData.updRow((int)irowKeep) = _depData.row((int)irow);
++            }
++            ++irowKeep;
++        }
++
++        _indData.resize(irowKeep);
++        _depData.resizeKeep((int)irowKeep, _depData.ncol());
++    }
++
+     /// @} End of Row accessors/mutators.
+ 
+     /// @name Dependent and Independent column accessors/mutators.
+diff --git a/OpenSim/Common/TableUtilities.cpp b/OpenSim/Common/TableUtilities.cpp
+index 2a80f762b1..d0b25515ea 100644
+--- a/OpenSim/Common/TableUtilities.cpp
++++ b/OpenSim/Common/TableUtilities.cpp
+@@ -292,6 +292,7 @@ TimeSeriesTable TableUtilities::resampleWithIntervalBounded(
+     }
+     return resampleWithInterval<FunctionType>(in, interval);
+ }
++
+ TimeSeriesTable_<SimTK::Vec3> TableUtilities::convertRotationsToEulerAngles(
+         const TimeSeriesTable_<SimTK::Rotation>& rotTable) {
+     auto labels = rotTable.getColumnLabels();
+@@ -315,6 +316,115 @@ TimeSeriesTable_<SimTK::Vec3> TableUtilities::convertRotationsToEulerAngles(
+ 
+     return eulerData;
+ }
++
++std::vector<std::pair<int, int>> TableUtilities::findNonFiniteElements(
++        const TimeSeriesTable& table) {
++    const int numRows = static_cast<int>(table.getNumRows());
++    const int numColumns = static_cast<int>(table.getNumColumns());
++    const auto& data = table.getMatrix();
++    std::vector<std::pair<int, int>> nonFiniteElements;
++    for (int irow = 0; irow < numRows; ++irow) {
++        for (int icol = 0; icol < numColumns; ++icol) {
++            if (!SimTK::isFinite(data.getElt(irow, icol))) {
++                nonFiniteElements.emplace_back(irow, icol);
++            }
++        }
++    }
++    return nonFiniteElements;
++}
++
++std::vector<std::pair<int, int>> TableUtilities::hampel(
++        const TimeSeriesTable& table, int numAdjacentSamples,
++        double numStandardDeviations, double minimumDeviation) {
++    return hampel(table.getMatrix(), numAdjacentSamples,
++            numStandardDeviations, minimumDeviation);
++}
++
++std::vector<std::pair<int, int>> TableUtilities::hampel(
++        const SimTK::MatrixBase<double>& data, int numAdjacentSamples,
++        double numStandardDeviations, double minimumDeviation) {
++    const int numRows = data.nrow();
++    const int numColumns = data.ncol();
++    OPENSIM_THROW_IF(numAdjacentSamples < 1, Exception,
++            "Expected 'numAdjacentSamples' to be positive, but received {}.",
++            numAdjacentSamples);
++    OPENSIM_THROW_IF(
++            !SimTK::isFinite(numStandardDeviations) ||
++                    numStandardDeviations < 0,
++            Exception,
++            "Expected 'numStandardDeviations' to be finite and non-negative, "
++            "but received {}.", numStandardDeviations);
++    OPENSIM_THROW_IF(
++            !SimTK::isFinite(minimumDeviation) || minimumDeviation < 0,
++            Exception,
++            "Expected 'minimumDeviation' to be finite and non-negative, but "
++            "received {}.", minimumDeviation);
++    const double madScaleFactor = 1.482602218505602;
++
++    // Computes the median of `values`, reordering its contents. `values` must
++    // not be empty.
++    auto computeMedian = [](std::vector<double>& values) {
++        const int numValues = static_cast<int>(values.size());
++        OPENSIM_ASSERT_ALWAYS(numValues > 0);
++        const int mid = numValues / 2;
++        std::nth_element(values.begin(), values.begin() + mid, values.end());
++        const double upper = values[mid];
++        if (numValues % 2 == 1) {
++            return upper;
++        }
++        const double lower = *std::max_element(
++                values.begin(), values.begin() + mid);
++        return 0.5 * (lower + upper);
++    };
++
++    std::vector<std::pair<int, int>> outliers;
++    std::vector<double> window;
++    std::vector<double> deviations;
++    window.reserve(2 * numAdjacentSamples + 1);
++    deviations.reserve(2 * numAdjacentSamples + 1);
++    for (int icol = 0; icol < numColumns; ++icol) {
++        const SimTK::VectorView column = data.col(icol);
++        for (int irow = 0; irow < numRows; ++irow) {
++            // The window is centered on this element and truncated at the ends
++            // of the column, and holds only the finite elements.
++            const int begin = std::max(0, irow - numAdjacentSamples);
++            const int end = std::min(numRows - 1, irow + numAdjacentSamples);
++            window.clear();
++            for (int i = begin; i <= end; ++i) {
++                if (SimTK::isFinite(column[i])) {
++                    window.push_back(column[i]);
++                }
++            }
++            if (window.empty()) {
++                outliers.emplace_back(irow, icol);
++                continue;
++            }
++
++            const double center = computeMedian(window);
++            deviations.clear();
++            for (const double value : window) {
++                deviations.push_back(std::abs(value - center));
++            }
++            const double sigma = madScaleFactor * computeMedian(deviations);
++
++            // Written as the negation of the in-bounds test so that a
++            // non-finite element, which compares false against any bound, is
++            // reported as an outlier.
++            const double bound = std::max(
++                    numStandardDeviations * sigma, minimumDeviation);
++            if (!(std::abs(column[irow] - center) <= bound)) {
++                outliers.emplace_back(irow, icol);
++            }
++        }
++    }
++
++    // The elements are found column by column, since a window spans a single
++    // column, so sort them into the row-major order that is returned.
++    std::sort(outliers.begin(), outliers.end());
++
++    return outliers;
++}
++
+ // Explicit template instantiations.
+ namespace OpenSim {
+ template OSIMCOMMON_API TimeSeriesTable TableUtilities::resample<SimTK::Vector, GCVSpline>(
+diff --git a/OpenSim/Common/TableUtilities.h b/OpenSim/Common/TableUtilities.h
+index 8e5096e813..5d2068bd78 100644
+--- a/OpenSim/Common/TableUtilities.h
++++ b/OpenSim/Common/TableUtilities.h
+@@ -185,6 +185,49 @@ class OSIMCOMMON_API TableUtilities {
+         return TimeSeriesTable_<T>(mergedTimes, mergedMatrix, labels);
+     }
+ 
++    /// Find the elements of a table that are non-finite (NaN or infinite).
++    ///
++    /// The result holds the (row, column) index of each non-finite element,
++    /// ordered by row and then by column.
++    static std::vector<std::pair<int, int>> findNonFiniteElements(
++            const TimeSeriesTable& table);
++
++    /// Find the outlying elements of a table using the Hampel identifier.
++    ///
++    /// For each element, a window is centered on it spanning
++    /// `numAdjacentSamples` elements on either side, truncate at the ends of
++    /// the column. The element is reported as an outlier if it lies more than
++    /// `numStandardDeviations` estimated standard deviations from the median of
++    /// that window. The standard deviation is estimated from the window's
++    /// median absolute deviation (MAD), scaled by 1.4826 so that it is a
++    /// consistent estimator for normally distributed data.
++    ///
++    /// Both the median and the MAD are computed over the finite elements of
++    /// the window only. Any non-finite values are marked as outliers. Elements
++    /// deviating from their window median by less than `minimumDeviation` are
++    /// not reported.
++    ///
++    /// @returns the (row, column) index of each outlying element, ordered by
++    ///          row and then by column.
++    /// @throws Exception if `numAdjacentSamples` is not positive, or if
++    ///         `numStandardDeviations` or `minimumDeviation` is negative or
++    ///         non-finite.
++    static std::vector<std::pair<int, int>> hampel(
++            const TimeSeriesTable& table, int numAdjacentSamples = 3,
++            double numStandardDeviations = 3.0,
++            double minimumDeviation = 0.0);
++
++    /// @copydoc hampel()
++    ///
++    /// This overload operates on a matrix rather than a table. Valid for both
++    /// `SimTK::Matrix` and `SimTK::MatrixView`, so a block of a larger
++    /// matrix can be screened without copying it.
++    static std::vector<std::pair<int, int>> hampel(
++            const SimTK::MatrixBase<double>& data,
++            int numAdjacentSamples = 3,
++            double numStandardDeviations = 3.0,
++            double minimumDeviation = 0.0);
++
+ private:
+     static int findStateLabelIndexInternal(const std::string* begin,
+             const std::string* end, const std::string& desired);
+diff --git a/OpenSim/Common/tests/CMakeLists.txt b/OpenSim/Common/tests/CMakeLists.txt
+index 8c8f93c2d1..ce95cb6d92 100644
+--- a/OpenSim/Common/tests/CMakeLists.txt
++++ b/OpenSim/Common/tests/CMakeLists.txt
+@@ -107,6 +107,9 @@ OpenSimAddTest(NAME testStorage
+                   resources/testDiff.sto
+         )
+ 
++OpenSimAddTest(NAME testTableUtilities
++        LINKLIBS ${OSIM_COMMON_TEST_LIBS})
++
+ OpenSimAddTest(NAME testTRCFileAdapter
+         LINKLIBS ${OSIM_COMMON_TEST_LIBS}
+         RESOURCES "${OSIM_APPS_DIR}/IK/tests/resources/constraintTest.trc"
+diff --git a/OpenSim/Common/tests/testDataTable.cpp b/OpenSim/Common/tests/testDataTable.cpp
+index a437b6e693..1e73a52d68 100644
+--- a/OpenSim/Common/tests/testDataTable.cpp
++++ b/OpenSim/Common/tests/testDataTable.cpp
+@@ -1073,6 +1073,61 @@ TEST_CASE("TableUtilities::resample") {
+     }
+ }
+ 
++TEST_CASE("TimeSeriesTable::removeRows") {
++    TimeSeriesTable table{std::vector<double>{0., 1., 2., 3., 4., 5.}};
++    table.appendColumn("a", SimTK::Vector(6, 10.));
++    table.appendColumn("b", SimTK::Vector(6, 20.));
++    for (int irow = 0; irow < 6; ++irow) {
++        table.updDependentColumnAtIndex(0)[irow] = 10.0 + irow;
++        table.updDependentColumnAtIndex(1)[irow] = 20.0 + irow;
++    }
++    table.addTableMetaData<std::string>("inDegrees", "no");
++
++    SECTION("Marked rows are removed and metadata is preserved") {
++        table.removeRows({false, true, false, false, true, false});
++
++        const std::vector<double> expectedTimes{0., 2., 3., 5.};
++        REQUIRE(table.getNumRows() == expectedTimes.size());
++        CHECK(table.getIndependentColumn() == expectedTimes);
++        const auto columnA = table.getDependentColumnAtIndex(0);
++        const auto columnB = table.getDependentColumnAtIndex(1);
++        for (int irow = 0; irow < (int)expectedTimes.size(); ++irow) {
++            CHECK(columnA[irow] == 10.0 + expectedTimes[irow]);
++            CHECK(columnB[irow] == 20.0 + expectedTimes[irow]);
++        }
++
++        const std::vector<std::string> expectedLabels{"a", "b"};
++        CHECK(table.getColumnLabels() == expectedLabels);
++        REQUIRE(table.hasTableMetaDataKey("inDegrees"));
++        CHECK(table.getTableMetaData<std::string>("inDegrees") == "no");
++    }
++
++    SECTION("Removing no rows leaves the table unchanged") {
++        table.removeRows(std::vector<bool>(6, false));
++        REQUIRE(table.getNumRows() == 6);
++        const auto column = table.getDependentColumnAtIndex(0);
++        for (int irow = 0; irow < 6; ++irow) {
++            CHECK(table.getIndependentColumn()[irow] == (double)irow);
++            CHECK(column[irow] == 10.0 + irow);
++        }
++    }
++
++    SECTION("Removing every row leaves an empty table") {
++        table.removeRows(std::vector<bool>(6, true));
++        CHECK(table.getNumRows() == 0);
++    }
++
++    SECTION("A mask with the wrong number of entries throws") {
++        CHECK_THROWS_AS(table.removeRows(std::vector<bool>(5, false)),
++                IncorrectNumRows);
++        CHECK_THROWS_AS(table.removeRows(std::vector<bool>(7, false)),
++                IncorrectNumRows);
++        CHECK_THROWS_AS(table.removeRows(std::vector<bool>{}),
++                IncorrectNumRows);
++        CHECK(table.getNumRows() == 6);
++    }
++}
++
+ TEST_CASE("TimeSeriesTable trim methods") {
+     // make time table
+     TimeSeriesTable_<double> table{};
+diff --git a/OpenSim/Common/tests/testTableUtilities.cpp b/OpenSim/Common/tests/testTableUtilities.cpp
+new file mode 100644
+index 0000000000..e44747440b
+--- /dev/null
++++ b/OpenSim/Common/tests/testTableUtilities.cpp
+@@ -0,0 +1,272 @@
++/* -------------------------------------------------------------------------- *
++ *                     OpenSim:  testTableUtilities.cpp                       *
++ * -------------------------------------------------------------------------- *
++ * The OpenSim API is a toolkit for musculoskeletal modeling and simulation.  *
++ * See http://opensim.stanford.edu and the NOTICE file for more information.  *
++ * OpenSim is developed at Stanford University and supported by the US        *
++ * National Institutes of Health (U54 GM072970, R24 HD065690) and by DARPA    *
++ * through the Warrior Web program.                                           *
++ *                                                                            *
++ * Copyright (c) 2005-2026 Stanford University and the Authors                *
++ * Author(s): Nicholas Bianco                                                 *
++ *                                                                            *
++ * Licensed under the Apache License, Version 2.0 (the "License"); you may    *
++ * not use this file except in compliance with the License. You may obtain a  *
++ * copy of the License at http://www.apache.org/licenses/LICENSE-2.0.         *
++ *                                                                            *
++ * Unless required by applicable law or agreed to in writing, software        *
++ * distributed under the License is distributed on an "AS IS" BASIS,          *
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   *
++ * See the License for the specific language governing permissions and        *
++ * limitations under the License.                                             *
++ * -------------------------------------------------------------------------- */
++
++#include <OpenSim/Common/TableUtilities.h>
++
++#include <tests/Testing.h>
++
++#include <catch2/catch_all.hpp>
++
++#include <cmath>
++#include <format>
++#include <vector>
++
++using namespace OpenSim;
++
++namespace {
++
++// Creates a table whose columns are sine curves with differing amplitudes,
++// offsets, frequencies, and phases.
++TimeSeriesTable createSineTable() {
++    const int numColumns = 5;
++    const int numRows = 500;
++
++    std::vector<double> times;
++    times.reserve(numRows);
++    SimTK::Matrix data(numRows, numColumns, 0.0);
++    for (int irow = 0; irow < numRows; ++irow) {
++        const double time = 0.01 * irow;
++        times.push_back(time);
++        for (int icol = 0; icol < numColumns; ++icol) {
++            const double amplitude = 0.5 * (icol + 1);
++            const double frequency = 0.2 * (icol + 1);
++            const double phase = 0.3 * icol;
++            const double offset = 0.25 * icol;
++            data(irow, icol) =
++                    amplitude * std::sin(
++                            2.0 * SimTK::Pi * frequency * time + phase) +
++                    offset;
++        }
++    }
++
++    std::vector<std::string> labels;
++    labels.reserve(numColumns);
++    for (int icol = 0; icol < numColumns; ++icol) {
++        labels.push_back(std::format("col_{}", icol));
++    }
++
++    TimeSeriesTable table(times, data, labels);
++    table.addTableMetaData<std::string>("inDegrees", "no");
++    return table;
++}
++
++} // namespace
++
++TEST_CASE("findNonFiniteElements") {
++    TimeSeriesTable table = createSineTable();
++    const int numRows = (int)table.getNumRows();
++    const std::vector<std::pair<int, int>> expected = {
++        {3, 0}, {5, 1}, {17, 2}, {40, 1}, {numRows - 1, 3}};
++
++    SECTION("A table of finite values has no non-finite elements") {
++        CHECK(TableUtilities::findNonFiniteElements(table).empty());
++    }
++
++    SECTION("NaN values are found at the expected locations") {
++        for (const auto& [irow, icol] : expected) {
++            table.updDependentColumnAtIndex(icol)[irow] = SimTK::NaN;
++        }
++        CHECK(TableUtilities::findNonFiniteElements(table) == expected);
++    }
++
++    SECTION("Infinite values are found at the expected locations") {
++        for (const auto& [irow, icol] : expected) {
++            table.updDependentColumnAtIndex(icol)[irow] =
++                    irow % 2 ? SimTK::Infinity : -SimTK::Infinity;
++        }
++        CHECK(TableUtilities::findNonFiniteElements(table) == expected);
++    }
++}
++
++TEST_CASE("hampel") {
++    const double numStandardDeviations = 5.0;
++    TimeSeriesTable table = createSineTable();
++    const int numRows = (int)table.getNumRows();
++    const int numAdjacentSamples = 3;
++    const double outlierOffset = 100.0;
++
++    SECTION("A table of smooth curves has no outliers") {
++        CHECK(TableUtilities::hampel(
++                table, numAdjacentSamples, numStandardDeviations).empty());
++    }
++
++    SECTION("Outliers are found at the expected locations") {
++        const std::vector<std::pair<int, int>> expected = {
++                {2, 3}, {7, 0}, {100, 1}, {numRows - 3, 3}};
++        for (const auto& [irow, icol] : expected) {
++            table.updDependentColumnAtIndex(icol)[irow] += outlierOffset;
++        }
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations) == expected);
++    }
++
++    SECTION("Non-finite elements are reported and excluded from the window") {
++        table.updDependentColumnAtIndex(0)[4] = SimTK::NaN;
++        table.updDependentColumnAtIndex(0)[9] = SimTK::Infinity;
++        table.updDependentColumnAtIndex(0)[6] += outlierOffset;
++
++        const std::vector<std::pair<int, int>> expected = {
++                {4, 0}, {6, 0}, {9, 0}};
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations) == expected);
++    }
++
++    SECTION("A window that is mostly non-finite still screens what is left") {
++        std::vector<std::pair<int, int>> expected;
++        for (int irow = 1; irow < 25; irow += 2) {
++            table.updDependentColumnAtIndex(0)[irow] = SimTK::Infinity;
++            expected.emplace_back(irow, 0);
++        }
++        table.updDependentColumnAtIndex(0)[22] += outlierOffset;
++        expected.emplace_back(22, 0);
++        std::sort(expected.begin(), expected.end());
++
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations) == expected);
++    }
++
++    SECTION("A constant column has no outliers") {
++        for (int irow = 0; irow < numRows; ++irow) {
++            table.updDependentColumnAtIndex(1)[irow] = 0.375;
++        }
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations).empty());
++    }
++
++    SECTION("An element differing from a constant window is an outlier") {
++        for (int irow = 0; irow < numRows; ++irow) {
++            table.updDependentColumnAtIndex(1)[irow] = 0.375;
++        }
++        table.updDependentColumnAtIndex(1)[200] = 0.376;
++
++        const std::vector<std::pair<int, int>> expected = {{200, 1}};
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations) == expected);
++    }
++
++    SECTION("An element is screened against the scaled MAD of its window") {
++        // The column [0, 0, 0, -1, -1, 1, 1, -2, 2, 2] has a median of 0 and a
++        // MAD of 1.0, and any added value with magnitude greater than 2 will
++        // not change the median or MAD. Test that adding a value just above the
++        // threshold is reported as an outlier, and adding a value just below
++        // the threshold is not reported.
++        const double madScaleFactor = 1.482602218505602;
++        const double threshold = numStandardDeviations * madScaleFactor;
++        auto screen = [&](double value) {
++            const std::vector<double> values = {0.0, 0.0, 0.0, -1.0, -1.0, 1.0,
++                    1.0, -2.0, 2.0, 2.0, value};
++            const int numValues = (int)values.size();
++            SimTK::Matrix column(numValues, 1, 0.0);
++            for (int irow = 0; irow < numValues; ++irow) {
++                column(irow, 0) = values[irow];
++            }
++            return TableUtilities::hampel(
++                    column, numValues - 1, numStandardDeviations);
++        };
++
++        // Test a value just above the threshold.
++        // std::nextafter(threshold, value) returns the next representable value
++        // (one ULP) after 'threshold' in the direction of 'value'.
++        const std::vector<std::pair<int, int>> expected = {{10, 0}};
++        CHECK(screen(std::nextafter(threshold, SimTK::Infinity)) == expected);
++        // Test a value just below the threshold.
++        CHECK(screen(std::nextafter(threshold, 0.0)).empty());
++    }
++
++    SECTION("Nearly constant columns reject nothing when a floor is given") {
++        // A window of nearly identical values has a median absolute deviation
++        // near zero, so without a floor a difference of one unit in the last
++        // place is reported as an outlier.
++        const double value = 0.375;
++        for (int icol = 0; icol < 3; ++icol) {
++            for (int irow = 0; irow < numRows; ++irow) {
++                table.updDependentColumnAtIndex(icol)[irow] =
++                        (irow % 3 == icol) ? std::nextafter(value, 1.0)
++                                           : value;
++            }
++        }
++        // With no floor the perturbed elements are reported.
++        CHECK(!TableUtilities::hampel(table, numAdjacentSamples,
++                       numStandardDeviations, 0.0)
++                       .empty());
++        // A floor above the size of the difference suppresses perturbed
++        // elements.
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations, 1e-4)
++                      .empty());
++    }
++
++    SECTION("The floor does not suppress genuine outliers") {
++        table.updDependentColumnAtIndex(2)[150] += outlierOffset;
++        const std::vector<std::pair<int, int>> expected = {{150, 2}};
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations, 1e-4) == expected);
++    }
++
++    SECTION("The matrix overload reports rows relative to the block") {
++        // A block view of a larger matrix can be screened without copying it.
++        const int blockSize = 25;
++        table.updDependentColumnAtIndex(1)[blockSize + 8] += outlierOffset;
++
++        const auto& data = table.getMatrix();
++        const auto block = data.block(
++                blockSize, 0, blockSize, (int)table.getNumColumns());
++
++        const std::vector<std::pair<int, int>> expected = {{8, 1}};
++        CHECK(TableUtilities::hampel(block, blockSize - 1,
++                      numStandardDeviations) == expected);
++
++        // Screening the whole table instead reports the same element at its
++        // row within the table.
++        const std::vector<std::pair<int, int>> expectedWhole = {
++                {blockSize + 8, 1}};
++        CHECK(TableUtilities::hampel(table, numAdjacentSamples,
++                      numStandardDeviations) == expectedWhole);
++    }
++
++    SECTION("Invalid arguments throw") {
++        CHECK_THROWS_WITH(TableUtilities::hampel(table, 0),
++                Catch::Matchers::ContainsSubstring("'numAdjacentSamples'"));
++        CHECK_THROWS_WITH(TableUtilities::hampel(table, -1),
++                Catch::Matchers::ContainsSubstring("'numAdjacentSamples'"));
++        CHECK_THROWS_WITH(TableUtilities::hampel(table, 10.0, -1.0),
++                Catch::Matchers::ContainsSubstring("'numStandardDeviations'"));
++        CHECK_THROWS_WITH(
++                TableUtilities::hampel(table, numAdjacentSamples, 3.0, -1.0),
++                Catch::Matchers::ContainsSubstring("'minimumDeviation'"));
++    }
++
++    SECTION("Non-finite arguments throw") {
++        for (const double value : {SimTK::NaN, SimTK::Infinity,
++                     -SimTK::Infinity}) {
++            CHECK_THROWS_WITH(
++                    TableUtilities::hampel(table, numAdjacentSamples, value),
++                    Catch::Matchers::ContainsSubstring(
++                            "'numStandardDeviations'"));
++            CHECK_THROWS_WITH(TableUtilities::hampel(table,
++                                      numAdjacentSamples,
++                                      numStandardDeviations, value),
++                    Catch::Matchers::ContainsSubstring("'minimumDeviation'"));
++        }
++    }
++}

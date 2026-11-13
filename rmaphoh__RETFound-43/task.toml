@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/rmaphoh__RETFound-43"
+description = "Fixes for latent_feature.ipynb"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "RETFound",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "rmaphoh/RETFound"
+ref = "91915d6a141061358ecaacea758cbb8e28333933"
+reference = "https://github.com/rmaphoh/RETFound/pull/43"
+source_access = "auto"
+built_at = "2026-11-13T15:50:30.265449+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5a2d942f049a93b28c51a57ecadcbb1810ebe8ffa9e507b19e3e6b342c1bbb6e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-04-29T09:42:20Z"
+diff_format = "unified"
+context_files = [
+    "latent_feature.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 14
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/ncbi__amr-177"
+description = "Replace deprecated GitHub action runners"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "amr",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ncbi/amr"
+ref = "83e183601760db61469b9f125ae2b700838b1c26"
+reference = "https://github.com/ncbi/amr/pull/177"
+source_access = "auto"
+built_at = "2026-11-13T15:56:48.960114+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e197e947044181892ba9f9c90eb58764d8e48c5b6f729187cbd04f96b13462dc"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-12-09T19:55:21Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/binary.yml",
+    ".github/workflows/conda.yml",
+    ".github/workflows/mac_ccpp.yml",
+    ".github/workflows/mac_conda.yml",
+    "test_amrfinder.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 79
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

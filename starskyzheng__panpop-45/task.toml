@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/starskyzheng__panpop-45"
+description = "realign.pl: add check of ALT format"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "panpop",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "starskyzheng/panpop"
+ref = "a7193cf96fcc979cb12747f8750a42ba509cacba"
+reference = "https://github.com/starskyzheng/panpop/pull/45"
+source_access = "auto"
+built_at = "2026-11-13T16:22:56.105298+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:075b023f680184b10eff6b3a24c12e21267c80dd1ee78cf9a5da44bd3eb88630"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-04-29T05:46:37Z"
+diff_format = "unified"
+context_files = [
+    "scripts/realign.pl",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 3
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

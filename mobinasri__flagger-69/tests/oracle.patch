@@ -1,0 +1,379 @@
+diff --git a/programs/src/augment_coverage_by_labels.c b/programs/src/augment_coverage_by_labels.c
+index bd2f00c..a4d3496 100644
+--- a/programs/src/augment_coverage_by_labels.c
++++ b/programs/src/augment_coverage_by_labels.c
+@@ -29,6 +29,7 @@ static struct option long_options[] =
+                 {"numberOfLabels", required_argument, NULL, 'n'},
+                 {"output",         required_argument, NULL, 'o'},
+                 {"threads",         required_argument, NULL, '@'},
++                {"help",                   no_argument,       NULL, 'h'},
+                 {NULL,             0,                 NULL, 0}
+         };
+ 
+@@ -84,7 +85,7 @@ int main(int argc, char *argv[]) {
+                 fprintf(stderr, "         --numberOfLabels, -n         number of labels [Default = 4]\n");
+                 fprintf(stderr, "         --threads, -@       number of threads [Default = 4]\n");
+ 
+-                return 1;
++                return c == 'h' ? 0 : 1;
+         }
+     }
+ 
+diff --git a/programs/src/bam2cov.c b/programs/src/bam2cov.c
+index e29fb64..d6e9156 100644
+--- a/programs/src/bam2cov.c
++++ b/programs/src/bam2cov.c
+@@ -63,6 +63,7 @@ static struct option long_options[] =
+                 {"includeContigs",          required_argument, NULL, 'I'},
+                 {"downsampleRate",          required_argument, NULL, 'D'},
+                 {"startOnlyMode",          no_argument, NULL, 's'},
++                {"help",                   no_argument,       NULL, 'h'},
+                 {NULL,                      0,                 NULL, 0}
+         };
+ 
+@@ -230,7 +231,7 @@ int main(int argc, char *argv[]) {
+                         "                           it will take windows with the same length as the average alignment\n"
+                         "                           length and count the number of alignments starting in each window.\n"
+                         "                           [Default : disabled]\n");
+-                return 1;
++                return c == 'h' ? 0 : 1;
+         }
+     }
+     double realtimeStart = System_getRealTimePoint();
+diff --git a/programs/src/cov2counts.c b/programs/src/cov2counts.c
+index e9aa198..2b73c8c 100755
+--- a/programs/src/cov2counts.c
++++ b/programs/src/cov2counts.c
+@@ -59,7 +59,11 @@ int main(int argc, char *argv[]) {
+    char* outputPath;
+    char *program;
+    (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-   while (~(c=getopt(argc, argv, "i:o:h"))) {
++   static struct option long_options[] = {
++           {"help", no_argument, NULL, 'h'},
++           {NULL,   0,           NULL, 0}
++   };
++   while (~(c=getopt_long(argc, argv, "i:o:h", long_options, NULL))) {
+ 		switch (c) {
+ 			case 'i':
+ 				inputPath = optarg; 
+@@ -74,7 +78,7 @@ int main(int argc, char *argv[]) {
+ 				fprintf(stderr, "Options:\n");	
+ 				fprintf(stderr, "         -i         input .cov file\n");	
+ 				fprintf(stderr, "         -o         output .counts file\n");
+-				return 1;	
++				return c == 'h' ? 0 : 1;	
+ 		}		
+    }
+    cov2counts(inputPath, outputPath);
+diff --git a/programs/src/cov2wig.c b/programs/src/cov2wig.c
+index 8334c63..903bbcf 100755
+--- a/programs/src/cov2wig.c
++++ b/programs/src/cov2wig.c
+@@ -109,7 +109,11 @@ int main(int argc, char *argv[]) {
+    int threshold=250;
+    char *program;
+    (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-   while (~(c=getopt(argc, argv, "i:o:t:f:s:n:h"))) {
++   static struct option long_options[] = {
++           {"help", no_argument, NULL, 'h'},
++           {NULL,   0,           NULL, 0}
++   };
++   while (~(c=getopt_long(argc, argv, "i:o:t:f:s:n:h", long_options, NULL))) {
+ 		switch (c) {
+ 			case 'i':
+                                 covPath = optarg;
+@@ -140,7 +144,7 @@ int main(int argc, char *argv[]) {
+ 				fprintf(stderr, "         -s         segment size[default : 1024]\n");
+ 				fprintf(stderr, "         -t         does not allow any coverage larger than this threshold[default : 250]\n");
+ 				fprintf(stderr, "         -n         track name\n");
+-				return 1;	
++				return c == 'h' ? 0 : 1;	
+ 		}		
+    }
+    splitCov(covPath, segmentSize, wigPath, trackName, threshold);
+diff --git a/programs/src/coverage_format_converter.c b/programs/src/coverage_format_converter.c
+index b3618e9..87e6b20 100644
+--- a/programs/src/coverage_format_converter.c
++++ b/programs/src/coverage_format_converter.c
+@@ -29,7 +29,11 @@ int main(int argc, char *argv[]) {
+     int chunkCanonicalLen = 20000000;
+     char *program;
+     (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-    while (~(c = getopt(argc, argv, "i:o:f:w:t:n:c:h"))) {
++    static struct option long_options[] = {
++            {"help", no_argument, NULL, 'h'},
++            {NULL,   0,           NULL, 0}
++    };
++    while (~(c = getopt_long(argc, argv, "i:o:f:w:t:n:c:h", long_options, NULL))) {
+         switch (c) {
+             case 'i':
+                 inputPath = optarg;
+@@ -70,7 +74,7 @@ int main(int argc, char *argv[]) {
+                         "         -n         track name (only be used for generating bedgraph file) [Default = 'coverage_bedgraph']\n");
+                 fprintf(stderr,
+                         "         -c         chunk length for converting to bin. [Default: 20000000 (20 Mb)]\n");
+-                return 1;
++                return c == 'h' ? 0 : 1;
+         }
+     }
+ 
+diff --git a/programs/src/depth2cov.c b/programs/src/depth2cov.c
+index 16848fd..937f411 100755
+--- a/programs/src/depth2cov.c
++++ b/programs/src/depth2cov.c
+@@ -130,7 +130,11 @@ int main(int argc, char *argv[]) {
+    char* covPath;
+    char *program;
+    (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-   while (~(c=getopt(argc, argv, "f:d:o:"))) {
++   static struct option long_options[] = {
++           {"help", no_argument, NULL, 'h'},
++           {NULL,   0,           NULL, 0}
++   };
++   while (~(c=getopt_long(argc, argv, "f:d:o:h", long_options, NULL))) {
+ 		switch (c) {
+ 			case 'f':
+ 				faiPath = optarg; 
+@@ -149,7 +153,7 @@ int main(int argc, char *argv[]) {
+ 				fprintf(stderr, "         -f         input .fai file\n");
+ 			        fprintf(stderr, "         -d         input .depth file\n");	
+ 				fprintf(stderr, "         -o         output .cov file\n");
+-				return 1;	
++				return c == 'h' ? 0 : 1;	
+ 		}		
+    }
+    char** contigNames;
+diff --git a/programs/src/filter_alt_reads.c b/programs/src/filter_alt_reads.c
+index 0465171..982caed 100755
+--- a/programs/src/filter_alt_reads.c
++++ b/programs/src/filter_alt_reads.c
+@@ -203,7 +203,11 @@ int main(int argc, char *argv[]){
+ 	double ratioThreshold = 0.3;
+         char *program;
+         (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-        while (~(c=getopt(argc, argv, "i:o:f:v:r:m:t:q:h"))) {
++        static struct option long_options[] = {
++                {"help", no_argument, NULL, 'h'},
++                {NULL,   0,           NULL, 0}
++        };
++        while (~(c=getopt_long(argc, argv, "i:o:f:v:r:m:t:q:h", long_options, NULL))) {
+                 switch (c) {
+                         case 'i':
+                                 inputPath = optarg;
+@@ -242,7 +246,7 @@ int main(int argc, char *argv[]){
+ 				fprintf(stderr, "         -m         margin creating snp clusters [Default: 1000]\n");
+ 				fprintf(stderr, "         -r         threshold for cluster mismatch ratio [Default: 0.3]\n");
+ 				fprintf(stderr, "         -q         minimum base quality for a mismatch [Default: 10]\n");
+-                                return 1;
++                                return c == 'h' ? 0 : 1;
+                 }
+         }
+ 	stHash* snpTable = getSnpTable(vcfPath);
+diff --git a/programs/src/find_blocks_from_table.c b/programs/src/find_blocks_from_table.c
+index 1ff8187..f0e41a6 100755
+--- a/programs/src/find_blocks_from_table.c
++++ b/programs/src/find_blocks_from_table.c
+@@ -167,7 +167,11 @@ int main(int argc, char *argv[]) {
+    char* prefix;
+    char *program;
+    (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-   while (~(c=getopt(argc, argv, "t:c:p:h"))) {
++   static struct option long_options[] = {
++           {"help", no_argument, NULL, 'h'},
++           {NULL,   0,           NULL, 0}
++   };
++   while (~(c=getopt_long(argc, argv, "t:c:p:h", long_options, NULL))) {
+ 		switch (c) {
+ 			case 't':
+ 				tablePath = optarg; 
+@@ -186,7 +190,7 @@ int main(int argc, char *argv[]) {
+ 				fprintf(stderr, "         -t         probability table\n");
+ 				fprintf(stderr, "         -c         coverage file\n");
+ 				fprintf(stderr, "         -p         prefix for the output bed file\n");
+-				return 1;	
++				return c == 'h' ? 0 : 1;	
+ 		}		
+    }
+    printf("Reading the prob table\n");
+diff --git a/programs/src/hmm_flagger.c b/programs/src/hmm_flagger.c
+index 74116ea..80a97f3 100644
+--- a/programs/src/hmm_flagger.c
++++ b/programs/src/hmm_flagger.c
+@@ -604,6 +604,7 @@ static struct option long_options[] =
+                 {"dumpBin",                            no_argument,       NULL, 'B'},
+                 {"accelerate",                         no_argument,       NULL, 's'},
+                 {"minimumLengths",                     required_argument, NULL, 'M'},
++                {"help",                   no_argument,       NULL, 'h'},
+                 {NULL,                                 0,                 NULL, 0}
+         };
+ 
+@@ -652,7 +653,7 @@ int main(int argc, char *argv[]) {
+     int *minLenPerStateTemp;
+     char *program;
+     (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-    while (~(c = getopt_long(argc, argv, "i:x:f:en:t:m:q:C:W:c:@:p:A:a:wkPo:v:l:D:BN:M:s", long_options, NULL))) {
++    while (~(c = getopt_long(argc, argv, "i:x:f:en:t:m:q:C:W:c:@:p:A:a:wkPo:v:l:D:BN:M:sh", long_options, NULL))) {
+         switch (c) {
+             case 'i':
+                 inputPath = optarg;
+@@ -889,7 +890,7 @@ int main(int argc, char *argv[]) {
+                         "                           non-Hap short blocks into Hap blocks. Given numbers should be \n"
+                         "                           related to states Err, Dup and Col respectively. \n"
+                         "                           [default: '0,0,0']\n");
+-                return 1;
++                return c == 'h' ? 0 : 1;
+         }
+     }
+ 
+diff --git a/programs/src/increase_mapq.c b/programs/src/increase_mapq.c
+index ba36af5..0163f0e 100755
+--- a/programs/src/increase_mapq.c
++++ b/programs/src/increase_mapq.c
+@@ -11,7 +11,11 @@ int main(int argc, char *argv[]){
+         int threshold = 30;
+         char *program;
+         (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-        while (~(c=getopt(argc, argv, "i:t:o:h"))) {
++        static struct option long_options[] = {
++                {"help", no_argument, NULL, 'h'},
++                {NULL,   0,           NULL, 0}
++        };
++        while (~(c=getopt_long(argc, argv, "i:t:o:h", long_options, NULL))) {
+                 switch (c) {
+                         case 'i':
+                                 inputPath = optarg;
+@@ -30,7 +34,7 @@ int main(int argc, char *argv[]){
+ 				fprintf(stderr, "         -i         input bam file\n");
+                                 fprintf(stderr, "         -t         mapq threshold\n");
+                                 fprintf(stderr, "         -o         output bam file\n");
+-				return 1;
++				return c == 'h' ? 0 : 1;
+ 		}
+ 	}
+ 	samFile* fp = sam_open(inputPath, "r");
+diff --git a/programs/src/index_cov.c b/programs/src/index_cov.c
+index 4eb3e84..fb4c2e1 100644
+--- a/programs/src/index_cov.c
++++ b/programs/src/index_cov.c
+@@ -17,7 +17,11 @@ int main(int argc, char *argv[]) {
+    int chunkCanonicalLen = 20000000;
+    char *program;
+    (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-   while (~(c=getopt(argc, argv, "i:l:f:h"))) {
++   static struct option long_options[] = {
++           {"help", no_argument, NULL, 'h'},
++           {NULL,   0,           NULL, 0}
++   };
++   while (~(c=getopt_long(argc, argv, "i:l:f:h", long_options, NULL))) {
+ 		switch (c) {
+ 			case 'i':
+                                 covPath = optarg;
+@@ -36,7 +40,7 @@ int main(int argc, char *argv[]) {
+ 				fprintf(stderr, "         -i         path to input coverage file (can be either cov/cov.gz/bed/bed.gz)\n");
+ 				fprintf(stderr, "         -f         path to fai file (It can be skipped if the coverage file is cov/cov.gz)\n");
+ 				fprintf(stderr, "         -l         chunk length [Default = 20000000 (20Mb)]\n");
+-				return 1;	
++				return c == 'h' ? 0 : 1;	
+ 		}		
+    }
+    stList* templateChunks = ChunksCreator_createCovIndex(covPath, faiPath, chunkCanonicalLen);
+diff --git a/programs/src/make_summary_table.c b/programs/src/make_summary_table.c
+index a51ea99..1c018e9 100644
+--- a/programs/src/make_summary_table.c
++++ b/programs/src/make_summary_table.c
+@@ -29,6 +29,7 @@ static struct option long_options[] =
+                 {"threads",               required_argument, NULL, '@'},
+                 {"overlapRatioThreshold", required_argument, NULL, 'v'},
+                 {"labelNames",            required_argument, NULL, 'l'},
++                {"help",                   no_argument,       NULL, 'h'},
+                 {NULL,                    0,                 NULL, 0}
+         };
+ 
+@@ -102,7 +103,7 @@ int main(int argc, char *argv[]) {
+                         "                           (Optional) A comma-delimited string of label names (for example 'Err,Dup,Hap,Col').\n"
+                         "                           It should match the number of labels in the header of the input file.[default: none]\n");
+ 
+-                return 1;
++                return c == 'h' ? 0 : 1;
+         }
+     }
+ 
+diff --git a/programs/src/split_bam_by_reads.c b/programs/src/split_bam_by_reads.c
+index 372f7a8..f03cbdd 100755
+--- a/programs/src/split_bam_by_reads.c
++++ b/programs/src/split_bam_by_reads.c
+@@ -10,7 +10,11 @@ int main(int argc, char *argv[]){
+ 	int n;
+         char *program;
+         (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-        while (~(c=getopt(argc, argv, "i:o:n:h"))) {
++        static struct option long_options[] = {
++                {"help", no_argument, NULL, 'h'},
++                {NULL,   0,           NULL, 0}
++        };
++        while (~(c=getopt_long(argc, argv, "i:o:n:h", long_options, NULL))) {
+                 switch (c) {
+                         case 'i':
+                                 input_path = optarg;
+@@ -29,7 +33,7 @@ int main(int argc, char *argv[]){
+                                 fprintf(stderr, "         -i         input bam file\n");
+                                 fprintf(stderr, "         -o         output dir\n");
+ 				fprintf(stderr, "         -n         number of reads per bam\n");
+-                                return 1;
++                                return c == 'h' ? 0 : 1;
+                 }
+         }
+         samFile* fp = sam_open(input_path, "r");
+diff --git a/programs/src/split_cov_by_contig.c b/programs/src/split_cov_by_contig.c
+index 2bd012d..bd51561 100755
+--- a/programs/src/split_cov_by_contig.c
++++ b/programs/src/split_cov_by_contig.c
+@@ -91,7 +91,11 @@ int main(int argc, char *argv[]) {
+    char* prefix;
+    char *program;
+    (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-   while (~(c=getopt(argc, argv, "t:c:p:h"))) {
++   static struct option long_options[] = {
++           {"help", no_argument, NULL, 'h'},
++           {NULL,   0,           NULL, 0}
++   };
++   while (~(c=getopt_long(argc, argv, "t:c:p:h", long_options, NULL))) {
+ 		switch (c) {
+ 			case 'c':
+                                 covPath = optarg;
+@@ -106,7 +110,7 @@ int main(int argc, char *argv[]) {
+ 				fprintf(stderr, "Options:\n");
+ 				fprintf(stderr, "         -c         coverage file\n");
+ 				fprintf(stderr, "         -p         prefix for the output cov files\n");
+-				return 1;	
++				return c == 'h' ? 0 : 1;	
+ 		}		
+    }
+    findBlocks(covPath, prefix);
+diff --git a/programs/src/split_cov_by_window.c b/programs/src/split_cov_by_window.c
+index 465ea48..cde077e 100755
+--- a/programs/src/split_cov_by_window.c
++++ b/programs/src/split_cov_by_window.c
+@@ -196,7 +196,11 @@ int main(int argc, char *argv[]) {
+     char *prefix;
+     char *program;
+     (program = strrchr(argv[0], '/')) ? ++program : (program = argv[0]);
+-    while (~(c = getopt(argc, argv, "c:p:f:s:h"))) {
++    static struct option long_options[] = {
++            {"help", no_argument, NULL, 'h'},
++            {NULL,   0,           NULL, 0}
++    };
++    while (~(c = getopt_long(argc, argv, "c:p:f:s:h", long_options, NULL))) {
+         switch (c) {
+             case 'c':
+                 covPath = optarg;
+@@ -221,7 +225,7 @@ int main(int argc, char *argv[]) {
+                         "         -f         a 2-column tab-delimited file (1st: contig name, 2st: effective contig length)\n");
+                 fprintf(stderr, "         -p         prefix for the output cov files\n");
+                 fprintf(stderr, "         -s         window size[default : 5Mb]\n");
+-                return 1;
++                return c == 'h' ? 0 : 1;
+         }
+     }
+     fprintf(stderr, "reading contig lens\n");

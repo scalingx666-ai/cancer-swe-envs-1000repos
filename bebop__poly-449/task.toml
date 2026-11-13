@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/bebop__poly-449"
+description = "updated ci linter."
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "poly",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bebop/poly"
+ref = "ca06c0f53cfa4867837a7e179b2c46599271b4a5"
+reference = "https://github.com/bebop/poly/pull/449"
+source_access = "auto"
+built_at = "2026-11-13T15:50:24.082663+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1ef2477b6861a9c001147b1796448ab9dcc4dcc4c8ef61214f0d0f38bac8a371"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-10T01:17:16Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/lint.yml",
+    ".golangci.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 43
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

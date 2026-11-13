@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/gavinha__TitanCNA-81"
+description = "Patch 1"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "TitanCNA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "gavinha/TitanCNA"
+ref = "b8cd44db26c8752ff0487106620f0b42718c3dc8"
+reference = "https://github.com/gavinha/TitanCNA/pull/81"
+source_access = "auto"
+built_at = "2026-11-13T15:37:18.404657+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9bc45c14c8d19db3baa08d2f154886e572b13449e036a02e8bbd131b0e0207c9"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-11-07T20:46:23Z"
+diff_format = "unified"
+context_files = [
+    "scripts/snakemake/TitanCNA.snakefile",
+    "scripts/snakemake/config/config.yaml",
+    "scripts/snakemake/getAlleleCounts.snakefile",
+    "scripts/snakemake/ichorCNA.snakefile",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 26
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

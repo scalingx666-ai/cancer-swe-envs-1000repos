@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/plotly__dash-cytoscape-223"
+description = "updating year(s) in license"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "dash-cytoscape",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "plotly/dash-cytoscape"
+ref = "fa2800af9232e156e90be6bce2513b6fe8760f46"
+reference = "https://github.com/plotly/dash-cytoscape/pull/223"
+source_access = "auto"
+built_at = "2026-11-13T15:50:56.302486+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3aa69b022eceb622da209b7fd431327a50e633e3db8f427eaebf42c6ee2fe55a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-08-09T18:56:08Z"
+diff_format = "unified"
+context_files = [
+    "LICENSE",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

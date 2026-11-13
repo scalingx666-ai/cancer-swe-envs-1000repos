@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/wurmlab__sequenceserver-848"
+description = "Quote database_dir for blastdbcmd and fix ignored keys in report spec"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "sequenceserver",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "wurmlab/sequenceserver"
+ref = "94f9d3a2942847636c25b458e8b37567b53fea0c"
+reference = "https://github.com/wurmlab/sequenceserver/pull/848"
+source_access = "auto"
+built_at = "2026-11-13T16:01:41.564015+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d34f5d9c4c769cf76156a984af82f33999b5095052bdaf6fa2a1d5de2364fe0a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-27T22:42:48Z"
+diff_format = "unified"
+context_files = [
+    "lib/sequenceserver/makeblastdb.rb",
+    "spec/blast/report_spec.rb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

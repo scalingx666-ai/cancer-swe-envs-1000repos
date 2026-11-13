@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/GMOD__jbrowse-1676"
+description = "Add the missing `watch` script and drop stale README build advice"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "jbrowse",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "GMOD/jbrowse"
+ref = "3193a9607a6184a56c277550b014eced6301672c"
+reference = "https://github.com/GMOD/jbrowse/pull/1676"
+source_access = "auto"
+built_at = "2026-11-13T15:54:49.250843+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7cffe5a86aeaf8efda6740f460a6bd90c61f09fca68c3610146f044dcf1c68df"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-16T16:59:34Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "package.json",
+    "release-notes.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 23
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

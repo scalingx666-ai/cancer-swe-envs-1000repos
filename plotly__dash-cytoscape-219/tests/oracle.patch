@@ -1,0 +1,275 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 6a1eb89a..e6e6b36a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++## [1.0.2] - 2024-07-11
++
++### Fixed
++* [#206](https://github.com/plotly/dash-cytoscape/pull/206) Fixed Leaflet bug about decimal values for zoom levels. `dash_leaflet` dependency upgraded.
++* [#218](https://github.com/plotly/dash-cytoscape/pull/218) Fixed updating CyLeaflet AIO maxZoom in TileLayer.
++
+ ## [1.0.1] - 2024-05-23
+ 
+ ### Fixed
+diff --git a/DESCRIPTION b/DESCRIPTION
+index e9807125..cce99a78 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,6 +1,6 @@
+ Package: dashCytoscape
+ Title: A Component Library for 'Dash' aimed at facilitating network visualization in R, wrapped around Cytoscape.js.
+-Version: 1.0.1
++Version: 1.0.2
+ Description: A Component Library for 'Dash' aimed at facilitating network visualization in R, wrapped around Cytoscape.js.
+ Depends: R (>= 3.0.2)
+ Imports: 
+diff --git a/Project.toml b/Project.toml
+index 56d9c816..b41b6745 100644
+--- a/Project.toml
++++ b/Project.toml
+@@ -2,7 +2,7 @@
+ name = "DashCytoscape"
+ uuid = "1b08a953-4be3-4667-9a23-85cc21bfd5e9"
+ authors = ["The Plotly Team <cytoscape@plotly.com>"]
+-version = "1.0.1"
++version = "1.0.2"
+ 
+ [deps]
+ Dash = "1b08a953-4be3-4667-9a23-3db579824955"
+diff --git a/R/internal.R b/R/internal.R
+index fd4f5d32..cd5c4b69 100644
+--- a/R/internal.R
++++ b/R/internal.R
+@@ -1,6 +1,6 @@
+ .dashCytoscape_js_metadata <- function() {
+ deps_metadata <- list(`dash_cytoscape` = structure(list(name = "dash_cytoscape",
+-version = "1.0.1", src = list(href = NULL,
++version = "1.0.2", src = list(href = NULL,
+ file = "deps"), meta = NULL,
+ script = 'dash_cytoscape.min.js',
+ stylesheet = NULL, head = NULL, attachment = NULL, package = "dashCytoscape",
+diff --git a/dash_cytoscape/CyLeaflet.py b/dash_cytoscape/CyLeaflet.py
+index 169394a6..919dea00 100644
+--- a/dash_cytoscape/CyLeaflet.py
++++ b/dash_cytoscape/CyLeaflet.py
+@@ -144,7 +144,7 @@ def set_default_props_and_overrides(
+         # even though these will be immediately overwritten by syncing w/ Cytoscape
+         leaflet_overrides = {
+             "id": self.ids["leaf"],
+-            "children": leaflet_children or [dl.TileLayer()],
++            "children": leaflet_children or [dl.TileLayer(maxZoom=100000)],
+             "center": [0, 0],
+             "zoom": 6,
+             "zoomSnap": 0,
+@@ -230,4 +230,5 @@ def get_cytoscape_max_zoom(self, leaflet_max_zoom):
+         ClientsideFunction(namespace="cyleaflet", function_name="updateCytoMaxZoom"),
+         Output({"id": MATCH, "component": "cyleaflet", "sub": "cy"}, "maxZoom"),
+         Input({"id": MATCH, "component": "cyleaflet", "sub": "leaf"}, "children"),
++        prevent_initial_call=True,
+     )
+diff --git a/dash_cytoscape/package.json b/dash_cytoscape/package.json
+index c351cdf4..ed49eccc 100644
+--- a/dash_cytoscape/package.json
++++ b/dash_cytoscape/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "dash-cytoscape",
+-  "version": "1.0.1",
++  "version": "1.0.2",
+   "description": "A Component Library for Dash aimed at facilitating network visualization in Python, wrapped around Cytoscape.js",
+   "repository": {
+     "type": "git",
+diff --git a/demos/usage-cy-leaflet-maxzoom.py b/demos/usage-cy-leaflet-maxzoom.py
+new file mode 100644
+index 00000000..2e41b59c
+--- /dev/null
++++ b/demos/usage-cy-leaflet-maxzoom.py
+@@ -0,0 +1,52 @@
++import dash
++from dash import html, dcc, callback, Input, Output
++import dash_cytoscape as cyto
++import dash_leaflet as dl
++
++
++ELEMENTS = [
++    {"data": {"id": "a", "label": "Node A", "lat": 45.519, "lon": -73.576}},
++    {"data": {"id": "b", "label": "Node B", "lat": 45.521, "lon": -73.574}},
++    {"data": {"id": "c", "label": "Node C", "lat": 45.520, "lon": -73.572}},
++    {"data": {"id": "ab", "source": "a", "target": "b"}},
++]
++
++
++cyleaflet_leaflet_id = {
++    "id": "cyleaflet_tiles_from_callback",
++    "component": "cyleaflet",
++    "sub": "leaf",
++}
++
++
++def serve_layout():
++    return html.Div(
++        children=[
++            cyto.CyLeaflet(
++                id="cyleaflet_tiles_from_callback",
++                cytoscape_props={
++                    "elements": ELEMENTS,
++                },
++            ),
++            "Max zoom",
++            dcc.Input(value=18, type="number", id="max-zoom"),
++        ],
++    )
++
++
++app = dash.Dash(__name__)
++server = app.server
++app.layout = serve_layout
++
++
++@callback(Output(cyleaflet_leaflet_id, "children"), Input("max-zoom", "value"))
++def update_max_zoom(max_zoom):
++    return dl.TileLayer(
++        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png",
++        maxZoom=max_zoom,
++        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
++    )
++
++
++if __name__ == "__main__":
++    app.run_server(debug=True)
+diff --git a/demos/usage-cy-leaflet-update-tiles.py b/demos/usage-cy-leaflet-update-tiles.py
+new file mode 100644
+index 00000000..2cf40f0d
+--- /dev/null
++++ b/demos/usage-cy-leaflet-update-tiles.py
+@@ -0,0 +1,69 @@
++import dash
++from dash import html, dcc, callback, Input, Output
++import dash_cytoscape as cyto
++import dash_leaflet as dl
++
++CARTO_TILES = dl.TileLayer(
++    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png",
++    maxZoom=19,
++    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
++)
++
++ELEMENTS = [
++    {"data": {"id": "a", "label": "Node A", "lat": 45.519, "lon": -73.576}},
++    {"data": {"id": "b", "label": "Node B", "lat": 45.521, "lon": -73.574}},
++    {"data": {"id": "c", "label": "Node C", "lat": 45.520, "lon": -73.572}},
++    {"data": {"id": "ab", "source": "a", "target": "b"}},
++]
++
++cyleaflet_leaflet_id = {
++    "id": "cyleaflet_tiles_from_callback",
++    "component": "cyleaflet",
++    "sub": "leaf",
++}
++
++
++def serve_layout():
++    return html.Div(
++        children=[
++            html.Div("Tiles dropdown"),
++            dcc.Dropdown(
++                id="tiles_dropdown",
++                options=[{"label": x, "value": x} for x in ["OSM", "CARTO"]],
++                value="CARTO",
++            ),
++            cyto.CyLeaflet(
++                id="cyleaflet_tiles_from_callback",
++                cytoscape_props={"elements": ELEMENTS},
++                leaflet_props={"zoomSnap": 1},
++            ),
++            html.Div(id="zoom"),
++        ],
++    )
++
++
++app = dash.Dash(__name__)
++server = app.server
++app.layout = serve_layout
++
++
++@callback(
++    Output(cyleaflet_leaflet_id, "children"),
++    Input("tiles_dropdown", "value"),
++)
++def update_tiles(tiles):
++    if tiles == "OSM":
++        return cyto.CyLeaflet.OSM
++    return CARTO_TILES
++
++
++@callback(
++    Output("zoom", "children"),
++    Input(cyleaflet_leaflet_id, "zoom"),
++)
++def update_zoom(zoom):
++    return zoom
++
++
++if __name__ == "__main__":
++    app.run_server(debug=True)
+diff --git a/package.json b/package.json
+index c351cdf4..ed49eccc 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "dash-cytoscape",
+-  "version": "1.0.1",
++  "version": "1.0.2",
+   "description": "A Component Library for Dash aimed at facilitating network visualization in Python, wrapped around Cytoscape.js",
+   "repository": {
+     "type": "git",
+diff --git a/setup.py b/setup.py
+index 6b6fdcc8..9cd88f7c 100644
+--- a/setup.py
++++ b/setup.py
+@@ -25,7 +25,7 @@
+         "dash",
+     ],
+     extras_require={
+-        "leaflet": ["dash-leaflet>=1.0.10"],
++        "leaflet": ["dash-leaflet>=1.0.16rc3"],
+     },
+     python_requires=">=3.8",
+     classifiers=[
+diff --git a/src/DashCytoscape.jl b/src/DashCytoscape.jl
+index fbe32c5e..bbd19ff1 100644
+--- a/src/DashCytoscape.jl
++++ b/src/DashCytoscape.jl
+@@ -3,7 +3,7 @@ module DashCytoscape
+ using Dash
+ 
+ const resources_path = realpath(joinpath( @__DIR__, "..", "deps"))
+-const version = "1.0.1"
++const version = "1.0.2"
+ 
+ include("jl/cyto_cytoscape.jl")
+ 
+@@ -16,7 +16,7 @@ function __init__()
+             [
+                 DashBase.Resource(
+     relative_package_path = "dash_cytoscape.min.js",
+-    external_url = "https://unpkg.com/dash-cytoscape@1.0.1/dash_cytoscape/dash_cytoscape.min.js",
++    external_url = "https://unpkg.com/dash-cytoscape@1.0.2/dash_cytoscape/dash_cytoscape.min.js",
+     dynamic = nothing,
+     async = nothing,
+     type = :js
+diff --git a/tests/requirements.txt b/tests/requirements.txt
+index 64f22386..43ac2a0a 100644
+--- a/tests/requirements.txt
++++ b/tests/requirements.txt
+@@ -14,4 +14,4 @@ biopython>=1.77
+ pytest==7.0.1
+ wrapt==1.14.0
+ black==23.9.1
+-dash-leaflet>=1.0.10
++dash-leaflet>=1.0.16rc3

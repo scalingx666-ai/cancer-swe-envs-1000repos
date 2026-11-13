@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/AlexsLemonade__refinebio-3617"
+description = "deploy: untangle deploy box key"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "refinebio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AlexsLemonade/refinebio"
+ref = "39c2177a3806538cfa4b4928048c20a0375639bb"
+reference = "https://github.com/AlexsLemonade/refinebio/pull/3617"
+source_access = "auto"
+built_at = "2026-11-13T15:35:39.061492+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d8d6e7a5afccdcbf22b172a533ed243f70847948911bb0968877d8fd0e6e0ff0"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-06T15:48:16Z"
+diff_format = "unified"
+context_files = [
+    ".github/scripts/post_deploy_cleanup.sh",
+    ".github/scripts/remote_deploy.sh",
+    ".github/workflows/config.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 17
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

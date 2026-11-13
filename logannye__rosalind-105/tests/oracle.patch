@@ -1,0 +1,2834 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d59d178..48daf28 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -73,6 +73,23 @@ protected publication review, and change-based caller evidence requirements appl
+ - Fresh downstream dependency resolution preserves Rust 1.83 compatibility;
+   generated CI follows the actual candidate version.
+ 
++### Representative validation and CRAM admission
++
++- Retained 108 HG002 baseline runs, independent observation comparisons, whole-run
++  identity/resource audits and actual Linux cgroup failure evidence. Eight CRAM
++  prediction underestimates are preserved in the baseline findings.
++- CRAM resource planning now checks structural/container/index envelopes and
++  validates all records, including off-target reads, before deriving repeated
++  decoder reservations from the verified payload maximum. Validation remains
++  cooperative; native allocation can precede a detected runtime breach.
++- The preview decoder profile explicitly supports CRAM 3.0, single-reference
++  containers/slices and RAW/GZIP/rANS4 blocks. Unsupported envelopes refuse rather
++  than receive an unsubstantiated plan. Caller record/read defaults are unchanged.
++- Whole-file validation adds CRAM setup work even during cache resume; receipts
++  separate it from indexed extraction. Saved-dataset queries avoid original inputs.
++- Simplified README onboarding and added blank researcher/builder validation forms;
++  authored tests are distinguished from public release and non-author adoption.
++
+ ### Analyzer-platform foundation
+ 
+ - Repositioned Rosalind around deterministic per-locus analysis contracts; the
+diff --git a/README.md b/README.md
+index a64b350..2d4aacc 100644
+--- a/README.md
++++ b/README.md
+@@ -63,6 +63,8 @@ summaries, use `rosalind analyze panel-qc` with the same reference, alignment, a
+ BED arguments. Add `--plan` to either analysis command to inspect resource planning.
+ 
+ Inputs need BAM+BAI/CSI or CRAM+CRAI; CRAM requires an explicit local FASTA.
++The current CRAM path supports checked CRAM 3.0 layouts and validates the whole
++file once per run; see [supported layouts and costs](docs/SEMANTICS.md#cram-decoder-admission).
+ References can be indexed FASTA, `.rref`, or compatible legacy `.idx` files.
+ The default evidence profile requires MAPQ 20 and base quality 20, and excludes
+ unmapped, secondary, supplementary, duplicate, and QC-failed reads. It counts
+@@ -94,8 +96,8 @@ supported runs must preserve their evidence across admitted budgets, tile layout
+ and worker counts. Caching is opt-in; reused inputs and partitions are content-verified.
+ 
+ Memory planning and cooperative RSS checks are distinct from an OS-enforced cap.
+-Native decoder allocations remain a limitation; the representative CRAM study
+-identified a planning underestimate under correction. Use the
++Native validation can allocate before a cooperative check. CRAM planning now
++includes a checked container envelope and a complete record-validation pass. Use the
+ [resource findings](docs/benchmarks-and-limitations.md) to assess measured behavior,
+ not a universal hard-memory guarantee.
+ 
+diff --git a/benchmarks/evidence/README.md b/benchmarks/evidence/README.md
+index ddf0837..59fc492 100644
+--- a/benchmarks/evidence/README.md
++++ b/benchmarks/evidence/README.md
+@@ -96,13 +96,21 @@ Three reuse modes are separately measured:
+ 
+ - `cold`: create a new application cache for this workload, case and repetition.
+ - `resumed`: run native extraction again with that cache. Inputs are still hashed;
+-  successful reuse must report zero alignment visits and zero computed partitions.
++  successful reuse must report zero **indexed extraction** visits and zero computed
++  partitions. The CRAM decoder model also performs a whole-file native validation
++  pass before trusting decoded record sizes, including records outside the selected
++  loci. This separate decoding work still occurs on native cache resume.
+ - `persisted`: run serial `dataset extract` using the portable dataset manifest
+   published by the cold run. This reads and verifies stored evidence without
+   reopening or rehashing the original alignment/reference. Its receipt must
+   report zero alignment visits and `original_sources_rehashed=false`.
+ 
+ All three outputs must equal the independent oracle and the fresh native output.
++The harness surfaces `execution.decoder_model`/`execution.decoder_bytes` and all
++`execution.cram.*` measurements. Whole-file validation records, bases, and elapsed
++time are summarized separately from indexed extraction visits. Validation time is
++already included in native setup and whole-process timing; do not add it again.
++Absent counters in an older retained report are unknown, not evidence of zero work.
+ “Cold” refers to Rosalind's application cache. The harness does not flush or make
+ claims about the operating system's filesystem cache. It deterministically
+ alternates independent case groups while keeping cold/resume/persisted order.
+diff --git a/benchmarks/evidence/audit_representative.py b/benchmarks/evidence/audit_representative.py
+index baaaa1b..062fb50 100644
+--- a/benchmarks/evidence/audit_representative.py
++++ b/benchmarks/evidence/audit_representative.py
+@@ -105,6 +105,7 @@ def audit(report_path, manifest_path, binary=None, harness_dir=None):
+                       "After-run hashes detect changed final bytes; they do not prove files never changed and reverted between invocations.",
+                       "Receipt verification is the retained timed native verification, not independently reimplemented here.",
+                       "Microtile counts and record visits corroborate work changes; admitted widths and worker counts do not prove actual worker utilization.",
++                      "Indexed record visits exclude any separate CRAM whole-file validation pass; absent historical validation counters are unknown, not zero.",
+                       "Retained storage sizes are current logical/allocated file bytes, not physical I/O traffic or peak temporary disk use.",
+                       "Prediction underestimates are reported separately; only exceeding an admitted budget is a budget breach."])
+     started = time.perf_counter()
+@@ -233,18 +234,33 @@ def audit(report_path, manifest_path, binary=None, harness_dir=None):
+                     checked["issues"].append("retained verification output changed")
+                 verification[(row["workload"], row["kind"], row.get("case"), row.get("phase"))].append(verified["wall_seconds"])
+                 if row["kind"] == "rosalind":
+-                    execution[row["workload"]].append(dict(label=row["label"], phase=row.get("phase"),
++                    observation = dict(label=row["label"], phase=row.get("phase"),
+                         case=row.get("case"), repeat=row.get("repeat"), loci=count,
+                         admitted_tile_bases=integer(values["execution.microtile_bases"], "tile width"),
+                         admitted_workers=integer(values.get("execution.worker_count", 1), "worker count"),
+                         actual_microtiles=integer(values["execution.microtiles"], "microtiles"),
+-                        alignment_record_visits=integer(values["execution.record_visits"], "record visits")))
++                        indexed_alignment_record_visits=integer(values["execution.record_visits"], "record visits"))
++                    if "execution.decoder_model" in values:
++                        observation["decoder_model"] = values["execution.decoder_model"]
++                    if "execution.decoder_bytes" in values:
++                        observation["decoder_bytes"] = integer(values["execution.decoder_bytes"], "decoder bytes")
++                    cram = {key.removeprefix("execution.cram."): value for key, value in values.items()
++                            if key.startswith("execution.cram.")}
++                    if cram:
++                        observation["cram_decoder_measurements"] = cram
++                    if "validated_records" in cram:
++                        observation["cram_validation_records"] = integer(cram["validated_records"], "validated records")
++                    if "validated_bases" in cram:
++                        observation["cram_validation_bases"] = integer(cram["validated_bases"], "validated bases")
++                    if "validation_wall_micros" in cram:
++                        observation["cram_validation_wall_seconds"] = integer(cram["validation_wall_micros"], "validation time") / 1000000
++                    execution[row["workload"]].append(observation)
+             except (OSError, ValueError, KeyError, TypeError) as error:
+                 checked["issues"].append(str(error))
+             result["issues"].extend(f"{row['label']}: {issue}" for issue in checked["issues"])
+         for workload, observations in sorted(execution.items()):
+             computed = [row for row in observations if row["phase"] != "resumed"]
+-            signatures = {(row["actual_microtiles"], row["alignment_record_visits"]) for row in computed}
++            signatures = {(row["actual_microtiles"], row["indexed_alignment_record_visits"]) for row in computed}
+             result["execution"].append(dict(workload=workload, observations=observations,
+                 distinct_observed_work_signatures=len(signatures), observed_execution_changed=len(signatures) > 1,
+                 denominator_consistent=len({row["loci"] for row in observations}) == 1))
+diff --git a/benchmarks/evidence/cgroup-probe.md b/benchmarks/evidence/cgroup-probe.md
+index 454603e..4c44df9 100644
+--- a/benchmarks/evidence/cgroup-probe.md
++++ b/benchmarks/evidence/cgroup-probe.md
+@@ -43,8 +43,13 @@ the native and container exit statuses, complete Docker inspection including
+ `OOMKilled`, exact commands, stdout/stderr, input/binary/image identities, and
+ every output/partial/receipt file's size and SHA256. Completed artifacts are
+ independently verified using the native CLI and compared by their physical bytes.
+-Capacity failures must have an integrity-checked receipt explicitly identifying
+-the partial. First-party CLI failure receipts retain the requested receipt path;
++The BAM capacity case fails during analysis and must have an integrity-checked
++receipt explicitly identifying the partial. The CRAM envelope checks the same
++read-length limit during preflight, so that case instead requires the specific
++capacity error and no output or partial receipt. The report names these separate
++expected phases. Historical baseline reports retain their executed harness,
++which predates the CRAM preflight and therefore expected a runtime partial.
++First-party CLI failure receipts retain the requested receipt path;
+ their failed status and partial output identity distinguish them from completed
+ artifacts. An exit137 alone is insufficient evidence of kernel OOM.
+ 
+diff --git a/benchmarks/evidence/cgroup_probe.py b/benchmarks/evidence/cgroup_probe.py
+index bdedb66..bada003 100644
+--- a/benchmarks/evidence/cgroup_probe.py
++++ b/benchmarks/evidence/cgroup_probe.py
+@@ -108,6 +108,11 @@ def check_case(case, result):
+             errors.append('partial receipt does not identify a failed run')
+         if not result.get('partial_integrity'):
+             errors.append('partial receipt integrity was not independently verified')
++    elif case['expected'] == 'capacity-preflight':
++        if code != 4 or oom or partial or partial_receipt:
++            errors.append('expected a preflight capacity failure before output creation')
++        if not result.get('capacity_preflight_reported'):
++            errors.append('CRAM preflight did not identify the declared read-length failure')
+     elif case['expected'] == 'oom':
+         if not oom or code in (None, 0):
+             errors.append('kernel OOM was not established by memory.events or Docker OOMKilled')
+@@ -141,6 +146,12 @@ def collect(root, case, inspect, timed_out):
+     manifest = root / 'result.tsv.manifest.json'
+     partial = root / 'result.tsv.partial'
+     partial_manifest = root / 'result.tsv.manifest.json.partial'
++    error_path = root / 'analysis.stderr'
++    if error_path.is_file():
++        with error_path.open('rb') as stream:
++            error_text = stream.read(64 << 10).decode(errors='replace')
++    else:
++        error_text = ''
+     result = {
+         'case': case,
+         'analysis_exit_code': number(root / 'analysis.exit_code'),
+@@ -156,6 +167,9 @@ def collect(root, case, inspect, timed_out):
+         'success_receipt': False,
+         'partial_artifact': partial.is_file(),
+         'partial_receipt': False,
++        'capacity_preflight_reported': (
++            'CRAM container mean read length exceeds declared max_read_len' in error_text
++            or ('whole-file CRAM read length ' in error_text and ' exceeds max_read_len ' in error_text)),
+         'files': {str(p.relative_to(root)): {'bytes': p.stat().st_size, 'sha256': sha256(p)}
+                   for p in sorted(root.rglob('*')) if p.is_file()},
+     }
+@@ -302,7 +316,8 @@ def main(argv=None):
+             {'name': 'preflight-refusal', 'expected': 'refused', 'budget_mib': args.memory_mib,
+              'extra': ['--max-record-bytes', str(args.memory_mib << 21)]},
+             {'name': 'startup-budget-breach', 'expected': 'startup-breach', 'budget_mib': 1},
+-            {'name': 'declared-capacity', 'expected': 'capacity', 'budget_mib': args.memory_mib, 'extra': ['--max-read-len', '1']},
++            {'name': 'declared-capacity', 'expected': 'capacity-preflight' if cram else 'capacity',
++             'budget_mib': args.memory_mib, 'extra': ['--max-read-len', '1']},
+             {'name': 'allocation-oom-control', 'expected': 'oom', 'hard_mib': 32, 'control': True},
+         ]
+         if args.native_oom_mib:
+diff --git a/benchmarks/evidence/representative.py b/benchmarks/evidence/representative.py
+index 2b5f27b..293cbc9 100644
+--- a/benchmarks/evidence/representative.py
++++ b/benchmarks/evidence/representative.py
+@@ -266,7 +266,7 @@ def assess_gates(manifest, measurements):
+             "effective_tiles": len(tiles) >= gates["min_effective_tiles"],
+             "observed_work_changes": gates["min_effective_tiles"] < 2 or len(work) >= 2,
+             "effective_workers": set(gates["workers"]) <= set(workers),
+-            "resume_performs_no_alignment_extraction": all(
++            "resume_performs_no_indexed_extraction": all(
+                 row.get("effective", {}).get("record_visits") == 0
+                 and row.get("effective", {}).get("computed_partitions") == 0
+                 and row.get("effective", {}).get("reused_partitions", 0) > 0
+@@ -288,7 +288,9 @@ def summaries(measurements):
+         summary = dict(zip(("workload", "kind", "case", "phase"), key))
+         summary.update(requested_repeats=len(rows), completed_repeats=sum(row.get("valid", False) for row in rows))
+         for metric in ("wall_seconds", "peak_rss_bytes", "output_bytes", "user_cpu_seconds",
+-                       "system_cpu_seconds", "filesystem_input_operations", "filesystem_output_operations"):
++                       "system_cpu_seconds", "filesystem_input_operations", "filesystem_output_operations",
++                       "indexed_alignment_record_visits", "decoder_bytes", "cram_validation_records",
++                       "cram_validation_bases", "cram_validation_wall_seconds"):
+             values = [row[metric] for row in rows if row.get("valid") and row.get(metric) is not None]
+             if values:
+                 summary[metric] = dict(median=statistics.median(values), minimum=min(values), maximum=max(values))
+@@ -379,6 +381,20 @@ def measure_job(manifest, binary, root, job, workload, cases, row, measure):
+                 claim = read_json(receipt, 32 << 20)
+                 values = claim.get("measurements", {})
+                 row["receipt_measurements"] = values
++                if "execution.decoder_model" in values:
++                    row["decoder_model"] = values["execution.decoder_model"]
++                if "execution.decoder_bytes" in values:
++                    row["decoder_bytes"] = unsigned(values["execution.decoder_bytes"], "decoder bytes")
++                cram = {key.removeprefix("execution.cram."): value for key, value in values.items()
++                        if key.startswith("execution.cram.")}
++                if cram:
++                    row["cram_decoder_measurements"] = cram
++                if "validated_records" in cram:
++                    row["cram_validation_records"] = unsigned(cram["validated_records"], "CRAM validation records")
++                if "validated_bases" in cram:
++                    row["cram_validation_bases"] = unsigned(cram["validated_bases"], "CRAM validation bases")
++                if "validation_wall_micros" in cram:
++                    row["cram_validation_wall_seconds"] = unsigned(cram["validation_wall_micros"], "CRAM validation time") / 1000000
+                 row["producer"] = {key: value for key, value in claim.get("params", {}).items()
+                                    if key.startswith(("producer.", "code_", "deps_", "target_", "rustc_"))}
+                 if job["kind"] == "dataset":
+@@ -394,6 +410,7 @@ def measure_job(manifest, binary, root, job, workload, cases, row, measure):
+                         "computed_partitions": unsigned(values.get("execution.computed_partitions", 0), "computed partitions"),
+                         "reused_partitions": unsigned(values.get("execution.reused_partitions", 0), "reused partitions"),
+                     }
++                row["indexed_alignment_record_visits"] = row["effective"]["record_visits"]
+                 if row["exit_code"] == 0:
+                     validate_resources(row, claim, case)
+             elif row["exit_code"] == 0:
+@@ -448,6 +465,7 @@ def execute(manifest, binary, root, manifest_path, smoke=False, measure=run_meas
+                       "Pysam times cover extraction and TSV encoding; it does not hash sources, seal receipts or verify outputs.",
+                       "Native whole-process times include input hashing, extraction, encoding and artifact publication; verification is measured separately.",
+                       "Native receipt phase timings combine analysis and encoding; no isolated kernel-only claim is made.",
++                      "Zero indexed extraction on resume does not imply zero alignment decoding: CRAM whole-file validation is reported separately when available.",
+                       "Setup timings include hashing; they are not disjoint phases. Startup/final harness hashes are outside invocation timing.",
+                       "Oracle arrays are bounded by tile width; native decoder/header/aux allocations are observed, with post-decode checks.",
+                       "OS filesystem operation counters are retained as operations, not converted to physical byte traffic.",
+diff --git a/benchmarks/evidence/test_audit_representative.py b/benchmarks/evidence/test_audit_representative.py
+index a1dc07c..1920320 100644
+--- a/benchmarks/evidence/test_audit_representative.py
++++ b/benchmarks/evidence/test_audit_representative.py
+@@ -66,10 +66,26 @@ def test_identity_resource_work_and_storage_audit(self):
+         result = self.audit()
+         self.assertEqual(result["status"], "passed", result["issues"])
+         self.assertEqual(len(result["identities"]), 4)
+-        self.assertEqual(result["execution"][0]["observations"][0]["alignment_record_visits"], 3)
++        observation = result["execution"][0]["observations"][0]
++        self.assertEqual(observation["indexed_alignment_record_visits"], 3)
++        self.assertNotIn("cram_validation_records", observation)
+         self.assertEqual(result["retained_storage"][0]["logical_bytes"], 5)
+         self.assertEqual(result["verification_summaries"][0]["wall_seconds"]["median"], 0.2)
+ 
++    def test_cram_validation_work_is_distinct_from_resumed_indexed_work(self):
++        self.row["phase"] = "resumed"
++        self.values.update({"execution.record_visits": "0", "execution.microtiles": "0",
++                            "execution.cram.validated_records": "500", "execution.cram.validated_bases": "75000",
++                            "execution.cram.validation_wall_micros": "1250000", "execution.decoder_model": "cram-container-envelope-v1"})
++        self.write_receipt()
++        result = self.audit()
++        self.assertEqual(result["status"], "passed", result["issues"])
++        observed = result["execution"][0]["observations"][0]
++        self.assertEqual(observed["indexed_alignment_record_visits"], 0)
++        self.assertEqual(observed["cram_validation_records"], 500)
++        self.assertEqual(observed["cram_validation_bases"], 75000)
++        self.assertEqual(observed["cram_validation_wall_seconds"], 1.25)
++
+     def test_changed_startup_files_fail_individually(self):
+         for path in (self.source, self.binary, self.driver, self.manifest):
+             with self.subTest(path=path.name):
+diff --git a/benchmarks/evidence/test_cgroup_probe.py b/benchmarks/evidence/test_cgroup_probe.py
+index fbe222d..6bdf4a3 100644
+--- a/benchmarks/evidence/test_cgroup_probe.py
++++ b/benchmarks/evidence/test_cgroup_probe.py
+@@ -59,6 +59,29 @@ def test_refusal_is_distinct_from_runtime_breach_and_oom(self):
+         result['analysis_exit_code'] = 4
+         self.assertTrue(self.check('refused', result))
+ 
++    def test_cram_capacity_preflight_requires_specific_error_and_no_output(self):
++        result = self.result(analysis_exit_code=4, success_artifact=False,
++                             success_receipt=False, capacity_preflight_reported=True)
++        self.assertEqual(self.check('capacity-preflight', result), [])
++        for change in [dict(capacity_preflight_reported=False), dict(partial_artifact=True),
++                       dict(partial_receipt=True), dict(analysis_exit_code=3),
++                       dict(docker_oom_killed=True)]:
++            self.assertTrue(self.check('capacity-preflight', dict(result, **change)))
++
++    def test_cram_capacity_preflight_error_is_retained_and_classified(self):
++        with tempfile.TemporaryDirectory() as temporary:
++            root = Path(temporary)
++            for name, value in [('analysis.exit_code', '4'), ('memory.max.before', str(128 << 20)),
++                                ('memory.swap.max.before', '0'), ('memory.events.before', 'oom_kill 0'),
++                                ('memory.events.after', 'oom_kill 0'),
++                                ('analysis.stderr', 'error: CRAM container mean read length exceeds declared max_read_len')]:
++                (root / name).write_text(value)
++            case = {'expected': 'capacity-preflight', 'hard_limit_bytes': 128 << 20}
++            result = probe.collect(root, case, {'State': {'ExitCode': 4, 'OOMKilled': False}}, False)
++            self.assertTrue(result['passed'], result['errors'])
++            self.assertTrue(result['capacity_preflight_reported'])
++            self.assertIn('analysis.stderr', result['files'])
++
+     def test_missing_events_are_unknown_and_metadata_reads_are_capped(self):
+         with tempfile.TemporaryDirectory() as root:
+             path = Path(root) / 'metadata'
+diff --git a/benchmarks/evidence/test_representative.py b/benchmarks/evidence/test_representative.py
+index 6e6cccf..ae2b41e 100644
+--- a/benchmarks/evidence/test_representative.py
++++ b/benchmarks/evidence/test_representative.py
+@@ -237,6 +237,10 @@ def measure(root, label, argv, stdout):
+                     "execution.evidence_dataset_manifest": str(root / "portable.manifest.json")}
+                 if mode == "wrong-rows":
+                     values["execution.emitted_loci"] = "74"
++                if mode == "cram-validation":
++                    values.update({"execution.decoder_model": "cram-container-envelope-v1", "execution.decoder_bytes": "80",
++                        "execution.cram.validated_records": "500", "execution.cram.validated_bases": "75000",
++                        "execution.cram.validation_wall_micros": "1250000"})
+                 params = dict(memory_budget_mb=str(budget + (1 if mode == "wrong-budget" else 0)), run_status="completed")
+                 receipt.write_text("broken JSON" if mode == "native-metadata" else json.dumps(dict(params=params, measurements=values)))
+                 if mode == "rss-breach":
+@@ -283,6 +287,21 @@ def test_midrun_mutation_aborts_and_records_remaining_inventory(self):
+         self.assertTrue(all(row["status"] == "not-run" for row in report["measurements"][1:]))
+         self.assertTrue(any(not row["valid"] for row in report["final_input_checks"]))
+ 
++    def test_resume_gate_does_not_hide_separate_cram_validation(self):
++        report = harness.execute(self.manifest, Path(sys.executable), self.fixture.root / "cram-validation", self.path,
++                                 measure=self.fake_measure("cram-validation"))
++        self.assertEqual(report["status"], "passed", report.get("error"))
++        resumed = [row for row in report["measurements"] if row.get("phase") == "resumed"]
++        self.assertTrue(resumed)
++        for row in resumed:
++            self.assertEqual(row["indexed_alignment_record_visits"], 0)
++            self.assertEqual(row["cram_validation_records"], 500)
++            self.assertEqual(row["cram_validation_bases"], 75000)
++            self.assertEqual(row["cram_validation_wall_seconds"], 1.25)
++        for gate in report["gates"].values():
++            self.assertTrue(gate["checks"]["resume_performs_no_indexed_extraction"])
++            self.assertNotIn("resume_performs_no_alignment_extraction", gate["checks"])
++
+     def test_final_checks_rehash_even_when_snapshot_check_is_not_used(self):
+         identities, _ = harness.verify_inputs(self.manifest)
+         report = dict(inputs=identities)
+diff --git a/docs/SEMANTICS.md b/docs/SEMANTICS.md
+index 827f447..9396398 100644
+--- a/docs/SEMANTICS.md
++++ b/docs/SEMANTICS.md
+@@ -155,6 +155,45 @@ capacities. New runs record `pileup.semantics=exact-or-fail-v1` and fail at capa
+ instead of silently choosing a subset. Old receipts still verify at their original
+ schema capability; replay of old behavior requires the matching producer.
+ 
++### CRAM decoder admission
++
++The `cram-container-envelope-v1` execution profile supports CRAM **3.0**,
++single-reference containers/slices, RAW or GZIP metadata, and RAW/GZIP/rANS4
++(order 0/1) data blocks. Multi-reference layouts, other format versions/codecs,
++and unsupported encoding metadata produce an explicit unsupported-request error.
++Use BAM when a CRAM layout is outside this preview profile. The local decoder
++FASTA must have an adjacent FAI and a matching dictionary; CRAI is required.
++
++Before opening a native decoder, a bounded pass checks container/block metadata,
++CRC and declared expansion sizes, supported encoding structures, reference spans,
++and index syntax/storage. Every CRAI entry must match the scanned slice inventory;
++missing, extra, or stale entries fail before indexed extraction. Explicit limits include
++8 MiB metadata, 64 MiB per block,
++256 MiB per container, one million records and 4,096 blocks per container. These
++are admission limits, not scientific filters. Refusing an unsupported envelope
++does not mean that a file is invalid in the broader CRAM specification.
++
++Next, a **complete sequential validation pass** checks every decoded record against
++the unchanged caller-supplied payload/read-length limits, including off-target
++records. It checks the process budget after native reads. Native code may allocate
++before that check; a detected breach is a runtime resource failure, not proof of
++prospective allocation control. The final indexed-decoder plan uses the verified
++whole-file maximum payload plus container, codec, reference, index and allocation
++coexistence reserves. The validation peak is included in the process baseline.
++Workers share the completed validation and input guards rather than each decoding
++the whole file again. Inputs must remain immutable throughout. `--plan` also runs
++the validation pass; a separate later CLI run validates again. Retain an open
++native session when an application needs to plan and execute without repeating setup.
++
++Plan output and receipts record `execution.decoder_model`, `execution.decoder_bytes`
++and `execution.cram.*` metadata and validation measurements. Validation records,
++elapsed time and maxima are execution diagnostics; they never enter per-locus
++biological counts or scientific identity. The whole-file pass adds setup cost even
++for sparse selections and cache resume. Zero indexed `execution.record_visits`
++does **not** mean zero CRAM validation decoding. Saved-dataset queries avoid opening
++the original CRAM altogether. Historical artifacts still verify; replay with
++earlier execution behavior requires their matching producer.
++
+ ## Identity, replay, and reuse
+ 
+ Scientific identity includes content, normalized selection, profile, fields, and
+diff --git a/docs/analyzer-sdk.md b/docs/analyzer-sdk.md
+index 6860679..40c022b 100644
+--- a/docs/analyzer-sdk.md
++++ b/docs/analyzer-sdk.md
+@@ -30,6 +30,9 @@ requirements, admits the complete working set, checks cancellation and immutable
+ inputs, finalizes the analyzer, and publishes the output and receipt together.
+ 
+ `EvidenceArtifactSource::Native` reads indexed BAM/CRAM plus a local reference.
++CRAM uses the [checked decoder profile](SEMANTICS.md#cram-decoder-admission),
++including one complete cooperative validation pass before indexed extraction.
++Its cost and decoder envelope are recorded separately from queried record visits.
+ `EvidenceArtifactSource::Dataset` reads a verified portable dataset without reopening
+ its original BAM/reference. Both feed canonical batches to the same analyzer. Dataset
+ queries require complete locus coverage and available fields; stored profile/sample
+diff --git a/docs/reusable-evidence.md b/docs/reusable-evidence.md
+index fd713e6..d82e85a 100644
+--- a/docs/reusable-evidence.md
++++ b/docs/reusable-evidence.md
+@@ -84,8 +84,12 @@ This rehashes the current alignment, index, and reference inputs once, verifies
+ exact compatibility with the persisted source, and computes only missing loci.
+ The receipt separates `execution.reused_loci` and `execution.computed_loci` from
+ biological evidence counters. Successful output bytes equal fresh extraction with
+-the same scientific settings. A fully covered request performs no alignment-record
+-decoding, although input verification and preflight still run.
++the same scientific settings. A fully covered request performs no indexed evidence
++extraction. Input verification and preflight still run; for CRAM, the
++[complete record-validation pass](SEMANTICS.md#cram-decoder-admission) decodes the
++file even on cache resume or full reuse. Its counters are separate from indexed
++record visits. Use `dataset extract` or `dataset panel-qc` to query saved evidence
++without opening the original alignments.
+ 
+ The first reuse implementation keeps one projected canonical partition plus a
+ source decoder and native extraction state. It supports one worker and refuses
+diff --git a/python/README.md b/python/README.md
+index 6529679..cb912ea 100644
+--- a/python/README.md
++++ b/python/README.md
+@@ -60,6 +60,10 @@ excludes unavailable qualities, and never downsamples. See
+ [SEMANTICS.md](../docs/SEMANTICS.md). Errors expose native exit codes through
+ `EvidenceProcessError`. Cache/resume and workers are explicit execution options;
+ all genomic processing stays local.
++CRAM follows the native [supported decoder profile](../docs/SEMANTICS.md#cram-decoder-admission)
++and performs one complete file-validation pass before yielding evidence, including
++on native cache resume. This work is included in run setup and recorded separately
++from indexed record visits. `open_dataset()` avoids the original alignment inputs.
+ 
+ Maintainers run `scripts/smoke-wheel.sh path/to/candidate.whl --candidate-source
+ /absolute/path/to/rosalind` to install into a fresh environment, check exact
+diff --git a/src/evidence/artifact.rs b/src/evidence/artifact.rs
+index d43fd14..66f82bb 100644
+--- a/src/evidence/artifact.rs
++++ b/src/evidence/artifact.rs
+@@ -1268,6 +1268,11 @@ fn publish(
+             .measurements
+             .insert("resource.os_limit_bytes".into(), limit.to_string());
+     }
++    if let Opened::Native { engine, .. } = opened {
++        receipt
++            .measurements
++            .extend(engine.plan().decoder_measurements());
++    }
+     receipt.measurements.extend([
+         ("predicted_peak_rss_bytes".into(), predicted.to_string()),
+         ("peak_rss_bytes".into(), rss().to_string()),
+@@ -1280,6 +1285,14 @@ fn publish(
+             stats.record_visits.to_string(),
+         ),
+         ("execution.microtiles".into(), stats.microtiles.to_string()),
++        (
++            "execution.max_returned_record_bytes".into(),
++            stats.max_record_bytes.to_string(),
++        ),
++        (
++            "execution.max_returned_read_length".into(),
++            stats.max_read_length.to_string(),
++        ),
+     ]);
+     let declared = receipt
+         .params
+diff --git a/src/evidence/cram.rs b/src/evidence/cram.rs
+new file mode 100644
+index 0000000..77cf077
+--- /dev/null
++++ b/src/evidence/cram.rs
+@@ -0,0 +1,1476 @@
++//! Checked CRAM 3.0 allocation envelope, before htslib opens a decoder.
++//!
++//! The native record cap remains cooperative: malformed/oversize decoded records
++//! can fail after native allocation. For successful records inside that cap, the
++//! plan charges complete container storage, not just the requested genomic tile.
++use super::{EvidenceError, EvidenceExecution, EvidenceRequest};
++use crate::dataset::InputSnapshot;
++use flate2::{read::MultiGzDecoder, Crc};
++use rust_htslib::bam::{self, Read as BamRead};
++use std::collections::BTreeMap;
++use std::fs::File;
++use std::io::{BufRead, BufReader, Cursor, Read};
++use std::path::{Path, PathBuf};
++
++const METADATA_CAP: u64 = 8 << 20;
++const BLOCK_CAP: u64 = 64 << 20;
++const CONTAINER_CAP: u64 = 256 << 20;
++const RECORDS_CAP: u64 = 1_000_000;
++const BLOCKS_CAP: u64 = 4096;
++const SCAN_SCRATCH: u64 = 256 << 10;
++const FAI_LINE_CAP: u64 = 8192;
++
++/// Observed maxima from checked CRAM container metadata, before native decode.
++#[derive(Debug, Clone, Default)]
++pub struct CramEnvelope {
++    /// Versioned supported-codec and allocation-estimator contract.
++    pub model: &'static str,
++    /// Number of data containers in the inspected file.
++    pub containers: u64,
++    /// Largest complete container's record count.
++    pub max_container_records: u64,
++    /// Largest complete container's decoded sequence-base count.
++    pub max_container_bases: u64,
++    /// Largest number of complete slices in one container.
++    pub max_container_slices: u64,
++    /// Largest block inventory in one container, including headers.
++    pub max_container_blocks: u64,
++    /// Largest sum of compressed block bytes within one container.
++    pub max_compressed_bytes: u64,
++    /// Largest sum of declared and independently checked uncompressed block sizes.
++    pub max_uncompressed_bytes: u64,
++    /// Largest compression-header metadata size.
++    pub max_compression_header_bytes: u64,
++    /// Largest SAM header block, including its length prefix.
++    pub header_bytes: u64,
++    /// Decoder reference coexistence allowance, including FASTA line endings.
++    pub reference_bytes: u64,
++    /// Compressed/text CRAI storage, parsed nodes and temporary expansion.
++    pub index_bytes: u64,
++    /// Records checked by the complete sequential validation pass.
++    pub validated_records: u64,
++    /// Largest payload among all records, including off-target records.
++    pub validated_max_record_bytes: u64,
++    /// Largest read among all records, including off-target records.
++    pub validated_max_read_length: u64,
++    /// Wall time of whole-file native validation in microseconds.
++    pub validation_wall_micros: u64,
++    /// Process high-water RSS after whole-file validation.
++    pub validation_peak_rss_bytes: u64,
++    /// Total records declared by checked container metadata.
++    pub declared_records: u64,
++    /// Total sequence bases from the complete validation pass.
++    pub validated_bases: u64,
++    /// Total sequence bases declared by checked containers.
++    pub declared_bases: u64,
++}
++
++impl CramEnvelope {
++    /// Additional per-decoder reservation beyond ordinary record/allocator slack.
++    pub fn additional_bytes(&self, _execution: &EvidenceExecution) -> Result<u64, EvidenceError> {
++        // A complete native validation pass has checked every record, including
++        // records outside future indexed queries. Its maximum is source-bound.
++        // htslib retains whole-slice crecs plus generated names/aux/CIGAR/seq/qual.
++        // CIGAR capacity doubles; other blocks grow by 25%+800. Three times the
++        // complete successful BAM payload envelope covers old/new reallocations.
++        // Sequence is expanded (not BAM's packed representation), so charge four
++        // bytes per declared base separately. crecs are <256 bytes on the pinned
++        // supported 64-bit ABI; two arrays cover container transition lifetime.
++        // Compression codecs are <1KiB state per encoded metadata byte/symbol;
++        // this also covers nested byte-array/Huffman tables in CRAM3.0 headers.
++        self.structural_bytes()?
++            .checked_add(
++                self.max_container_records
++                    .checked_mul(self.validated_max_record_bytes)
++                    .and_then(|n| n.checked_mul(3))
++                    .ok_or(EvidenceError::CounterOverflow)?,
++            )
++            .ok_or(EvidenceError::CounterOverflow)
++    }
++
++    fn structural_bytes(&self) -> Result<u64, EvidenceError> {
++        // Cross-container totals do not prove each container's declared bases.
++        // Once validated, every container is also bounded by N * global max RL.
++        let base_bound = self
++            .max_container_records
++            .checked_mul(self.validated_max_read_length)
++            .ok_or(EvidenceError::CounterOverflow)?
++            .max(self.max_container_bases);
++        let parts = [
++            self.max_container_records.checked_mul(512),
++            base_bound.checked_mul(4),
++            self.max_container_slices.checked_mul(16 << 10),
++            self.max_container_blocks.checked_mul(512),
++            self.max_compressed_bytes.checked_mul(2),
++            self.max_uncompressed_bytes.checked_mul(2),
++            self.max_compression_header_bytes.checked_mul(1024),
++            self.header_bytes.checked_mul(16),
++            Some(self.reference_bytes),
++            Some(self.index_bytes),
++            Some(SCAN_SCRATCH),
++        ];
++        parts.into_iter().try_fold(0u64, |total, value| {
++            total
++                .checked_add(value.ok_or(EvidenceError::CounterOverflow)?)
++                .ok_or(EvidenceError::CounterOverflow)
++        })
++    }
++}
++
++#[derive(Debug)]
++pub(crate) struct CramPreflight {
++    pub envelope: CramEnvelope,
++    snapshot: InputSnapshot,
++    pub index: PathBuf,
++}
++impl CramPreflight {
++    pub fn verify(&self) -> Result<(), EvidenceError> {
++        self.snapshot.verify()
++    }
++
++    pub fn inspect(request: &EvidenceRequest) -> Result<Self, EvidenceError> {
++        let fasta = request
++            .cram_reference
++            .as_ref()
++            .or(request.reference.as_ref())
++            .ok_or_else(|| unsupported("an explicit local FASTA and adjacent FAI are required"))?;
++        let adjacent = PathBuf::from(format!("{}.fai", fasta.display()));
++        if let Some(explicit) = request
++            .cram_reference_fai
++            .as_ref()
++            .or(request.reference_fai.as_ref())
++        {
++            if std::fs::canonicalize(explicit)? != std::fs::canonicalize(&adjacent)? {
++                return Err(unsupported(
++                    "decoder FAI must be adjacent to the verified FASTA",
++                ));
++            }
++        }
++        let mut paths = vec![request.alignments.clone(), fasta.clone(), adjacent.clone()];
++        let index = if let Some(index) = &request.alignment_index {
++            index.clone()
++        } else {
++            [
++                PathBuf::from(format!("{}.crai", request.alignments.display())),
++                request.alignments.with_extension("crai"),
++            ]
++            .into_iter()
++            .find(|path| path.is_file())
++            .ok_or_else(|| invalid("local CRAI index is required"))?
++        };
++        paths.push(index.clone());
++        let snapshot = InputSnapshot::capture(paths)?;
++        admit(request.execution.memory_budget_bytes, SCAN_SCRATCH)?;
++        let fasta_length = std::fs::metadata(fasta)?.len();
++        let layouts = read_fai(
++            &adjacent,
++            fasta_length,
++            request.execution.memory_budget_bytes,
++        )?;
++        let index_bytes = read_crai(
++            &index,
++            layouts.len(),
++            std::fs::metadata(&request.alignments)?.len(),
++            request.execution.memory_budget_bytes,
++        )?;
++        let mut envelope = scan(
++            &request.alignments,
++            &layouts,
++            &request.execution,
++            Some(&index),
++        )?;
++        envelope.index_bytes = index_bytes;
++        snapshot.verify()?;
++        // This phase has checked structural bounds but has not yet proven a
++        // per-record payload bound. Its full-file native decoding is cooperative:
++        // htslib can allocate before the next record checkpoint. Never describe
++        // it as a hard prospective allocation guarantee.
++        admit(
++            request.execution.memory_budget_bytes,
++            envelope
++                .structural_bytes()?
++                .checked_add(
++                    (request.execution.max_record_bytes as u64)
++                        .checked_mul(3)
++                        .ok_or(EvidenceError::CounterOverflow)?,
++                )
++                .ok_or(EvidenceError::CounterOverflow)?
++                .checked_add(8 << 20)
++                .ok_or(EvidenceError::CounterOverflow)?,
++        )?;
++        validate_records(request, fasta, &mut envelope)?;
++        snapshot.verify()?;
++        let validated = Self {
++            envelope,
++            snapshot,
++            index,
++        };
++        validated.admit_decoder(&request.execution)?;
++        Ok(validated)
++    }
++
++    pub fn admit_decoder(&self, execution: &EvidenceExecution) -> Result<(), EvidenceError> {
++        if self.envelope.validated_max_record_bytes > execution.max_record_bytes as u64
++            || self.envelope.validated_max_read_length > execution.max_read_len as u64
++        {
++            return Err(EvidenceError::RecordLimit(
++                "worker limits exclude records in the validated whole-file CRAM session".into(),
++            ));
++        }
++        admit(
++            execution.memory_budget_bytes,
++            self.envelope
++                .additional_bytes(execution)?
++                .checked_add(
++                    (execution.max_record_bytes as u64)
++                        .checked_mul(3)
++                        .ok_or(EvidenceError::CounterOverflow)?,
++                )
++                .ok_or(EvidenceError::CounterOverflow)?
++                .checked_add(8 << 20)
++                .ok_or(EvidenceError::CounterOverflow)?,
++        )
++    }
++}
++
++fn validate_records(
++    request: &EvidenceRequest,
++    fasta: &Path,
++    envelope: &mut CramEnvelope,
++) -> Result<(), EvidenceError> {
++    let started = std::time::Instant::now();
++    let mut reader = bam::Reader::from_path(&request.alignments)
++        .map_err(|error| invalid(&format!("open whole-file validation reader: {error}")))?;
++    reader
++        .set_reference(fasta)
++        .map_err(|error| invalid(&format!("set explicit validation reference: {error}")))?;
++    check_peak(request.execution.memory_budget_bytes)?;
++    let mut record = bam::Record::new();
++    while let Some(result) = reader.read(&mut record) {
++        result.map_err(|error| invalid(&format!("whole-file validation decode: {error}")))?;
++        crate::core::governor::checkpoint()?;
++        let bytes = record.inner().l_data;
++        if bytes < 0 || bytes as usize > request.execution.max_record_bytes {
++            return Err(EvidenceError::RecordLimit(format!("whole-file CRAM record payload {bytes} exceeds max_record_bytes {} (including off-target records)", request.execution.max_record_bytes)));
++        }
++        let length = record.seq_len();
++        if length > request.execution.max_read_len {
++            return Err(EvidenceError::RecordLimit(format!("whole-file CRAM read length {length} exceeds max_read_len {} (including off-target records)", request.execution.max_read_len)));
++        }
++        envelope.validated_records = envelope
++            .validated_records
++            .checked_add(1)
++            .ok_or(EvidenceError::CounterOverflow)?;
++        envelope.validated_max_record_bytes = envelope.validated_max_record_bytes.max(bytes as u64);
++        envelope.validated_max_read_length = envelope.validated_max_read_length.max(length as u64);
++        envelope.validated_bases = envelope
++            .validated_bases
++            .checked_add(length as u64)
++            .ok_or(EvidenceError::CounterOverflow)?;
++        check_peak(request.execution.memory_budget_bytes)?;
++    }
++    if envelope.validated_records != envelope.declared_records {
++        return Err(invalid(
++            "whole-file decoded record count differs from containers",
++        ));
++    }
++    if envelope.validated_bases != envelope.declared_bases {
++        return Err(invalid(
++            "whole-file decoded base count differs from containers",
++        ));
++    }
++    drop(reader);
++    check_peak(request.execution.memory_budget_bytes)?;
++    envelope.validation_wall_micros = started.elapsed().as_micros().try_into().unwrap_or(u64::MAX);
++    envelope.validation_peak_rss_bytes = crate::util::rss::peak_rss_bytes();
++    Ok(())
++}
++fn check_peak(budget: Option<u64>) -> Result<(), EvidenceError> {
++    crate::core::governor::checkpoint()?;
++    if let Some(budget) = budget {
++        let needed = crate::util::rss::peak_rss_bytes();
++        if needed > budget {
++            return Err(crate::core::CoreError::BudgetExceeded { needed, budget }.into());
++        }
++    }
++    Ok(())
++}
++
++#[derive(Debug)]
++struct FaiLayout {
++    length: u64,
++    line_bases: u64,
++    line_bytes: u64,
++}
++impl FaiLayout {
++    fn bytes(&self, span: u64) -> Result<u64, EvidenceError> {
++        // A requested portion can start/end on arbitrary line boundaries.
++        span.checked_add(
++            (span / self.line_bases + 2)
++                .checked_mul(self.line_bytes - self.line_bases)
++                .ok_or(EvidenceError::CounterOverflow)?,
++        )
++        .ok_or(EvidenceError::CounterOverflow)
++    }
++}
++fn read_fai(
++    path: &Path,
++    fasta_length: u64,
++    budget: Option<u64>,
++) -> Result<BTreeMap<String, FaiLayout>, EvidenceError> {
++    let mut reader = BufReader::new(File::open(path)?);
++    let mut result = BTreeMap::new();
++    let mut total = 0u64;
++    loop {
++        // Admit both the next bounded line and conservative retained map/string
++        // overhead before allocating. Even malformed tab-heavy input stays small.
++        admit(
++            budget,
++            total
++                .checked_mul(16)
++                .and_then(|n| n.checked_add(SCAN_SCRATCH + FAI_LINE_CAP * 2))
++                .ok_or(EvidenceError::CounterOverflow)?,
++        )?;
++        let mut line = String::new();
++        let count = reader
++            .by_ref()
++            .take(FAI_LINE_CAP + 1)
++            .read_line(&mut line)?;
++        if count == 0 {
++            break;
++        }
++        if count as u64 > FAI_LINE_CAP {
++            return Err(unsupported("FAI line exceeds 8192 bytes"));
++        }
++        total += count as u64;
++        if total > METADATA_CAP {
++            return Err(unsupported("FAI metadata exceeds 8MiB"));
++        }
++        let fields: Vec<_> = line
++            .trim_end_matches(['\r', '\n'])
++            .splitn(6, '\t')
++            .collect();
++        if fields.len() != 5 {
++            return Err(invalid("invalid FASTA index"));
++        }
++        let number = |i: usize| {
++            fields[i]
++                .parse::<u64>()
++                .map_err(|_| invalid("invalid FASTA index integer"))
++        };
++        let length = number(1)?;
++        let offset = number(2)?;
++        let layout = FaiLayout {
++            length,
++            line_bases: number(3)?,
++            line_bytes: number(4)?,
++        };
++        let last_base = length.checked_sub(1).and_then(|last| {
++            last.checked_div(layout.line_bases)
++                .and_then(|line| line.checked_mul(layout.line_bytes))
++                .and_then(|base| base.checked_add(last.checked_rem(layout.line_bases)?))
++                .and_then(|base| base.checked_add(1))
++        });
++        if fields[0].is_empty()
++            || length == 0
++            || layout.line_bases == 0
++            || layout.line_bytes < layout.line_bases
++            || offset >= fasta_length
++            || last_base.is_none_or(|extent| extent > fasta_length - offset)
++            || result.insert(fields[0].to_owned(), layout).is_some()
++        {
++            return Err(invalid("invalid or duplicate FASTA index entry"));
++        }
++    }
++    if result.is_empty() {
++        return Err(invalid("empty FASTA index"));
++    }
++    Ok(result)
++}
++
++fn read_crai(
++    path: &Path,
++    contigs: usize,
++    alignment_bytes: u64,
++    budget: Option<u64>,
++) -> Result<u64, EvidenceError> {
++    let file = File::open(path)?;
++    let compressed = file.metadata()?.len();
++    if compressed > BLOCK_CAP {
++        return Err(unsupported("CRAI file exceeds 64MiB"));
++    }
++    let mut file = BufReader::new(file);
++    let gzip = file.fill_buf()?.starts_with(&[31, 139]);
++    let input: Box<dyn Read> = if gzip {
++        Box::new(MultiGzDecoder::new(file))
++    } else {
++        Box::new(file)
++    };
++    let mut input = BufReader::new(input);
++    let mut decoded = 0u64;
++    let mut entries = 0u64;
++    let mut containment = Vec::<(i64, i64, i64)>::with_capacity(65);
++    loop {
++        let reservation = compressed
++            .checked_mul(2)
++            .and_then(|n| n.checked_add(decoded.checked_mul(4)?))
++            .and_then(|n| n.checked_add(entries.checked_mul(4096)?))
++            .and_then(|n| n.checked_add((contigs as u64).checked_mul(256)?))
++            .and_then(|n| n.checked_add(SCAN_SCRATCH))
++            .ok_or(EvidenceError::CounterOverflow)?;
++        admit(budget, reservation)?;
++        let mut line = String::new();
++        let count = input.by_ref().take(257).read_line(&mut line)?;
++        if count == 0 {
++            return Ok(reservation);
++        }
++        decoded += count as u64;
++        entries += 1;
++        if count > 256 || decoded > BLOCK_CAP || entries > RECORDS_CAP {
++            return Err(unsupported(
++                "CRAI text exceeds bounded line/byte/entry envelope",
++            ));
++        }
++        let mut values = [0i64; 6];
++        let mut fields = line.trim_end_matches(['\r', '\n']).splitn(7, '\t');
++        for value in &mut values {
++            *value = fields
++                .next()
++                .ok_or_else(|| invalid("truncated CRAI entry"))?
++                .parse()
++                .map_err(|_| invalid("invalid CRAI integer"))?;
++        }
++        if fields.next().is_some()
++            || values[0] < -1
++            || values[0] >= contigs as i64
++            || values[1] < 0
++            || values[1] > i32::MAX as i64
++            || values[2] < 0
++            || values[2] > i32::MAX as i64 - values[1]
++            || values[3] < 0
++            || values[3] as u64 >= alignment_bytes
++            || values[4] < 0
++            || values[4] as u64 > CONTAINER_CAP
++            || values[5] <= 0
++            || values[5] as u64 > CONTAINER_CAP
++        {
++            return Err(invalid("CRAI entry exceeds dictionary/file envelope"));
++        }
++        let end = values[1] + values[2] - 1;
++        while containment.last().is_some_and(|&(id, start, last)| {
++            id != values[0] || values[1] < start || end > last || (start == 0 && id == -1)
++        }) {
++            containment.pop();
++        }
++        if containment.len() >= 64 {
++            return Err(unsupported("CRAI containment depth exceeds 64"));
++        }
++        containment.push((values[0], values[1], end));
++    }
++}
++
++fn open_crai(path: &Path) -> Result<BufReader<Box<dyn Read>>, EvidenceError> {
++    let mut file = BufReader::new(File::open(path)?);
++    let input: Box<dyn Read> = if file.fill_buf()?.starts_with(&[31, 139]) {
++        Box::new(MultiGzDecoder::new(file))
++    } else {
++        Box::new(file)
++    };
++    Ok(BufReader::new(input))
++}
++fn next_crai(reader: &mut BufReader<Box<dyn Read>>) -> Result<Option<[i64; 6]>, EvidenceError> {
++    crate::core::governor::checkpoint()?;
++    let mut line = String::new();
++    let n = reader.by_ref().take(257).read_line(&mut line)?;
++    if n == 0 {
++        return Ok(None);
++    }
++    if n > 256 {
++        return Err(invalid("CRAI changed or contains oversized line"));
++    }
++    let mut fields = line.trim_end_matches(['\r', '\n']).splitn(7, '\t');
++    let mut values = [0; 6];
++    for value in &mut values {
++        *value = fields
++            .next()
++            .ok_or_else(|| invalid("truncated CRAI"))?
++            .parse()
++            .map_err(|_| invalid("invalid CRAI integer"))?;
++    }
++    if fields.next().is_some() {
++        return Err(invalid("extra CRAI fields"));
++    }
++    Ok(Some(values))
++}
++
++struct Checked<R> {
++    inner: R,
++    crc: Crc,
++    offset: u64,
++}
++impl<R: Read> Read for Checked<R> {
++    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
++        let count = self.inner.read(bytes)?;
++        self.crc.update(&bytes[..count]);
++        self.offset += count as u64;
++        Ok(count)
++    }
++}
++impl<R: Read> Checked<R> {
++    fn byte(&mut self) -> Result<u8, EvidenceError> {
++        let mut b = [0];
++        self.read_exact(&mut b)?;
++        Ok(b[0])
++    }
++    fn itf8(&mut self) -> Result<i32, EvidenceError> {
++        let b = self.byte()?;
++        let n = if b < 128 {
++            0
++        } else if b < 192 {
++            1
++        } else if b < 224 {
++            2
++        } else if b < 240 {
++            3
++        } else {
++            4
++        };
++        let mut value = u32::from(if n == 4 {
++            b & 15
++        } else {
++            b & ((1 << (7 - n)) - 1)
++        });
++        for i in 0..n {
++            let next = self.byte()?;
++            value = if n == 4 && i == 3 {
++                (value << 4) | u32::from(next & 15)
++            } else {
++                (value << 8) | u32::from(next)
++            };
++        }
++        Ok(value as i32)
++    }
++    fn ltf8(&mut self) -> Result<u64, EvidenceError> {
++        let b = self.byte()?;
++        let n = b.leading_ones();
++        let mut value = if n == 8 {
++            0
++        } else {
++            u64::from(b & ((1 << (7 - n)) - 1))
++        };
++        for _ in 0..n {
++            value = (value << 8) | u64::from(self.byte()?);
++        }
++        Ok(value)
++    }
++    fn size(&mut self, cap: u64, label: &str) -> Result<u64, EvidenceError> {
++        let value = self.itf8()?;
++        if value < 0 || value as u64 > cap {
++            return Err(unsupported(label));
++        }
++        Ok(value as u64)
++    }
++    fn check_crc(&mut self) -> Result<(), EvidenceError> {
++        let expected = self.crc.sum();
++        let mut raw = [0; 4];
++        self.read_exact(&mut raw)?;
++        if u32::from_le_bytes(raw) != expected {
++            return Err(invalid("CRC32 mismatch"));
++        }
++        Ok(())
++    }
++}
++
++#[derive(Debug)]
++struct Block {
++    kind: u8,
++    compressed: u64,
++    uncompressed: u64,
++    metadata: Vec<u8>,
++}
++fn block<R: Read>(reader: &mut Checked<R>, budget: Option<u64>) -> Result<Block, EvidenceError> {
++    reader.crc.reset();
++    let method = reader.byte()?;
++    let kind = reader.byte()?;
++    let _id = reader.itf8()?;
++    let compressed = reader.size(BLOCK_CAP, "compressed block exceeds 64MiB")?;
++    let uncompressed = reader.size(BLOCK_CAP, "uncompressed block exceeds 64MiB")?;
++    if !matches!(kind, 0..=5) {
++        return Err(invalid("unknown block content type"));
++    }
++    if !matches!(method, 0 | 1 | 4) {
++        return Err(unsupported("only RAW, GZIP and rANS4 codecs are admitted"));
++    }
++    let is_metadata = kind <= 3;
++    if is_metadata && (uncompressed > METADATA_CAP || method == 4) {
++        return Err(unsupported(
++            "metadata blocks require RAW/GZIP and <=8MiB decoded bytes",
++        ));
++    }
++    let retained = if is_metadata { uncompressed } else { 0 };
++    let factor = if kind == 1 { 1024 } else { 16 };
++    admit(
++        budget,
++        retained
++            .checked_mul(factor)
++            .and_then(|n| n.checked_add(SCAN_SCRATCH))
++            .ok_or(EvidenceError::CounterOverflow)?,
++    )?;
++    let mut metadata = Vec::with_capacity(retained as usize);
++    let mut scratch = [0u8; 64 * 1024];
++    let mut input = reader.take(compressed);
++    match method {
++        0 => {
++            if compressed != uncompressed {
++                return Err(invalid("RAW block sizes disagree"));
++            }
++            loop {
++                crate::core::governor::checkpoint()?;
++                let n = input.read(&mut scratch)?;
++                if n == 0 {
++                    break;
++                }
++                if is_metadata {
++                    metadata.extend_from_slice(&scratch[..n]);
++                }
++            }
++        }
++        1 => {
++            let mut decoder = MultiGzDecoder::new(&mut input);
++            let mut size = 0u64;
++            loop {
++                crate::core::governor::checkpoint()?;
++                let n = decoder.read(&mut scratch)?;
++                if n == 0 {
++                    break;
++                }
++                size += n as u64;
++                if size > uncompressed {
++                    return Err(invalid("GZIP expansion exceeds declared block size"));
++                }
++                if is_metadata {
++                    metadata.extend_from_slice(&scratch[..n]);
++                }
++            }
++            if size != uncompressed {
++                return Err(invalid("GZIP decoded length disagrees with block"));
++            }
++        }
++        4 => {
++            if compressed < 9 {
++                return Err(invalid("truncated rANS prefix"));
++            }
++            let mut prefix = [0; 9];
++            input.read_exact(&mut prefix)?;
++            if prefix[0] > 1
++                || u64::from(u32::from_le_bytes(prefix[1..5].try_into().unwrap())) != compressed - 9
++                || u64::from(u32::from_le_bytes(prefix[5..9].try_into().unwrap())) != uncompressed
++            {
++                return Err(invalid("rANS order or in-band sizes disagree with block"));
++            }
++            loop {
++                crate::core::governor::checkpoint()?;
++                let n = input.read(&mut scratch)?;
++                if n == 0 {
++                    break;
++                }
++            }
++        }
++        _ => unreachable!(),
++    }
++    if input.limit() != 0 {
++        return Err(invalid("truncated compressed block"));
++    }
++    input.into_inner().check_crc()?;
++    Ok(Block {
++        kind,
++        compressed,
++        uncompressed,
++        metadata,
++    })
++}
++
++fn scan(
++    path: &Path,
++    layouts: &BTreeMap<String, FaiLayout>,
++    execution: &EvidenceExecution,
++    index: Option<&Path>,
++) -> Result<CramEnvelope, EvidenceError> {
++    let mut index = index.map(open_crai).transpose()?;
++    let file = File::open(path)?;
++    let file_length = file.metadata()?.len();
++    let mut reader = Checked {
++        inner: BufReader::new(file),
++        crc: Crc::new(),
++        offset: 0,
++    };
++    let mut magic = [0; 26];
++    reader.read_exact(&mut magic)?;
++    if &magic[..6] != b"CRAM\x03\x00" {
++        return Err(unsupported("only CRAM3.0 has a validated decoder envelope"));
++    }
++    let mut envelope = CramEnvelope {
++        model: "cram-container-envelope-v1",
++        ..Default::default()
++    };
++    let mut dictionary = Vec::<(String, u64)>::new();
++    let mut max_partial_ref = 0;
++    let mut max_cached_ref = 0;
++    let mut seen_header = false;
++    let mut seen_eof = false;
++    while reader.offset < file_length {
++        crate::core::governor::checkpoint()?;
++        if seen_eof {
++            return Err(invalid("data follows CRAM EOF container"));
++        }
++        let container_offset = reader.offset;
++        reader.crc.reset();
++        let mut raw = [0; 4];
++        reader.read_exact(&mut raw)?;
++        let length = u32::from_le_bytes(raw) as u64;
++        if length > CONTAINER_CAP {
++            return Err(unsupported("container bytes exceed 256MiB"));
++        }
++        let ref_id = reader.itf8()?;
++        let start = reader.size(u32::MAX as u64, "invalid container start")?;
++        let span = reader.size(u32::MAX as u64, "invalid container span")?;
++        let records = reader.size(RECORDS_CAP, "container exceeds one million records")?;
++        let _counter = reader.ltf8()?;
++        let bases = reader.ltf8()?;
++        let blocks = reader.size(BLOCKS_CAP, "container exceeds 4096 blocks")?;
++        let landmarks = reader.size(1024, "container exceeds 1024 slices")?;
++        let mut previous = None;
++        let mut slice_offsets = Vec::with_capacity(landmarks as usize);
++        for _ in 0..landmarks {
++            let point = reader.size(length, "invalid landmark offset")?;
++            if previous.is_some_and(|p| p >= point) {
++                return Err(invalid("unordered container landmarks"));
++            }
++            previous = Some(point);
++            slice_offsets.push(point);
++        }
++        reader.check_crc()?;
++        let end = reader
++            .offset
++            .checked_add(length)
++            .ok_or(EvidenceError::CounterOverflow)?;
++        let container_start = reader.offset;
++        if end > file_length {
++            return Err(invalid("container extends past file"));
++        }
++        if ref_id < -1 {
++            return Err(unsupported(
++                "multi-reference containers are not admitted by envelope v1",
++            ));
++        }
++        if records > 0 && bases > records.saturating_mul(execution.max_read_len as u64) {
++            return Err(EvidenceError::RecordLimit(
++                "CRAM container mean read length exceeds declared max_read_len".into(),
++            ));
++        }
++        let mut compressed = 0u64;
++        let mut uncompressed = 0u64;
++        let mut slice_records = 0u64;
++        let mut slices = 0;
++        let mut slice_remaining = 0;
++        let mut seen_compression = false;
++        for _ in 0..blocks {
++            let block_start = reader.offset - container_start;
++            let decoded = block(&mut reader, execution.memory_budget_bytes)?;
++            compressed = compressed
++                .checked_add(decoded.compressed)
++                .ok_or(EvidenceError::CounterOverflow)?;
++            uncompressed = uncompressed
++                .checked_add(decoded.uncompressed)
++                .ok_or(EvidenceError::CounterOverflow)?;
++            if uncompressed > CONTAINER_CAP {
++                return Err(unsupported("container uncompressed blocks exceed 256MiB"));
++            }
++            match decoded.kind {
++                0 => {
++                    if records != 0 || envelope.containers != 0 {
++                        return Err(invalid("misplaced SAM header block"));
++                    }
++                    envelope.header_bytes = envelope
++                        .header_bytes
++                        .checked_add(decoded.uncompressed)
++                        .ok_or(EvidenceError::CounterOverflow)?;
++                    if !seen_header {
++                        seen_header = true;
++                        dictionary = parse_sam_header(&decoded.metadata, layouts)?;
++                    }
++                }
++                1 => {
++                    if seen_compression || slices > 0 || slice_remaining > 0 {
++                        return Err(invalid("misplaced or duplicate compression header"));
++                    }
++                    seen_compression = true;
++                    compression_header(&decoded.metadata)?;
++                    envelope.max_compression_header_bytes = envelope
++                        .max_compression_header_bytes
++                        .max(decoded.uncompressed);
++                }
++                2 | 3 => {
++                    let (id, position, width, count, inventory) =
++                        slice_header(&decoded.metadata, decoded.kind)?;
++                    if !seen_compression
++                        || slice_remaining != 0
++                        || slice_offsets.get(slices as usize) != Some(&block_start)
++                    {
++                        return Err(invalid("slice block inventory or landmark disagrees"));
++                    }
++                    slice_remaining = inventory;
++                    if let Some(index) = &mut index {
++                        let slice_end = slice_offsets
++                            .get(slices as usize + 1)
++                            .copied()
++                            .unwrap_or(length);
++                        let expected = [
++                            i64::from(id),
++                            position as i64,
++                            width as i64,
++                            container_offset as i64,
++                            block_start as i64,
++                            (slice_end - block_start) as i64,
++                        ];
++                        if next_crai(index)? != Some(expected) {
++                            return Err(invalid(
++                                "CRAI entry disagrees with checked slice coordinates or offsets",
++                            ));
++                        }
++                    }
++                    if id != ref_id
++                        || count == 0
++                        || count > records
++                        || (id >= 0 && (position < start || position + width > start + span))
++                    {
++                        return Err(invalid("slice metadata exceeds its container"));
++                    }
++                    slice_records += count;
++                    slices += 1;
++                    if id >= 0 {
++                        let (name, contig_length) =
++                            dictionary.get(id as usize).ok_or_else(|| {
++                                invalid("slice reference id is absent from SAM header")
++                            })?;
++                        if position == 0 || width == 0 || position - 1 + width > *contig_length {
++                            return Err(invalid("slice reference range exceeds dictionary"));
++                        }
++                        let layout = &layouts[name];
++                        // htslib promotes spans over half a contig to a cached
++                        // full reference. That cache can coexist with old/new
++                        // small reference buffers on later single-ref queries.
++                        if width.saturating_sub(1) >= contig_length / 2 {
++                            max_cached_ref = max_cached_ref.max(layout.bytes(*contig_length)?);
++                        } else {
++                            max_partial_ref = max_partial_ref.max(layout.bytes(width)?);
++                        }
++                    }
++                }
++                4 | 5 if records > 0 => {
++                    if slice_remaining == 0 {
++                        return Err(invalid("data block is outside a slice"));
++                    }
++                    slice_remaining -= 1;
++                }
++                _ => {}
++            }
++        }
++        if records == 0 && !seen_eof && ref_id >= 0 && reader.offset < end {
++            let padding = end - reader.offset;
++            if padding > METADATA_CAP {
++                return Err(unsupported("SAM header padding exceeds 8MiB"));
++            }
++            envelope.header_bytes = envelope
++                .header_bytes
++                .checked_add(padding)
++                .ok_or(EvidenceError::CounterOverflow)?;
++            let mut remaining = reader.by_ref().take(padding);
++            std::io::copy(&mut remaining, &mut std::io::sink())?;
++        }
++        if reader.offset != end {
++            return Err(invalid("container length or block count disagrees"));
++        }
++        // Header and EOF containers are decoded too. Their compressed padding
++        // may dominate a tiny data container and must be admitted before open.
++        envelope.max_compressed_bytes = envelope.max_compressed_bytes.max(compressed);
++        envelope.max_uncompressed_bytes = envelope.max_uncompressed_bytes.max(uncompressed);
++        envelope.max_container_blocks = envelope.max_container_blocks.max(blocks);
++        envelope.max_container_slices = envelope.max_container_slices.max(landmarks);
++        if records > 0 {
++            if !seen_header
++                || slice_records != records
++                || slices != landmarks
++                || slice_remaining != 0
++            {
++                return Err(invalid("container/slice record counts disagree"));
++            }
++            envelope.containers += 1;
++            envelope.declared_records = envelope
++                .declared_records
++                .checked_add(records)
++                .ok_or(EvidenceError::CounterOverflow)?;
++            envelope.declared_bases = envelope
++                .declared_bases
++                .checked_add(bases)
++                .ok_or(EvidenceError::CounterOverflow)?;
++            envelope.max_container_records = envelope.max_container_records.max(records);
++            envelope.max_container_bases = envelope.max_container_bases.max(bases);
++        } else if ref_id == -1 && start == 0x454f46 {
++            seen_eof = true;
++        }
++    }
++    if !seen_header || !seen_eof {
++        return Err(invalid("missing SAM header or CRAM EOF container"));
++    }
++    if index
++        .as_mut()
++        .map(next_crai)
++        .transpose()?
++        .flatten()
++        .is_some()
++    {
++        return Err(invalid("CRAI has entries absent from CRAM"));
++    }
++    envelope.reference_bytes = max_cached_ref
++        .checked_add(
++            max_partial_ref
++                .checked_mul(2)
++                .ok_or(EvidenceError::CounterOverflow)?,
++        )
++        .ok_or(EvidenceError::CounterOverflow)?;
++    Ok(envelope)
++}
++
++// These parsers do not instantiate native codecs. In particular htslib's Huffman
++// constructor allocates its symbol table before validating the remaining bytes;
++// the byte-proportional codec allowance is valid only after this checked pass.
++struct Metadata<'a> {
++    bytes: &'a [u8],
++}
++impl<'a> Metadata<'a> {
++    fn take(&mut self, count: usize) -> Result<&'a [u8], EvidenceError> {
++        let part = self
++            .bytes
++            .get(..count)
++            .ok_or_else(|| invalid("truncated compression metadata"))?;
++        self.bytes = &self.bytes[count..];
++        Ok(part)
++    }
++    fn integer(&mut self) -> Result<i32, EvidenceError> {
++        let mut reader = Checked {
++            inner: Cursor::new(self.bytes),
++            crc: Crc::new(),
++            offset: 0,
++        };
++        let value = reader.itf8()?;
++        self.take(reader.offset as usize)?;
++        Ok(value)
++    }
++    fn count(&mut self, cap: usize) -> Result<usize, EvidenceError> {
++        let value = self.integer()?;
++        if value < 0 || value as usize > cap {
++            return Err(invalid(
++                "compression metadata count exceeds available bytes",
++            ));
++        }
++        Ok(value as usize)
++    }
++    fn section(&mut self) -> Result<Metadata<'a>, EvidenceError> {
++        let size = self.count(self.bytes.len())?;
++        Ok(Metadata {
++            bytes: self.take(size)?,
++        })
++    }
++    fn finish(self) -> Result<(), EvidenceError> {
++        if self.bytes.is_empty() {
++            Ok(())
++        } else {
++            Err(invalid("trailing compression metadata"))
++        }
++    }
++}
++
++fn codec(encoding: i32, bytes: &[u8], depth: usize) -> Result<(), EvidenceError> {
++    if depth > 16 {
++        return Err(unsupported("codec nesting exceeds 16 levels"));
++    }
++    let mut metadata = Metadata { bytes };
++    match encoding {
++        0 => {} // NULL is admitted only with no parameters.
++        1 => {
++            metadata.integer()?;
++        } // EXTERNAL
++        3 => {
++            let count = metadata.count(metadata.bytes.len().saturating_sub(1) / 2)?;
++            for _ in 0..count {
++                metadata.integer()?;
++            }
++            if metadata.count(count)? != count {
++                return Err(invalid("Huffman symbol and code-length counts differ"));
++            }
++            let mut largest = 0;
++            for _ in 0..count {
++                let length = metadata.count(31)?;
++                largest = largest.max(length);
++            }
++            if count > 0 && largest >= count {
++                return Err(invalid("invalid Huffman code lengths"));
++            }
++        }
++        4 => {
++            for _ in 0..2 {
++                let child = metadata.integer()?;
++                if child == 0 {
++                    return Err(invalid("NULL nested byte-array codec"));
++                }
++                let params = metadata.section()?;
++                codec(child, params.bytes, depth + 1)?;
++            }
++        }
++        5 => {
++            metadata.take(1)?;
++            metadata.integer()?;
++        }
++        6 => {
++            metadata.integer()?;
++            metadata.count(32)?;
++        }
++        7 => {
++            metadata.integer()?;
++            metadata.count(31)?;
++        }
++        9 => {
++            metadata.integer()?;
++        }
++        _ => return Err(unsupported("unvalidated CRAM encoding codec")),
++    }
++    metadata.finish()
++}
++
++fn compression_header(bytes: &[u8]) -> Result<(), EvidenceError> {
++    let mut all = Metadata { bytes };
++    let mut preservation = all.section()?;
++    let entries = preservation.count(preservation.bytes.len() / 3)?;
++    let mut keys = std::collections::BTreeSet::new();
++    for _ in 0..entries {
++        let key: [u8; 2] = preservation.take(2)?.try_into().unwrap();
++        if !keys.insert(key) {
++            return Err(invalid("duplicate preservation key"));
++        }
++        match &key {
++            b"MI" | b"UI" | b"PI" | b"RN" | b"AP" | b"RR" | b"QO" => {
++                if preservation.take(1)?[0] > 1 {
++                    return Err(invalid("invalid preservation boolean"));
++                }
++            }
++            b"SM" => {
++                preservation.take(5)?;
++            }
++            b"TD" => {
++                let tags = preservation.section()?;
++                if !tags.bytes.is_empty() && tags.bytes.last() != Some(&0) {
++                    return Err(invalid("unterminated tag dictionary"));
++                }
++                for row in tags.bytes.split(|byte| *byte == 0) {
++                    if row.len() % 3 != 0 {
++                        return Err(invalid("invalid tag dictionary tuple"));
++                    }
++                }
++            }
++            _ => return Err(unsupported("unknown preservation map key")),
++        }
++    }
++    preservation.finish()?;
++    let mut records = all.section()?;
++    let count = records.count(records.bytes.len() / 4)?;
++    keys.clear();
++    for _ in 0..count {
++        let key: [u8; 2] = records.take(2)?.try_into().unwrap();
++        if !keys.insert(key) {
++            return Err(invalid("duplicate record codec key"));
++        }
++        if !matches!(
++            &key,
++            b"BF"
++                | b"CF"
++                | b"RI"
++                | b"RL"
++                | b"AP"
++                | b"RG"
++                | b"MF"
++                | b"NS"
++                | b"NP"
++                | b"TS"
++                | b"NF"
++                | b"TC"
++                | b"TN"
++                | b"FN"
++                | b"FC"
++                | b"FP"
++                | b"BS"
++                | b"IN"
++                | b"SC"
++                | b"DL"
++                | b"BA"
++                | b"BB"
++                | b"RS"
++                | b"PD"
++                | b"HC"
++                | b"MQ"
++                | b"RN"
++                | b"QS"
++                | b"QQ"
++                | b"TL"
++        ) {
++            return Err(unsupported("unknown record encoding key"));
++        }
++        let encoding = records.integer()?;
++        let params = records.section()?;
++        codec(encoding, params.bytes, 0)?;
++    }
++    records.finish()?;
++    let mut tags = all.section()?;
++    let count = tags.count(tags.bytes.len() / 3)?;
++    let mut tag_keys = std::collections::BTreeSet::new();
++    for _ in 0..count {
++        let key = tags.count(0x00ff_ffff)?;
++        if !tag_keys.insert(key) {
++            return Err(invalid("duplicate tag encoding key"));
++        }
++        let encoding = tags.integer()?;
++        if encoding == 0 {
++            return Err(invalid("NULL tag encoding"));
++        }
++        let params = tags.section()?;
++        codec(encoding, params.bytes, 0)?;
++    }
++    tags.finish()?;
++    all.finish()
++}
++
++fn parse_sam_header(
++    bytes: &[u8],
++    layouts: &BTreeMap<String, FaiLayout>,
++) -> Result<Vec<(String, u64)>, EvidenceError> {
++    let size = bytes
++        .get(..4)
++        .ok_or_else(|| invalid("truncated SAM header"))?;
++    let length = u32::from_le_bytes(size.try_into().unwrap()) as usize;
++    if length > bytes.len() - 4 {
++        return Err(invalid("SAM header length differs from block"));
++    }
++    let text = std::str::from_utf8(&bytes[4..4 + length])
++        .map_err(|_| invalid("SAM header is not UTF-8"))?;
++    let mut dictionary = Vec::new();
++    let mut coordinate = false;
++    let mut names = std::collections::BTreeSet::new();
++    for line in text.lines() {
++        if line.starts_with("@HD\t") {
++            coordinate = line.split('\t').any(|f| f == "SO:coordinate");
++        }
++        if !line.starts_with("@SQ\t") {
++            continue;
++        }
++        let mut name = None;
++        let mut length = None;
++        for field in line.split('\t') {
++            if let Some(value) = field.strip_prefix("SN:") {
++                if name.replace(value).is_some() {
++                    return Err(invalid("duplicate SQ name field"));
++                }
++            }
++            if let Some(value) = field.strip_prefix("LN:") {
++                if length
++                    .replace(
++                        value
++                            .parse::<u64>()
++                            .map_err(|_| invalid("invalid SQ length"))?,
++                    )
++                    .is_some()
++                {
++                    return Err(invalid("duplicate SQ length field"));
++                }
++            }
++        }
++        let name = name.ok_or_else(|| invalid("SQ name absent"))?;
++        let length = length.ok_or_else(|| invalid("SQ length absent"))?;
++        if !names.insert(name)
++            || layouts
++                .get(name)
++                .is_none_or(|layout| layout.length != length)
++        {
++            return Err(invalid("SAM/FAI dictionaries disagree"));
++        }
++        dictionary.push((name.to_owned(), length));
++    }
++    if !coordinate {
++        return Err(unsupported("SAM header must declare SO:coordinate"));
++    }
++    if dictionary.len() != layouts.len() {
++        return Err(invalid("SAM/FAI dictionaries differ"));
++    }
++    Ok(dictionary)
++}
++fn slice_header(bytes: &[u8], kind: u8) -> Result<(i32, u64, u64, u64, u64), EvidenceError> {
++    let mut reader = Checked {
++        inner: Cursor::new(bytes),
++        crc: Crc::new(),
++        offset: 0,
++    };
++    let (id, start, span) = if kind == 2 {
++        (
++            reader.itf8()?,
++            reader.size(u32::MAX as u64, "invalid slice start")?,
++            reader.size(u32::MAX as u64, "invalid slice span")?,
++        )
++    } else {
++        (-1, 0, 0)
++    };
++    if id < -1 {
++        return Err(unsupported(
++            "multi-reference slices are not admitted by envelope v1",
++        ));
++    }
++    let count = reader.size(RECORDS_CAP, "slice record count exceeds envelope")?;
++    let _counter = reader.ltf8()?;
++    let blocks = reader.size(BLOCKS_CAP, "slice block count exceeds envelope")?;
++    let ids = reader.size(BLOCKS_CAP, "slice content-id count exceeds envelope")?;
++    if ids == 0 || blocks < ids {
++        return Err(invalid("invalid slice block inventory"));
++    }
++    for _ in 0..ids {
++        reader.itf8()?;
++    }
++    if kind == 2 {
++        reader.itf8()?;
++    }
++    let mut md5 = [0; 16];
++    reader.read_exact(&mut md5)?;
++    Ok((id, start, span, count, blocks))
++}
++fn admit(budget: Option<u64>, additional: u64) -> Result<(), EvidenceError> {
++    crate::core::governor::checkpoint()?;
++    if let Some(budget) = budget {
++        let needed = crate::util::rss::peak_rss_bytes().saturating_add(additional);
++        if needed > budget {
++            return Err(EvidenceError::Refused { needed, budget });
++        }
++    }
++    Ok(())
++}
++fn invalid(message: &str) -> EvidenceError {
++    EvidenceError::InvalidInput(format!("CRAM preflight: {message}"))
++}
++fn unsupported(message: &str) -> EvidenceError {
++    EvidenceError::InvalidRequest(format!(
++        "CRAM decoder envelope v1 refuses this input: {message}"
++    ))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::io::Write;
++    use std::sync::atomic::{AtomicU64, Ordering};
++    static NEXT: AtomicU64 = AtomicU64::new(0);
++    struct Temp(PathBuf);
++    impl Temp {
++        fn new(bytes: &[u8]) -> Self {
++            let path = std::env::temp_dir().join(format!(
++                "rosalind-cram-parser-{}-{}",
++                std::process::id(),
++                NEXT.fetch_add(1, Ordering::Relaxed)
++            ));
++            std::fs::write(&path, bytes).unwrap();
++            Self(path)
++        }
++    }
++    impl Drop for Temp {
++        fn drop(&mut self) {
++            let _ = std::fs::remove_file(&self.0);
++        }
++    }
++    fn integer(value: i32, out: &mut Vec<u8>) {
++        let n = value as u32;
++        if n < 1 << 7 {
++            out.push(n as u8);
++        } else if n < 1 << 14 {
++            out.extend([0x80 | (n >> 8) as u8, n as u8]);
++        } else if n < 1 << 21 {
++            out.extend([0xc0 | (n >> 16) as u8, (n >> 8) as u8, n as u8]);
++        } else if n < 1 << 28 {
++            out.extend([
++                0xe0 | (n >> 24) as u8,
++                (n >> 16) as u8,
++                (n >> 8) as u8,
++                n as u8,
++            ]);
++        } else {
++            out.extend([
++                0xf0 | (n >> 28) as u8,
++                (n >> 20) as u8,
++                (n >> 12) as u8,
++                (n >> 4) as u8,
++                (n & 15) as u8,
++            ]);
++        }
++    }
++    fn section(bytes: &[u8], out: &mut Vec<u8>) {
++        integer(bytes.len() as i32, out);
++        out.extend(bytes);
++    }
++    fn crc(bytes: &mut Vec<u8>) {
++        let mut crc = Crc::new();
++        crc.update(bytes);
++        bytes.extend(crc.sum().to_le_bytes());
++    }
++    fn raw_block(method: u8, kind: u8, payload: &[u8], size: i32) -> Vec<u8> {
++        let mut bytes = vec![method, kind, 0];
++        integer(payload.len() as i32, &mut bytes);
++        integer(size, &mut bytes);
++        bytes.extend(payload);
++        crc(&mut bytes);
++        bytes
++    }
++    fn container(id: i32, start: i32, blocks: &[Vec<u8>]) -> Vec<u8> {
++        let body: Vec<u8> = blocks.iter().flatten().copied().collect();
++        let mut out = (body.len() as u32).to_le_bytes().to_vec();
++        for n in [id, start, 0, 0, 0, 0, blocks.len() as i32, 0] {
++            integer(n, &mut out);
++        }
++        crc(&mut out);
++        out.extend(body);
++        out
++    }
++    fn parse_block(bytes: &[u8]) -> Result<Block, EvidenceError> {
++        block(
++            &mut Checked {
++                inner: Cursor::new(bytes),
++                crc: Crc::new(),
++                offset: 0,
++            },
++            None,
++        )
++    }
++    #[test]
++    fn forged_huffman_counts_and_recursive_codec_metadata_fail_before_native_allocation() {
++        let mut forged = Vec::new();
++        integer(i32::MAX, &mut forged);
++        assert!(codec(3, &forged, 0).is_err());
++        // One constant symbol with zero-bit coding is valid.
++        assert!(codec(3, &[1, 65, 1, 0], 0).is_ok());
++        let mut records = vec![1, b'R', b'L', 3];
++        section(&forged, &mut records);
++        let mut header = vec![1, 0];
++        section(&records, &mut header);
++        header.extend([1, 0]);
++        assert!(compression_header(&header).is_err());
++        let mut nested = vec![1, 1, 0, 1, 1, 0];
++        for _ in 0..18 {
++            let mut outer = vec![4];
++            section(&nested, &mut outer);
++            outer.extend([1, 1, 0]);
++            nested = outer;
++        }
++        assert!(codec(4, &nested, 0).is_err());
++        assert!(compression_header(&[1, 0, 1, 0, 1, 0]).is_ok());
++    }
++    #[test]
++    fn gzip_expansion_rans_internal_lengths_and_crc_are_checked() {
++        let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
++        gzip.write_all(&[0; 8192]).unwrap();
++        let payload = gzip.finish().unwrap();
++        assert!(parse_block(&raw_block(1, 5, &payload, 1))
++            .unwrap_err()
++            .to_string()
++            .contains("expansion"));
++        let mut rans = vec![0];
++        rans.extend(0u32.to_le_bytes());
++        rans.extend(1000u32.to_le_bytes());
++        assert!(parse_block(&raw_block(4, 5, &rans, 1)).is_err());
++        let mut bad = raw_block(0, 5, b"abc", 3);
++        *bad.last_mut().unwrap() ^= 1;
++        assert!(parse_block(&bad).unwrap_err().to_string().contains("CRC32"));
++        assert!(parse_block(&raw_block(2, 5, b"abc", 3)).is_err());
++    }
++    #[test]
++    fn fai_and_crai_refuse_unbounded_lines_and_bad_declared_coordinates() {
++        let huge = Temp::new(&vec![b'\t'; FAI_LINE_CAP as usize + 1]);
++        assert!(matches!(
++            read_fai(&huge.0, u64::MAX, Some(1)),
++            Err(EvidenceError::Refused { .. })
++        ));
++        assert!(read_fai(&huge.0, u64::MAX, None).is_err());
++        let extent = Temp::new(b"chr1\t100\t5\t10\t11\n");
++        assert!(read_fai(&extent.0, 105, None).is_err());
++        let forged = Temp::new(b"2147483647\t1\t10\t1\t1\t1\n");
++        assert!(read_crai(&forged.0, 1, 100, None).is_err());
++    }
++    #[test]
++    fn header_padding_and_all_container_blocks_are_reserved() {
++        let sam = b"@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:10\n";
++        let mut sam_bytes = (sam.len() as u32).to_le_bytes().to_vec();
++        sam_bytes.extend(sam);
++        let padding = vec![0; 8192];
++        let mut file = b"CRAM\x03\x00".to_vec();
++        file.extend([0; 20]);
++        file.extend(container(
++            0,
++            0,
++            &[
++                raw_block(0, 0, &sam_bytes, sam_bytes.len() as i32),
++                raw_block(0, 5, &padding, padding.len() as i32),
++            ],
++        ));
++        file.extend(container(
++            -1,
++            0x454f46,
++            &[raw_block(0, 1, &[1, 0, 1, 0, 1, 0], 6)],
++        ));
++        let path = Temp::new(&file);
++        let layouts = BTreeMap::from([(
++            "chr1".into(),
++            FaiLayout {
++                length: 10,
++                line_bases: 10,
++                line_bytes: 11,
++            },
++        )]);
++        let envelope = scan(&path.0, &layouts, &EvidenceExecution::default(), None).unwrap();
++        assert!(envelope.max_compressed_bytes >= 8192);
++        assert!(envelope.max_uncompressed_bytes >= 8192);
++        assert_eq!(envelope.max_container_blocks, 2);
++        assert!(
++            envelope
++                .additional_bytes(&EvidenceExecution::default())
++                .unwrap()
++                >= 4 * 8192
++        );
++    }
++    #[test]
++    fn repeated_decoder_bound_uses_global_verified_maxima_and_checked_arithmetic() {
++        let mut envelope = CramEnvelope {
++            max_container_records: 100,
++            validated_max_record_bytes: 300,
++            validated_max_read_length: 150,
++            ..Default::default()
++        };
++        let first = envelope
++            .additional_bytes(&EvidenceExecution::default())
++            .unwrap();
++        envelope.max_container_records = 200;
++        assert_eq!(
++            envelope
++                .additional_bytes(&EvidenceExecution::default())
++                .unwrap()
++                - first,
++            100 * (3 * 300 + 512 + 4 * 150)
++        );
++        envelope.validated_max_record_bytes = u64::MAX;
++        assert!(matches!(
++            envelope.additional_bytes(&EvidenceExecution::default()),
++            Err(EvidenceError::CounterOverflow)
++        ));
++    }
++}
+diff --git a/src/evidence/engine.rs b/src/evidence/engine.rs
+index da7a40e..d7a5599 100644
+--- a/src/evidence/engine.rs
++++ b/src/evidence/engine.rs
+@@ -1,8 +1,10 @@
++use super::cram::CramPreflight;
++use super::indexed_reader::IndexedAlignmentReader;
+ use super::*;
+ use crate::core::ContigSet;
+ use crate::selection::GenomicInterval;
++use rust_htslib::bam;
+ use rust_htslib::bam::record::Cigar;
+-use rust_htslib::bam::{self, Read};
+ use std::collections::BTreeMap;
+ use std::path::PathBuf;
+ use std::sync::Arc;
+@@ -36,6 +38,73 @@ pub struct EvidencePlan {
+     pub selection_bytes: u64,
+     /// Conservative retained sample scope, read-group header, and worker setup bytes.
+     pub sample_scope_bytes: u64,
++    /// Codec-specific decoder reservation, included in fixed_bytes.
++    pub decoder_bytes: u64,
++    /// Codec-specific admission contract.
++    pub decoder_model: &'static str,
++    /// Checked CRAM container maxima; absent for BAM.
++    pub cram_envelope: Option<CramEnvelope>,
++}
++impl EvidencePlan {
++    /// Additive execution diagnostics; these do not change scientific identity.
++    pub fn decoder_measurements(&self) -> BTreeMap<String, String> {
++        let mut values = BTreeMap::from([
++            ("execution.decoder_model".into(), self.decoder_model.into()),
++            (
++                "execution.decoder_bytes".into(),
++                self.decoder_bytes.to_string(),
++            ),
++        ]);
++        if let Some(cram) = &self.cram_envelope {
++            for (key, value) in [
++                ("containers", cram.containers),
++                ("max_container_records", cram.max_container_records),
++                ("max_container_bases", cram.max_container_bases),
++                (
++                    "base_reservation_bases",
++                    cram.max_container_records
++                        .saturating_mul(cram.validated_max_read_length)
++                        .max(cram.max_container_bases),
++                ),
++                ("max_container_slices", cram.max_container_slices),
++                ("max_container_blocks", cram.max_container_blocks),
++                ("max_compressed_bytes", cram.max_compressed_bytes),
++                ("max_uncompressed_bytes", cram.max_uncompressed_bytes),
++                (
++                    "max_compression_header_bytes",
++                    cram.max_compression_header_bytes,
++                ),
++                ("header_bytes", cram.header_bytes),
++                ("reference_bytes", cram.reference_bytes),
++                ("index_bytes", cram.index_bytes),
++                ("validated_records", cram.validated_records),
++                (
++                    "validated_max_record_bytes",
++                    cram.validated_max_record_bytes,
++                ),
++                ("validated_max_read_length", cram.validated_max_read_length),
++                ("validation_wall_micros", cram.validation_wall_micros),
++                ("validation_peak_rss_bytes", cram.validation_peak_rss_bytes),
++                ("declared_records", cram.declared_records),
++                ("validated_bases", cram.validated_bases),
++                ("declared_bases", cram.declared_bases),
++                ("metadata_cap_bytes", 8 << 20),
++                ("block_cap_bytes", 64 << 20),
++                ("container_cap_bytes", 256 << 20),
++                ("records_cap", 1_000_000),
++                ("blocks_cap", 4096),
++                ("slices_cap", 1024),
++                ("codec_depth_cap", 16),
++            ] {
++                values.insert(format!("execution.cram.{key}"), value.to_string());
++            }
++            values.insert(
++                "execution.cram.profile".into(),
++                "3.0;coordinate;single-reference;RAW,GZIP,rANS4;checked-metadata-v1".into(),
++            );
++        }
++        values
++    }
+ }
+ #[derive(Debug, Default, Clone, PartialEq, Eq)]
+ /// Aggregate execution measurements; fetch-level visits may include the same read in multiple windows.
+@@ -63,13 +132,14 @@ pub struct EvidenceRunStats {
+ pub struct EvidenceEngine {
+     request: EvidenceRequest,
+     reference: EvidenceReference,
+-    reader: bam::IndexedReader,
++    reader: IndexedAlignmentReader,
+     contigs: ContigSet,
+     tids: Vec<u32>,
+     intervals: Vec<GenomicInterval>,
+     sites: BTreeMap<(u32, u32), SnvSite>,
+     sample_scope: Arc<EvidenceSampleScope>,
+     plan: EvidencePlan,
++    cram: Option<Arc<CramPreflight>>,
+ }
+ impl EvidenceEngine {
+     /// Open and validate local inputs, retaining only indexed reference access and metadata.
+@@ -87,10 +157,15 @@ impl EvidenceEngine {
+                 "quality thresholds must be BQ<=93 and MAPQ<=254".into(),
+             ));
+         }
+-        let opened = match &request.alignment_index {
+-            Some(index) => bam::IndexedReader::from_path_and_index(&request.alignments, index),
+-            None => bam::IndexedReader::from_path(&request.alignments),
++        let cram = if alignment_is_cram(&request.alignments)? {
++            let checked = CramPreflight::inspect(&request)?;
++            request.alignment_index = Some(checked.index.clone());
++            Some(Arc::new(checked))
++        } else {
++            None
+         };
++        let opened =
++            IndexedAlignmentReader::open(&request.alignments, request.alignment_index.as_deref());
+         let mut reader = opened.map_err(|error| {
+             EvidenceError::InvalidInput(format!(
+                 "open indexed BAM/CRAM {} (BAI/CSI/CRAI required): {error}",
+@@ -109,7 +184,7 @@ impl EvidenceEngine {
+             Some(path) => EvidenceReference::open_with_fai(path, request.reference_fai.as_deref())?,
+             None => EvidenceReference::unavailable(alignment_contigs.clone()),
+         };
+-        let is_cram = alignment_is_cram(&request.alignments)?;
++        let is_cram = cram.is_some();
+         if is_cram {
+             let cram_fasta: PathBuf = request.cram_reference.clone()
+                 .or_else(|| reference.fasta_path().map(PathBuf::from))
+@@ -191,6 +266,7 @@ impl EvidenceEngine {
+             crate::util::rss::peak_rss_bytes(),
+             selection_memory_bytes(&intervals, &sites),
+             sample_scope_bytes,
++            cram.as_deref().map(|p| &p.envelope),
+         )?;
+         Ok(Self {
+             request,
+@@ -202,6 +278,7 @@ impl EvidenceEngine {
+             sites,
+             sample_scope,
+             plan,
++            cram,
+         })
+     }
+     /// Read the current resource plan; include the consumer before final admission.
+@@ -241,6 +318,7 @@ impl EvidenceEngine {
+             },
+             reference: self.reference.clone(),
+             sample_scope: self.sample_scope.clone(),
++            cram: self.cram.clone(),
+         }
+     }
+     /// Stable, explicit coordinate/annotation digest for scientific cache keys.
+@@ -298,6 +376,7 @@ impl EvidenceEngine {
+             self.plan.baseline_rss_bytes,
+             selection_memory_bytes(&intervals, &sites),
+             self.plan.sample_scope_bytes,
++            self.cram.as_deref().map(|p| &p.envelope),
+         )?;
+         self.request.selection = canonical_selection(&selection, &intervals, &sites);
+         self.intervals = intervals;
+@@ -344,6 +423,7 @@ impl EvidenceEngine {
+             self.plan.baseline_rss_bytes,
+             self.plan.selection_bytes,
+             self.plan.sample_scope_bytes,
++            self.cram.as_deref().map(|p| &p.envelope),
+         )?;
+         Ok(&self.plan)
+     }
+@@ -353,6 +433,9 @@ impl EvidenceEngine {
+         &mut self,
+         analyzer: &mut dyn EvidenceAnalyzer,
+     ) -> Result<EvidenceRunStats, EvidenceError> {
++        if let Some(cram) = &self.cram {
++            cram.verify()?;
++        }
+         self.plan_for_analyzer(analyzer)?;
+         let mut stats = EvidenceRunStats::default();
+         let mut record = bam::Record::new();
+@@ -381,6 +464,9 @@ impl EvidenceEngine {
+         interval_index = 0;
+         start = self.intervals.first().map_or(0, |interval| interval.start);
+         while interval_index < self.intervals.len() {
++            if let Some(cram) = &self.cram {
++                cram.verify()?;
++            }
+             let interval = &self.intervals[interval_index];
+             crate::core::governor::checkpoint()?;
+             let canonical_start = start / CANONICAL_TILE_BASES * CANONICAL_TILE_BASES;
+@@ -490,6 +576,9 @@ impl EvidenceEngine {
+             start = window.next_start;
+         }
+         analyzer.finish()?;
++        if let Some(cram) = &self.cram {
++            cram.verify()?;
++        }
+         self.check_budget()?;
+         stats.peak_rss_bytes = crate::util::rss::peak_rss_bytes();
+         Ok(stats)
+@@ -553,6 +642,8 @@ fn coalesced_window(
+     }
+ }
+ 
++// Keep independently auditable retained-memory terms explicit at the few callers.
++#[allow(clippy::too_many_arguments)]
+ fn make_plan(
+     execution: &EvidenceExecution,
+     fields: EvidenceFields,
+@@ -561,19 +652,27 @@ fn make_plan(
+     baseline: u64,
+     selection_bytes: u64,
+     sample_scope_bytes: u64,
++    cram: Option<&CramEnvelope>,
+ ) -> Result<EvidencePlan, EvidenceError> {
+     // Two reusable identity vectors coexist while selecting the next window.
+     // Reserve two small ALT allocations, reference-window bytes, and alignment
+     // slack per coordinate in addition to both identity/vector element layouts.
+     let bytes_per_locus =
+         fields.storage_bytes_per_locus() + std::mem::size_of::<EvidenceLocus>() as u64 + 48;
+-    let fixed = DECODER_SLACK_BYTES
++    let cram_bytes = cram
++        .map(|value| value.additional_bytes(execution))
++        .transpose()?
++        .unwrap_or(0);
++    let decoder_bytes = DECODER_SLACK_BYTES
+         .checked_add(
+             (execution.max_record_bytes as u64)
+                 .checked_mul(3)
+                 .ok_or(EvidenceError::CounterOverflow)?,
+         )
+-        .and_then(|bytes| bytes.checked_add(analyzer_bytes))
++        .and_then(|bytes| bytes.checked_add(cram_bytes))
++        .ok_or(EvidenceError::CounterOverflow)?;
++    let fixed = decoder_bytes
++        .checked_add(analyzer_bytes)
+         .and_then(|bytes| bytes.checked_add(selection_bytes))
+         .and_then(|bytes| bytes.checked_add(sample_scope_bytes))
+         .ok_or(EvidenceError::CounterOverflow)?;
+@@ -593,7 +692,7 @@ fn make_plan(
+         maximum
+     };
+     Ok(EvidencePlan {
+-        model_id: "exact-summary-tiles-v3",
++        model_id: "exact-summary-tiles-v4",
+         baseline_rss_bytes: baseline,
+         fixed_bytes: fixed,
+         bytes_per_locus,
+@@ -606,6 +705,9 @@ fn make_plan(
+         analyzer_bytes,
+         selection_bytes,
+         sample_scope_bytes,
++        decoder_bytes,
++        decoder_model: cram.map_or("bam-record-envelope-v1", |value| value.model),
++        cram_envelope: cram.cloned(),
+     })
+ }
+ 
+@@ -869,6 +971,7 @@ pub struct EvidenceWorkerFactory {
+     request: EvidenceRequest,
+     reference: EvidenceReference,
+     sample_scope: Arc<EvidenceSampleScope>,
++    cram: Option<Arc<CramPreflight>>,
+ }
+ impl EvidenceWorkerFactory {
+     /// Open a worker for one canonical selection without hashing the reference
+@@ -886,11 +989,15 @@ impl EvidenceWorkerFactory {
+         let mut request = self.request.clone();
+         request.selection = selection;
+         request.execution = execution;
+-        let mut reader = match &request.alignment_index {
+-            Some(index) => bam::IndexedReader::from_path_and_index(&request.alignments, index),
+-            None => bam::IndexedReader::from_path(&request.alignments),
++        if let Some(cram) = &self.cram {
++            cram.verify()?;
++            cram.admit_decoder(&request.execution)?;
+         }
+-        .map_err(|error| EvidenceError::InvalidInput(format!("open worker alignment: {error}")))?;
++        let mut reader =
++            IndexedAlignmentReader::open(&request.alignments, request.alignment_index.as_deref())
++                .map_err(|error| {
++                EvidenceError::InvalidInput(format!("open worker alignment: {error}"))
++            })?;
+         let sample_scope =
+             EvidenceSampleScope::resolve(reader.header(), &request.sample_selection)?;
+         if sample_scope != *self.sample_scope {
+@@ -934,6 +1041,7 @@ impl EvidenceWorkerFactory {
+             crate::util::rss::peak_rss_bytes(),
+             0,
+             sample_scope_bytes,
++            self.cram.as_deref().map(|p| &p.envelope),
+         )?;
+         let mut engine = EvidenceEngine {
+             request,
+@@ -945,6 +1053,7 @@ impl EvidenceWorkerFactory {
+             sites: BTreeMap::new(),
+             sample_scope: self.sample_scope.clone(),
+             plan,
++            cram: self.cram.clone(),
+         };
+         engine.set_selection(engine.request.selection.clone())?;
+         Ok(engine)
+@@ -1165,15 +1274,15 @@ mod projection_tests {
+     #[test]
+     fn projected_memory_model_admits_larger_windows_without_changing_fields() {
+         let mut execution = EvidenceExecution::default();
+-        let full = make_plan(&execution, EvidenceFields::ALL, 16_384, 0, 0, 0, 0).unwrap();
++        let full = make_plan(&execution, EvidenceFields::ALL, 16_384, 0, 0, 0, 0, None).unwrap();
+         execution.memory_budget_bytes = Some(full.fixed_bytes + full.bytes_per_locus * 128);
+-        let full = make_plan(&execution, EvidenceFields::ALL, 16_384, 0, 0, 0, 0).unwrap();
++        let full = make_plan(&execution, EvidenceFields::ALL, 16_384, 0, 0, 0, 0, None).unwrap();
+         let fields = EvidenceFields::DEPTHS.union(EvidenceFields::QUALITY_SUMS);
+-        let projected = make_plan(&execution, fields, 16_384, 0, 0, 0, 0).unwrap();
++        let projected = make_plan(&execution, fields, 16_384, 0, 0, 0, 0, None).unwrap();
+         assert_eq!(full.microtile_bases, 128);
+         assert!(projected.microtile_bases > full.microtile_bases * 10);
+         assert!(projected.predicted_peak_rss_bytes <= execution.memory_budget_bytes.unwrap());
+-        assert_eq!(projected.model_id, "exact-summary-tiles-v3");
++        assert_eq!(projected.model_id, "exact-summary-tiles-v4");
+     }
+ 
+     #[test]
+diff --git a/src/evidence/indexed_reader.rs b/src/evidence/indexed_reader.rs
+new file mode 100644
+index 0000000..f2bfda4
+--- /dev/null
++++ b/src/evidence/indexed_reader.rs
+@@ -0,0 +1,119 @@
++//! Narrow indexed alignment reader with explicit native ownership ordering.
++//!
++//! rust-htslib 0.44.1's IndexedReader closes its CRAM handle before its index
++//! is destroyed. CRAM indexes borrow that handle, so their destructor then uses
++//! freed memory (upstream rust-bio/rust-htslib#518). Keep the pinned decoder ABI
++//! and use the existing sequential Reader to own the file, but destroy our
++//! iterator and index before dropping that Reader, including on error paths.
++
++use rust_htslib::{bam, bam::Read, errors::Error, htslib};
++use std::{ffi::CString, path::Path, ptr::NonNull};
++
++#[derive(Debug)]
++pub(super) struct IndexedAlignmentReader {
++    reader: bam::Reader,
++    index: NonNull<htslib::hts_idx_t>,
++    iterator: Option<NonNull<htslib::hts_itr_t>>,
++}
++
++// SAFETY: all native pointers are exclusively owned, never exposed, and used
++// only with mutable access. Moving the owner also moves its bam::Reader (Send).
++// No native decoder thread is started. This preserves EvidenceEngine's existing
++// Send contract while deliberately not making the reader Sync.
++unsafe impl Send for IndexedAlignmentReader {}
++
++impl IndexedAlignmentReader {
++    pub(super) fn open(path: &Path, index_path: Option<&Path>) -> Result<Self, Error> {
++        let path_string = native_path(path)?;
++        let index_string = index_path.map(native_path).transpose()?;
++        let reader = bam::Reader::from_path(path)?;
++        // SAFETY: Reader owns a live htsFile. Both C strings remain live for the
++        // call; HTSlib returns a separately owned index or null on failure.
++        let index = unsafe {
++            htslib::sam_index_load2(
++                reader.htsfile(),
++                path_string.as_ptr(),
++                index_string
++                    .as_ref()
++                    .map_or(std::ptr::null(), |p| p.as_ptr()),
++            )
++        };
++        let index = NonNull::new(index).ok_or_else(|| Error::BamInvalidIndex {
++            target: path.display().to_string(),
++        })?;
++        Ok(Self {
++            reader,
++            index,
++            iterator: None,
++        })
++    }
++
++    pub(super) fn header(&self) -> &bam::HeaderView {
++        self.reader.header()
++    }
++
++    pub(super) fn set_reference(&mut self, path: &Path) -> Result<(), Error> {
++        self.reader.set_reference(path)
++    }
++
++    fn clear_iterator(&mut self) {
++        if let Some(iterator) = self.iterator.take() {
++            // SAFETY: this reader exclusively owns the iterator; take prevents
++            // a second destruction, and its index and file are still live.
++            unsafe { htslib::hts_itr_destroy(iterator.as_ptr()) };
++        }
++    }
++
++    pub(super) fn fetch(&mut self, (tid, start, end): (u32, i64, i64)) -> Result<(), Error> {
++        self.clear_iterator();
++        let tid = i32::try_from(tid).map_err(|_| Error::Fetch)?;
++        if start < 0 || end < start {
++            return Err(Error::Fetch);
++        }
++        // SAFETY: the index and the file it may borrow remain owned by self.
++        self.iterator =
++            NonNull::new(unsafe { htslib::sam_itr_queryi(self.index.as_ptr(), tid, start, end) });
++        self.iterator.map(|_| ()).ok_or(Error::Fetch)
++    }
++
++    pub(super) fn read(&mut self, record: &mut bam::Record) -> Option<Result<(), Error>> {
++        let iterator = self.iterator?;
++        let file = self.reader.htsfile();
++        // SAFETY: self owns a live file, index and iterator; record owns its
++        // writable BAM payload. This is the pinned rust-htslib iterator call,
++        // including the htsFile context needed by CRAM. The evidence consumer
++        // uses numeric tids and never requires a borrowed record header or a
++        // cached CIGAR, so no additional header allocation is needed.
++        let result = unsafe {
++            htslib::hts_itr_next(
++                (*file).fp.bgzf,
++                iterator.as_ptr(),
++                (record.inner_mut() as *mut htslib::bam1_t).cast(),
++                file.cast(),
++            )
++        };
++        match result {
++            -1 => None,
++            -2 => Some(Err(Error::BamTruncatedRecord)),
++            result if result < 0 => Some(Err(Error::BamInvalidRecord)),
++            _ => Some(Ok(())),
++        }
++    }
++}
++
++impl Drop for IndexedAlignmentReader {
++    fn drop(&mut self) {
++        self.clear_iterator();
++        // SAFETY: the exclusively owned index must be destroyed while Reader's
++        // CRAM file is live. Rust drops the reader field only after this method.
++        unsafe { htslib::hts_idx_destroy(self.index.as_ptr()) };
++    }
++}
++
++fn native_path(path: &Path) -> Result<CString, Error> {
++    path.to_str()
++        .and_then(|path| CString::new(path).ok())
++        .ok_or_else(|| Error::BamInvalidIndex {
++            target: path.display().to_string(),
++        })
++}
+diff --git a/src/evidence/mod.rs b/src/evidence/mod.rs
+index 2c7faed..8c2190e 100644
+--- a/src/evidence/mod.rs
++++ b/src/evidence/mod.rs
+@@ -11,8 +11,11 @@ pub use artifact::{
+     DEFAULT_ARTIFACT_RECEIPT_BYTES, MAX_ARTIFACT_QUERY_BYTES,
+ };
+ mod batch;
++mod cram;
++pub use cram::CramEnvelope;
+ mod encoding;
+ mod engine;
++mod indexed_reader;
+ mod panel;
+ mod reference;
+ mod sample;
+diff --git a/src/evidence_cli.rs b/src/evidence_cli.rs
+index ed075f0..b84d3ce 100644
+--- a/src/evidence_cli.rs
++++ b/src/evidence_cli.rs
+@@ -53,7 +53,7 @@ pub(crate) struct EvidenceOptions {
+     /// Maximum execution microtile width; does not change scientific results.
+     #[arg(long, default_value_t = 16_384)]
+     tile_bases: u32,
+-    /// Maximum decoded record envelope; larger records cause a resource failure.
++    /// Maximum decoded record envelope; checked across the whole file for CRAM.
+     #[arg(long, default_value_t = 1_048_576)]
+     max_record_bytes: usize,
+     /// Bounded workers for independent canonical partitions.
+@@ -71,7 +71,7 @@ pub(crate) struct EvidenceOptions {
+     /// Verified replay dependencies for persisted source reuse.
+     #[arg(long = "reuse-artifact", hide = true, requires = "reuse_dataset")]
+     reuse_artifacts: Vec<PathBuf>,
+-    /// Reuse compatible verified completed partitions; requires --cache-dir.
++    /// Reuse verified partitions; requires --cache-dir. CRAM still validates the whole file.
+     #[arg(long, requires = "cache_dir")]
+     resume: bool,
+     /// Explicit local FASTA used to decode CRAM when the analysis reference is a pack.
+@@ -92,7 +92,7 @@ pub(crate) struct EvidenceOptions {
+     /// Optional exact per-position evidence from the same panel traversal.
+     #[arg(long)]
+     position_output: Option<PathBuf>,
+-    /// Print the complete admitted evidence plan as JSON without creating output.
++    /// Print the admitted plan as JSON; includes whole-file validation for CRAM, without creating output.
+     #[arg(long)]
+     plan: bool,
+ }
+diff --git a/src/evidence_cli/output.rs b/src/evidence_cli/output.rs
+index 4c78367..763de94 100644
+--- a/src/evidence_cli/output.rs
++++ b/src/evidence_cli/output.rs
+@@ -159,14 +159,39 @@ pub(super) fn execute_outputs(
+         if let Some(p) = &reuse_plan {
+             println!(
+                 "{}",
+-                serde_json::json!({"model":p.model_id,"reused_loci":p.reused_loci,"computed_loci":p.computed_loci,"metadata_bytes":p.metadata_bytes,"source_decoder_bytes":p.source_decoder_bytes,"merge_bytes":p.merge_bytes,"analyzer_bytes":p.analyzer_bytes,"native_bytes":p.native_bytes,"fields":p.output_fields.bits(),"source_fields":p.source_fields.bits(),"predicted_peak_rss_bytes":p.predicted_peak_rss_bytes,"science_blake3":science_digest})
++                serde_json::json!({"model":p.model_id,"reused_loci":p.reused_loci,"computed_loci":p.computed_loci,"metadata_bytes":p.metadata_bytes,"source_decoder_bytes":p.source_decoder_bytes,"merge_bytes":p.merge_bytes,"analyzer_bytes":p.analyzer_bytes,"native_bytes":p.native_bytes,"fields":p.output_fields.bits(),"source_fields":p.source_fields.bits(),"predicted_peak_rss_bytes":p.predicted_peak_rss_bytes,"science_blake3":science_digest,"native_decoder":plan.decoder_measurements()})
+             );
+             return Ok(());
+         }
+-        println!("{{\"model\":\"{}\",\"baseline_rss_bytes\":{},\"fixed_bytes\":{},\"bytes_per_locus\":{},\"microtile_bases\":{},\"canonical_tile_bases\":{},\"analyzer_bytes\":{},\"selected_loci\":{},\"fields\":{},\"schema\":{},\"predicted_peak_rss_bytes\":{},\"science_blake3\":\"{}\"}}",
+-            plan.model_id, plan.baseline_rss_bytes, plan.fixed_bytes, plan.bytes_per_locus,
+-            dataset_plan.as_ref().map_or(plan.microtile_bases, |plan| plan.microtile_bases), plan.canonical_tile_bases, plan.analyzer_bytes,
+-            plan.selected_loci, fields.bits(), fields.schema_version(), predicted_peak, science_digest);
++        println!(
++            "{}",
++            serde_json::json!({
++                "model": plan.model_id,
++                "baseline_rss_bytes": plan.baseline_rss_bytes,
++                "fixed_bytes": plan.fixed_bytes,
++                "bytes_per_locus": plan.bytes_per_locus,
++                "microtile_bases": dataset_plan.as_ref().map_or(plan.microtile_bases, |plan| plan.microtile_bases),
++                "canonical_tile_bases": plan.canonical_tile_bases,
++                "analyzer_bytes": plan.analyzer_bytes,
++                "selected_loci": plan.selected_loci,
++                "fields": fields.bits(),
++                "schema": fields.schema_version(),
++                "predicted_peak_rss_bytes": predicted_peak,
++                "science_blake3": science_digest,
++                "decoder_bytes": plan.decoder_bytes,
++                "decoder_model": plan.decoder_model,
++                "decoder_details": plan.decoder_measurements(),
++                "parallel": dataset_plan.as_ref().map(|value| serde_json::json!({
++                    "partition_count": value.partition_count,
++                    "worker_count": value.worker_count,
++                    "baseline_rss_bytes": value.baseline_rss_bytes,
++                    "worker_bytes": value.worker_bytes,
++                    "reducer_bytes": value.reducer_bytes,
++                    "metadata_queue_bytes": value.metadata_queue_bytes,
++                    "predicted_peak_rss_bytes": value.predicted_peak_rss_bytes,
++                })),
++            })
++        );
+         return Ok(());
+     }
+     let mut primary = command
+@@ -671,11 +696,17 @@ pub(super) fn execute_outputs(
+             );
+         }
+     }
++    manifest.measurements.extend(plan.decoder_measurements());
+     for (key, value) in [
+         ("baseline_rss_bytes", initial_rss),
+         ("peak_rss_bytes", peak),
+         ("predicted_peak_rss_bytes", predicted_peak),
+         ("execution.record_visits", stats.record_visits),
++        (
++            "execution.max_returned_record_bytes",
++            stats.max_record_bytes,
++        ),
++        ("execution.max_returned_read_length", stats.max_read_length),
+         (
+             "execution.sample_filtered_record_visits",
+             stats.sample_filtered_record_visits,
+diff --git a/src/main.rs b/src/main.rs
+index b3cd1a1..c7dd1dd 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -249,7 +249,7 @@ enum Commands {
+         /// Indexed local FASTA for exact evidence; also accepted: .rref or .idx.
+         #[arg(long)]
+         reference: Option<PathBuf>,
+-        /// Coordinate-sorted alignments (BAM; CRAM for evidence/panel-qc).
++        /// Coordinate-sorted alignments (BAM; supported CRAM 3.0 for evidence/panel-qc).
+         #[arg(long)]
+         alignments: PathBuf,
+         /// Minimum MAPQ required for a read to be considered.
+diff --git a/tests/evidence_cram_envelope.rs b/tests/evidence_cram_envelope.rs
+new file mode 100644
+index 0000000..80410cd
+--- /dev/null
++++ b/tests/evidence_cram_envelope.rs
+@@ -0,0 +1,278 @@
++use rosalind::evidence::*;
++use rosalind::selection::GenomicInterval;
++use rust_htslib::bam::{
++    self,
++    record::{Aux, Cigar, CigarString},
++    Read,
++};
++use std::{
++    path::PathBuf,
++    sync::atomic::{AtomicU64, Ordering},
++};
++static NEXT: AtomicU64 = AtomicU64::new(0);
++struct Fixture {
++    root: PathBuf,
++    fasta: PathBuf,
++    bam: PathBuf,
++    cram: PathBuf,
++}
++impl Fixture {
++    fn new(records: usize, oversized_aux: bool) -> Self {
++        let root = std::env::temp_dir().join(format!(
++            "rosalind-cram-envelope-{}-{}",
++            std::process::id(),
++            NEXT.fetch_add(1, Ordering::Relaxed)
++        ));
++        std::fs::create_dir_all(&root).unwrap();
++        let fasta = root.join("ref.fa");
++        std::fs::write(&fasta, format!(">chr1\n{}\n", "A".repeat(2000))).unwrap();
++        std::fs::write(root.join("ref.fa.fai"), "chr1\t2000\t6\t2000\t2001\n").unwrap();
++        let bam = root.join("reads.bam");
++        let cram = root.join("reads.cram");
++        let mut header = bam::Header::new();
++        header.push_record(
++            bam::header::HeaderRecord::new(b"HD")
++                .push_tag(b"VN", "1.6")
++                .push_tag(b"SO", "coordinate"),
++        );
++        header.push_record(
++            bam::header::HeaderRecord::new(b"SQ")
++                .push_tag(b"SN", "chr1")
++                .push_tag(b"LN", 2000),
++        );
++        let mut writer = bam::Writer::from_path(&bam, &header, bam::Format::Bam).unwrap();
++        for i in 0..records {
++            let mut record = bam::Record::new();
++            record.set(
++                format!("r{i}").as_bytes(),
++                Some(&CigarString(vec![Cigar::Match(100)])),
++                &[b'A'; 100],
++                &[30; 100],
++            );
++            record.set_tid(0);
++            record.set_pos(500);
++            record.set_mapq(60);
++            record.set_flags(0);
++            if oversized_aux && i + 1 == records {
++                record
++                    .push_aux(b"ZZ", Aux::String(&"x".repeat(4096)))
++                    .unwrap();
++            }
++            writer.write(&record).unwrap();
++        }
++        drop(writer);
++        bam::index::build(&bam, None::<&PathBuf>, bam::index::Type::Bai, 1).unwrap();
++        let mut writer = bam::Writer::from_path(&cram, &header, bam::Format::Cram).unwrap();
++        writer.set_reference(&fasta).unwrap();
++        let mut reader = bam::Reader::from_path(&bam).unwrap();
++        for record in reader.records() {
++            writer.write(&record.unwrap()).unwrap();
++        }
++        drop(writer);
++        bam::index::build(&cram, None::<&PathBuf>, bam::index::Type::Bai, 1).unwrap();
++        Self {
++            root,
++            fasta,
++            bam,
++            cram,
++        }
++    }
++    fn request(&self) -> EvidenceRequest {
++        let mut request = EvidenceRequest::new(&self.cram, &self.fasta);
++        request.selection = EvidenceSelection::Intervals(vec![GenomicInterval {
++            contig: 0,
++            start: 500,
++            end: 510,
++        }]);
++        request
++    }
++}
++impl Drop for Fixture {
++    fn drop(&mut self) {
++        let _ = std::fs::remove_dir_all(&self.root);
++    }
++}
++fn tsv(request: EvidenceRequest) -> Vec<u8> {
++    let mut engine = EvidenceEngine::open(request).unwrap();
++    let mut bytes = Vec::new();
++    engine.run(&mut EvidenceTsvWriter::new(&mut bytes)).unwrap();
++    bytes
++}
++#[test]
++fn whole_file_maxima_are_measured_once_and_scientific_bytes_match_bam() {
++    let fixture = Fixture::new(200, false);
++    let request = fixture.request();
++    let engine = EvidenceEngine::open(request.clone()).unwrap();
++    let envelope = engine.plan().cram_envelope.as_ref().unwrap();
++    assert_eq!(envelope.validated_records, 200);
++    assert_eq!(envelope.validated_bases, 20_000);
++    assert_eq!(envelope.validated_max_read_length, 100);
++    assert!(envelope.validated_max_record_bytes < 512);
++    assert!(engine.plan().decoder_bytes < 32 << 20);
++    assert_eq!(
++        engine.plan().decoder_measurements()["execution.cram.validated_records"],
++        "200"
++    );
++    let worker = engine
++        .worker_factory()
++        .open(request.selection.clone())
++        .unwrap();
++    assert_eq!(
++        worker
++            .plan()
++            .cram_envelope
++            .as_ref()
++            .unwrap()
++            .validation_wall_micros,
++        envelope.validation_wall_micros
++    );
++    let mut bam_request = request.clone();
++    bam_request.alignments = fixture.bam.clone();
++    let expected = tsv(bam_request);
++    for width in [1, 7, 1024] {
++        let mut request = request.clone();
++        request.execution.max_microtile_bases = width;
++        assert_eq!(tsv(request), expected);
++    }
++    let mut projected = request.clone();
++    projected.fields = EvidenceFields::DEPTHS;
++    assert_eq!(
++        EvidenceEngine::open(projected)
++            .unwrap()
++            .plan()
++            .decoder_bytes,
++        engine.plan().decoder_bytes
++    );
++}
++#[test]
++fn off_target_payload_is_checked_before_successful_indexed_analysis() {
++    let fixture = Fixture::new(2, true);
++    let mut request = fixture.request();
++    request.execution.max_record_bytes = 1024;
++    request.selection = EvidenceSelection::Intervals(vec![GenomicInterval {
++        contig: 0,
++        start: 0,
++        end: 10,
++    }]);
++    let mut bam_request = request.clone();
++    bam_request.alignments = fixture.bam.clone();
++    assert!(!tsv(bam_request).is_empty());
++    let error = EvidenceEngine::open(request).unwrap_err();
++    assert!(matches!(error, EvidenceError::RecordLimit(_)), "{error}");
++    assert!(error.to_string().contains("off-target"));
++}
++#[test]
++fn worker_cannot_tighten_limits_below_validated_records_or_ignore_index_mutation() {
++    let fixture = Fixture::new(3, false);
++    let request = fixture.request();
++    let engine = EvidenceEngine::open(request.clone()).unwrap();
++    let factory = engine.worker_factory();
++    let mut execution = request.execution.clone();
++    execution.max_record_bytes = 1;
++    assert!(matches!(
++        factory.open_with_execution(request.selection.clone(), execution),
++        Err(EvidenceError::RecordLimit(_))
++    ));
++    let mut execution = request.execution.clone();
++    execution.memory_budget_bytes = Some(1);
++    assert!(matches!(
++        factory.open_with_execution(request.selection.clone(), execution),
++        Err(EvidenceError::Refused { .. })
++    ));
++    let index = PathBuf::from(format!("{}.crai", fixture.cram.display()));
++    use std::io::Write;
++    std::fs::OpenOptions::new()
++        .append(true)
++        .open(index)
++        .unwrap()
++        .write_all(b"changed")
++        .unwrap();
++    assert!(factory.open(request.selection).is_err());
++}
++
++#[test]
++fn omitted_index_slice_is_rejected_instead_of_becoming_false_zero_evidence() {
++    let fixture = Fixture::new(10_001, false);
++    let path = PathBuf::from(format!("{}.crai", fixture.cram.display()));
++    use std::io::{Read as _, Write};
++    let mut text = String::new();
++    flate2::read::MultiGzDecoder::new(std::fs::File::open(&path).unwrap())
++        .read_to_string(&mut text)
++        .unwrap();
++    assert!(
++        text.lines().count() >= 2,
++        "fixture must contain multiple indexed slices"
++    );
++    let mut writer = flate2::write::GzEncoder::new(
++        std::fs::File::create(path).unwrap(),
++        flate2::Compression::default(),
++    );
++    writeln!(writer, "{}", text.lines().next().unwrap()).unwrap();
++    writer.finish().unwrap();
++    let error = EvidenceEngine::open(fixture.request()).unwrap_err();
++    assert!(
++        error.to_string().contains("CRAI entry disagrees"),
++        "{error}"
++    );
++}
++
++#[test]
++fn indexed_cram_lifetimes_survive_parallel_reads_and_failed_open() {
++    fn assert_send<T: Send>() {}
++    assert_send::<EvidenceEngine>();
++    // Poison freed native allocations in a fresh process. The old index-after-
++    // file drop order accesses the poisoned CRAM handle; an ordinary successful
++    // read is insufficient to catch this use-after-free reliably.
++    let output = std::process::Command::new(std::env::current_exe().unwrap())
++        .args(["--exact", "indexed_cram_lifetime_probe", "--nocapture"])
++        .env("ROSALIND_CRAM_LIFETIME_PROBE", "1")
++        .env("MallocScribble", "1")
++        .env("MALLOC_PERTURB_", "165")
++        .output()
++        .unwrap();
++    assert!(
++        output.status.success(),
++        "native lifetime probe failed: {}\n{}\n{}",
++        output.status,
++        String::from_utf8_lossy(&output.stdout),
++        String::from_utf8_lossy(&output.stderr)
++    );
++}
++
++#[test]
++fn indexed_cram_lifetime_probe() {
++    if std::env::var_os("ROSALIND_CRAM_LIFETIME_PROBE").is_none() {
++        return;
++    }
++    let fixture = Fixture::new(200, false);
++    let request = fixture.request();
++    let mut bam_request = request.clone();
++    bam_request.alignments = fixture.bam.clone();
++    let expected = tsv(bam_request);
++    let engine = EvidenceEngine::open(request.clone()).unwrap();
++    let factory = engine.worker_factory();
++    // Workers remain usable after their original engine/file has been closed.
++    drop(engine);
++    std::thread::scope(|scope| {
++        for _ in 0..8 {
++            let factory = &factory;
++            let expected = &expected;
++            let selection = request.selection.clone();
++            scope.spawn(move || {
++                for _ in 0..16 {
++                    let mut worker = factory.open(selection.clone()).unwrap();
++                    let mut bytes = Vec::new();
++                    worker.run(&mut EvidenceTsvWriter::new(&mut bytes)).unwrap();
++                    assert_eq!(&bytes, expected);
++                }
++            });
++        }
++    });
++    // Opening an indexed reader and then rejecting its sample scope must use
++    // the same safe destruction order, even without constructing an engine.
++    for _ in 0..8 {
++        let mut invalid = request.clone();
++        invalid.sample_selection = EvidenceSampleSelection::Named("absent".into());
++        assert!(EvidenceEngine::open(invalid).is_err());
++    }
++}

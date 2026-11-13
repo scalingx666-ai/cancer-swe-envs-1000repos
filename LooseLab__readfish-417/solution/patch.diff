@@ -1,0 +1,60 @@
+diff --git a/README.md b/README.md
+index c63c0084..c20bc906 100644
+--- a/README.md
++++ b/README.md
+@@ -562,6 +562,12 @@ And for our Awesome Logo please checkout out [@tim_bassford](https://twitter.com
+ 
+ <!-- start-changelog -->
+ # Changelog
++
++## 26.1.0
++
++1. Removed Python 3.8 support
++2. Record unblocked reads in `channel_read_latest_decision` [(#416)](https://github.com/LooseLab/readfish/pull/416)
++
+ ## 2024.3.0
+ ### This release is breaking for ALL versions of `MinKNOW <= 6` and no longer supports Guppy.
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index 7f641bb8..5c2f2058 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -11,7 +11,7 @@ authors = [
+ ]
+ license = "MIT"
+ readme = "README.md"
+-requires-python = ">=3.8"
++requires-python = ">=3.9"
+ description = "ONT adaptive sampling"
+ classifiers = [
+     "Development Status :: 4 - Beta",
+@@ -21,7 +21,6 @@ classifiers = [
+     "Operating System :: OS Independent",
+     "Programming Language :: Python",
+     "Programming Language :: Python :: 3",
+-    "Programming Language :: Python :: 3.8",
+     "Programming Language :: Python :: 3.9",
+     "Programming Language :: Python :: 3.10",
+     "Programming Language :: Python :: 3.11",
+diff --git a/src/readfish/__about__.py b/src/readfish/__about__.py
+index f4e6887c..3b97fe91 100644
+--- a/src/readfish/__about__.py
++++ b/src/readfish/__about__.py
+@@ -2,4 +2,4 @@
+ Version of the read until software
+ """
+ 
+-__version__ = "2024.3.0"
++__version__ = "2026.1.0"
+diff --git a/src/readfish/_read_until_client.py b/src/readfish/_read_until_client.py
+index 3b4c1c07..664d4824 100644
+--- a/src/readfish/_read_until_client.py
++++ b/src/readfish/_read_until_client.py
+@@ -114,6 +114,7 @@ def unblock_read_batch(
+             )
+             self.unblock_logger.debug(read_id)
+         self.action_queue.put(actions)
++        self.channel_read_latest_decision.update(reads)
+ 
+     def unblock_read(
+         self,

@@ -1,0 +1,207 @@
+diff --git a/.github/workflows/build.yaml b/.github/workflows/build.yaml
+index 33796dd37..5968475c7 100644
+--- a/.github/workflows/build.yaml
++++ b/.github/workflows/build.yaml
+@@ -68,6 +68,7 @@ jobs:
+       date: ${{ inputs.date }}
+       script: ci/build_cpp.sh
+       sha: ${{ inputs.sha }}
++      matrix_type: cuda-13-4-nightly
+   docs-build-matrix:
+     permissions:
+       contents: read
+@@ -75,6 +76,7 @@ jobs:
+     with:
+       build_type: ${{ inputs.build_type || 'branch' }}
+       matrix_name: docs-build
++      matrix_type: cuda-13-4-nightly
+   docs-build:
+     if: github.ref_type == 'branch'
+     needs: [docs-build-matrix, python-build]
+@@ -137,6 +139,7 @@ jobs:
+       matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
+       script: ci/build_python.sh
+       sha: ${{ inputs.sha }}
++      matrix_type: cuda-13-4-nightly
+   upload-conda:
+     needs: [cpp-build, python-build]
+     permissions:
+@@ -172,6 +175,7 @@ jobs:
+       script: ci/build_wheel.sh
+       package-name: cucim
+       package-type: python
++      matrix_type: cuda-13-4-nightly
+   wheel-publish:
+     needs: wheel-build
+     permissions:
+diff --git a/.github/workflows/pr.yaml b/.github/workflows/pr.yaml
+index 26ee3c266..142a6ce89 100644
+--- a/.github/workflows/pr.yaml
++++ b/.github/workflows/pr.yaml
+@@ -187,6 +187,7 @@ jobs:
+       build_type: pull-request
+       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+       script: ci/build_cpp.sh
++      matrix_type: cuda-13-4-pr
+   conda-python-build:
+     needs: [build-details, conda-cpp-build]
+     permissions:
+@@ -202,6 +203,7 @@ jobs:
+       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
+       matrix_filter: group_by({CUDA_VER, ARCH}) | map(min_by(.PY_VER | split(".") | map(tonumber)))
+       script: ci/build_python.sh
++      matrix_type: cuda-13-4-pr
+   conda-python-tests:
+     needs: [conda-python-build, changed-files]
+     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
+@@ -216,6 +218,7 @@ jobs:
+     with:
+       build_type: pull-request
+       script: ci/test_python.sh
++      matrix_type: cuda-13-4-pr,pull-request
+   docs-build-matrix:
+     permissions:
+       contents: read
+@@ -223,6 +226,7 @@ jobs:
+     with:
+       build_type: pull-request
+       matrix_name: docs-build
++      matrix_type: cuda-13-4-pr
+   docs-build:
+     needs: [docs-build-matrix, conda-python-build, changed-files]
+     if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+@@ -280,6 +284,7 @@ jobs:
+       script: ci/build_wheel.sh
+       package-name: cucim
+       package-type: python
++      matrix_type: cuda-13-4-pr
+   wheel-tests:
+     needs: [wheel-build, changed-files]
+     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
+@@ -294,3 +299,4 @@ jobs:
+     with:
+       build_type: pull-request
+       script: ci/test_wheel.sh
++      matrix_type: cuda-13-4-pr,pull-request
+diff --git a/.github/workflows/test.yaml b/.github/workflows/test.yaml
+index 59d405b7d..6f9cdf190 100644
+--- a/.github/workflows/test.yaml
++++ b/.github/workflows/test.yaml
+@@ -40,6 +40,7 @@ jobs:
+       date: ${{ inputs.date }}
+       script: ci/test_python.sh
+       sha: ${{ inputs.sha }}
++      matrix_type: cuda-13-4-nightly,nightly
+   wheel-tests:
+     permissions:
+       actions: read
+@@ -55,3 +56,4 @@ jobs:
+       date: ${{ inputs.date }}
+       sha: ${{ inputs.sha }}
+       script: ci/test_wheel.sh
++      matrix_type: cuda-13-4-nightly,nightly
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index 112aae610..7c44e6756 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -132,7 +132,7 @@ Note that the environment files in `./conda/environments/` will pull in GCC and
+ If you want to change the version of GCC or CUDA, please update the environment file before executing the following commands.
+ 
+ ```bash
+-conda env create -n cucim -f ./conda/environments/all_cuda-133_arch-$(uname -m).yaml
++conda env create -n cucim -f ./conda/environments/all_cuda-134_arch-$(uname -m).yaml
+ # activate the environment
+ conda activate cucim
+ ```
+diff --git a/ci/build_python.sh b/ci/build_python.sh
+index 14d9585c3..a3cf8030b 100755
+--- a/ci/build_python.sh
++++ b/ci/build_python.sh
+@@ -36,6 +36,7 @@ CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libc
+ # node works correctly
+ RAPIDS_PACKAGE_VERSION=$(head -1 ./VERSION) rapids-conda-retry build \
+   --no-test \
++  --python "${RAPIDS_PY_VERSION}" \
+   --channel "${CPP_CHANNEL}" \
+   conda/recipes/cucim
+ 
+diff --git a/conda/environments/all_cuda-133_arch-aarch64.yaml b/conda/environments/all_cuda-134_arch-aarch64.yaml
+similarity index 95%
+rename from conda/environments/all_cuda-133_arch-aarch64.yaml
+rename to conda/environments/all_cuda-134_arch-aarch64.yaml
+index 1d55fe86d..99e098e69 100644
+--- a/conda/environments/all_cuda-133_arch-aarch64.yaml
++++ b/conda/environments/all_cuda-134_arch-aarch64.yaml
+@@ -10,7 +10,7 @@ dependencies:
+ - cmake>=4.0
+ - cuda-cudart-dev
+ - cuda-nvcc
+-- cuda-version=13.3
++- cuda-version=13.4
+ - cupy>=14.0.1,!=14.1.0
+ - cxx-compiler
+ - gcc_linux-aarch64=14.*
+@@ -47,4 +47,4 @@ dependencies:
+ - pip:
+   - nvidia-sphinx-theme
+   - opencv-python-headless>=4.6
+-name: all_cuda-133_arch-aarch64
++name: all_cuda-134_arch-aarch64
+diff --git a/conda/environments/all_cuda-133_arch-x86_64.yaml b/conda/environments/all_cuda-134_arch-x86_64.yaml
+similarity index 95%
+rename from conda/environments/all_cuda-133_arch-x86_64.yaml
+rename to conda/environments/all_cuda-134_arch-x86_64.yaml
+index 32435b7eb..2a9f96547 100644
+--- a/conda/environments/all_cuda-133_arch-x86_64.yaml
++++ b/conda/environments/all_cuda-134_arch-x86_64.yaml
+@@ -10,7 +10,7 @@ dependencies:
+ - cmake>=4.0
+ - cuda-cudart-dev
+ - cuda-nvcc
+-- cuda-version=13.3
++- cuda-version=13.4
+ - cupy>=14.0.1,!=14.1.0
+ - cxx-compiler
+ - gcc_linux-64=14.*
+@@ -49,4 +49,4 @@ dependencies:
+ - pip:
+   - nvidia-sphinx-theme
+   - opencv-python-headless>=4.6
+-name: all_cuda-133_arch-x86_64
++name: all_cuda-134_arch-x86_64
+diff --git a/dependencies.yaml b/dependencies.yaml
+index f8a9c430e..6ed60d3f5 100644
+--- a/dependencies.yaml
++++ b/dependencies.yaml
+@@ -6,7 +6,7 @@ files:
+   all:
+     output: conda
+     matrix:
+-      cuda: ["12.9", "13.3"]
++      cuda: ["12.9", "13.4"]
+       arch: [x86_64, aarch64]
+     includes:
+       - build
+@@ -171,6 +171,10 @@ dependencies:
+               cuda: "13.3"
+             packages:
+               - cuda-version=13.3
++          - matrix:
++              cuda: "13.4"
++            packages:
++              - cuda-version=13.4
+       - output_types: [requirements, constraints]
+         matrices:
+           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
+@@ -226,6 +230,11 @@ dependencies:
+               use_cuda_wheels: "true"
+             packages:
+               - cuda-toolkit==13.3.*
++          - matrix:
++              cuda: "13.4"
++              use_cuda_wheels: "true"
++            packages:
++              - cuda-toolkit==13.4.*
+   cuda:
+     common:
+       - output_types: conda

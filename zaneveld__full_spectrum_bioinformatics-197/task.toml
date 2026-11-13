@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/zaneveld__full_spectrum_bioinformatics-197"
+description = "Updating unfinished draft section on AI"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "full_spectrum_bioinformatics",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zaneveld/full_spectrum_bioinformatics"
+ref = "7c39460c45f8e160a898a0e2b6c8eda92b7c1d6c"
+reference = "https://github.com/zaneveld/full_spectrum_bioinformatics/pull/197"
+source_access = "auto"
+built_at = "2026-11-13T16:20:07.161058+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7ed2c08efb342b7bf88e81980ae40d7758b421fe85f63c02b8b4bb37f8d92409"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-16T23:52:20Z"
+diff_format = "unified"
+context_files = [
+    "content/12_multivariate_methods/generative_ai_and_bioinformatics.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 312
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

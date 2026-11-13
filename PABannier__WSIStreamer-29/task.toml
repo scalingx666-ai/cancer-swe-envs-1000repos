@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/PABannier__WSIStreamer-29"
+description = "feat: add route `slide/{id}` route handler in server"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "WSIStreamer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "PABannier/WSIStreamer"
+ref = "4fed20127aa8cbe442c23472a46276fa32934262"
+reference = "https://github.com/PABannier/WSIStreamer/pull/29"
+source_access = "auto"
+built_at = "2026-11-13T16:13:02.092576+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fe0d15931621e23df889a6e223a9d3dbefc7609e7a29158881da9aa66b338a86"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-01-04T16:27:36Z"
+diff_format = "unified"
+context_files = [
+    ".claude/settings.json",
+    "API_SPECIFICATIONS.md",
+    "src/lib.rs",
+    "src/server/handlers.rs",
+    "src/server/mod.rs",
+    "src/server/routes.rs",
+    "tests/integration/api_tests.rs",
+    "tests/integration/real_service_tests.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1156
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/telatin__seqfu2-34"
+description = "Build/portable release binaries"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "seqfu2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "telatin/seqfu2"
+ref = "c1b4d09e24f7890f5fda3d8fcf51429059b60429"
+reference = "https://github.com/telatin/seqfu2/pull/34"
+source_access = "auto"
+built_at = "2026-11-13T16:21:04.354503+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4535a4c691d0155472bd6b2e65d4a511ed99f294487071f93873b42d649a0681"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-24T10:29:26Z"
+diff_format = "unified"
+context_files = [
+    ".github/scripts/package-binaries.sh",
+    ".github/workflows/build-binaries.yml",
+    ".github/workflows/make.yaml",
+    ".github/workflows/release-binaries.yml",
+    "Makefile",
+    "nim.cfg",
+    "scripts/fu-pecheck",
+    "scripts/fu-split",
+    "seqfu.nimble",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 268
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,305 @@
+diff --git a/.editorconfig b/.editorconfig
+index d93efa79..2243bb1a 100644
+--- a/.editorconfig
++++ b/.editorconfig
+@@ -6,7 +6,7 @@ root = true
+ charset = utf-8
+ end_of_line = lf
+ trim_trailing_whitespace = true
+-insert_final_newline = false
++insert_final_newline = true
+ 
+ [*.R]
+ indent_style = space
+@@ -22,4 +22,4 @@ indent_style = tab
+ 
+ [.travis.yml]
+ indent_style = space
+-indent_size = 2
++indent_size = 2
+\ No newline at end of file
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 2a729a36..32534b75 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,6 +1,6 @@
+ Package: MSnbase
+ Title: Base Functions and Classes for Mass Spectrometry and Proteomics
+-Version: 2.39.4
++Version: 2.39.5
+ Description: MSnbase provides infrastructure for manipulation,
+              processing and visualisation of mass spectrometry and
+              proteomics data, ranging from raw to quantitative and
+@@ -72,13 +72,13 @@ Maintainer: Laurent Gatto <laurent.gatto@uclouvain.be>
+ Depends:
+     R (>= 3.5),
+     methods,
+-    BiocGenerics (>= 0.7.1),
+-    Biobase (>= 2.15.2),
+     mzR (>= 2.29.3),
+-    S4Vectors,
+-    ProtGenerics (>= 1.29.1)
++    Biobase (>= 2.15.2),
++    S4Vectors
+ Imports:
+     MsCoreUtils,
++    BiocGenerics,
++    ProtGenerics,
+     PSMatch (>= 1.15.3),
+     PTMods (>= 0.99.5),
+     BiocParallel,
+diff --git a/NAMESPACE b/NAMESPACE
+index e973251f..087e50fd 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -1,12 +1,29 @@
+ useDynLib(MSnbase)
+ importFrom(Rcpp, sourceCpp)
+ 
+-
+ import(grid)
+-import(BiocGenerics)
+-import(ProtGenerics)
+-importMethodsFrom(ProtGenerics, bin)
+-importMethodsFrom(ProtGenerics, spectrapply)
++importMethodsFrom("BiocGenerics", "as.data.frame")
++importMethodsFrom("BiocGenerics", "colnames")
++importMethodsFrom("BiocGenerics", "colnames<-")
++importMethodsFrom("BiocGenerics", "combine")
++importMethodsFrom("BiocGenerics", "fileName")
++importMethodsFrom("BiocGenerics", "image")
++importMethodsFrom("BiocGenerics", "lapply")
++importMethodsFrom("BiocGenerics", "normalize")
++importMethodsFrom("BiocGenerics", "mad")
++importMethodsFrom("BiocGenerics", "rownames")
++importMethodsFrom("BiocGenerics", "rownames<-")
++importMethodsFrom("BiocGenerics", "sapply")
++importMethodsFrom("BiocGenerics", "scale")
++importMethodsFrom("BiocGenerics", "unsplit")
++importMethodsFrom("BiocGenerics", "updateObject")
++importMethodsFrom("BiocGenerics", "width")
++
++import("ProtGenerics")
++importMethodsFrom("ProtGenerics", "bin")
++importMethodsFrom("ProtGenerics", "peptides")
++importMethodsFrom("ProtGenerics", "proteins")
++importMethodsFrom("ProtGenerics", "spectrapply")
+ importClassesFrom(ProtGenerics, ProcessingStep)
+ import(BiocParallel)
+ import(Biobase)
+@@ -48,6 +65,7 @@ importFrom(MALDIquant, binPeaks, match.closest) ## only using ::: functions
+ importFrom(S4Vectors, isEmpty, metadata, DataFrame, replaceROWS, SimpleList,
+            endoapply)
+ importMethodsFrom(S4Vectors, showAsCell, "mcols<-", mcols, split, extractROWS)
++importMethodsFrom(S4Vectors, "t")
+ importClassesFrom(S4Vectors, SimpleList)
+ importFrom(MASS, rlm)
+ 
+@@ -188,6 +206,7 @@ exportClasses(pSet,
+ 
+ exportMethods(updateObject,
+               exprs,
++              "exprs<-",
+               assayData,
+               "assayData<-",
+               coerce,
+@@ -197,6 +216,8 @@ exportMethods(updateObject,
+               "fData<-",
+               featureNames,
+               "featureNames<-",
++              featureData,
++              "featureData<-",
+               sampleNames,
+               "sampleNames<-",
+               fileNames,
+@@ -303,14 +324,19 @@ exportMethods(updateObject,
+               unique2,
+               names, "names<-",
+               ## MSmap
+-              mzRes, plot3D, msMap,
+-              fileName, t,
++              mzRes,
++              plot3D,
++              msMap,
++              fileName,
++              t,
+               ## MSnSetList
+               split,
+               ## MzTab
+               fileName,
+               metadata,
+               psms,
++              peptides,
++              proteins,
+               pData, "pData<-",
+               "$",
+               "$<-",
+@@ -330,7 +356,9 @@ exportMethods(updateObject,
+               "filterIntensity",
+               c,
+               compareChromatograms,
+-              transformIntensity
++              transformIntensity,
++              "rownames",
++              "rownames<-"
+               )
+ 
+ ## methods NOT exported
+diff --git a/NEWS.md b/NEWS.md
+index e573259a..f23d2c31 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -1,5 +1,8 @@
+ # MSnbase 2.39
+ 
++## MSnbase 2.39.5
++- Use selective import from ProtGenerics and BiocGenerics.
++
+ ## MSnbase 2.39.4
+ - Move more tests to longtests.
+ 
+@@ -2487,4 +2490,4 @@
+ ## Changes in version 0.1.0
+ 
+  - Added MSnbase-demo vignette
+- - Added MSnbase-development vignette
++ - Added MSnbase-development vignette
+\ No newline at end of file
+diff --git a/man/MSnSet-class.Rd b/man/MSnSet-class.Rd
+index 456e3296..85cdd572 100644
+--- a/man/MSnSet-class.Rd
++++ b/man/MSnSet-class.Rd
+@@ -8,6 +8,7 @@
+ 
+ \alias{acquisitionNum,MSnSet-method}
+ \alias{exprs,MSnSet-method}
++\alias{exprs<-,MSnSet,matrix-method}
+ \alias{dim,MSnSet-method}
+ \alias{fileNames,MSnSet-method}
+ \alias{msInfo,MSnSet-method}
+diff --git a/man/MSnSetList-class.Rd b/man/MSnSetList-class.Rd
+index 76704b7c..58b94e59 100644
+--- a/man/MSnSetList-class.Rd
++++ b/man/MSnSetList-class.Rd
+@@ -20,6 +20,7 @@
+ \alias{sapply,MSnSetList-method}
+ \alias{fData,MSnSetList-method}
+ \alias{fData<-,MSnSetList,DataFrame-method}
++\alias{featureData,MSnSetList-method}
+ 
+ \title{Storing multiple related MSnSets}
+ 
+diff --git a/man/ProcessingStep-class.Rd b/man/ProcessingStep-class.Rd
+deleted file mode 100644
+index 32c48a09..00000000
+--- a/man/ProcessingStep-class.Rd
++++ /dev/null
+@@ -1,76 +0,0 @@
+-\name{ProcessingStep-class}
+-\Rdversion{1.1}
+-\docType{class}
+-\concept{ProcessingStep}
+-
+-\alias{ProcessingStep-class}
+-\alias{ProcessingStep:OnDiskMSnExp}
+-\alias{ProcessingStep}
+-\alias{show,ProcessingStep-method}
+-
+-\alias{executeProcessingStep}
+-
+-\title{Simple processing step class}
+-
+-\description{
+-  The \code{ProcessingStep} class is a simple object to encapsule all
+-  relevant information of a data analysis processing step, i.e. the
+-  function name and all arguments.
+-}
+-
+-\details{
+-  Objects of this class are mainly used to record all possible
+-  processing steps of an \code{\linkS4class{OnDiskMSnExp}} object for
+-  later \emph{lazy execution}.
+-}
+-
+-\section{Objects from the Class}{
+-  Objects can be created by calls of the form
+-  \code{new("ProcessingStep",...)} or using the \code{ProcessingStep}
+-  constructor function.
+-}
+-
+-\section{Slots}{
+-  \describe{
+-    \item{\code{FUN}:}{
+-      The function name to be executed as a character string.
+-    }
+-    \item{\code{ARGS}:}{
+-      A named \code{list} with all arguments to the function.
+-    }
+-  }
+-}
+-
+-\section{Methods and functions}{
+-  \describe{
+-    \item{executeProcessingStep(object, ...)}{
+-      Execute the processing step \code{object}. Internally this
+-      calls \code{do.call} passing all arguments defined in the
+-      \code{ProcessingStep} \code{object} along with potential
+-      additional arguments in \code{...} to the function
+-      \code{object@FUN}.
+-    }
+-  }
+-}
+-
+-\section{Extends}{
+-  Class \code{"\linkS4class{Versioned}"}, directly.
+-}
+-
+-\author{
+-  Johannes Rainer <johannes.rainer@eurac.edu>
+-}
+-
+-\seealso{
+-  \code{\linkS4class{OnDiskMSnExp}}
+-}
+-
+-\examples{
+-## Define a simple ProcessingStep
+-procS <- ProcessingStep("sum", list(c(1, 3, NA, 5), na.rm= TRUE))
+-
+-executeProcessingStep(procS)
+-
+-}
+-
+-\keyword{classes}
+diff --git a/man/pSet-class.Rd b/man/pSet-class.Rd
+index 801ee513..573eafec 100644
+--- a/man/pSet-class.Rd
++++ b/man/pSet-class.Rd
+@@ -87,6 +87,7 @@
+ \alias{isolationWindowUpperMz}
+ \alias{isolationWindowLowerMz,pSet-method}
+ \alias{isolationWindowUpperMz,pSet-method}
++\alias{featureData<-,pSet,AnnotatedDataFrame-method}
+ 
+ \alias{spectrapply}
+ \alias{spectrapply,pSet-method}
+diff --git a/tests/testthat/test_MSmap.R b/tests/testthat/test_MSmap.R
+index d53e9328..4ba38c56 100644
+--- a/tests/testthat/test_MSmap.R
++++ b/tests/testthat/test_MSmap.R
+@@ -30,7 +30,7 @@ test_that("MSmap accessors", {
+     expect_identical(msLevel(M), rep(1L, 75))
+     expect_identical(mz(M), seq(521, 523, 0.005))
+ 
+-    Mt <- t(M)
++    Mt <- MSnbase::t(M)
+     expect_identical(msMap(M), t(msMap(Mt)))
+     expect_null(show(Mt))
+ })
+@@ -71,4 +71,4 @@ test_that("map data.frame", {
+ ##     expect_is(x, "trellis")
+ ##     x <- plot(M, aspect = 1, allTicks = FALSE)
+ ##     expect_is(x, "trellis")
+-## })
++## })
+\ No newline at end of file

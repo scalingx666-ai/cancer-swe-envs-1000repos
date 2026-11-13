@@ -1,0 +1,101 @@
+diff --git a/hickit.h b/hickit.h
+index db7535f3..30cadbc2 100644
+--- a/hickit.h
++++ b/hickit.h
+@@ -115,9 +115,9 @@ struct hk_map *hk_map_read(const char *fn);
+ void hk_map_destroy(struct hk_map *m);
+ void hk_map_phase_male_XY(struct hk_map *m);
+ 
+-struct hk_pair *hk_seg2pair(int32_t n_segs, const struct hk_seg *segs, int min_dist, int max_seg, int min_mapq, int32_t *n_pairs_);
++struct hk_pair *hk_seg2pair(int32_t n_segs, const struct hk_seg *segs, int min_dist, int max_seg, int min_mapq, int32_t *n_pairs_, int all_close_leg);
+ int32_t hk_pair_dedup(int n_pairs, struct hk_pair *pairs, int min_dist);
+-int32_t hk_pair_filter_close_legs(int32_t n_pairs, struct hk_pair *pairs, int min_dist);
++int32_t hk_pair_filter_close_legs(int32_t n_pairs, struct hk_pair *pairs, int min_dist, int all_close_leg);
+ int32_t hk_pair_filter_isolated(int32_t n_pairs, struct hk_pair *pairs, int32_t max_radius, int32_t min_cnt, float drop_frac);
+ void hk_pair_mark_close(int32_t n_pairs, struct hk_pair *pairs, int radius);
+ void hk_pair_count_contained(int32_t n_pairs, struct hk_pair *pairs);
+diff --git a/main.c b/main.c
+index aaeb5786..88f394fa 100644
+--- a/main.c
++++ b/main.c
+@@ -40,6 +40,7 @@ static struct option long_options[] = {
+ 	{ "loop-r",         required_argument, 0, 0 },   // 19
+ 	{ "val-radius",     required_argument, 0, 0 },   // 20
+ 	{ "dbg-val",        no_argument,       0, 0 },   // 21
++	{ "all-close-leg",  no_argument,       0, 0 },   // 22
+ 	{ 0, 0, 0, 0}
+ };
+ 
+@@ -72,6 +73,7 @@ int main(int argc, char *argv[])
+ 	float phase_thres = 0.75f;
+ 	// immediate input filters
+ 	int max_seg = 3, min_mapq = 20, min_leg_dist = 1000, dup_dist = 100;
++	int all_close_leg = 0; // default: use strand info when removing close-legged contacts (hk_seg2pair and hk_pair_filter_close_legs)
+ 	// TAD calling parameters
+ 	float tad_area_weight = 15.0f, tad_min_cnt_weight = 0.1f;
+ 	// loop calling parameters
+@@ -101,9 +103,9 @@ int main(int argc, char *argv[])
+ 			assert(m);
+ 			if (ploidy == 2) hk_map_phase_male_XY(m);
+ 			if (m->pairs == 0 && m->segs)
+-				m->pairs = hk_seg2pair(m->n_segs, m->segs, min_leg_dist, max_seg, min_mapq, &m->n_pairs);
++				m->pairs = hk_seg2pair(m->n_segs, m->segs, min_leg_dist, max_seg, min_mapq, &m->n_pairs, all_close_leg);
+ 			else if (m->pairs && min_leg_dist > 0)
+-				m->n_pairs = hk_pair_filter_close_legs(m->n_pairs, m->pairs, min_leg_dist);
++				m->n_pairs = hk_pair_filter_close_legs(m->n_pairs, m->pairs, min_leg_dist, all_close_leg);
+ 			if (dup_dist)
+ 				m->n_pairs = hk_pair_dedup(m->n_pairs, m->pairs, dup_dist);
+ 		} else if (c == 'o') {
+@@ -227,6 +229,7 @@ int main(int argc, char *argv[])
+ 			else if (long_idx == 18) loop_min_q = atof(optarg); // --loop-q
+ 			else if (long_idx == 20) imput_val_radius = hk_parse_num(optarg, 0); // --val-radius
+ 			else if (long_idx == 21) hk_dbg_flag |= HK_DBG_VAL; // --dbg-val
++			else if (long_idx == 22) all_close_leg = 1; // --dbg-val
+ 			else if (long_idx ==  4) { // --out-seg
+ 				assert(m && m->segs);
+ 				fp = strcmp(optarg, "-") == 0? stdout : fopen(optarg, "w");
+@@ -329,6 +332,7 @@ int main(int argc, char *argv[])
+ 		fprintf(fp, "    --max-seg=NUM       ignore fragments with >INT segments (.seg only) [%d]\n", max_seg);
+ 		fprintf(fp, "    --min-mapq=NUM      min mapping quality (.seg only) [%d]\n", min_mapq);
+ 		fprintf(fp, "    --min-leg-dist=NUM  min base-pair distance between the two legs [%d]\n", min_leg_dist);
++		fprintf(fp, "    --all-close-leg     remove all close-legged contacts regardless of strand info\n");
+ 		fprintf(fp, "    --dup-dist=NUM      remove contacts within NUM-bp (dedup; 0 to disable) [%d]\n", dup_dist);
+ 		fprintf(fp, "  TAD calling:\n");
+ 		fprintf(fp, "    -a FLOAT            area weight (larger for smaller TADs) [%g]\n", tad_area_weight);
+diff --git a/pair.c b/pair.c
+index 7c4e180d..f3173482 100644
+--- a/pair.c
++++ b/pair.c
+@@ -74,7 +74,7 @@ int hk_pair_is_sorted(int32_t n_pairs, const struct hk_pair *pairs)
+ 	return (i == n_pairs);
+ }
+ 
+-struct hk_pair *hk_seg2pair(int32_t n_segs, const struct hk_seg *segs, int min_dist, int max_seg, int min_mapq, int32_t *n_pairs_)
++struct hk_pair *hk_seg2pair(int32_t n_segs, const struct hk_seg *segs, int min_dist, int max_seg, int min_mapq, int32_t *n_pairs_, int all_close_leg)
+ {
+ 	int32_t m_pairs = 0, n_pairs = 0, i, j, st;
+ 	struct hk_pair *pairs = 0;
+@@ -101,7 +101,7 @@ struct hk_pair *hk_seg2pair(int32_t n_segs, const struct hk_seg *segs, int min_d
+ 						p->phase[0]  = s->phase,  p->phase[1]  = t->phase;
+ 						p->strand[0] = s->strand, p->strand[1] = t->strand;
+ 					}
+-					if (p->strand[0] * p->strand[1] >= 0 && t->chr == s->chr && (int32_t)p->pos - (int32_t)(p->pos>>32) < min_dist) {
++					if ((p->strand[0] * p->strand[1] >= 0 || all_close_leg) && t->chr == s->chr && (int32_t)p->pos - (int32_t)(p->pos>>32) < min_dist) {
+ 						--n_pairs;
+ 						continue;
+ 					}
+@@ -257,12 +257,12 @@ int32_t hk_pair_filter_isolated(int32_t n_pairs, struct hk_pair *pairs, int32_t
+ 	return k;
+ }
+ 
+-int32_t hk_pair_filter_close_legs(int32_t n_pairs, struct hk_pair *pairs, int min_dist)
++int32_t hk_pair_filter_close_legs(int32_t n_pairs, struct hk_pair *pairs, int min_dist, int all_close_leg)
+ {
+ 	int32_t i, k;
+ 	for (i = k = 0; i < n_pairs; ++i) {
+ 		struct hk_pair *p = &pairs[i];
+-		if (!hk_intra(p) || hk_ppos2(p) - hk_ppos1(p) >= min_dist || p->strand[0] * p->strand[1] < 0)
++		if (!hk_intra(p) || hk_ppos2(p) - hk_ppos1(p) >= min_dist || (p->strand[0] * p->strand[1] < 0 && !all_close_leg) )
+ 			pairs[k++] = *p;
+ 	}
+ 	if (hk_verbose >= 3)

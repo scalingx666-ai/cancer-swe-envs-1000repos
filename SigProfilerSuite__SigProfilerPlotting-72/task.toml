@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/SigProfilerSuite__SigProfilerPlotting-72"
+description = "Fix v1.5.0 review findings"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "SigProfilerPlotting",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "SigProfilerSuite/SigProfilerPlotting"
+ref = "44e1914beea33e31cf6edc2898c889f08df1920c"
+reference = "https://github.com/SigProfilerSuite/SigProfilerPlotting/pull/72"
+source_access = "auto"
+built_at = "2026-11-13T15:40:57.504782+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9d00b7cbed06ab43f42196a08e3784da4b85e08ca093e7c696f4268093a4054b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-07T03:02:26Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "docs/osf_wiki/home.md",
+    "setup.py",
+    "sigProfilerPlotting/controllers/cli_controller.py",
+    "sigProfilerPlotting/web/cosmic.py",
+    "sigProfilerPlotting/web/matrix.py",
+    "sigProfilerPlotting/web/server.py",
+    "sigProfilerPlotting/web/static/app.js",
+    "sigProfilerPlotting/web/static/index.html",
+    "sigProfilerPlotting/web/static/styles.css",
+    "tests/test_cli_controller.py",
+    "tests/test_cosmic.py",
+    "tests/test_web_interactions.py",
+    "tests/test_web_matrix.py",
+    "tests/test_web_server.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1292
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

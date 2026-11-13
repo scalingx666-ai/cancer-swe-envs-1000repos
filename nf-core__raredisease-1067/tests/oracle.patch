@@ -1,0 +1,50 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 2a8215e18..754c61f57 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -134,6 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ 
+ ### `Fixed`
+ 
++- Fix `MERGE_NUCLEAR_AND_MT_SVS` failing with "If priority is used, one tag per VCF is needed" when only one nuclear SV caller is active and SaltShaker (mitosalt) produces a VCF: the SV caller priority list now always contains every active caller, and the priority is only dropped at merge time when a single VCF is merged. [issue #1066](https://github.com/nf-core/raredisease/issues/1066) [PR #1067](https://github.com/nf-core/raredisease/pull/1067)
+ - Fix samplesheets containing multiple `case_id`s being silently accepted and merged into a single case named after the first row, instead of being rejected: `createCaseChannel` now errors out at start-up if a samplesheet's rows don't all share one `case_id` [issue #1054](https://github.com/nf-core/raredisease/issues/1054) [PR #1055](https://github.com/nf-core/raredisease/pull/1055)
+ - Fix `GATK4_POSTPROCESSGERMLINECNVCALLS` failing to stage gCNV model calls on cloud storage (Azure Blob, S3, GCS): use `toUriString()` instead of `toString()` so the URI scheme is kept [PR #1053](https://github.com/nf-core/raredisease/pull/1053)
+ - Fix `annotate_genome_snvs`/`annotate_mt_snvs` silently falling back to the non-CADD-annotated VCF if a CADD result is ever missing when CADD was requested, instead of failing the run [issue #868](https://github.com/nf-core/raredisease/issues/868) [PR #1034](https://github.com/nf-core/raredisease/pull/1034)
+diff --git a/main.nf b/main.nf
+index d2e29ce0a..25f238f5d 100644
+--- a/main.nf
++++ b/main.nf
+@@ -413,7 +413,9 @@ workflow NFCORE_RAREDISEASE {
+             ", germlinecnvcaller) or set --skip_subworkflows sv_calling.")
+     }
+ 
+-    ch_svcaller_priority = channel.value(active_sv_callers.size() > 1 ? active_sv_callers : [])
++    // Always pass the full list of active callers, priority is decided
++    // at merge time (raredisease.nf), once "mitosalt" may have been appended by CALL_SV_MT.
++    ch_svcaller_priority = channel.value(active_sv_callers)
+ 
+     //
+     // Create chromosome bed and intervals for splitting and gathering operations
+diff --git a/workflows/raredisease.nf b/workflows/raredisease.nf
+index 519635e4a..8f8910c8d 100644
+--- a/workflows/raredisease.nf
++++ b/workflows/raredisease.nf
+@@ -876,6 +876,7 @@ workflow RAREDISEASE {
+         // Merge all individual caller VCFs (nuclear + saltshaker) in a single SVDB_MERGE call so
+         // there is exactly one priority list (ch_svcaller_priority, updated above with "mitosalt"
+         // only if saltshaker actually produced a VCF) matching exactly one VCF count.
++        // A priority is only passed when more than one VCF is merged.
+         if (!val_analysis_type.equals("mito")) {
+             ch_vcf_paths = ch_call_sv_nuclear_vcfs
+                 .concat(ch_saltshaker_vcf.collect{ _meta, vcf -> vcf })
+@@ -883,7 +884,9 @@ workflow RAREDISEASE {
+                 .map { vcf_list -> [vcf_list] }
+             ch_merge_vcfs_in = ch_case_info
+                 .combine(ch_vcf_paths)
+-            MERGE_NUCLEAR_AND_MT_SVS (ch_merge_vcfs_in, ch_svcaller_priority, false)
++            ch_merge_priority = ch_svcaller_priority
++                .map { priority -> priority.size() > 1 ? priority : [] }
++            MERGE_NUCLEAR_AND_MT_SVS (ch_merge_vcfs_in, ch_merge_priority, false)
+ 
+             TABIX_NUCLEAR_AND_MT_SVS (MERGE_NUCLEAR_AND_MT_SVS.out.vcf)
+             ch_call_sv_vcf = MERGE_NUCLEAR_AND_MT_SVS.out.vcf

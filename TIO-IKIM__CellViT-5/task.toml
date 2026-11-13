@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/TIO-IKIM__CellViT-5"
+description = "Inference speedup"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "CellViT",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "TIO-IKIM/CellViT"
+ref = "5312ac019b90cce3e47565697f17f7f48294f7d1"
+reference = "https://github.com/TIO-IKIM/CellViT/pull/5"
+source_access = "auto"
+built_at = "2026-11-13T15:31:44.294287+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1a1dd051fcf8205941858817f722ad55cedfab8af11c2b0e578c227bafed3108"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-07-06T12:38:35Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "cell_segmentation/trainer/trainer_cellvit.py",
+    "configs/examples/cell_segmentation/train_cellvit_sweep.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 198
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

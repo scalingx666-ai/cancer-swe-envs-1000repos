@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/MariaNattestad__Ribbon-135"
+description = "fix: paired-end BAM coloring bug + signed BAI URL support"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "Ribbon",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "MariaNattestad/Ribbon"
+ref = "c9fc688418dbd4eb959805ac624a95603e0eb8f0"
+reference = "https://github.com/MariaNattestad/Ribbon/pull/135"
+source_access = "auto"
+built_at = "2026-11-13T16:00:43.894239+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3b56116d847eda20a734d4972698b67a6a521f8a0ca70c57928b87ebb4a29514"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-12T06:26:42Z"
+diff_format = "unified"
+context_files = [
+    "js/file_parsing.js",
+    "js/index_ribbon.js",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 21
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

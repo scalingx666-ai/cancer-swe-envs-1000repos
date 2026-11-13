@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/nygenome__Conpair-9"
+description = "Python 3 compatibility"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "Conpair",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nygenome/Conpair"
+ref = "8c5beaab710be2384764aec80e8c1446cfb7a6ea"
+reference = "https://github.com/nygenome/Conpair/pull/9"
+source_access = "auto"
+built_at = "2026-11-13T15:40:11.669716+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9501a6bd6d6f03fe15f5f2e7eaf1ea3a60931c248b0ef227df37fb25c065385d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-06-17T18:24:50Z"
+diff_format = "unified"
+context_files = [
+    "modules/ContaminationMarker.py",
+    "modules/ContaminationModel.py",
+    "modules/Genotypes.py",
+    "modules/MathOperations.py",
+    "scripts/estimate_tumor_normal_contamination.py",
+    "scripts/run_gatk_pileup_for_sample.py",
+    "scripts/verify_concordance.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 47
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

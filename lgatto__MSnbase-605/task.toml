@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/lgatto__MSnbase-605"
+description = "feat: add function to coerce from Spectra to MSpectra"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MSnbase",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lgatto/MSnbase"
+ref = "03e768f14bc5e6fe4fabf7f7077ee3b3bac2a29e"
+reference = "https://github.com/lgatto/MSnbase/pull/605"
+source_access = "auto"
+built_at = "2026-11-13T16:19:08.276331+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ca756bad89b25d15fd3302d32266d7e95f602d523446aba4fec6b3d941505b15"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-10-29T19:20:59Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "NEWS.md",
+    "R/DataClasses.R",
+    "R/functions-MSpectra.R",
+    "R/methods-MSpectra.R",
+    "R/utils.R",
+    "man/MChromatograms-class.Rd",
+    "man/MSpectra.Rd",
+    "man/extractSpectraData.Rd",
+    "man/grepEcols.Rd",
+    "man/npcv.Rd",
+    "man/reduce-data.frame-method.Rd",
+    "tests/testthat/test_functions-MSpectra.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 263
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

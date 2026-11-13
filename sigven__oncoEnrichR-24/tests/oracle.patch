@@ -1,0 +1,1933 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 3c46fbe..3360b3e 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -2,7 +2,7 @@ Package: oncoEnrichR
+ Type: Package
+ Title: Cancer-dedicated gene set interpretation
+ Version: 1.2.2
+-Date: 2022-09-02
++Date: 2022-09-12
+ Authors@R: person(given = "Sigve", family = "Nakken", role = c("aut", "cre"),
+              email = "sigven@ifi.uio.no",
+              comment = c(ORCID = "0000-0001-8468-2050"))
+@@ -62,7 +62,6 @@ VignetteBuilder: knitr
+ License: MIT + file LICENSE
+ Encoding: UTF-8
+ Remotes: jespermaag/gganatogram
+-LazyData: true
+ RoxygenNote: 7.2.1
+ Roxygen: list(markdown = TRUE)
+ Config/testthat/edition: 3
+diff --git a/R/disease_drug.R b/R/disease_drug.R
+index 5e9d897..8696e21 100644
+--- a/R/disease_drug.R
++++ b/R/disease_drug.R
+@@ -326,7 +326,8 @@ target_drug_associations <- function(qgenes,
+   result[['target_drugs']] <- target_genes |>
+     dplyr::select(.data$symbol, .data$genename,
+                   .data$targeted_cancer_drugs_lp,
+-                  .data$targeted_cancer_drugs_ep) |>
++                  .data$targeted_cancer_drugs_ep,
++                  .data$approved_drugs) |>
+     dplyr::filter(!is.na(.data$targeted_cancer_drugs_lp) |
+                     !is.na(.data$targeted_cancer_drugs_ep))
+ 
+diff --git a/R/sysdata.rda b/R/sysdata.rda
+index 58dbd7f..57410bc 100644
+Binary files a/R/sysdata.rda and b/R/sysdata.rda differ
+diff --git a/R/utils.R b/R/utils.R
+index 23f88f5..0aeeb9d 100644
+--- a/R/utils.R
++++ b/R/utils.R
+@@ -421,6 +421,7 @@ validate_db_df <- function(df, dbtype = "genedb"){
+               'genename',
+               'targeted_cancer_drugs_lp',
+               'targeted_cancer_drugs_ep',
++              'approved_drugs',
+               'num_go_terms',
+               'cancer_max_rank',
+               'unknown_function_rank',
+@@ -1069,6 +1070,12 @@ add_excel_sheet <- function(
+                 textclean::replace_html(.data$genename)
+               )
+           ) |>
++          dplyr::mutate(
++            approved_drugs =
++              stringr::str_trim(
++                textclean::replace_html(.data$approved_drugs)
++              )
++          ) |>
+           dplyr::mutate(
+             targeted_cancer_drugs_lp =
+               stringr::str_replace_all(
+diff --git a/README.md b/README.md
+index 33a0acd..ab7bc4b 100644
+--- a/README.md
++++ b/README.md
+@@ -20,14 +20,13 @@ Web-based access to **oncoEnrichR** is available at [**https://oncotools.elixir.
+ 
+ ## News
+ 
++-   September 12th 2022: [**1.3.0 release**](https://sigven.github.io/oncoEnrichR/articles/CHANGELOG.html#version-1-3-0)
+ -   September 2nd 2022: [**1.2.2 release**](https://sigven.github.io/oncoEnrichR/articles/CHANGELOG.html#version-1-2-2)
+ -   July 13th 2022: [**1.2.1 release**](https://sigven.github.io/oncoEnrichR/articles/CHANGELOG.html#version-1-2-1)
+--   June 24th 2022: [**1.2.0 release**](https://sigven.github.io/oncoEnrichR/articles/CHANGELOG.html#version-1-2-0)
+--   March 31st 2022: [**1.0.9 release**](https://sigven.github.io/oncoEnrichR/articles/CHANGELOG.html#version-1-0-9)
+ 
+ ## Example report
+ 
+-<a href="https://doi.org/10.5281/zenodo.7042674"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7042674.svg" alt="DOI"/></a>
++<a href="https://doi.org/10.5281/zenodo.7070557"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7070557.svg" alt="DOI"/></a>
+ 
+ ### Contact
+ 
+diff --git a/data_processing_code/RELEASE_NOTES.txt b/data_processing_code/RELEASE_NOTES.txt
+index c0fcc44..c6d2c81 100644
+--- a/data_processing_code/RELEASE_NOTES.txt
++++ b/data_processing_code/RELEASE_NOTES.txt
+@@ -1,5 +1,5 @@
+-##ONCOENRICHR_DB_VERSION = 20220830
+-oncoEnrichR	https://gihtub.com/sigven/oncoEnrichR	R package for functional interrogation of genesets in the context of cancer	v1.2.1	oncoEnrichR	software
++##ONCOENRICHR_DB_VERSION = 20220910
++oncoEnrichR	https://gihtub.com/sigven/oncoEnrichR	R package for functional interrogation of genesets in the context of cancer	v1.3.0	oncoEnrichR	software
+ Omnipath	https://omnipathdb.org/	Database of molecular biology prior knowledge: gene regulatory interactions, enzyme-PTM relationships, protein complexes, protein annotations etc.	v3.4.0/OmnipathR	omnipath	db
+ hu.MAP	http://humap2.proteincomplexes.org/	Human Protein Complex Map	v2.0	humap2	db
+ dorothea	https://saezlab.github.io/dorothea/	Gene set resource containing signed transcription factor (TF) - target interactions	v1.8.0	dorothea	db
+@@ -8,17 +8,17 @@ oncoPhenoMap	https://github.com/sigven/oncoPhenoMap	Crossmapped phenotype ontolo
+ STRING	https://string-db.org	Protein-protein interaction database	v11.5	string	db
+ GENCODE	https://www.gencodegenes.org/	High quality reference gene annotation and experimental validation	v41	gencode	db
+ TCGA	https://cancergenome.nih.gov	The Cancer Genome Atlas - Tumor gene expression and somatic DNA aberrations	v32.0 (March 29th 2022)	tcga	db
+-UniProtKB	http://www.uniprot.org	Comprehensive resource of protein sequence and functional information	v2022_01	uniprot	db
++UniProtKB	http://www.uniprot.org	Comprehensive resource of protein sequence and functional information	v2022_03	uniprot	db
+ NetPath	http://www.netpath.org	Manually curated resource of signal transduction pathways in humans	v1 (2010)	netpath	db
+ EFO	https://github.com/EBISPOT/efo	Experimental Factor Ontology	v3.43.0	efo	db
+ DiseaseOntology	https://github.com/DiseaseOntology	Human Disease Ontology	2022-06-07	do	db
+-COMPPI	https://comppi.linkgroup.hu/	Compartmentalized protein-protein interaction database	v2.1.1 (Oct 2018)	comppi	db
++COMPPI	https://comppi.linkgroup.hu/	Compartmentalized protein-protein interaction database	v2.1.1 (October 2018)	comppi	db
+ WikiPathways	https://www.wikipathways.org	A database of biological pathways maintained by and for the scientific community	20220810	wikipathway	db
+-MSigDB	http://software.broadinstitute.org/gsea/msigdb/index.jsp	Molecular Signatures Database - collection of annotated gene sets	v7.5.1 (Jan 2022)	msigdb	db
+-REACTOME	https://reactome.org	Manually curated and peer-reviewed pathway database	v78 (MSigDB v7.5.1)	reactome	db
++MSigDB	http://software.broadinstitute.org/gsea/msigdb/index.jsp	Molecular Signatures Database - collection of annotated gene sets	August 2022 (MSigDB v2022.1)	msigdb	db
++REACTOME	https://reactome.org	Manually curated and peer-reviewed pathway database	v81 (MSigDB v2022.1)	reactome	db
+ CellChatDB	http://www.cellchat.org/cellchatdb/	Multimeric ligand-receptor complexes	v1 (2021)	cellchatdb	db
+ CellTalkDB	http://tcm.zju.edu.cn/celltalkdb/	A manually curated database of literature-supported ligand-receptor interactions in human and mouse	Nov 2020	celltalkdb	db
+-GeneOntology	https://geneontology.org	Knowledgebase that contains the largest structural source of information on the functions of genes	Jan 2022 (MSigDB v7.5.1)	go	db
++GeneOntology	https://geneontology.org	Knowledgebase that contains the largest structural source of information on the functions of genes	August 2022 (MSigDB v2022.1)	go	db
+ KEGG	https://www.genome.jp/kegg/pathway.html	Collection of manually drawn pathway maps representing our knowledge on the molecular interaction, reaction and relation networks	20220809	kegg	db
+ CancerMine	http://bionlp.bcgsc.ca/cancermine/	Literature-mined database of tumor suppressor genes/proto-oncogenes	v47 - 20220708	cancermine	db
+ NCG	http://ncg.kcl.ac.uk/index.php	Network of cancer genes - a web resource to analyze duplicability, orthology and network properties of cancer genes	v7.0	ncg	db
+diff --git a/data_processing_code/data_raw.R b/data_processing_code/data_raw.R
+index 0ae3a0b..7e1899c 100644
+--- a/data_processing_code/data_raw.R
++++ b/data_processing_code/data_raw.R
+@@ -1,19 +1,18 @@
+-library(magrittr)
+ library(TissueEnrich)
+ library(gganatogram)
+ 
+ source('data_processing_code/data_utility_functions.R')
+ 
+-msigdb_version <- 'v7.5.1 (Jan 2022)'
++msigdb_version <- '2022.1'
+ wikipathways_version <- "20220810"
+ netpath_version <- "2010"
+ opentargets_version <- "2022.06"
+ kegg_version <- "20220809"
+ gencode_version <- "41"
+-uniprot_release <- "2022_01"
++uniprot_release <- "2022_03"
+ 
+ ## Which databases to update or retrieve from last updated state
+-update_omnipathdb <- T
++update_omnipathdb <- F
+ update_hpa <- F
+ update_ncbi_gene_summary <- T
+ update_project_score <- F
+@@ -22,10 +21,10 @@ update_tcga <- F
+ update_cancer_hallmarks <- F
+ update_omnipath_regulatory <- F
+ update_omnipath_complexdb <- F
+-update_gencode <- T
++update_gencode <- F
+ update_ligand_receptor_db <- T
+ 
+-oe_version <- "1.2.2"
++oe_version <- "1.3.0"
+ 
+ data_raw_dir <- "/Users/sigven/project_data/package__oncoEnrichR/db/raw"
+ data_output_dir <- "/Users/sigven/project_data/package__oncoEnrichR/db/output"
+@@ -324,11 +323,8 @@ for(elem in c('cancerdrugdb',
+ 
+   local_rds_fpath <- file.path(data_output_dir, paste0("v",oe_version),
+                            paste0(elem,"_v", oe_version, ".rds"))
+-
+-  if(!file.exists(local_rds_fpath)){
+-    saveRDS(oedb[[elem]],
+-            file = local_rds_fpath)
+-  }
++  saveRDS(oedb[[elem]],
++          file = local_rds_fpath)
+ 
+   (gd_records[[elem]] <- googledrive::drive_upload(
+     local_rds_fpath,
+@@ -501,11 +497,11 @@ db_packages <-
+     'RSpectra',
+     'sna',
+     'FNN',
++    'tweenr',
++    'reticulate',
+     'TCGAbiolinksGUI.data',
+     'TCGAbiolinks',
+     'rlogging',
+-    'oncoPharmaDB',
+-    'rlogging',
+     'zen4R',
+     'biomaRt',
+     'redland',
+diff --git a/data_processing_code/data_utility_functions.R b/data_processing_code/data_utility_functions.R
+index bbd0892..49a6ae0 100644
+--- a/data_processing_code/data_utility_functions.R
++++ b/data_processing_code/data_utility_functions.R
+@@ -318,15 +318,29 @@ get_msigdb_signatures <- function(
+     dplyr::filter(organism == "Homo sapiens") |>
+     dplyr::filter(subcategory_code != 'CP:KEGG') |>
+     dplyr::arrange(category_code) |>
+-    dplyr::mutate(pmid = dplyr::if_else(nchar(pmid) == 0,as.character(NA),as.character(pmid))) |>
+-    dplyr::mutate(subcategory_code = dplyr::if_else(nchar(subcategory_code) == 0,as.character("ALL"),as.character(subcategory_code))) |>
+-    dplyr::filter(category_code != "ARCHIVED" & category_code != "C1") |>
+-    dplyr::mutate(external_url = dplyr::if_else(nchar(external_url) == 0,paste0("http://software.broadinstitute.org/gsea/msigdb/cards/",standard_name),as.character(external_url))) |>
+-    dplyr::mutate(description = stringr::str_replace_all(description,
+-                                                         "( \\[ICI [0-9]{1,}(;[0-9]{1,})*\\]( )?)|( \\[GeneID=[0-9]{1,}(;[0-9]{1,})*\\]( )?)|( \\[PubChem=[0-9]{1,}(;[0-9]{1,})*\\]( )?)",""))
++    dplyr::mutate(pmid = dplyr::if_else(
++      nchar(pmid) == 0,
++      as.character(NA),
++      as.character(pmid))) |>
++    dplyr::mutate(subcategory_code = dplyr::if_else(
++      nchar(subcategory_code) == 0,
++      as.character("ALL"),
++      as.character(subcategory_code))) |>
++    dplyr::filter(
++      category_code != "ARCHIVED" &
++        category_code != "C1") |>
++    dplyr::mutate(external_url = dplyr::if_else(
++      nchar(external_url) == 0,
++      paste0("http://software.broadinstitute.org/gsea/msigdb/cards/",standard_name),
++      as.character(external_url))) |>
++    dplyr::mutate(description = stringr::str_replace_all(
++      description,
++      "( \\[ICI [0-9]{1,}(;[0-9]{1,})*\\]( )?)|( \\[GeneID=[0-9]{1,}(;[0-9]{1,})*\\]( )?)|( \\[PubChem=[0-9]{1,}(;[0-9]{1,})*\\]( )?)",""))
+ 
+   msigdb_category_description <- read.table(
+-    file = file.path(raw_db_dir, "msigdb","msigdb_collection_description.tsv"),
++    file = file.path(
++      raw_db_dir, "msigdb",
++      "msigdb_collection_description.tsv"),
+     sep = "\t", header = T, stringsAsFactors = F)
+ 
+   msigdb_complete <- as.data.frame(all_msigdb |>
+@@ -349,29 +363,49 @@ get_msigdb_signatures <- function(
+     dplyr::filter(subcategory_code != "TFT:TFT_Legacy") |>
+     dplyr::filter(subcategory_code != "CP:WIKIPATHWAYS") |>
+     dplyr::filter(subcategory_code != "VAX") |>
+-    dplyr::select(standard_name, exact_source, external_url, category_code, subcategory_code) |>
++    dplyr::select(standard_name, exact_source, external_url,
++                  category_code, subcategory_code) |>
+     dplyr::distinct() |>
+-    dplyr::mutate(external_url = stringr::str_replace(external_url,"\\|https://reactome.org/PathwayBrowser/","")) |>
+-    dplyr::mutate(external_url = dplyr::if_else(nchar(external_url) == 0,as.character(NA),as.character(external_url))) |>
+-    dplyr::mutate(db = dplyr::if_else(stringr::str_detect(standard_name,"^GO_"),subcategory_code,as.character(NA))) |>
+-    dplyr::mutate(db = dplyr::if_else(stringr::str_detect(standard_name,"^HP_"),subcategory_code,as.character(NA))) |>
+-    dplyr::mutate(db = dplyr::if_else(stringr::str_detect(standard_name,"^REACTOME_"),"REACTOME",as.character(db))) |>
+-    dplyr::mutate(db = dplyr::if_else(stringr::str_detect(standard_name,"^BIOCARTA_"),"BIOCARTA",as.character(db))) |>
+-    dplyr::mutate(db = dplyr::if_else(stringr::str_detect(standard_name,"^PID_"),"PATHWAY_INTERACTION_DB",as.character(db))) |>
++    dplyr::mutate(external_url = stringr::str_replace(
++      external_url,"\\|https://reactome.org/PathwayBrowser/","")) |>
++    dplyr::mutate(external_url = dplyr::if_else(
++      nchar(external_url) == 0,as.character(NA),as.character(external_url))) |>
++    dplyr::mutate(db = dplyr::if_else(
++      stringr::str_detect(standard_name,"^GO_"),
++      subcategory_code,as.character(NA))) |>
++    dplyr::mutate(db = dplyr::if_else(
++      stringr::str_detect(standard_name,"^HP_"),
++      subcategory_code,as.character(NA))) |>
++    dplyr::mutate(db = dplyr::if_else(
++      stringr::str_detect(standard_name,"^REACTOME_"),
++      "REACTOME",as.character(db))) |>
++    dplyr::mutate(db = dplyr::if_else(
++      stringr::str_detect(standard_name,"^BIOCARTA_"),
++      "BIOCARTA",as.character(db))) |>
++    dplyr::mutate(db = dplyr::if_else(
++      stringr::str_detect(standard_name,"^PID_"),
++      "PATHWAY_INTERACTION_DB",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+-      category_code == "H","HALLMARK",as.character(db))) |>
++      category_code == "H",
++      "HALLMARK",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+-      category_code == "C2" & subcategory_code == "CGP","CHEM_GEN_PERTURB",as.character(db))) |>
++      category_code == "C2" & subcategory_code == "CGP",
++      "CHEM_GEN_PERTURB",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+-      category_code == "C2" & subcategory_code == "CP","CANONICAL_PATHWAY",as.character(db))) |>
++      category_code == "C2" & subcategory_code == "CP",
++      "CANONICAL_PATHWAY",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+-      category_code == "C3" & subcategory_code == "MIR:MIRDB","MICRORNA_TARGET_MIRDB",as.character(db))) |>
++      category_code == "C3" & subcategory_code == "MIR:MIRDB",
++      "MICRORNA_TARGET_MIRDB",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+-      category_code == "C3" & subcategory_code == "TFT:GTRD","TF_TARGET_GTRD",as.character(db))) |>
++      category_code == "C3" & subcategory_code == "TFT:GTRD",
++      "TF_TARGET_GTRD",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+-      category_code == "C4" & subcategory_code == "CGN","CANCER_NEIGHBOURHOOD",as.character(db))) |>
++      category_code == "C4" & subcategory_code == "CGN",
++      "CANCER_NEIGHBOURHOOD",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+-      category_code == "C4" & subcategory_code == "CM","CANCER_MODULE",as.character(db))) |>
++      category_code == "C4" & subcategory_code == "CM",
++      "CANCER_MODULE",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+       category_code == "C6","ONCOGENIC",as.character(db))) |>
+     dplyr::mutate(db = dplyr::if_else(
+@@ -382,12 +416,12 @@ get_msigdb_signatures <- function(
+     dplyr::filter(!is.na(db))
+ 
+ 
+-
+   msigdb[['COLLECTION']] <- list()
+ 
+   for(c in c('H','C2','C3','C4','C5','C6','C7','C8')){
+     msigdb[['COLLECTION']][[c]] <- list()
+-    subcategories <- unique(all_msigdb[all_msigdb$category_code == c,]$subcategory_code)
++    subcategories <-
++      unique(all_msigdb[all_msigdb$category_code == c,]$subcategory_code)
+     for(scat in subcategories){
+       subcat <- stringr::str_replace(scat,"GO:","")
+       if(subcat == "CP:WIKIPATHWAYS" |
+@@ -396,16 +430,20 @@ get_msigdb_signatures <- function(
+          subcat == "TFT:TFT_Legacy"){
+         next
+       }
+-      #cat(c,subcat,sep=" - ")
+-      #cat('\n')
++
+       msigdb[['COLLECTION']][[c]][[subcat]] <- list()
+       msigdb[['COLLECTION']][[c]][[subcat]][['TERM2GENE']] <- data.frame()
+       msigdb[['COLLECTION']][[c]][[subcat]][['TERM2GENE']] <-
+-        dplyr::filter(all_msigdb, category_code == c & subcategory_code == scat) |>
++        dplyr::filter(all_msigdb,
++                      category_code == c &
++                        subcategory_code == scat) |>
+         dplyr::select(standard_name, entrezgene) |>
+         dplyr::rename(entrez_gene = entrezgene)
++
+       msigdb[['COLLECTION']][[c]][[subcat]][['TERM2NAME']] <-
+-        dplyr::filter(all_msigdb, category_code == c & subcategory_code == scat) |>
++        dplyr::filter(all_msigdb,
++                      category_code == c &
++                        subcategory_code == scat) |>
+         dplyr::select(standard_name, description) |>
+         dplyr::rename(name = description) |>
+         dplyr::distinct()
+@@ -417,7 +455,7 @@ get_msigdb_signatures <- function(
+ 
+ 
+ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+-                                        version = "46",
++                                        version = "47",
+                                         gene_info = NULL){
+   lgr::lgr$info(
+     paste0("Retrieving proto-oncogenes/tumor suppressor status ",
+@@ -427,7 +465,7 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+ 
+   ## Tumor suppressor annotations or oncogene annotations from Network of cancer genes (NCG)
+   ncg <- read.table(
+-    file = paste0(raw_db_dir, "/ncg/ncg_tsgene_oncogene.tsv"),
++    file = file.path(raw_db_dir, "ncg","ncg_tsgene_oncogene.tsv"),
+     header = T,
+     stringsAsFactors = F, sep = "\t",
+     quote = "", comment.char = "") |>
+@@ -447,7 +485,7 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+     dplyr::distinct()
+ 
+   cgc <- readr::read_csv(
+-    file = paste0(raw_db_dir, "/cgc/cancer_gene_census_96.csv"),
++    file = file.path(raw_db_dir, "cgc","cancer_gene_census_96.csv"),
+     show_col_types = F) |>
+     janitor::clean_names() |>
+     dplyr::filter(!is.na(role_in_cancer)) |>
+@@ -469,9 +507,19 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+ 
+ 
+   pmids <- as.data.frame(
+-    read.table(gzfile(paste0(raw_db_dir,'/cancermine/cancermine_sentences.tsv.gz')),
+-               header = T, comment.char = "", quote = "", sep="\t", stringsAsFactors = F) |>
++    read.table(
++      gzfile(file.path(raw_db_dir,"cancermine",
++                       "cancermine_sentences.tsv.gz")),
++               header = T, comment.char = "", quote = "",
++      sep="\t", stringsAsFactors = F) |>
+       dplyr::filter(predictprob >= 0.8) |>
++      ## some entries wrongly captured, are in
++      ## fact mentions of anti-sense non-coding genes
++      dplyr::filter(
++        !stringr::str_detect(
++          formatted_sentence, "-<b>AS1|b>-AS1"
++        )
++      ) |>
+       dplyr::group_by(role, gene_entrez_id, pmid) |>
+       dplyr::summarise(doid = paste(unique(cancer_id), collapse=","), .groups = "drop") |>
+       dplyr::rename(entrezgene = gene_entrez_id) |>
+@@ -480,9 +528,13 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+   )
+ 
+   all_citations <- data.frame()
+-  if(file.exists(paste0(raw_db_dir,"/cancermine/citations/cancermine_citations.v",version,".tsv.gz"))){
+-    all_citations <- read.table(file=paste0(raw_db_dir,"/cancermine/citations/cancermine_citations.v",version,".tsv.gz"),
+-                                sep = "\t", header = F, quote = "", comment.char = "", stringsAsFactors = F) |>
++  if(file.exists(
++    file.path(raw_db_dir, "cancermine", "citations",
++              paste0("cancermine_citations.v",version,".tsv.gz")))){
++    all_citations <- read.table(
++      file = file.path(raw_db_dir,"cancermine", "citations",
++      paste0("cancermine_citations.v",version,".tsv.gz")),
++      sep = "\t", header = F, quote = "", comment.char = "", stringsAsFactors = F) |>
+       magrittr::set_colnames(c('pmid','citation','citation_link')) |>
+       dplyr::distinct() |>
+       dplyr::arrange(desc(pmid))
+@@ -562,14 +614,18 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+ 
+   lgr::lgr$info("Retrieving known proto-oncogenes/tumor suppressor genes from CancerMine")
+   oncogene <- as.data.frame(
+-    readr::read_tsv(paste0(raw_db_dir,'/cancermine/cancermine_collated.tsv.gz'),
+-                    col_names = T,na ="-", comment = "#", quote = "",
+-                    show_col_types = F) |>
++    readr::read_tsv(
++      file.path(raw_db_dir,'cancermine','cancermine_collated.tsv.gz'),
++      col_names = T,na ="-", comment = "#", quote = "",
++      show_col_types = F) |>
+       dplyr::filter(role == "Oncogene") |>
+       dplyr::rename(entrezgene = gene_entrez_id) |>
+-      dplyr::anti_join(dplyr::select(fp_cancer_drivers, entrezgene), by = "entrezgene") |>
++      dplyr::anti_join(
++        dplyr::select(fp_cancer_drivers, entrezgene), by = "entrezgene") |>
+       dplyr::group_by(entrezgene) |>
+-      dplyr::summarise(doid_oncogene = paste(unique(cancer_id),collapse=","), .groups = "drop") |>
++      dplyr::summarise(
++        doid_oncogene = paste(unique(cancer_id),collapse=","),
++        .groups = "drop") |>
+       dplyr::inner_join(pmids_oncogene, by = "entrezgene") |>
+       dplyr::distinct())
+ 
+@@ -579,14 +635,17 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+ 
+ 
+   tsgene <- as.data.frame(
+-    readr::read_tsv(paste0(raw_db_dir,'/cancermine/cancermine_collated.tsv.gz'),
+-                    col_names = T,na ="-", comment = "#", quote = "",
+-                    show_col_types = F) |>
++    readr::read_tsv(
++      file.path(raw_db_dir,'cancermine','cancermine_collated.tsv.gz'),
++      col_names = T,na ="-", comment = "#", quote = "",
++      show_col_types = F) |>
+       dplyr::filter(role == "Tumor_Suppressor") |>
+       dplyr::rename(entrezgene = gene_entrez_id) |>
+-      dplyr::anti_join(dplyr::select(fp_cancer_drivers, entrezgene), by = "entrezgene") |>
++      dplyr::anti_join(
++        dplyr::select(fp_cancer_drivers, entrezgene), by = "entrezgene") |>
+       dplyr::group_by(entrezgene) |>
+-      dplyr::summarise(doid_tsgene = paste(unique(cancer_id),collapse=","), .groups = "drop") |>
++      dplyr::summarise(
++        doid_tsgene = paste(unique(cancer_id),collapse=","), .groups = "drop") |>
+       dplyr::inner_join(pmids_tsgene, by = "entrezgene") |>
+       dplyr::distinct()
+   )
+@@ -596,14 +655,17 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+ 
+ 
+   cdriver <- as.data.frame(
+-    readr::read_tsv(paste0(raw_db_dir,'/cancermine/cancermine_collated.tsv.gz'),
+-                    col_names = T,na ="-", comment = "#", quote = "",
+-                    show_col_types = F) |>
++    readr::read_tsv(
++      file.path(raw_db_dir,'cancermine','cancermine_collated.tsv.gz'),
++      col_names = T,na ="-", comment = "#", quote = "",
++      show_col_types = F) |>
+       dplyr::filter(role == "Driver") |>
+       dplyr::rename(entrezgene = gene_entrez_id) |>
+-      dplyr::anti_join(dplyr::select(fp_cancer_drivers, entrezgene), by = "entrezgene") |>
++      dplyr::anti_join(
++        dplyr::select(fp_cancer_drivers, entrezgene), by = "entrezgene") |>
+       dplyr::group_by(entrezgene) |>
+-      dplyr::summarise(doid_cdriver = paste(unique(cancer_id),collapse=","), .groups = "drop") |>
++      dplyr::summarise(
++        doid_cdriver = paste(unique(cancer_id),collapse=","), .groups = "drop") |>
+       dplyr::inner_join(pmids_cdriver, by = "entrezgene") |>
+       dplyr::distinct()
+   )
+@@ -764,9 +826,12 @@ get_ts_oncogene_annotations <- function(raw_db_dir = NULL,
+   n_ts <- dplyr::filter(tsgene_full, tumor_suppressor == T & oncogene == F)
+   n_onc <- dplyr::filter(tsgene_full, oncogene == T & tumor_suppressor == F)
+ 
+-  lgr::lgr$info("A total of n = ",nrow(n_onc)," classified proto-oncogenes were retrieved from CancerMine/NCG")
+-  lgr::lgr$info("A total of n = ",nrow(n_ts)," classified tumor suppressor genes were retrieved from CancerMine/NCG")
+-  lgr::lgr$info("A total of n = ",nrow(n_onc_ts)," genes were annotated with dual roles as tumor suppressor genes and oncogenes from CancerMine/NCG")
++  lgr::lgr$info(
++    paste0("A total of n = ",nrow(n_onc)," classified proto-oncogenes were retrieved from CancerMine/NCG"))
++  lgr::lgr$info(
++    paste0("A total of n = ",nrow(n_ts)," classified tumor suppressor genes were retrieved from CancerMine/NCG"))
++  lgr::lgr$info(
++    paste0("A total of n = ",nrow(n_onc_ts)," genes were annotated with dual roles as tumor suppressor genes and oncogenes from CancerMine/NCG"))
+ 
+   return(tsgene_full)
+ 
+@@ -780,8 +845,9 @@ get_curated_fp_cancer_genes <- function(raw_db_dir = NULL,
+   invisible(assertthat::assert_that(dir.exists(raw_db_dir), msg = paste0("Directory '",raw_db_dir,"' does not exist")))
+   assertable::assert_colnames(gene_info,c("symbol","entrezgene"), only_colnames = F, quiet = T)
+   assertable::assert_coltypes(gene_info, list(symbol = character(), entrezgene = integer()), quiet = T)
+-  xlsx_fname <- paste0(raw_db_dir,"/cancer_driver/bailey_2018_cell.xlsx")
+-  invisible(assertthat::assert_that(file.exists(xlsx_fname),msg = paste0("File ",xlsx_fname," does not exist")))
++  xlsx_fname <- file.path(raw_db_dir,"cancer_driver", "bailey_2018_cell.xlsx")
++  invisible(assertthat::assert_that(
++    file.exists(xlsx_fname),msg = paste0("File ",xlsx_fname," does not exist")))
+   tmp <- openxlsx::read.xlsx(xlsx_fname,sheet = 8,startRow = 4)
+   fp_cancer_drivers <- data.frame('symbol' = tmp[,2], stringsAsFactors = F) |>
+     dplyr::mutate(fp_driver_gene = TRUE) |>
+@@ -801,10 +867,11 @@ get_opentarget_associations <-
+ 
+     opentarget_targets <- as.data.frame(
+       readRDS(
+-        paste0(raw_db_dir,
+-               "/opentargets/opentargets_target_",
++        file.path(raw_db_dir,
++               "opentargets",
++               paste0("opentargets_target_",
+                release,
+-               ".rds")) |>
++               ".rds"))) |>
+         dplyr::select(target_ensembl_gene_id,
+                       SM_tractability_category,
+                       SM_tractability_support,
+@@ -817,10 +884,12 @@ get_opentarget_associations <-
+ 
+     opentarget_associations_raw <- as.data.frame(
+       readRDS(
+-        paste0(raw_db_dir,
+-               "/opentargets/opentargets_association_direct_HC_",
+-               release,
+-               ".rds")
++        file.path(raw_db_dir,
++                  "opentargets",
++                  paste0(
++                    "opentargets_association_direct_HC_",
++                    release,
++                    ".rds"))
+       )
+     )
+ 
+@@ -875,8 +944,10 @@ get_dbnsfp_gene_annotations <- function(raw_db_dir = NULL){
+ 
+   lgr::lgr$info("Retrieving gene damage scores/OMIM annotation from dbNSFP_gene")
+   dbnsfp_gene <- read.table(
+-    file=gzfile(paste0(raw_db_dir,"/dbnsfp/dbNSFP_gene.gz")),sep="\t",
+-    header = T, stringsAsFactors = F, na.strings = c(".",""), comment.char="",
++    file = gzfile(file.path(raw_db_dir,"dbnsfp", "dbNSFP_gene.gz")),
++    sep = "\t",
++    header = T, stringsAsFactors = F,
++    na.strings = c(".",""), comment.char="",
+     quote = NULL) |>
+     janitor::clean_names() |>
+     dplyr::select(gene_name, entrez_gene_id, function_description) |>
+@@ -1686,11 +1757,48 @@ get_cancer_drugs <- function(raw_db_dir = NULL){
+   }
+ 
+ 
++  approved_inhibitors <- as.data.frame(
++    pharmaOncoX::get_onco_drugs(
++      cache_dir = raw_db_dir,
++      drug_is_targeted = T,
++      inhibitor_only = T,
++      drug_is_approved = T)$records |>
++      dplyr::filter(!is.na(primary_site)) |>
++      dplyr::filter(
++        stringr::str_detect(drug_clinical_source,"FDA|DailyMed|ATC")) |>
++      dplyr::select(
++        disease_efo_label, target_entrezgene,
++        drug_name, molecule_chembl_id) |>
++      dplyr::rename(entrezgene = target_entrezgene) |>
++      dplyr::mutate(entrezgene = as.integer(entrezgene)) |>
++      dplyr::mutate(
++        drug_link =
++          paste0("<a href = 'https://platform.opentargets.org/drug/",
++                 molecule_chembl_id,
++                 "' target='_blank'>",drug_name,"</a>")) |>
++      dplyr::group_by(entrezgene, drug_link) |>
++      dplyr::summarise(indications = paste(
++        sort(unique(disease_efo_label)), collapse="; "
++      ), .groups = "drop") |>
++      dplyr::ungroup() |>
++      dplyr::mutate(indications = stringr::str_replace(
++        indications,
++        "breast cancer; breast carcinoma",
++        "breast cancer"
++      )) |>
++      dplyr::mutate(drug_indications = paste0(
++        drug_link, " (",indications,")")) |>
++      dplyr::group_by(entrezgene) |>
++      dplyr::summarise(approved_drugs = paste(
++        drug_indications, collapse=", "),
++        .groups = "drop")
++  )
++
+   cancer_drugs[['late_phase']] <-
+     pharmaOncoX::get_onco_drugs(
+       cache_dir = raw_db_dir,
+       drug_is_targeted = T,
+-      source_opentargets_only = T,
++      inhibitor_only = T,
+       drug_minimum_phase_any_indication = 3)$records |>
+     dplyr::filter(!is.na(molecule_chembl_id)) |>
+     dplyr::select(target_entrezgene,
+@@ -1707,7 +1815,7 @@ get_cancer_drugs <- function(raw_db_dir = NULL){
+     pharmaOncoX::get_onco_drugs(
+       cache_dir = raw_db_dir,
+       drug_is_targeted = T,
+-      source_opentargets_only = T,
++      inhibitor_only = T,
+       drug_minimum_phase_any_indication = 0)$records |>
+     dplyr::filter(!is.na(molecule_chembl_id)) |>
+     dplyr::anti_join(
+@@ -1803,6 +1911,7 @@ get_cancer_drugs <- function(raw_db_dir = NULL){
+ 
+   }
+   cancerdrugdb <- list()
++  cancerdrugdb[['approved_per_target']] <- approved_inhibitors
+   cancerdrugdb[['drug_per_target']] <- list()
+   cancerdrugdb[['drug_per_target']][['early_phase']] <-
+     drugs_per_gene[['early_phase']]
+@@ -2847,6 +2956,8 @@ generate_gene_xref_df <- function(
+                      by = "entrezgene") |>
+     dplyr::left_join(cancerdrugdb[['drug_per_target']][['late_phase']],
+                      by = "entrezgene") |>
++    dplyr::left_join(cancerdrugdb[['approved_per_target']],
++                     by = "entrezgene") |>
+     dplyr::mutate(tumor_suppressor = dplyr::if_else(
+       is.na(tumor_suppressor),
+       FALSE,
+@@ -3858,9 +3969,12 @@ get_tcga_db <- function(
+   while(i <= nrow(maf_codes)){
+     primary_site <- maf_codes[i,]$primary_site
+     maf_code <- maf_codes[i,]$code
+-    maf_file <- paste0(maf_path,"/tcga_mutation_grch38_release32_20220329.",maf_code,"_0.maf.gz")
++    maf_file <- file.path(
++      maf_path, paste0("tcga_mutation_grch38_release32_20220329.",maf_code,"_0.maf.gz"))
+     if(file.exists(maf_file)){
+-      tmp <- read.table(gzfile(maf_file), quote="", header = T, stringsAsFactors = F, sep="\t", comment.char="#")
++      tmp <- read.table(gzfile(maf_file), quote="",
++                        header = T, stringsAsFactors = F,
++                        sep="\t", comment.char="#")
+       tmp$primary_site <- NULL
+       tmp$site_diagnosis_code <- NULL
+       tmp$Tumor_Sample_Barcode <- stringr::str_replace(tmp$Tumor_Sample_Barcode,"-[0-9][0-9][A-Z]$","")
+diff --git a/docker/Dockerfile b/docker/Dockerfile
+index 7c9b8b9..7fd1590 100644
+--- a/docker/Dockerfile
++++ b/docker/Dockerfile
+@@ -10,9 +10,6 @@ RUN apt-get update && apt-get install apt-transport-https
+ ENV TZ=Europe/Minsk
+ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+ 
+-
+-
+-
+ RUN sudo apt update -qq
+ # install two helper packages we need
+ RUN sudo apt-get update && sudo apt-get -y install --no-install-recommends software-properties-common dirmngr
+@@ -48,7 +45,7 @@ RUN cd cmake-3.20.0 && ./bootstrap && make && make install
+ ## PINNED versions of all packages can be found in /renv.lock (JSON format)
+ RUN R -e "install.packages(repos = NULL, 'https://cloud.r-project.org/src/contrib/renv_0.15.5.tar.gz', lib = '/usr/lib/R/library/')"
+ COPY renv.lock /
+-COPY oncoEnrichR_1.2.2.tar.gz /
++COPY oncoEnrichR_1.3.0.tar.gz /
+ 
+ #RUN R -e "library(renv)"
+ 
+@@ -56,7 +53,7 @@ RUN R -e "library(renv); renv::restore(prompt = F, library = '/usr/lib/R/library
+ WORKDIR /
+ 
+ ## PINNED version - oncoEnrichR
+-RUN R -e "install.packages(repos = NULL, 'oncoEnrichR_1.2.2.tar.gz', lib = '/usr/lib/R/library/')"
++RUN R -e "install.packages(repos = NULL, 'oncoEnrichR_1.3.0.tar.gz', lib = '/usr/lib/R/library/')"
+ 
+ ## PINNED VERSION: pandoc (for HTML report generation)
+ RUN wget https://github.com/jgm/pandoc/releases/download/2.13/pandoc-2.13-1-amd64.deb && \
+@@ -65,5 +62,5 @@ RUN wget https://github.com/jgm/pandoc/releases/download/2.13/pandoc-2.13-1-amd6
+   apt-get clean
+ 
+ RUN rm -rf /root/.cache
+-RUN rm -rf /oncoEnrichR_1.2.2.tar.gz
++RUN rm -rf /oncoEnrichR_1.3.0.tar.gz
+ RUN rm -rf /cmake-3.20.0*
+diff --git a/docker/oncoenrichr_wrapper.xml b/docker/oncoenrichr_wrapper.xml
+new file mode 100755
+index 0000000..ff3dc3f
+--- /dev/null
++++ b/docker/oncoenrichr_wrapper.xml
+@@ -0,0 +1,391 @@
++<tool id="oncoenrichr_wrapper" name="oncoEnrichR" version="1.2.2">
++  <description>Cancer-dedicated gene set interpretation</description>
++    <requirements>
++        <container type="docker">sigven/oncoenrichr:1.2.2</container>
++  </requirements>
++  <command detect_errors="aggressive"><![CDATA[
++      #if $query_set.query_choice.query_input == "text"
++        echo $query_set.query_choice.query_text | sed 's/__cn__/\n/g' > query_text.csv &&
++        #set input_file = './query_text.csv'
++      #else if $query_set.query_choice.query_input == "file"
++        ln -s $query_set.query_choice.query_file "$query_set.query_choice.query_file.element_identifier" &&
++        #set input_file = './' + str($query_set.query_choice.query_file.element_identifier)
++      #end if
++
++      #set background_file = ''
++      #if $fun_enrich.custom_bgset.def_background
++	      #if $fun_enrich.custom_bgset.bg_choice.bg_source == "text"
++	        echo $fun_enrich.custom_bgset.bg_choice.bg_enrich_text | sed 's/__cn__/\n/g' > custom_bgset.csv &&
++	        #set background_file = './custom_bgset.csv'
++	      #else if $fun_enrich.custom_bgset.bg_choice.bg_source == "file" and $fun_enrich.custom_bgset.bg_choice.bg_enrich_file
++	        ln -s $fun_enrich.custom_bgset.bg_choice.bg_enrich_file background_text.csv &&
++	        #set background_file = './custom_bgset.csv'
++	      #else
++	        #set background_file = ''
++	      #end if
++	 #end if
++
++      R -e 'suppressPackageStartupMessages(library(oncoEnrichR));
++      suppressWarnings(load(system.file("internal_db", "oedb.rda", package = "oncoEnrichR")));
++      gene_data <- read.csv("$input_file", stringsAsFactors = F, header = F);
++      oe_report <- oncoEnrichR::onco_enrich(
++        query = gene_data[[1]],
++        oeDB = oedb,
++      #if $query_set.query_id_type
++        query_id_type = "$query_set.query_id_type",
++      #end if
++      ignore_id_err = $query_set.ignore_id_err,
++
++      #if $report_metadata.project_title
++          project_title = "$report_metadata.project_title",
++      #end if
++      #if $report_metadata.project_owner
++          project_owner = "$report_metadata.project_owner",
++      #end if
++      #if $report_metadata.project_description
++          project_description = "$report_metadata.project_description",
++      #end if
++
++      show_enrichment = $modules.show_enrichment,
++      show_ppi = $modules.show_ppi,
++      show_disease = $modules.show_disease,
++      show_cancer_hallmarks = $modules.show_cancer_hallmarks,
++      show_drug = $modules.show_drug,
++      show_aberration = $modules.show_aberration,
++      show_coexpression = $modules.show_coexpression,
++      show_subcell_comp = $modules.show_subcell_comp,
++      show_complex = $modules.show_complex,
++	 show_domain = $modules.show_domain,
++      show_fitness = $modules.show_fitness,
++	 show_cell_tissue = $modules.show_cell_tissue,
++      show_ligand_receptor = $modules.show_ligand_receptor,
++      show_regulatory = $modules.show_regulatory,
++	 show_prognostic = $modules.show_prognostic,
++	 show_unknown_function = $modules.show_unknown_function,
++      show_synleth = $modules.show_synleth,
++
++      #if $background_file
++          bgset = read.csv("$background_file", stringsAsFactors = F, header = F)[[1]],
++		#if $fun_enrich.custom_bgset.bg_enrich_id_type
++            bgset_id_type = "$fun_enrich.custom_bgset.bg_enrich_id_type",
++          #end if
++          #if $fun_enrich.custom_bgset.bg_enrich_description
++            bgset_description = "$fun_enrich.custom_bgset.bg_enrich_description",
++          #end if
++      #else
++          bgset = NULL,
++      #end if
++
++      #if $fun_enrich.p_value_cutoff_enrichment
++          p_value_cutoff_enrichment = $fun_enrich.p_value_cutoff_enrichment,
++      #end if
++      #if $fun_enrich.p_value_adjustment_method
++          p_value_adjustment_method = "$fun_enrich.p_value_adjustment_method",
++      #end if
++      #if $fun_enrich.q_value_cutoff_enrichment
++          q_value_cutoff_enrichment = $fun_enrich.q_value_cutoff_enrichment,
++      #end if
++      #if $fun_enrich.min_geneset_size
++          min_geneset_size = $fun_enrich.min_geneset_size,
++      #end if
++      #if $fun_enrich.max_geneset_size
++          max_geneset_size = $fun_enrich.max_geneset_size,
++      #end if
++
++      #if $protein_interactions.ppi_add_nodes
++          ppi_add_nodes = $protein_interactions.ppi_add_nodes,
++      #end if
++      #if $protein_interactions.ppi_score_threshold
++          ppi_score_threshold = $protein_interactions.ppi_score_threshold,
++      #end if
++      show_drugs_in_ppi = $protein_interactions.show_drugs_in_ppi,
++	 ppi_node_shadow = $protein_interactions.ppi_node_shadow,
++
++	 #if $subcellular_compartments.min_subcellcomp_confidence
++          min_subcellcomp_confidence = $subcellular_compartments.min_subcellcomp_confidence,
++      #end if
++      #if $fitness.max_fitness_score
++          max_fitness_score = $fitness.max_fitness_score,
++      #end if
++      subcellcomp_show_cytosol = $subcellular_compartments.show_cytosol,
++      #if $disease.show_top_diseases_only
++          show_top_diseases_only = $disease.show_top_diseases_only,
++      #end if
++
++      min_confidence_reg_interaction = "$regulatory.min_confidence_reg_interaction",
++      num_terms_enrichment_plot = $fun_enrich.num_terms_enrichment_plot,
++      simplify_go = $fun_enrich.simplify_go,
++      html_floating_toc = $report_metadata.html_floating_toc,
++      html_report_theme = "$report_metadata.html_report_theme",
++      galaxy = TRUE
++      );
++
++      oncoEnrichR::write(report = oe_report, oeDB = oedb, file = "$report1", format = "html", selfcontained_html = F, extra_files_path = "$report1.extra_files_path", overwrite = T, ignore_file_extension = T);
++	 oncoEnrichR::write(report = oe_report, oeDB = oedb, file = "$report2", format = "excel", overwrite = T, ignore_file_extension = T)' 2>&1
++
++  ]]></command>
++  <inputs>
++      <section title="" name=""/>
++      <section name="query_set" title="Query gene set" expanded="true">
++          <conditional name="query_choice">
++                <param name="query_input" type="select" multiple="false" display="radio"
++                       label="Query gene set: do you want to upload a file OR paste into a text box?">
++                    <option value="text">Text field</option>
++				<option value="file">From file</option>
++                </param>
++                <when value="text">
++                    <param type="text" name="query_text" label="Query gene set identifiers (one per line)" area="true"/>
++                </when>
++			 <when value="file">
++                   <param name="query_file" type="data" format="txt" label="Query gene set identifiers" multiple="false"/>
++                </when>
++          </conditional>
++          <param name="query_id_type" type="select" label="Query identifier type" display="radio" multiple="false">
++              <option value="symbol">Primary gene symbol (HGNC) - e.g. KRAS</option>
++              <option value="uniprot_acc">UniProt accession - e.g. P01116</option>
++              <option value="entrezgene">NCBI Entrez gene identifier - e.g. 3845</option>
++              <option value="ensembl_gene">Ensembl gene identifier - e.g. ENSG00000133703</option>
++              <option value="ensembl_mrna">Ensembl transcript identifier - e.g. ENST00000311936</option>
++              <option value="ensembl_protein">Ensembl protein identifier - e.g. ENSP00000308495</option>
++              <option value="refseq_mrna">RefSeq mRNA identifier - e.g. NM_004985</option>
++              <option value="refseq_protein">RefSeq protein identifier - e.g. NP_004976</option>
++          </param>
++		<param name="ignore_id_err" type="boolean" label="Ignore erroneous idenfiers" truevalue="T" falsevalue="F" checked="true"/>
++      </section>
++
++      <section title="" name=""/>
++      <section name="report_metadata" title="Project metadata and output settings" expanded="true">
++          <param type="text" name="report_name" label="Output filename (prefix)" value="Report"/>
++          <param type="text" name="project_title" label="Project title" />
++          <param type="text" name="project_owner" label="Project owner" />
++          <param type="text" name="project_description" label="Project description" area="true"/>
++          <param name="html_floating_toc" type="boolean" label="HTML report - float the table of contents to the left of the main document content (always visible during scrolling)" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="html_report_theme" type="select" label="HTML report - bootswatch theme" expanded="true">
++              <option value="default">default</option>
++              <option value="cerulean">cerulean</option>
++              <option value="cosmo">cosmo</option>
++              <option value="journal">journal</option>
++              <option value="lumen">lumen</option>
++              <option value="paper">paper</option>
++              <option value="sandstone">sandstone</option>
++              <option value="simplex">simplex</option>
++              <option value="spacelab">spacelab</option>
++              <option value="united">united</option>
++              <option value="yeti">yeti</option>
++          </param>
++      </section>
++
++      <section title="" name=""/>
++      <section name="modules" title="Analysis modules included in the report" expanded="true">
++		<param name="show_disease" type="boolean" label="Gene-cancer associations" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_enrichment" type="boolean" label="Gene functional enrichment" truevalue="T" falsevalue="F" checked="true"/>
++		<param name="show_cell_tissue" type="boolean" label="Tissue/cell-type enrichment" truevalue="T" falsevalue="F" checked="false"/>
++          <param name="show_ppi" type="boolean" label="Protein-protein interaction network" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_regulatory" type="boolean" label="Regulatory (TF-target) interactions" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_ligand_receptor" type="boolean" label="Ligand-receptor interactions" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_cancer_hallmarks" type="boolean" label="Cancer hallmark associations" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_drug" type="boolean" label="Drug-target associations" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_aberration" type="boolean" label="Tumor aberration frequencies" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_coexpression" type="boolean" label="Tumor co-expression patterns" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_subcell_comp" type="boolean" label="Subcellular localizations" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_complex" type="boolean" label="Protein complex memberships" truevalue="T" falsevalue="F" checked="true"/>
++		<param name="show_domain" type="boolean" label="Protein domain frequencies" truevalue="T" falsevalue="F" checked="false"/>
++          <param name="show_fitness" type="boolean" label="Gene fitness effects" truevalue="T" falsevalue="F" checked="true"/>
++          <param name="show_synleth" type="boolean" label="Predicted synthetic lethality interactions" truevalue="T" falsevalue="F" checked="true"/>
++		<param name="show_unknown_function" type="boolean" label="Genes of poorly defined function" truevalue="T" falsevalue="F" checked="true"/>
++		<param name="show_prognostic" type="boolean" label="Prognostic cancer associations" truevalue="T" falsevalue="F" checked="true"/>
++      </section>
++
++      <section title="" name=""/>
++      <section name="fun_enrich" title="Options - gene functional enrichment" expanded="true">
++		 <conditional name="custom_bgset">
++			 <param name="def_background" type="boolean" label="Define custom background set (all annotated protein-coding genes by default)" truevalue="T" falsevalue="F" checked="false"/>
++			 <when value="T">
++		            <conditional name="bg_choice">
++		                <param name="bg_source" type="select" display="radio"
++		                       label="Custom background gene set: do you want to upload a file OR paste into a text box?">
++						<option value="text">Text field</option>
++		                    <option value="file">From file</option>
++
++		                </param>
++		                <when value="file">
++		                   <param type="data" format="txt" name="bg_enrich_file" label="Custom background gene set" optional="true" multiple="false"/>
++		                </when>
++		                <when value="text">
++		                    <param type="text" name="bg_enrich_text" label="Custom background gene set identifiers (one per line):" area="true"/>
++		                </when>
++		          </conditional>
++
++		          <param type="select" name="bg_enrich_id_type" label="Custom background identifier type" display="radio" multiple="false">
++		              <option value="symbol">Primary gene symbol (HGNC) - e.g. KRAS</option>
++                      <option value="uniprot_acc">UniProt accession - e.g. P01116</option>
++                      <option value="entrezgene">NCBI Entrez gene identifier - e.g. 3845</option>
++                      <option value="ensembl_gene">Ensembl gene identifier - e.g. ENSG00000133703</option>
++                      <option value="ensembl_mrna">Ensembl transcript identifier - e.g. ENST00000311936</option>
++                      <option value="ensembl_protein">Ensembl protein identifier - e.g. ENSP00000308495</option>
++                      <option value="refseq_mrna">RefSeq mRNA identifier - e.g. NM_004985</option>
++                      <option value="refseq_protein">RefSeq protein identifier - e.g. NP_004976</option>
++		          </param>
++		          <param type="text" name="bg_enrich_description" label="Custom background gene set description" value="Custom background description"/>
++			</when>
++		</conditional>
++
++          <param type="float" name="p_value_cutoff_enrichment" label="P-value cutoff for enrichment tests (clusterProfiler)" value="0.05"/>
++          <param type="select" name="p_value_adjustment_method" label="P-value adjustment method (clusterProfiler)">
++              <option value="holm">holm</option>
++              <option value="hochberg">hochberg</option>
++              <option value="hommel">hommel</option>
++              <option value="bonferroni">bonferroni</option>
++              <option value="BH">BH</option>
++              <option value="BY">BY</option>
++              <option value="fdr">fdr</option>
++              <option value="none">none</option>
++          </param>
++          <param type="float" name="q_value_cutoff_enrichment" label="Q-value cutoff for enrichment tests to report as significant (clusterProfiler)" value="0.2"/>
++          <param type="integer" name="min_geneset_size" label="Minimum number of genes annotated by ontology term for testing (clusterProfiler)" value="10"/>
++          <param type="integer" name="max_geneset_size" label="Maximum number of genes annotated by ontology term for testing (clusterProfiler)" value="500"/>
++          <param name="simplify_go" type="boolean" label="Simplify GO enrichment results by removal of redundant terms (recommended)" truevalue="T" falsevalue="F" checked="true"/>
++          <param type="integer" name="num_terms_enrichment_plot" label="Number of top enriched Gene Ontology terms (max) to show in enrichment barplot" min="10" max="30" value="20"/>
++      </section>
++
++      <section title="" name=""/>
++      <section name="fitness" title="Options - gene fitness scores" expanded="true">
++          <param type="float" name="max_fitness_score" label="Maximum loss-of-fitness score (Bayes Factor from BAGEL) for genes retrieved from Project Score" value="-2" min="-5" max="0"/>
++      </section>
++      <section title="" name=""/>
++      <section name="protein_interactions" title="Options - protein-protein interaction network" expanded="true">
++          <param type="integer" name="ppi_add_nodes" label="Addition of interacting non-queryset proteins to the protein-protein interaction network (maximum number)" value="50" min="0" max="50"/>
++          <param type="integer" name="ppi_score_threshold" label="Minimum confidence score for interactions to be included in the network (STRING confidence: 0-1000)" value="900" min="400" max="1000"/>
++          <param name="show_drugs_in_ppi" type="boolean" label="Show anti-cancer drugs in protein-protein interaction network" truevalue="T" falsevalue="F" checked="true"/>
++		<param name="ppi_node_shadow" type="boolean" label="Add shadow to nodes in protein-protein interaction network" truevalue="T" falsevalue="F" checked="true"/>
++      </section>
++      <section title="" name=""/>
++      <section name="regulatory" title="Options - regulatory interactions" expanded="true">
++         <param type="select" name="min_confidence_reg_interaction" label = "Minimum confidence level of regulatory interactions included (DoRothEA - A:highest, D:lowest)">
++            <option value="D">D</option>
++            <option value="C">C</option>
++            <option value="B">B</option>
++            <option value="A">A</option>
++        </param>
++      </section>
++     <section title="" name=""/>
++
++	 <section name="subcellular_compartments" title="Options - Subcellular localizations" expanded="true">
++           <param type="integer" name="min_subcellcomp_confidence" label="Minimum confidence level for subcellular localization annotations" value="1" min="1" max="6"/>
++          <param name="show_cytosol" type="boolean" label="Show cytosol annotations (very common localization) in subcellular heatmap " truevalue="T" falsevalue="F" checked="false"/>
++      </section>
++      <section title="" name=""/>
++
++      <section name="disease" title="Options - Disease associations" expanded="true">
++          <param type="boolean" name="show_top_diseases_only" label="Show top disease assocations only" truevalue="T" falsevalue="F" checked="true"/>
++      </section>
++
++  </inputs>
++    <outputs>
++        <data format="xlsx" name="report2" label="$report_metadata.report_name - xlsx"/>
++        <data format="html" name="report1" label="$report_metadata.report_name - html"/>
++    </outputs>
++
++
++  <help><![CDATA[
++.. class:: infomark
++
++The query gene set is limited to n = 500 identifiers. A limited query gene set (e.g. n < 5) will in general reduce the relevance and significance of many oncoEnrichR report modules.
++
++-----
++
++**Dataset formats**
++
++The input dataset is in tabular_ format. The two output datasets are html_ and xlsx.
++
++.. _tabular: ${static_path}/formatHelp.html#tab
++.. _html: ${static_path}/formatHelp.html#html
++
++-----
++
++**What it does**
++
++*OncoEnrichR* is intended for exploratory analysis and prioritization of a candidate hits (referred to as *query set* below) from high-throughput cancer biology experiments. The tool queries a number of high-quality data resources in order to interpret the query gene set along various dimensions, examples being cancer aberration frequencies, protein-protein interactions, pathway enrichment, subcellular compartment localization, target druggability, gene fitness scores, and tissue/cell-type specificity.
++
++The results from the various analysis modules are provided in an interactive HTML report where the user can interrogate the results further. A multisheet Excel workbook is also provided for convience. The following resources are currently utilized for annotation and analysis:
++
++-  `Open Targets Platform <https://targetvalidation.org/>`_ - disease associations, drug-target associations, cancer hallmarks, and druggability/tractability rankings
++
++-  `The Cancer Genome Atlas <https://portal.gdc.cancer.gov/>`_ - gene aberration frequencies and co-expression patterns in approximately 10,000 primary tumor samples
++
++-  `The Human Protein Atlas <https://www.proteinatlas.org/>`_ - expression data for healthy human tissues (`GTex <https://gtexportal.org/home/>`_)/cell types, and prognostic gene expression associations in cancer (`The Pathology Atlas <https://www.proteinatlas.org/humanproteome/pathology/>`_)
++
++-  `Molecular Signatures Database (MSigDB) <http://software.broadinstitute.org/gsea/msigdb/index.jsp/>`_ - collection of annotated (e.g. towards pathways) gene sets for enrichment/overrepresentation analysis. This includes gene sets from `Gene Ontology <http://geneontology.org/>`_, `Reactome <https://reactome.org/>`_, `KEGG <https://www.genome.jp/kegg/pathway.html/>`_, `WikiPathways <https://www.wikipathways.org/index.php/WikiPathways/>`_, `BIOCARTA <https://maayanlab.cloud/Harmonizome/dataset/Biocarta+Pathways/>`_, as well as curated `immunologic <https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp#C7/>`_ and `cancer-specific <https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp#C6/>`_ signatures.
++
++-  `NetPath <http://www.netpath.org/>`_ - manually curated resource of signal transduction pathways in humans
++
++-  `STRING <https://string-db.org/>`_ - protein-protein interaction database
++
++-  `CellChatDB <http://www.cellchat.org/>`_ - database on ligand-receptor interactions
++
++-  `DoRothEA <https://saezlab.github.io/dorothea/>`_ - gene set resource containing signed transcription factor (TF) - target interactions
++
++-  `CORUM <https://mips.helmholtz-muenchen.de/corum/>`_ - protein complex database
++
++-  `Compleat <https://fgr.hms.harvard.edu/compleat>`_ - protein complex resource
++
++-  `ComplexPortal <https://www.ebi.ac.uk/complexportal/home/>`_ - manually curated, encyclopaedic resource of macromolecular complexes
++
++-  `hu.MAP2 <http://humap2.proteincomplexes.org/>`_ - human protein complex map
++
++-  `ComPPI <http://comppi.linkgroup.hu/>`_ - subcellular compartment database
++
++-  `CancerMine <http://bionlp.bcgsc.ca/cancermine/>`_ - literature-mined resource on cancer drivers, oncogenes and tumor suppressor genes
++
++-  `Network of Cancer Genes <http://ncg.kcl.ac.uk/>`_ - manually curated collection of cancer genes, healthy drivers and their properties
++
++-  `Project Score <https://score.depmap.sanger.ac.uk/>`_ - database on the effects on cancer cell line viability elicited by CRISPR-Cas9 mediated gene activation
++
++-  `Genetic determinants of survival in cancer <http://survival.cshl.edu/>`_ - resource on the prognostic impact of genetic aberrations (methylation, CNA, mutation, expression) in human cancers (TCGA)
++
++-  `Predicted synthetic lethality interactions <https://pubmed.ncbi.nlm.nih.gov/34529928/>`_ - comprehensive prediction of synthetic lethality interactions in human cancer cell lines
++
++The contents of the gene set analysis report attempt to answer the following questions related to the query set:
++
++-  Which diseases/tumor types are known to be associated with genes in the query set, and to what extent? Which genes are a classified as proto-oncogenes, tumor suppressors or cancer driver genes?
++
++-  Which query genes have been linked (through literature) to the various hallmarks of cancer?
++
++-  Which genes in the query set are poorly characterized or have an unknown function?
++
++-  Which proteins in the query set can be targeted by inhibitors for diffferent cancer conditions (early and late clinical development phases)? What is the tractability/druggability status for other targets in the query set?
++
++-  Which cancer-relevant protein complexes are involved for proteins in the query set?
++
++-  Are there known cancer-relevant regulatory interactions (transcription factor (TF) - target) found in the query set?
++
++-  Are there known ligand-receptor interactions in the query set?
++
++-  Which subcellular compartments (nucleus, cytosol, plasma membrane etc.) are dominant localizations for members of the query set?
++
++-  Are specific tissues or cell types enriched in the query set, considering healthy tissue/cell-type specific expression patterns (GTex/Human Protein Atlas) of query genes?
++
++-  Which protein-protein interactions are known within the query set? Are there interactions between members of the query set and other cancer-relevant proteins (e.g. proto-oncogenes, tumor-suppressors or predicted cancer drivers)? Which proteins constitute hubs in the protein-protein interaction network?
++
++-  Are there specific pathways, biological processes or molecular functions that are enriched within the query set, as compared to a reference/background set?
++
++-  Which members of the query set are frequently mutated in tumor sample cohorts (TCGA - SNVs/InDels / homozygous deletions / copy number amplifications)? What are the most frequent recurrent somatic variants (SNVs/InDels) in the query set genes?
++
++-  Which members of the query set are co-expressed (strong negative or positive correlations) with cancer-relevant genes (i.e. proto-oncogenes or tumor suppressors) in tumor sample cohorts (TCGA)?
++
++-  Which members of the query set are associated with better/worse survival in different cancers, considering mutation, expression, methylation or copy number levels in tumors?
++
++-  Which members of the query set are predicted as partners of synthetic lethality interactions?
++
++-  Which members of the query set are associated with cellular loss-of-fitness in CRISPR/Cas9 whole-genome drop out screens of cancer cell lines (i.e. reduction of cell viability elicited by a gene inactivation)? Which genes should be prioritized considering genomic biomarkers and fitness scores in combination?
++
++
++]]>
++  </help>
++
++ <citations>
++     <!-- Example of annotating a citation using a DOI. -->
++     <citation type="doi">10.48550/arXiv.2107.13247</citation>
++     <!-- Example of annotating a citation using a BibTex entry. -->     
++  </citations>
++</tool>
+diff --git a/docker/renv.lock b/docker/renv.lock
+index 0d2d3c7..3b30c0f 100644
+--- a/docker/renv.lock
++++ b/docker/renv.lock
+@@ -299,13 +299,13 @@
+         },
+         "GenomeInfoDb": {
+             "Package": "GenomeInfoDb",
+-            "Version": "1.32.3",
++            "Version": "1.32.4",
+             "Source": "Bioconductor",
+             "git_url": "https://git.bioconductor.org/packages/GenomeInfoDb",
+             "git_branch": "RELEASE_3_15",
+-            "git_last_commit": "fe2a658",
+-            "git_last_commit_date": "2022-08-08",
+-            "Hash": "55c3f812d79a5321d94b5f3c1178c392",
++            "git_last_commit": "69df6a5",
++            "git_last_commit_date": "2022-09-06",
++            "Hash": "45eeade5241cbc976f2114f62b90d81d",
+             "Requirements": [
+                 "BiocGenerics",
+                 "GenomeInfoDbData",
+@@ -476,10 +476,10 @@
+         },
+         "Matrix": {
+             "Package": "Matrix",
+-            "Version": "1.4-1",
++            "Version": "1.5-0",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "699c47c606293bdfbc9fd78a93c9c8fe",
++            "Hash": "19d2a523548a8fd4f6460f4e61bc15fb",
+             "Requirements": "lattice"
+         },
+         "MatrixGenerics": {
+@@ -495,10 +495,10 @@
+         },
+         "MatrixModels": {
+             "Package": "MatrixModels",
+-            "Version": "0.5-0",
++            "Version": "0.5-1",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "366a8838782928e398b8762c932a42a3",
++            "Hash": "963ab8fbaf980a5b081ed40419081439",
+             "Requirements": "Matrix"
+         },
+         "NLP": {
+@@ -654,10 +654,10 @@
+         },
+         "RSQLite": {
+             "Package": "RSQLite",
+-            "Version": "2.2.16",
++            "Version": "2.2.17",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "b73d36bddd2ca5e2d8ea1ee85264573d",
++            "Hash": "5f649e614af7d295bcae4c04ec1632bb",
+             "Requirements": [
+                 "DBI",
+                 "Rcpp",
+@@ -680,10 +680,10 @@
+         },
+         "RcppArmadillo": {
+             "Package": "RcppArmadillo",
+-            "Version": "0.11.2.3.1",
++            "Version": "0.11.2.4.0",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "8370a82b0c508599f2fa5a40a36b8102",
++            "Hash": "796805fe55a25e42b5e0aeefacc041dc",
+             "Requirements": "Rcpp"
+         },
+         "RcppEigen": {
+@@ -868,10 +868,10 @@
+         },
+         "aplot": {
+             "Package": "aplot",
+-            "Version": "0.1.6",
++            "Version": "0.1.7",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "f33f09b723d25086d5373d996be34cc3",
++            "Hash": "c827e1724f09b5a8696972803adb1d26",
+             "Requirements": [
+                 "ggfun",
+                 "ggplot2",
+@@ -926,27 +926,6 @@
+ 
+             ]
+         },
+-        "biomaRt": {
+-            "Package": "biomaRt",
+-            "Version": "2.52.0",
+-            "Source": "Bioconductor",
+-            "git_url": "https://git.bioconductor.org/packages/biomaRt",
+-            "git_branch": "RELEASE_3_15",
+-            "git_last_commit": "cf4932a",
+-            "git_last_commit_date": "2022-04-26",
+-            "Hash": "afebc123951ea8778af2d67042737948",
+-            "Requirements": [
+-                "AnnotationDbi",
+-                "BiocFileCache",
+-                "XML",
+-                "digest",
+-                "httr",
+-                "progress",
+-                "rappdirs",
+-                "stringr",
+-                "xml2"
+-            ]
+-        },
+         "bit": {
+             "Package": "bit",
+             "Version": "4.0.4",
+@@ -1146,11 +1125,13 @@
+         },
+         "cli": {
+             "Package": "cli",
+-            "Version": "3.3.0",
++            "Version": "3.4.0",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "23abf173c2b783dcc43379ab9bba00ee",
+-            "Requirements": "glue"
++            "Hash": "78003c09d258968a4d28107e779edb10",
++            "Requirements": [
++
++            ]
+         },
+         "clipr": {
+             "Package": "clipr",
+@@ -1357,10 +1338,10 @@
+         },
+         "desc": {
+             "Package": "desc",
+-            "Version": "1.4.1",
++            "Version": "1.4.2",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "eebd27ee58fcc58714eedb7aa07d8ad1",
++            "Hash": "6b9602c7ebbe87101a9c8edb6e8b6d21",
+             "Requirements": [
+                 "R6",
+                 "cli",
+@@ -1720,10 +1701,10 @@
+         },
+         "future": {
+             "Package": "future",
+-            "Version": "1.27.0",
++            "Version": "1.28.0",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "f6811da7bee83f2cef50ee3d21c5c794",
++            "Hash": "f3e26a942d4ee32cec9403e1ddd7000b",
+             "Requirements": [
+                 "digest",
+                 "globals",
+@@ -1733,10 +1714,10 @@
+         },
+         "future.apply": {
+             "Package": "future.apply",
+-            "Version": "1.9.0",
++            "Version": "1.9.1",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "8ec2bd333ccd4df6bf70e68dded6c364",
++            "Hash": "77dbef5c63aa92d1c319ad3b6c10eccb",
+             "Requirements": [
+                 "future",
+                 "globals"
+@@ -1744,10 +1725,10 @@
+         },
+         "gargle": {
+             "Package": "gargle",
+-            "Version": "1.2.0",
++            "Version": "1.2.1",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "9d234e6a87a6f8181792de6dc4a00e39",
++            "Hash": "cca71329ad88e21267f09255d3f008c2",
+             "Requirements": [
+                 "cli",
+                 "fs",
+@@ -1772,10 +1753,10 @@
+         },
+         "gert": {
+             "Package": "gert",
+-            "Version": "1.7.1",
++            "Version": "1.8.0",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "92d17e7b0639cad43d44e75199d4aa64",
++            "Hash": "4bdd6588a3cbde071c7de6d07b66f1d3",
+             "Requirements": [
+                 "askpass",
+                 "credentials",
+@@ -1996,10 +1977,10 @@
+         },
+         "gh": {
+             "Package": "gh",
+-            "Version": "1.3.0",
++            "Version": "1.3.1",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "38c2580abbda249bd6afeec00d14f531",
++            "Hash": "b6a12054ee13dce0f6696c019c10e539",
+             "Requirements": [
+                 "cli",
+                 "gitcreds",
+@@ -2010,10 +1991,10 @@
+         },
+         "gitcreds": {
+             "Package": "gitcreds",
+-            "Version": "0.1.1",
++            "Version": "0.1.2",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "f3aefccc1cc50de6338146b62f115de8",
++            "Hash": "ab08ac61f3e1be454ae21911eb8bc2fe",
+             "Requirements": [
+ 
+             ]
+@@ -2120,10 +2101,10 @@
+         },
+         "gtable": {
+             "Package": "gtable",
+-            "Version": "0.3.0",
++            "Version": "0.3.1",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "ac5c6baf7822ce8732b343f14c072c4d",
++            "Hash": "36b4265fb818f6a342bed217549cd896",
+             "Requirements": [
+ 
+             ]
+@@ -2201,10 +2182,10 @@
+         },
+         "httpuv": {
+             "Package": "httpuv",
+-            "Version": "1.6.5",
++            "Version": "1.6.6",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "97fe71f0a4a1c9890e6c2128afa04bc0",
++            "Hash": "fd090e236ae2dc0f0cdf33a9ec83afb6",
+             "Requirements": [
+                 "R6",
+                 "Rcpp",
+@@ -2420,18 +2401,18 @@
+         },
+         "lgr": {
+             "Package": "lgr",
+-            "Version": "0.4.3",
++            "Version": "0.4.4",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "788c0274bdcb794f0021e0a6d4fba2dc",
++            "Hash": "a6bc51765d7e9eeb2b225a11805527aa",
+             "Requirements": "R6"
+         },
+         "lifecycle": {
+             "Package": "lifecycle",
+-            "Version": "1.0.1",
++            "Version": "1.0.2",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "a6b6d352e3ed897373ab19d8395c98d0",
++            "Hash": "25f74670fa7d3277fe3ad8c1712a699f",
+             "Requirements": [
+                 "glue",
+                 "rlang"
+@@ -2504,16 +2485,6 @@
+                 "zlibbioc"
+             ]
+         },
+-        "magrittr": {
+-            "Package": "magrittr",
+-            "Version": "2.0.3",
+-            "Source": "Repository",
+-            "Repository": "CRAN",
+-            "Hash": "7ce2733a9826b3aeb1775d56fd305472",
+-            "Requirements": [
+-
+-            ]
+-        },
+         "mapproj": {
+             "Package": "mapproj",
+             "Version": "1.2.8",
+@@ -3446,10 +3417,10 @@
+         },
+         "scatterpie": {
+             "Package": "scatterpie",
+-            "Version": "0.1.7",
++            "Version": "0.1.8",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "f4d12f5fdf169e10739fe554e7705159",
++            "Hash": "49c8628a96243f66d30d58c898a2c6db",
+             "Requirements": [
+                 "ggforce",
+                 "ggfun",
+@@ -3592,10 +3563,10 @@
+         },
+         "statnet.common": {
+             "Package": "statnet.common",
+-            "Version": "4.6.0",
++            "Version": "4.7.0",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "4c1387839f4770332fe1ce2f79ba982e",
++            "Hash": "fb615d9579991bce65ab7a0e9278fb13",
+             "Requirements": "coda"
+         },
+         "stringi": {
+@@ -3778,10 +3749,10 @@
+         },
+         "tidyr": {
+             "Package": "tidyr",
+-            "Version": "1.2.0",
++            "Version": "1.2.1",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "d8b95b7fee945d7da6888cf7eb71a49c",
++            "Hash": "cdb403db0de33ccd1b6f53b83736efa8",
+             "Requirements": [
+                 "cpp11",
+                 "dplyr",
+@@ -3856,20 +3827,6 @@
+                 "tidytree"
+             ]
+         },
+-        "tweenr": {
+-            "Package": "tweenr",
+-            "Version": "2.0.1",
+-            "Source": "Repository",
+-            "Repository": "CRAN",
+-            "Hash": "0c5c4f474477e19c01e0c559cc440888",
+-            "Requirements": [
+-                "cpp11",
+-                "farver",
+-                "magrittr",
+-                "rlang",
+-                "vctrs"
+-            ]
+-        },
+         "tzdb": {
+             "Package": "tzdb",
+             "Version": "0.3.0",
+@@ -4122,10 +4079,10 @@
+         },
+         "zip": {
+             "Package": "zip",
+-            "Version": "2.2.0",
++            "Version": "2.2.1",
+             "Source": "Repository",
+             "Repository": "CRAN",
+-            "Hash": "c7eef2996ac270a18c2715c997a727c5",
++            "Hash": "a7e91189fa51d9029a30eba3831ce53f",
+             "Requirements": [
+ 
+             ]
+diff --git a/pkgdown/index.md b/pkgdown/index.md
+index cd7abcc..c0970e5 100644
+--- a/pkgdown/index.md
++++ b/pkgdown/index.md
+@@ -85,18 +85,16 @@ See also the [output views](articles/output.html) that addresses each of the que
+ 
+ ## News
+ 
++-   September 12th 2022: [**1.3.0
++    release**](articles/CHANGELOG.html#version-1-3-0)
+ -   September 2nd 2022: [**1.2.2
+     release**](articles/CHANGELOG.html#version-1-2-2)
+ -   July 13th 2022: [**1.2.1
+     release**](articles/CHANGELOG.html#version-1-2-1)
+--   June 24th 2022: [**1.2.0
+-    release**](articles/CHANGELOG.html#version-1-2-0)
+--   March 31st 2022: [**1.0.9
+-    release**](articles/CHANGELOG.html#version-1-0-9)
+ 
+ ## Example report
+ 
+-<a href="https://doi.org/10.5281/zenodo.7042674"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7042674.svg" alt="DOI"/></a>
++<a href="https://doi.org/10.5281/zenodo.7070557"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7070557.svg" alt="DOI"/></a>
+ 
+ <br>
+ 
+diff --git a/renv.lock b/renv.lock
+index 5e5eaac..3c87976 100644
+--- a/renv.lock
++++ b/renv.lock
+@@ -373,13 +373,13 @@
+     },
+     "GenomeInfoDb": {
+       "Package": "GenomeInfoDb",
+-      "Version": "1.32.3",
++      "Version": "1.32.4",
+       "Source": "Bioconductor",
+       "git_url": "https://git.bioconductor.org/packages/GenomeInfoDb",
+       "git_branch": "RELEASE_3_15",
+-      "git_last_commit": "fe2a658",
+-      "git_last_commit_date": "2022-08-08",
+-      "Hash": "55c3f812d79a5321d94b5f3c1178c392",
++      "git_last_commit": "69df6a5",
++      "git_last_commit_date": "2022-09-06",
++      "Hash": "45eeade5241cbc976f2114f62b90d81d",
+       "Requirements": [
+         "BiocGenerics",
+         "GenomeInfoDbData",
+@@ -544,10 +544,10 @@
+     },
+     "Matrix": {
+       "Package": "Matrix",
+-      "Version": "1.4-1",
++      "Version": "1.5-0",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "699c47c606293bdfbc9fd78a93c9c8fe",
++      "Hash": "19d2a523548a8fd4f6460f4e61bc15fb",
+       "Requirements": [
+         "lattice"
+       ]
+@@ -567,10 +567,10 @@
+     },
+     "MatrixModels": {
+       "Package": "MatrixModels",
+-      "Version": "0.5-0",
++      "Version": "0.5-1",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "366a8838782928e398b8762c932a42a3",
++      "Hash": "963ab8fbaf980a5b081ed40419081439",
+       "Requirements": [
+         "Matrix"
+       ]
+@@ -724,10 +724,10 @@
+     },
+     "RSQLite": {
+       "Package": "RSQLite",
+-      "Version": "2.2.16",
++      "Version": "2.2.17",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "b73d36bddd2ca5e2d8ea1ee85264573d",
++      "Hash": "5f649e614af7d295bcae4c04ec1632bb",
+       "Requirements": [
+         "DBI",
+         "Rcpp",
+@@ -760,10 +760,10 @@
+     },
+     "RcppArmadillo": {
+       "Package": "RcppArmadillo",
+-      "Version": "0.11.2.3.1",
++      "Version": "0.11.2.4.0",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "8370a82b0c508599f2fa5a40a36b8102",
++      "Hash": "796805fe55a25e42b5e0aeefacc041dc",
+       "Requirements": [
+         "Rcpp"
+       ]
+@@ -1008,10 +1008,10 @@
+     },
+     "aplot": {
+       "Package": "aplot",
+-      "Version": "0.1.6",
++      "Version": "0.1.7",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "f33f09b723d25086d5373d996be34cc3",
++      "Hash": "c827e1724f09b5a8696972803adb1d26",
+       "Requirements": [
+         "ggfun",
+         "ggplot2",
+@@ -1274,13 +1274,11 @@
+     },
+     "cli": {
+       "Package": "cli",
+-      "Version": "3.3.0",
++      "Version": "3.4.0",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "23abf173c2b783dcc43379ab9bba00ee",
+-      "Requirements": [
+-        "glue"
+-      ]
++      "Hash": "78003c09d258968a4d28107e779edb10",
++      "Requirements": []
+     },
+     "clipr": {
+       "Package": "clipr",
+@@ -1482,10 +1480,10 @@
+     },
+     "desc": {
+       "Package": "desc",
+-      "Version": "1.4.1",
++      "Version": "1.4.2",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "eebd27ee58fcc58714eedb7aa07d8ad1",
++      "Hash": "6b9602c7ebbe87101a9c8edb6e8b6d21",
+       "Requirements": [
+         "R6",
+         "cli",
+@@ -1831,10 +1829,10 @@
+     },
+     "future": {
+       "Package": "future",
+-      "Version": "1.27.0",
++      "Version": "1.28.0",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "f6811da7bee83f2cef50ee3d21c5c794",
++      "Hash": "f3e26a942d4ee32cec9403e1ddd7000b",
+       "Requirements": [
+         "digest",
+         "globals",
+@@ -1844,10 +1842,10 @@
+     },
+     "future.apply": {
+       "Package": "future.apply",
+-      "Version": "1.9.0",
++      "Version": "1.9.1",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "8ec2bd333ccd4df6bf70e68dded6c364",
++      "Hash": "77dbef5c63aa92d1c319ad3b6c10eccb",
+       "Requirements": [
+         "future",
+         "globals"
+@@ -1855,10 +1853,10 @@
+     },
+     "gargle": {
+       "Package": "gargle",
+-      "Version": "1.2.0",
++      "Version": "1.2.1",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "9d234e6a87a6f8181792de6dc4a00e39",
++      "Hash": "cca71329ad88e21267f09255d3f008c2",
+       "Requirements": [
+         "cli",
+         "fs",
+@@ -1881,10 +1879,10 @@
+     },
+     "gert": {
+       "Package": "gert",
+-      "Version": "1.7.1",
++      "Version": "1.8.0",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "92d17e7b0639cad43d44e75199d4aa64",
++      "Hash": "4bdd6588a3cbde071c7de6d07b66f1d3",
+       "Requirements": [
+         "askpass",
+         "credentials",
+@@ -2109,10 +2107,10 @@
+     },
+     "gh": {
+       "Package": "gh",
+-      "Version": "1.3.0",
++      "Version": "1.3.1",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "38c2580abbda249bd6afeec00d14f531",
++      "Hash": "b6a12054ee13dce0f6696c019c10e539",
+       "Requirements": [
+         "cli",
+         "gitcreds",
+@@ -2123,10 +2121,10 @@
+     },
+     "gitcreds": {
+       "Package": "gitcreds",
+-      "Version": "0.1.1",
++      "Version": "0.1.2",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "f3aefccc1cc50de6338146b62f115de8",
++      "Hash": "ab08ac61f3e1be454ae21911eb8bc2fe",
+       "Requirements": []
+     },
+     "globals": {
+@@ -2233,10 +2231,10 @@
+     },
+     "gtable": {
+       "Package": "gtable",
+-      "Version": "0.3.0",
++      "Version": "0.3.1",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "ac5c6baf7822ce8732b343f14c072c4d",
++      "Hash": "36b4265fb818f6a342bed217549cd896",
+       "Requirements": []
+     },
+     "here": {
+@@ -2316,10 +2314,10 @@
+     },
+     "httpuv": {
+       "Package": "httpuv",
+-      "Version": "1.6.5",
++      "Version": "1.6.6",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "97fe71f0a4a1c9890e6c2128afa04bc0",
++      "Hash": "fd090e236ae2dc0f0cdf33a9ec83afb6",
+       "Requirements": [
+         "R6",
+         "Rcpp",
+@@ -2533,20 +2531,20 @@
+     },
+     "lgr": {
+       "Package": "lgr",
+-      "Version": "0.4.3",
++      "Version": "0.4.4",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "788c0274bdcb794f0021e0a6d4fba2dc",
++      "Hash": "a6bc51765d7e9eeb2b225a11805527aa",
+       "Requirements": [
+         "R6"
+       ]
+     },
+     "lifecycle": {
+       "Package": "lifecycle",
+-      "Version": "1.0.1",
++      "Version": "1.0.2",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "a6b6d352e3ed897373ab19d8395c98d0",
++      "Hash": "25f74670fa7d3277fe3ad8c1712a699f",
+       "Requirements": [
+         "glue",
+         "rlang"
+@@ -2900,15 +2898,15 @@
+     },
+     "pharmaOncoX": {
+       "Package": "pharmaOncoX",
+-      "Version": "0.9.3",
++      "Version": "0.9.6",
+       "Source": "GitHub",
+       "RemoteType": "github",
+       "RemoteHost": "api.github.com",
+       "RemoteRepo": "pharmaOncoX",
+       "RemoteUsername": "sigven",
+       "RemoteRef": "HEAD",
+-      "RemoteSha": "24219ea879fe0acfbbb335b0fede2e1074085c93",
+-      "Hash": "b64fc638fdcd555c6db7fd1629046952",
++      "RemoteSha": "29e659f60bd883111efe85536737b7c0dcdd12d8",
++      "Hash": "2049b44bbe99ebb1ce7c80f6c210d099",
+       "Requirements": [
+         "assertthat",
+         "dplyr",
+@@ -3385,10 +3383,10 @@
+     },
+     "reticulate": {
+       "Package": "reticulate",
+-      "Version": "1.25",
++      "Version": "1.26",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "786b311743eb8cd347491f8f0a571941",
++      "Hash": "91c176c84a2e3558572d2cbaddc08bd4",
+       "Requirements": [
+         "Matrix",
+         "Rcpp",
+@@ -3602,10 +3600,10 @@
+     },
+     "scatterpie": {
+       "Package": "scatterpie",
+-      "Version": "0.1.7",
++      "Version": "0.1.8",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "f4d12f5fdf169e10739fe554e7705159",
++      "Hash": "49c8628a96243f66d30d58c898a2c6db",
+       "Requirements": [
+         "ggforce",
+         "ggfun",
+@@ -3755,10 +3753,10 @@
+     },
+     "statnet.common": {
+       "Package": "statnet.common",
+-      "Version": "4.6.0",
++      "Version": "4.7.0",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "4c1387839f4770332fe1ce2f79ba982e",
++      "Hash": "fb615d9579991bce65ab7a0e9278fb13",
+       "Requirements": [
+         "coda"
+       ]
+@@ -3943,10 +3941,10 @@
+     },
+     "tidyr": {
+       "Package": "tidyr",
+-      "Version": "1.2.0",
++      "Version": "1.2.1",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "d8b95b7fee945d7da6888cf7eb71a49c",
++      "Hash": "cdb403db0de33ccd1b6f53b83736efa8",
+       "Requirements": [
+         "cpp11",
+         "dplyr",
+@@ -4025,10 +4023,10 @@
+     },
+     "tweenr": {
+       "Package": "tweenr",
+-      "Version": "2.0.1",
++      "Version": "2.0.2",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "0c5c4f474477e19c01e0c559cc440888",
++      "Hash": "c16efcef4c72d3bff5e65031f3f1f841",
+       "Requirements": [
+         "cpp11",
+         "farver",
+@@ -4273,10 +4271,10 @@
+     },
+     "zip": {
+       "Package": "zip",
+-      "Version": "2.2.0",
++      "Version": "2.2.1",
+       "Source": "Repository",
+       "Repository": "CRAN",
+-      "Hash": "c7eef2996ac270a18c2715c997a727c5",
++      "Hash": "a7e91189fa51d9029a30eba3831ce53f",
+       "Requirements": []
+     },
+     "zlibbioc": {
+diff --git a/tests/testthat/test_disease_drug.R b/tests/testthat/test_disease_drug.R
+index 4443183..0cee065 100644
+--- a/tests/testthat/test_disease_drug.R
++++ b/tests/testthat/test_disease_drug.R
+@@ -37,7 +37,8 @@ test_that("Target drug associations", {
+       genedb = oedb$genedb$all)$target_drugs),
+     c("symbol","genename",
+       "targeted_cancer_drugs_lp",
+-      "targeted_cancer_drugs_ep")
++      "targeted_cancer_drugs_ep",
++      "approved_drugs")
+   )
+ 
+   expect_identical(
+diff --git a/vignettes/CHANGELOG.Rmd b/vignettes/CHANGELOG.Rmd
+index 933d90d..e477cda 100644
+--- a/vignettes/CHANGELOG.Rmd
++++ b/vignettes/CHANGELOG.Rmd
+@@ -1,8 +1,27 @@
+ ---
+-title: "Changelog"
+-output: rmarkdown::html_document
++output: rmarkdown::html_vignette
++title: Changelog
++vignette: >
++  %\VignetteEngine{knitr::knitr}
++  %\VignetteIndexEntry{Changelog}
++  %\usepackage[UTF-8]{inputenc}
+ ---
+ 
++## Version 1.3.0
++
++* Date: 2022-09-12
++
++### Added
++
++* Data updates:
++  * MSigDB (August 2022.1)
++
++### Changed
++
++* Fixed some artefacts (`-AS1` entries) in the output of CancerMine
++* Added `approved_drugs` as a column to the `Drug associations` section
++of the output report
++
+ ## Version 1.2.2
+ 
+ * Date: 2022-09-02
+diff --git a/vignettes/annotation_resources.Rmd b/vignettes/annotation_resources.Rmd
+index 7cf1517..a6bb2a1 100644
+--- a/vignettes/annotation_resources.Rmd
++++ b/vignettes/annotation_resources.Rmd
+@@ -1,6 +1,10 @@
+ ---
+-title: "Annotation resources"
+-output: rmarkdown::html_document
++output: rmarkdown::html_vignette
++title: Annotation resources
++vignette: >
++  %\VignetteEngine{knitr::knitr}
++  %\VignetteIndexEntry{Annotation resources}
++  %\usepackage[UTF-8]{inputenc}
+ ---
+ 
+ ## Resources - overview 
+diff --git a/vignettes/input.Rmd b/vignettes/input.Rmd
+index 1270b6f..036683c 100644
+--- a/vignettes/input.Rmd
++++ b/vignettes/input.Rmd
+@@ -1,6 +1,10 @@
+ ---
+-title: "Input"
+-output: rmarkdown::html_document
++output: rmarkdown::html_vignette
++title: Input
++vignette: >
++  %\VignetteEngine{knitr::knitr}
++  %\VignetteIndexEntry{Input}
++  %\usepackage[UTF-8]{inputenc}
+ ---
+ 
+ ## Input data
+diff --git a/vignettes/installation.Rmd b/vignettes/installation.Rmd
+index a12df26..78f6beb 100644
+--- a/vignettes/installation.Rmd
++++ b/vignettes/installation.Rmd
+@@ -1,6 +1,10 @@
+ ---
+-title: "Installation"
+-output: rmarkdown::html_document
++output: rmarkdown::html_vignette
++title: Installation
++vignette: >
++  %\VignetteEngine{knitr::knitr}
++  %\VignetteIndexEntry{Installation}
++  %\usepackage[UTF-8]{inputenc}
+ ---
+ 
+ 1.  `install.packages('devtools')`
+diff --git a/vignettes/output.Rmd b/vignettes/output.Rmd
+index 1b43e36..29d4810 100644
+--- a/vignettes/output.Rmd
++++ b/vignettes/output.Rmd
+@@ -1,6 +1,10 @@
+ ---
+-title: "Output"
+-output: rmarkdown::html_document
++output: rmarkdown::html_vignette
++title: Output
++vignette: >
++  %\VignetteEngine{knitr::knitr}
++  %\VignetteIndexEntry{Output}
++  %\usepackage[UTF-8]{inputenc}
+ ---
+ 
+ ## Output files
+diff --git a/vignettes/running.Rmd b/vignettes/running.Rmd
+index caa9112..97159c7 100644
+--- a/vignettes/running.Rmd
++++ b/vignettes/running.Rmd
+@@ -1,6 +1,10 @@
+ ---
+-title: "Running"
+-output: rmarkdown::html_document
++output: rmarkdown::html_vignette
++title: Running
++vignette: >
++  %\VignetteEngine{knitr::knitr}
++  %\VignetteIndexEntry{Running}
++  %\usepackage[UTF-8]{inputenc}
+ ---
+ 
+ ## Key functions

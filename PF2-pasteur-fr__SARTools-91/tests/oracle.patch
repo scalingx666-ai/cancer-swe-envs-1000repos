@@ -1,0 +1,140 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index df790a2..3627d4e 100755
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,12 +1,13 @@
+ Package: SARTools
+ Type: Package
+ Title: Statistical Analysis of RNA-Seq Tools
+-Version: 1.7.4
+-Date: 2021-06-08
++Version: 1.8.0
++Date: 2022-02-17
+ Author: Marie-Agnes Dillies and Hugo Varet
+ Maintainer: Hugo Varet <hugo.varet@pasteur.fr>
+ Depends: R (>= 3.3.0),
+-	DESeq2 (>= 1.12.0),
++	DESeq2 (>= 1.32.0),
++	apeglm (>= 1.14.0),
+ 	edgeR (>= 3.34.0),
+ 	ggplot2 (>= 3.3.0),
+ 	kableExtra
+@@ -33,4 +34,4 @@ VignetteBuilder: knitr, rmarkdown
+ Encoding: latin1
+ Description: Provide R tools and an environment for the statistical analysis of RNA-Seq projects: load and clean data, produce figures, perform statistical analysis/testing with DESeq2 or edgeR, export results and create final report.
+ License: GPL-2
+-RoxygenNote: 7.1.1
++RoxygenNote: 7.1.2
+diff --git a/NAMESPACE b/NAMESPACE
+index 0db7743..686bd71 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -2,6 +2,7 @@
+ 
+ exportPattern("^[a-zA-Z]")
+ import(DESeq2)
++import(apeglm)
+ import(edgeR)
+ import(ggplot2)
+ import(kableExtra)
+diff --git a/NEWS b/NEWS
+index 45c67f1..ba56686 100755
+--- a/NEWS
++++ b/NEWS
+@@ -1,3 +1,7 @@
++CHANGES IN VERSION 1.8.0
++------------------------
++	o log2FoldChanges from DESeq2 are now computed using lfcShrink() with type="apeglm"
++
+ CHANGES IN VERSION 1.7.4
+ ------------------------
+ 	o fixed a bug in MDSPlot()
+diff --git a/R/NAMESPACE.R b/R/NAMESPACE.R
+index 0a877d0..e9eadf1 100755
+--- a/R/NAMESPACE.R
++++ b/R/NAMESPACE.R
+@@ -1,5 +1,6 @@
+ #' @exportPattern ^[a-zA-Z]
+ #' @import DESeq2
++#' @import apeglm
+ #' @import edgeR
+ #' @import ggplot2
+ #' @import kableExtra
+diff --git a/R/run.DESeq2.r b/R/run.DESeq2.r
+index 5b8c8f6..3ace739 100755
+--- a/R/run.DESeq2.r
++++ b/R/run.DESeq2.r
+@@ -23,7 +23,7 @@ run.DESeq2 <- function(counts, target, varInt, batch=NULL,
+   dds <- DESeqDataSetFromMatrix(countData=counts, colData=target, 
+                                 design=formula(paste("~", ifelse(!is.null(batch), paste(batch,"+"), ""), varInt)))
+   cat("Design of the statistical model:\n")
+-  cat(paste(as.character(design(dds)),collapse=" "),"\n")					  
++  cat(paste(as.character(design(dds)), collapse=" "),"\n")					  
+   
+   # normalization
+   dds <- estimateSizeFactors(dds,locfunc=eval(as.name(locfunc)))
+@@ -39,9 +39,12 @@ run.DESeq2 <- function(counts, target, varInt, batch=NULL,
+   for (comp in combn(nlevels(colData(dds)[,varInt]), 2, simplify=FALSE)){
+     levelRef <- levels(colData(dds)[,varInt])[comp[1]]
+     levelTest <- levels(colData(dds)[,varInt])[comp[2]]
+-    results[[paste0(levelTest,"_vs_",levelRef)]] <- results(dds, contrast=c(varInt, levelTest, levelRef),
+-                                                            pAdjustMethod=pAdjustMethod, cooksCutoff=cooksCutoff,
+-                                                            independentFiltering=independentFiltering, alpha=alpha)
++    res <- results(dds, name=paste(c(varInt, levelTest, "vs", levelRef), collapse="_"),
++                   pAdjustMethod=pAdjustMethod, cooksCutoff=cooksCutoff,
++                   independentFiltering=independentFiltering, alpha=alpha)
++    lfcs <- lfcShrink(dds, res=res, coef=paste(c(varInt, levelTest, "vs", levelRef), collapse="_"), type="apeglm")
++    res$log2FoldChange <- lfcs$log2FoldChange
++    results[[paste0(levelTest,"_vs_",levelRef)]] <- res
+     cat(paste("Comparison", levelTest, "vs", levelRef, "done\n"))
+   }
+   
+diff --git a/README.md b/README.md
+index 0c8f728..6873e95 100755
+--- a/README.md
++++ b/README.md
+@@ -36,6 +36,8 @@ How to use SARTools?
+ 
+ A HTML vignette is available within the vignettes folder on GitHub and provides extensive information on the use of SARTools. The user can also open it with `vignette("SARTools")` if it has been generated during the installation of the package. Note that it is not available when SARTools has been installed using conda.
+ 
++An online version of SARTools is available in this Google Colaboratory notebook: https://colab.research.google.com/drive/1hoPcImQkct0yPz5nnYcJFOOX9O0EHjtB?usp=sharing
++
+ Be careful to use the R script associated with the version of SARTools installed on your system.
+ 
+ Please read the NEWS file to see the latest improvements!
+diff --git a/inst/bibliography.bib b/inst/bibliography.bib
+index 39b29ff..4b9d5dc 100755
+--- a/inst/bibliography.bib
++++ b/inst/bibliography.bib
+@@ -216,3 +216,19 @@ @article{mccarthy2012
+ URL = {http://dx.doi.org/10.1093/nar/gks042},
+ eprint = {/oup/backfile/content_public/journal/nar/40/10/10.1093_nar_gks042/2/gks042.pdf}
+ }
++
++@article{zhu2018,
++    author = {Zhu, Anqi and Ibrahim, Joseph G and Love, Michael I},
++    title = "{Heavy-tailed prior distributions for sequence count data: removing the noise and preserving large differences}",
++    journal = {Bioinformatics},
++    volume = {35},
++    number = {12},
++    pages = {2084-2092},
++    year = {2018},
++    month = {11},
++    abstract = "{In RNA-seq differential expression analysis, investigators aim to detect those genes with changes in expression level across conditions, despite technical and biological variability in the observations. A common task is to accurately estimate the effect size, often in terms of a logarithmic fold change (LFC).When the read counts are low or highly variable, the maximum likelihood estimates for the LFCs has high variance, leading to large estimates not representative of true differences, and poor ranking of genes by effect size. One approach is to introduce filtering thresholds and pseudocounts to exclude or moderate estimated LFCs. Filtering may result in a loss of genes from the analysis with true differences in expression, while pseudocounts provide a limited solution that must be adapted per dataset. Here, we propose the use of a heavy-tailed Cauchy prior distribution for effect sizes, which avoids the use of filter thresholds or pseudocounts. The proposed method, Approximate Posterior Estimation for generalized linear model, apeglm, has lower bias than previously proposed shrinkage estimators, while still reducing variance for those genes with little information for statistical inference.The apeglm package is available as an R/Bioconductor package at https://bioconductor.org/packages/apeglm, and the methods can be called from within the DESeq2 software.Supplementary data are available at Bioinformatics online.}",
++    issn = {1367-4803},
++    doi = {10.1093/bioinformatics/bty895},
++    url = {https://doi.org/10.1093/bioinformatics/bty895},
++    eprint = {https://academic.oup.com/bioinformatics/article-pdf/35/12/2084/28839676/bty895.pdf},
++}
+diff --git a/inst/report_DESeq2.rmd b/inst/report_DESeq2.rmd
+index ca18931..b7ce8cf 100755
+--- a/inst/report_DESeq2.rmd
++++ b/inst/report_DESeq2.rmd
+@@ -226,6 +226,7 @@ Figure 14 shows the volcano plots for the comparisons performed and differential
+ 
+ </center>
+ 
++Note that the log2(Fold-Changes) are shrunk using the "apeglm" method that has been shown to be more robust than the original "normal" method [@zhu2018].
+ 
+ Full results as well as lists of differentially expressed features are provided in the following text files which can be easily read in a spreadsheet. For each comparison:
+ 

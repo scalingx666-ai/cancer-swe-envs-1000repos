@@ -1,0 +1,601 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 770ae6ae..1a35504c 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -122,7 +122,8 @@ Suggests:
+     XML,
+     shiny,
+     magrittr,
+-    SummarizedExperiment
++    SummarizedExperiment,
++    Spectra
+ LinkingTo: Rcpp
+ License: Artistic-2.0
+ LazyData: yes
+@@ -133,7 +134,6 @@ URL: https://lgatto.github.io/MSnbase
+ biocViews: ImmunoOncology, Infrastructure, Proteomics, MassSpectrometry,
+     QualityControl, DataImport
+ Roxygen: list(markdown=TRUE)
+-RoxygenNote: 7.3.1
+ Collate:
+     'AllClassUnions.R'
+     'AllGenerics.R'
+@@ -223,3 +223,4 @@ Collate:
+     'utils.R'
+     'writeMSData.R'
+     'zzz.R'
++RoxygenNote: 7.2.3
+diff --git a/NEWS.md b/NEWS.md
+index 97205eb7..58935150 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -2,6 +2,7 @@
+ 
+ ## MSnbase 2.31.2
+ 
++- Add functionality to convert a `Spectra` object to a `MSpectra`.
+ - Suggest pRolocdata (>= 1.43.2.1) (that has some extdata, needed to
+   other packages' vignettes).
+ 
+@@ -10,7 +11,7 @@
+ - Disable nested parallel processing for `chromatogram()` method.
+ - Fix Rd notes.
+ 
+-# MSnbase 2.31.0
++## MSnbase 2.31.0
+ 
+ - New Bioconductor devel.
+ 
+diff --git a/R/DataClasses.R b/R/DataClasses.R
+index 49887cc0..f2eb5fa4 100644
+--- a/R/DataClasses.R
++++ b/R/DataClasses.R
+@@ -503,6 +503,22 @@ setClass("MChromatograms",
+ #' `S4Vectors` package. This includes `lapply` and other data manipulation
+ #' and subsetting operations.
+ #'
++#' @note
++#'
++#' Note that the [Spectra](https://bioconductor.org/packages/Spectra) package
++#' provides a more robust and efficient infrastructure for mass spectrometry
++#' data handling and analysis. So, wherever possible, the newer *Spectra*
++#' package should be used instead of the *MSnbase*.
++#'
++#' For backward compatibility, it is however possible to convert between the
++#' `MSpectra` and the newer `Spectra` objects:
++#'
++#' - A `Spectra` object can be coerced to a `MSpectra` using
++#'   `as(sps, "MSpectra")` where `sps` is a `Spectra` object.
++#' - The [extractSpectraData()] function can be used to extract the data from
++#'   a `MSpectra` as a `DataFrame`, which can then be used to create a
++#'   `Spectra` object.
++#'
+ #' @param object For all functions: a `MSpectra` object.
+ #'
+ #' @param x For all functions: a `MSpectra` object.
+diff --git a/R/functions-MSpectra.R b/R/functions-MSpectra.R
+index fb6a94a9..4923e5ee 100644
+--- a/R/functions-MSpectra.R
++++ b/R/functions-MSpectra.R
+@@ -92,10 +92,20 @@ MSpectra <- function(..., elementMetadata = NULL) {
+     res
+ }
+ 
+-#' @title Extract data from MSnbase objects for use in Spectra
++#' @title Conversion between objects from the Spectra and MSnbase packages
++#'
++#' @name extractSpectraData
++#'
++#' @aliases coerce,Spectra,MSpectra-method
+ #'
+ #' @description
+ #'
++#' The [Spectra](https://bioconductor.org/packages/Spectra) package
++#' provides a more robust and efficient infrastructure for mass spectrometry
++#' data handling and analysis. So, wherever possible, the newer *Spectra*
++#' package should be used instead of the *MSnbase*. The functions listed here
++#' allow to convert between objects from the *MSnbase* and *Spectra* packages.
++#'
+ #' `extractSpectraData` extracts the spectra data (m/z and intensity values
+ #' including metadata) from [MSnExp-class], [OnDiskMSnExp-class],
+ #' [Spectrum1-class], [Spectrum2-class] objects (or `list` of such objects) and
+@@ -104,11 +114,25 @@ MSpectra <- function(..., elementMetadata = NULL) {
+ #' to convert data from the *old* `MSnbase` package to the newer `Spectra`
+ #' package.
+ #'
++#' To convert a `Spectra` object to a `MSpectra` object use
++#' `as(sps, "MSpectra")` where `sps` is a `Spectra` object.
++#'
++#' @note
++#'
++#' Coercion from `Spectra` to a `MSpectra` will only assign values to the
++#' contained `Spectrum1` and `Spectrum2` objects, but will not add all
++#' eventually spectra variables present in `Spectra`.
++#'
+ #' @param x a `list` of [Spectrum-class] objects or an object extending
+ #'     [MSnExp-class] or a [MSpectra-class] object.
+ #'
+-#' @return [DataFrame()] with the full spectrum data that can be passed to the
+-#'     [Spectra::Spectra()] function to create a `Spectra` object.
++#' @return
++#'
++#' - `extracSpectraData()` returns a [DataFrame()] with the full spectrum data
++#'   that can be passed to the [Spectra::Spectra()] function to create a
++#'   `Spectra` object.
++#' - `as(x, "MSpectra")` returns a `MSpectra` object with the content of the
++#'   `Spectra` object `x`.
+ #'
+ #' @author Johannes Rainer
+ #'
+@@ -125,10 +149,14 @@ MSpectra <- function(..., elementMetadata = NULL) {
+ #' res <- extractSpectraData(data)
+ #' res
+ #'
++#' library(Spectra)
+ #' ## This can be used as an input for the Spectra constructor of the
+ #' ## Spectra package:
+-#' ## sps <- Spectra::Spectra(res)
+-#' ## sps
++#' sps <- Spectra::Spectra(res)
++#' sps
++#'
++#' ## A Spectra object can be coerced to a MSnbase MSpectra object using
++#' msps <- as(sps, "MSpectra")
+ extractSpectraData <- function(x) {
+     if (inherits(x, "MSpectra")) {
+         df <- DataFrame(do.call(rbind, lapply(x, .spectrum_header)))
+@@ -150,3 +178,62 @@ extractSpectraData <- function(x) {
+     colnames(df)[colnames(df) == "seqNum"] <- "scanIndex"
+     df
+ }
++
++#' Coercion method from `Spectra` to `MSnbase::MSpectra`.
++#'
++#' @noRd
++.spectra_to_spectrum_list <- function(x, chunkSize = 100) {
++    requireNamespace("Spectra", quietly = TRUE)
++    Spectra::spectrapply(x, function(z) {
++        msl <- Spectra::msLevel(z)
++        r <- vector("list", length = length(msl))
++        i <- which(msl == 1L)
++        j <- which(msl > 1L)
++        if (length(i)) {
++            z_1 <- z[i]
++            mzs <- Spectra::mz(z_1)
++            ints <- Spectra::intensity(z_1)
++            l <- lengths(mzs)
++            r[i] <- Spectra1_mz_sorted(
++                peaksCount = l,
++                rt = Spectra::rtime(z_1),
++                acquisitionNum = Spectra::acquisitionNum(z_1),
++                scanIndex = Spectra::scanIndex(z_1),
++                tic = sum(ints),
++                mz = unlist(mzs),
++                intensity = unlist(ints),
++                fromFile = rep(NA_integer_, length(i)),
++                centroided = Spectra::centroided(z_1),
++                smoothed = Spectra::smoothed(z_1),
++                polarity = Spectra::polarity(z_1),
++                nvalues = l)
++        }
++        if (length(j)) {
++            z_2 <- z[j]
++            mzs <- Spectra::mz(z_2)
++            ints <- Spectra::intensity(z_2)
++            l <- lengths(mzs)
++            r[j] <- Spectra2_mz_sorted(
++                msLevel = msl[j],
++                peaksCount = l,
++                rt = Spectra::rtime(z_2),
++                acquisitionNum = Spectra::acquisitionNum(z_2),
++                scanIndex = Spectra::scanIndex(z_2),
++                tic = sum(ints),
++                mz = unlist(mzs),
++                intensity = unlist(ints),
++                fromFile = rep(NA_integer_, length(j)),
++                centroided = Spectra::centroided(z_2),
++                smoothed = Spectra::smoothed(z_2),
++                polarity = Spectra::polarity(z_2),
++                merged = rep(1, length(j)),
++                precScanNum = Spectra::precScanNum(z_2),
++                precursorMz = Spectra::precursorMz(z_2),
++                precursorIntensity = Spectra::precursorIntensity(z_2),
++                precursorCharge = Spectra::precursorCharge(z_2),
++                collisionEnergy = Spectra::collisionEnergy(z_2),
++                nvalues = l)
++        }
++        r
++    }, chunkSize = chunkSize)
++}
+diff --git a/R/methods-MSpectra.R b/R/methods-MSpectra.R
+index 7fcf4dc1..83aee604 100644
+--- a/R/methods-MSpectra.R
++++ b/R/methods-MSpectra.R
+@@ -601,6 +601,10 @@ setAs("MSpectra", "MSnExp", function(from) {
+         processingData = process)
+ })
+ 
++setAs("Spectra", "MSpectra", function(from) {
++    MSpectra(.spectra_to_spectrum_list(from, chunkSize = 1000))
++})
++
+ #' @rdname MSpectra
+ #'
+ #' @examples
+diff --git a/R/utils.R b/R/utils.R
+index 74fb4397..a14eed5f 100644
+--- a/R/utils.R
++++ b/R/utils.R
+@@ -1,9 +1,11 @@
++##' @title Format Retention Time
++##'
++##' @description
++##'
+ ##'  This function is used to convert retention times. Conversion is
+ ##'  seconds to/from the more human friendly format "mm:sec". The
+ ##'  implementation is from [MsCoreUtils::formatRt()].
+ ##'
+-##' @title Format Retention Time
+-##'
+ ##' @param rt retention time in seconds (`numeric`) or "mm:sec"
+ ##'     (`character`).
+ ##'
+@@ -272,9 +274,13 @@ fillUp <- function(x) {
+   return(x)
+ }
+ 
++
++##' @title Return a variable name
++##'
++##' @description
++##'
+ ##' Return the name of variable \code{varname} in call \code{match_call}.
+ ##'
+-##' @title Return a variable name
+ ##' @param match_call An object of class \code{call}, as returned by \code{match.call}.
+ ##' @param varname An \code{character} of length 1 which is looked up in \code{match_call}.
+ ##' @return A \code{character} with the name of the variable passed as parameter
+@@ -598,6 +604,10 @@ logging <- function(object, msg, date. = TRUE) {
+     return(object)
+ }
+ 
++##' @title Returns the matching column names of indices.
++##'
++##' @description
++##'
+ ##' Given a text spread sheet \code{f} and a \code{pattern} to
+ ##' be matched to its header (first line in the file), the function
+ ##' returns the matching columns names or indices of the
+@@ -616,7 +626,6 @@ logging <- function(object, msg, date. = TRUE) {
+ ##' These functions are useful to check the parameters to be provided to
+ ##' \code{\link{readMSnSet2}}.
+ ##'
+-##' @title Returns the matching column names of indices.
+ ##' @param f A connection object or a \code{character} string to be
+ ##'     read in with \code{readLines(f, n = 1)}.
+ ##' @param pattern A \code{character} string containing a regular
+@@ -884,10 +893,13 @@ utils.removeNoIdAndMultipleAssignments <-
+         return(object)
+     }
+ 
++##' @title Tests equality of list elements class
++##'
++##' @description
++##'
+ ##' Compares equality of all members of a list.
+ ##'
+-##' @title Tests equality of list elements class
+-##' @param x A code{list}.
++##' @param x A \code{list}.
+ ##' @param class A \code{character} defining the expected class.
+ ##' @param valid A \code{logical} defining if all elements should be
+ ##' tested for validity. Default is \code{TRUE}.
+@@ -905,6 +917,11 @@ listOf <- function(x, class, valid = TRUE) {
+     cla & val
+ }
+ 
++
++##' @title Non-parametric coefficient of variation
++##'
++##' @description
++##'
+ ##' Calculates a non-parametric version of the coefficient of
+ ##' variation where the standard deviation is replaced by the median
+ ##' absolute deviations (see \code{\link{mad}} for details) and
+@@ -913,8 +930,6 @@ listOf <- function(x, class, valid = TRUE) {
+ ##' Note that the \code{mad} of a single value is 0 (as opposed to
+ ##' \code{NA} for the standard deviation, see example below).
+ ##'
+-##'
+-##' @title Non-parametric coefficient of variation
+ ##' @param x A \code{numeric}.
+ ##' @param na.rm A \code{logical} (default is \code{TRUE} indicating
+ ##' whether \code{NA} values should be stripped before the computation
+@@ -933,10 +948,13 @@ npcv <- function(x, na.rm = TRUE) {
+     mdx/abs(mean(x, na.rm = na.rm))
+ }
+ 
++##' @title Compare two MSnSets
++##'
++##' @description
++##'
+ ##' Compares two \code{\linkS4class{MSnSet}} instances. The
+ ##' \code{qual} and \code{processingData} slots are generally omitted.
+ ##'
+-##' @title Compare two MSnSets
+ ##' @param x First MSnSet
+ ##' @param y Second MSnSet
+ ##' @param qual Should the \code{qual} slots be compared? Default is
+@@ -1115,11 +1133,14 @@ countAndPrint <- function(x) {
+ }
+ 
+ 
++##' @title Converts factors to strings
++##'
++##' @description
++##'
+ ##' This function produces the opposite as the \code{stringsAsFactors}
+ ##' argument in the \code{data.frame} or \code{read.table} functions;
+ ##' it converts \code{factors} columns to \code{characters}.
+ ##'
+-##' @title Converts factors to strings
+ ##' @param x A \code{data.frame}
+ ##' @return A \code{data.frame} where \code{factors} are converted to
+ ##'     \code{characters}.
+@@ -1137,10 +1158,13 @@ factorsAsStrings <- function(x) {
+     data.frame(x, stringsAsFactors = FALSE)
+ }
+ 
++##' @title Convert to camel case by replacing dots by captial letters
++##'
++##' @description
++##'
+ ##' Convert a \code{vector} of characters to camel case by replacing
+ ##' dots by captial letters.
+ ##'
+-##' @title Convert to camel case by replacing dots by captial letters
+ ##' @param x A \code{vector} to be transformed to camel case.
+ ##' @param prefix An optional \code{character} of length one. Any
+ ##'     additional elements are ignores.
+@@ -1157,6 +1181,10 @@ makeCamelCase <- function(x, prefix) {
+ }
+ 
+ 
++##' @title Reduce a data.frame
++##'
++##' @description
++##'
+ ##' Reduce a data.frame so that the (primary) key column contains only
+ ##' unique entries and other columns pertaining to that entry are
+ ##' combined into semicolon-separated values into a single
+@@ -1167,7 +1195,6 @@ makeCamelCase <- function(x, prefix) {
+ ##' are collapsed to a semi-column separated value (even if only one
+ ##' value is present) as soon as one observation of transformed.
+ ##'
+-##' @title Reduce a data.frame
+ ##' @param x A \code{data.frame}.
+ ##' @param key The column name (currenly only one is supported) to be
+ ##'     used as primary key.
+@@ -1325,10 +1352,13 @@ windowIndices <- function(i, hws, n) {
+     brks
+ }
+ 
++##' @title Checks if raw data files have any spectra or chromatograms
++##'
++##' @description
++##'
+ ##' Helper functions to check whether raw files contain spectra or
+ ##' chromatograms.
+ ##'
+-##' @title Checks if raw data files have any spectra or chromatograms
+ ##' @param files A `character()` with raw data filenames.
+ ##' @return A `logical(n)` where `n == length(x)` with `TRUE` if that
+ ##'     files contains at least one spectrum, `FALSE` otherwise.
+@@ -1350,6 +1380,8 @@ hasChromatograms <- function(files) {
+ 
+ #' @title Get the index of the particular element for each level
+ #'
++#' @description
++#'
+ #' `levelIndex` returns the index of the first, middle or last element for
+ #' each level of a factor within the factor.
+ #'
+diff --git a/man/MChromatograms-class.Rd b/man/MChromatograms-class.Rd
+index 28710166..070eb3f3 100644
+--- a/man/MChromatograms-class.Rd
++++ b/man/MChromatograms-class.Rd
+@@ -8,14 +8,12 @@
+ \alias{show,MChromatograms-method}
+ \alias{[,MChromatograms,ANY,ANY,ANY-method}
+ \alias{[<-,MChromatograms,ANY,ANY,ANY-method}
+-\alias{[<-,MChromatograms-method}
+ \alias{plot,MChromatograms,ANY-method}
+ \alias{phenoData,MChromatograms-method}
+ \alias{pData,MChromatograms-method}
+ \alias{pData<-,MChromatograms,data.frame-method}
+ \alias{$,MChromatograms-method}
+ \alias{$<-,MChromatograms-method}
+-\alias{colnames<-,MChromatograms-method}
+ \alias{colnames<-,MChromatograms,ANY-method}
+ \alias{sampleNames,MChromatograms-method}
+ \alias{sampleNames<-,MChromatograms,ANY-method}
+@@ -49,7 +47,7 @@ MChromatograms(data, phenoData, featureData, ...)
+ 
+ \S4method{[}{MChromatograms,ANY,ANY,ANY}(x, i, j, drop = FALSE)
+ 
+-\S4method{[}{MChromatograms}(x, i, j) <- value
++\S4method{[}{MChromatograms,ANY,ANY,ANY}(x, i, j) <- value
+ 
+ \S4method{plot}{MChromatograms,ANY}(
+   x,
+@@ -72,7 +70,7 @@ MChromatograms(data, phenoData, featureData, ...)
+ 
+ \S4method{$}{MChromatograms}(x, name) <- value
+ 
+-\S4method{colnames}{MChromatograms}(x) <- value
++\S4method{colnames}{MChromatograms,ANY}(x) <- value
+ 
+ \S4method{sampleNames}{MChromatograms}(object)
+ 
+diff --git a/man/MSpectra.Rd b/man/MSpectra.Rd
+index f11af6c7..2353618b 100644
+--- a/man/MSpectra.Rd
++++ b/man/MSpectra.Rd
+@@ -174,6 +174,22 @@ the capitalized column names used as field names (see examples below).
+ \code{S4Vectors} package. This includes \code{lapply} and other data manipulation
+ and subsetting operations.
+ }
++\note{
++Note that the \href{https://bioconductor.org/packages/Spectra}{Spectra} package
++provides a more robust and efficient infrastructure for mass spectrometry
++data handling and analysis. So, wherever possible, the newer \emph{Spectra}
++package should be used instead of the \emph{MSnbase}.
++
++For backward compatibility, it is however possible to convert between the
++\code{MSpectra} and the newer \code{Spectra} objects:
++\itemize{
++\item A \code{Spectra} object can be coerced to a \code{MSpectra} using
++\code{as(sps, "MSpectra")} where \code{sps} is a \code{Spectra} object.
++\item The \code{\link[=extractSpectraData]{extractSpectraData()}} function can be used to extract the data from
++a \code{MSpectra} as a \code{DataFrame}, which can then be used to create a
++\code{Spectra} object.
++}
++}
+ \section{Constructor}{
+ 
+ 
+diff --git a/man/extractSpectraData.Rd b/man/extractSpectraData.Rd
+index 50a12e0d..245c0de3 100644
+--- a/man/extractSpectraData.Rd
++++ b/man/extractSpectraData.Rd
+@@ -2,7 +2,8 @@
+ % Please edit documentation in R/functions-MSpectra.R
+ \name{extractSpectraData}
+ \alias{extractSpectraData}
+-\title{Extract data from MSnbase objects for use in Spectra}
++\alias{coerce,Spectra,MSpectra-method}
++\title{Conversion between objects from the Spectra and MSnbase packages}
+ \usage{
+ extractSpectraData(x)
+ }
+@@ -11,10 +12,21 @@ extractSpectraData(x)
+ \linkS4class{MSnExp} or a \linkS4class{MSpectra} object.}
+ }
+ \value{
+-\code{\link[=DataFrame]{DataFrame()}} with the full spectrum data that can be passed to the
+-\code{\link[Spectra:Spectra]{Spectra::Spectra()}} function to create a \code{Spectra} object.
++\itemize{
++\item \code{extracSpectraData()} returns a \code{\link[=DataFrame]{DataFrame()}} with the full spectrum data
++that can be passed to the \code{\link[Spectra:Spectra]{Spectra::Spectra()}} function to create a
++\code{Spectra} object.
++\item \code{as(x, "MSpectra")} returns a \code{MSpectra} object with the content of the
++\code{Spectra} object \code{x}.
++}
+ }
+ \description{
++The \href{https://bioconductor.org/packages/Spectra}{Spectra} package
++provides a more robust and efficient infrastructure for mass spectrometry
++data handling and analysis. So, wherever possible, the newer \emph{Spectra}
++package should be used instead of the \emph{MSnbase}. The functions listed here
++allow to convert between objects from the \emph{MSnbase} and \emph{Spectra} packages.
++
+ \code{extractSpectraData} extracts the spectra data (m/z and intensity values
+ including metadata) from \linkS4class{MSnExp}, \linkS4class{OnDiskMSnExp},
+ \linkS4class{Spectrum1}, \linkS4class{Spectrum2} objects (or \code{list} of such objects) and
+@@ -22,6 +34,14 @@ returns these as a \code{DataFrame} that can be used to create a
+ \link[Spectra:Spectra]{Spectra::Spectra} object.This function enables thus
+ to convert data from the \emph{old} \code{MSnbase} package to the newer \code{Spectra}
+ package.
++
++To convert a \code{Spectra} object to a \code{MSpectra} object use
++\code{as(sps, "MSpectra")} where \code{sps} is a \code{Spectra} object.
++}
++\note{
++Coercion from \code{Spectra} to a \code{MSpectra} will only assign values to the
++contained \code{Spectrum1} and \code{Spectrum2} objects, but will not add all
++eventually spectra variables present in \code{Spectra}.
+ }
+ \examples{
+ 
+@@ -34,10 +54,14 @@ data <- filterRt(readMSData(fl, mode = "onDisk"), rt = c(1, 6))
+ res <- extractSpectraData(data)
+ res
+ 
++library(Spectra)
+ ## This can be used as an input for the Spectra constructor of the
+ ## Spectra package:
+-## sps <- Spectra::Spectra(res)
+-## sps
++sps <- Spectra::Spectra(res)
++sps
++
++## A Spectra object can be coerced to a MSnbase MSpectra object using
++msps <- as(sps, "MSpectra")
+ }
+ \author{
+ Johannes Rainer
+diff --git a/man/grepEcols.Rd b/man/grepEcols.Rd
+index c1aabef5..a7f395fe 100644
+--- a/man/grepEcols.Rd
++++ b/man/grepEcols.Rd
+@@ -33,8 +33,7 @@ Given a text spread sheet \code{f} and a \code{pattern} to
+ be matched to its header (first line in the file), the function
+ returns the matching columns names or indices of the
+ corresponding \code{data.frame}.
+-}
+-\details{
++
+ The function starts by reading the first line of the file (or connection)
+ \code{f} with \code{\link{readLines}}, then splits it
+ according to the optional \code{...} arguments (it is important to
+diff --git a/man/npcv.Rd b/man/npcv.Rd
+index 7312929f..7708b5a2 100644
+--- a/man/npcv.Rd
++++ b/man/npcv.Rd
+@@ -21,8 +21,7 @@ Calculates a non-parametric version of the coefficient of
+ variation where the standard deviation is replaced by the median
+ absolute deviations (see \code{\link{mad}} for details) and
+ divided by the absolute value of the mean.
+-}
+-\details{
++
+ Note that the \code{mad} of a single value is 0 (as opposed to
+ \code{NA} for the standard deviation, see example below).
+ }
+diff --git a/man/reduce-data.frame-method.Rd b/man/reduce-data.frame-method.Rd
+index 636b787b..5ee7dea8 100644
+--- a/man/reduce-data.frame-method.Rd
++++ b/man/reduce-data.frame-method.Rd
+@@ -22,8 +22,7 @@ Reduce a data.frame so that the (primary) key column contains only
+ unique entries and other columns pertaining to that entry are
+ combined into semicolon-separated values into a single
+ row/observation.
+-}
+-\details{
++
+ An important side-effect of reducing a \code{data.frame} is that all
+ columns other than the key are converted to characters when they
+ are collapsed to a semi-column separated value (even if only one
+diff --git a/tests/testthat/test_functions-MSpectra.R b/tests/testthat/test_functions-MSpectra.R
+index 9dc50dd4..f0d2bcf1 100644
+--- a/tests/testthat/test_functions-MSpectra.R
++++ b/tests/testthat/test_functions-MSpectra.R
+@@ -107,3 +107,18 @@ test_that("extractSpectraData works", {
+     res <- extractSpectraData(sps)
+     expect_true(all(res$new_col == "a"))
+ })
++
++test_that(".spectra_to_spectrum_list and as,Spectra,MSpectra works", {
++    library(Spectra)
++    fl <- system.file("TripleTOF-SWATH", "PestMix1_DDA.mzML",
++                      package = "msdata")
++    sps_dda <- Spectra(fl)
++    a <- MSnbase:::.spectra_to_spectrum_list(sps_dda, chunkSize = 5000)
++    expect_true(is.list(a))
++    expect_equal(length(a), length(sps_dda))
++    expect_true(all(vapply(a, function(z) inherits(z, "Spectrum"), logical(1))))
++
++    a <- as(sps_dda, "MSpectra")
++    expect_s4_class(a, "MSpectra")
++    expect_equal(unname(msLevel(a)), unname(Spectra::msLevel(sps_dda)))
++})

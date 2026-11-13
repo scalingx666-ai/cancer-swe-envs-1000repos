@@ -1,0 +1,59 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index b4546a0..1c2ff6b 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,4 +1,7 @@
+ # CHANGELOG
++v1.6.15 (Jul 2017)
++- Apparently 1.6.14 did not fix the pip issue for all users. Deleted the function that seemed to cause the pip crash
++
+ v1.6.14 (Jul 2017)
+ - Fixed a bug where Scoary could not be upgraded using pip
+ 
+diff --git a/README.md b/README.md
+index e16dd75..080c9c6 100644
+--- a/README.md
++++ b/README.md
+@@ -32,7 +32,10 @@ Scoary is designed to take the gene_presence_absence.csv file from [Roary](https
+ 
+ ## What's new?
+ 
+-**LATEST VERSION - 1.6.14**
++**LATEST VERSION - 1.6.15**
++- Some people still have problems with pip installs. Removed the readme() function from setup
++
++**1.6.14**
+ - Fixed a bug where scoary could not be upgraded using pip
+ 
+ **1.6.13**
+diff --git a/scoary/__init__.py b/scoary/__init__.py
+index 2852ee9..5c39d2d 100644
+--- a/scoary/__init__.py
++++ b/scoary/__init__.py
+@@ -1,4 +1,4 @@
+-__version__ = '1.6.14'
++__version__ = '1.6.15'
+ __author__ = 'Ola Brynildsrud'
+ __credits__ = ['Ola Brynildsrud']
+ __license__ = 'GPL3'
+diff --git a/setup.py b/setup.py
+index 5706371..1548b1b 100755
+--- a/setup.py
++++ b/setup.py
+@@ -2,16 +2,9 @@
+ from setuptools import setup
+ from scoary import __version__ as sv
+ 
+-
+-def readme():
+-    with open('README_pypi.md') as f:
+-        return f.read()
+-
+-
+ setup(name='scoary',
+       version=sv,
+       description='Microbial pan-GWAS using the output from Roary',
+-      long_description=readme(),
+       classifiers=[
+         'Development Status :: 4 - Beta',
+         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',

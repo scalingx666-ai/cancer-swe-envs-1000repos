@@ -1,0 +1,635 @@
+diff --git a/Libs/DICOM/Core/Testing/Cpp/CMakeLists.txt b/Libs/DICOM/Core/Testing/Cpp/CMakeLists.txt
+index a20049e5d5..e29cea7ce2 100644
+--- a/Libs/DICOM/Core/Testing/Cpp/CMakeLists.txt
++++ b/Libs/DICOM/Core/Testing/Cpp/CMakeLists.txt
+@@ -9,6 +9,7 @@ create_test_sourcelist(Tests ${KIT}CppTests.cpp
+   ctkDICOMDatabaseTest5.cpp
+   ctkDICOMDatabaseTest6.cpp
+   ctkDICOMDatabaseTest7.cpp
++  ctkDICOMDatabaseTest8.cpp
+   ctkDICOMEchoTest1.cpp
+   ctkDICOMItemTest1.cpp
+   ctkDICOMIndexerTest1.cpp
+@@ -65,6 +66,18 @@ SIMPLE_TEST(ctkDICOMDatabaseTest4 ${CTKData_DIR}/Data/DICOM/MRHEAD/000055.IMA)
+ SIMPLE_TEST(ctkDICOMDatabaseTest5 ${CTKData_DIR}/Data/DICOM/MRHEAD/000055.IMA)
+ SIMPLE_TEST(ctkDICOMDatabaseTest6 ${CTKData_DIR}/Data/DICOM/MRHEAD/000055.IMA)
+ SIMPLE_TEST(ctkDICOMDatabaseTest7)
++SIMPLE_TEST(ctkDICOMDatabaseTest8
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000050.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000051.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000052.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000053.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000054.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000055.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000056.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000057.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000058.IMA
++  ${CTKData_DIR}/Data/DICOM/MRHEAD/000059.IMA
++  )
+ SIMPLE_TEST(ctkDICOMItemTest1)
+ SIMPLE_TEST(ctkDICOMIndexerTest1 )
+ 
+diff --git a/Libs/DICOM/Core/Testing/Cpp/ctkDICOMDatabaseTest8.cpp b/Libs/DICOM/Core/Testing/Cpp/ctkDICOMDatabaseTest8.cpp
+new file mode 100644
+index 0000000000..3dac14f1bf
+--- /dev/null
++++ b/Libs/DICOM/Core/Testing/Cpp/ctkDICOMDatabaseTest8.cpp
+@@ -0,0 +1,204 @@
++/*=========================================================================
++
++  Library:   CTK
++
++  Copyright (c) Kitware Inc.
++
++  Licensed under the Apache License, Version 2.0 (the "License");
++  you may not use this file except in compliance with the License.
++  You may obtain a copy of the License at
++
++      http://www.apache.org/licenses/LICENSE-2.0.txt
++
++  Unless required by applicable law or agreed to in writing, software
++  distributed under the License is distributed on an "AS IS" BASIS,
++  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  See the License for the specific language governing permissions and
++  limitations under the License.
++
++=========================================================================*/
++
++// Qt includes
++#include <QCoreApplication>
++#include <QDir>
++#include <QTemporaryDir>
++
++// ctkCore includes
++#include <ctkCoreTestingMacros.h>
++
++// ctkDICOMCore includes
++#include "ctkDICOMDatabase.h"
++#include "ctkDICOMItem.h"
++
++// DCMTK includes
++#include <dcmtk/dcmdata/dcdeftag.h>
++
++// STD includes
++#include <iostream>
++#include <cstdlib>
++
++namespace
++{
++
++//----------------------------------------------------------------------------
++// Check that fileValues() returns the same values as calling fileValue() for each file
++bool checkFileValues(ctkDICOMDatabase& database, const QStringList& fileNames, const QString& tag)
++{
++  QStringList values = database.fileValues(fileNames, tag);
++  if (values.size() != fileNames.size())
++  {
++    std::cerr << "Line " << __LINE__ << " - fileValues() returned " << values.size()
++              << " values for " << fileNames.size() << " files" << std::endl;
++    return false;
++  }
++  for (int i = 0; i < fileNames.size(); ++i)
++  {
++    QString expectedValue = database.fileValue(fileNames[i], tag);
++    if (values[i] != expectedValue)
++    {
++      std::cerr << "Line " << __LINE__ << " - fileValues() mismatch for tag " << qPrintable(tag)
++                << " in file '" << qPrintable(fileNames[i]) << "': got '" << qPrintable(values[i])
++                << "', expected '" << qPrintable(expectedValue) << "'" << std::endl;
++      return false;
++    }
++  }
++  return true;
++}
++
++} // namespace
++
++//----------------------------------------------------------------------------
++int ctkDICOMDatabaseTest8(int argc, char* argv[])
++{
++  QCoreApplication app(argc, argv);
++
++  QStringList arguments = app.arguments();
++  QString testName = arguments.takeFirst();
++
++  if (arguments.count() < 2)
++  {
++    std::cerr << "Usage: " << qPrintable(testName)
++              << " <path-to-dicom-file> <path-to-dicom-file> [...]" << std::endl;
++    return EXIT_FAILURE;
++  }
++  QStringList dicomFilePaths = arguments;
++
++  QTemporaryDir tempDirectory;
++  CHECK_BOOL(tempDirectory.isValid(), true);
++
++  ctkDICOMDatabase database;
++  QDir databaseDirectory(tempDirectory.path());
++  QFileInfo databaseFile(databaseDirectory, QString("database.test"));
++  database.openDatabase(databaseFile.absoluteFilePath());
++  CHECK_BOOL(database.initializeDatabase(), true);
++
++  // Modality and series description are stored in the tag cache when files are inserted,
++  // image position is not (it is read from the file when requested).
++  const QString modalityTag = "0008,0060";
++  const QString seriesDescriptionTag = "0008,103e"; // lowercase to test case insensitivity
++  const QString imagePositionTag = "0020,0032";
++  const QString missingTag = "00ff,eeee";
++  database.setTagsToPrecache(QStringList() << modalityTag << seriesDescriptionTag.toUpper());
++
++  for (const QString& dicomFilePath : dicomFilePaths)
++  {
++    database.insert(dicomFilePath, /*storeFile=*/false, /*generateThumbnail=*/false);
++  }
++  CHECK_INT(database.imagesCount(), dicomFilePaths.size());
++
++  // Empty inputs
++  CHECK_INT(database.fileValues(QStringList(), modalityTag).size(), 0);
++  CHECK_INT(database.fileValues(dicomFilePaths, QString()).size(), dicomFilePaths.size());
++
++  // Mix of files in the database, a file that does not exist, an empty file name, and a duplicate
++  QStringList fileNames = dicomFilePaths;
++  fileNames << "/tmp/file-that-does-not-exist" << QString() << dicomFilePaths[0];
++
++  CHECK_BOOL(checkFileValues(database, fileNames, modalityTag), true);
++  CHECK_BOOL(checkFileValues(database, fileNames, seriesDescriptionTag), true);
++  CHECK_BOOL(checkFileValues(database, fileNames, imagePositionTag), true);
++  CHECK_BOOL(checkFileValues(database, fileNames, missingTag), true);
++
++  QStringList modalities = database.fileValues(dicomFilePaths, modalityTag);
++  CHECK_QSTRING(modalities[0], QString("MR"));
++
++  // Values that were read from files are now in the tag cache, retrieve them again
++  CHECK_BOOL(checkFileValues(database, fileNames, imagePositionTag), true);
++
++  // Test retrieval of values for more files than the batch size used in database queries (500).
++  // Create copies of a file with different SOP instance UID and instance number.
++  // Copies are created in the database folder and inserted without copying, to test that such files
++  // can be found by their file path (relative path is stored in the database).
++  const int numberOfCopies = 520;
++  const QString instanceNumberTag = "0020,0013";
++  ctkDICOMItem item;
++  item.InitializeFromFile(dicomFilePaths[0]);
++  QStringList copiedFilePaths;
++  for (int copyIndex = 0; copyIndex < numberOfCopies; ++copyIndex)
++  {
++    CHECK_BOOL(item.SetElementAsString(DCM_SOPInstanceUID, QString("2.25.1234567890123456789%1").arg(copyIndex)), true);
++    CHECK_BOOL(item.SetElementAsString(DCM_InstanceNumber, QString::number(1000 + copyIndex)), true);
++    QString copiedFilePath = databaseDirectory.filePath(QString("copy%1.dcm").arg(copyIndex));
++    CHECK_BOOL(item.SaveToFile(copiedFilePath), true);
++    database.insert(copiedFilePath, /*storeFile=*/false, /*generateThumbnail=*/false);
++    copiedFilePaths << copiedFilePath;
++  }
++  CHECK_INT(database.imagesCount(), dicomFilePaths.size() + numberOfCopies);
++  CHECK_QSTRING(database.instanceForFile(copiedFilePaths[0]), QString("2.25.12345678901234567890"));
++  CHECK_QSTRING(database.fileForInstance("2.25.12345678901234567890"), copiedFilePaths[0]);
++
++  QStringList allFilePaths = dicomFilePaths + copiedFilePaths;
++  CHECK_BOOL(checkFileValues(database, allFilePaths, modalityTag), true);
++  // Instance number is not in the tag cache (read from file), then it is (retrieved from the tag cache)
++  CHECK_BOOL(checkFileValues(database, allFilePaths, instanceNumberTag), true);
++  CHECK_BOOL(checkFileValues(database, allFilePaths, instanceNumberTag), true);
++  QStringList copiedInstanceNumbers = database.fileValues(copiedFilePaths, instanceNumberTag);
++  for (int copyIndex = 0; copyIndex < numberOfCopies; ++copyIndex)
++  {
++    CHECK_QSTRING(copiedInstanceNumbers[copyIndex], QString::number(1000 + copyIndex));
++  }
++
++  // instanceValues() returns values in the same order as the instance UIDs (for more instances than the batch size).
++  // Empty string is returned for unknown or empty instance UIDs. Duplicate instance UIDs are allowed.
++  QStringList copiedInstanceUIDs;
++  for (const QString& copiedFilePath : copiedFilePaths)
++  {
++    copiedInstanceUIDs << database.instanceForFile(copiedFilePath);
++  }
++  QStringList instanceUIDs = copiedInstanceUIDs;
++  instanceUIDs << "1.2.3.4.5.6.7.8.9.1234567890" << QString() << copiedInstanceUIDs[1];
++  QStringList instanceNumbers = database.instanceValues(instanceUIDs, instanceNumberTag);
++  CHECK_INT(instanceNumbers.size(), instanceUIDs.size());
++  for (int copyIndex = 0; copyIndex < numberOfCopies; ++copyIndex)
++  {
++    CHECK_QSTRING(instanceNumbers[copyIndex], QString::number(1000 + copyIndex));
++  }
++  CHECK_QSTRING(instanceNumbers[numberOfCopies], QString());
++  CHECK_QSTRING(instanceNumbers[numberOfCopies + 1], QString());
++  CHECK_QSTRING(instanceNumbers[numberOfCopies + 2], QString::number(1001));
++  // Values are the same as returned by instanceValue(), including values that are stored in the tag cache
++  // as not present in the instance
++  QString firstInstanceUID = database.instanceForFile(dicomFilePaths[0]);
++  QStringList firstInstanceValues = database.instanceValues(QStringList() << firstInstanceUID << firstInstanceUID, modalityTag);
++  CHECK_INT(firstInstanceValues.size(), 2);
++  CHECK_QSTRING(firstInstanceValues[0], database.instanceValue(firstInstanceUID, modalityTag));
++  CHECK_QSTRING(firstInstanceValues[1], QString("MR"));
++  CHECK_QSTRING(database.instanceValues(QStringList() << firstInstanceUID, missingTag)[0], QString());
++  CHECK_QSTRING(database.instanceValue(firstInstanceUID, missingTag), QString());
++  // Empty inputs
++  CHECK_INT(database.instanceValues(QStringList(), instanceNumberTag).size(), 0);
++  QStringList valuesForEmptyTag = database.instanceValues(copiedInstanceUIDs, QString());
++  CHECK_INT(valuesForEmptyTag.size(), numberOfCopies);
++  CHECK_QSTRING(valuesForEmptyTag[0], QString());
++
++  // Instance for file must not be returned after the image is removed from the database
++  QString seriesUID = database.seriesForFile(dicomFilePaths[0]);
++  CHECK_BOOL(database.instanceForFile(dicomFilePaths[0]).isEmpty(), false);
++  CHECK_BOOL(database.removeSeries(seriesUID), true);
++  CHECK_QSTRING(database.instanceForFile(dicomFilePaths[0]), QString());
++  CHECK_BOOL(checkFileValues(database, fileNames, modalityTag), true);
++
++  database.closeDatabase();
++
++  return EXIT_SUCCESS;
++}
+diff --git a/Libs/DICOM/Core/ctkDICOMDatabase.cpp b/Libs/DICOM/Core/ctkDICOMDatabase.cpp
+index 7fe8951901..8255f5c90d 100644
+--- a/Libs/DICOM/Core/ctkDICOMDatabase.cpp
++++ b/Libs/DICOM/Core/ctkDICOMDatabase.cpp
+@@ -1065,17 +1065,9 @@ void ctkDICOMDatabasePrivate::insert(const ctkDICOMItem& dataset, const QString&
+     if (!alreadyInserted)
+     {
+       // Get filename that will be stored in the database.
+-      // Use relative path if a copy is stored in the database to make the database relocatable.
+-      QString storedFilePathInDatabase;
+-      if (storeFile)
+-      {
+-        QDir databaseDirectory(q->databaseDirectory());
+-        storedFilePathInDatabase = databaseDirectory.relativeFilePath(storedFilePath);
+-      }
+-      else
+-      {
+-        storedFilePathInDatabase = storedFilePath;
+-      }
++      // Use relative path if the file is within the database folder (for example, a copy is stored in the database)
++      // to make the database relocatable. Files are looked up using the same conversion (see instanceForFile()).
++      QString storedFilePathInDatabase = this->internalPathFromAbsolute(storedFilePath);
+ 
+       QSqlQuery insertImageStatement(Database);
+       insertImageStatement.prepare("INSERT INTO Images ( 'SOPInstanceUID', 'Filename', 'URL', 'SeriesInstanceUID', 'InsertTimestamp' ) VALUES ( ?, ?, ?, ?, ? )");
+@@ -2710,78 +2702,212 @@ QString ctkDICOMDatabase::fileValue(const QString fileName, const unsigned short
+ }
+ 
+ //------------------------------------------------------------------------------
+-QMap<QString, QString> ctkDICOMDatabase::instanceValues(const QStringList& sopInstanceUIDs, const QString& tag)
++QStringList ctkDICOMDatabase::instanceValues(const QStringList& sopInstanceUIDs, const QString& tag)
+ {
+   Q_D(ctkDICOMDatabase);
+-  QMap<QString, QString> result;
+-
+-  if (sopInstanceUIDs.isEmpty() || tag.isEmpty())
++  QStringList values;
++  values.reserve(sopInstanceUIDs.size());
++  if (tag.isEmpty())
+   {
+-    return result;
++    for (int i = 0; i < sopInstanceUIDs.size(); ++i)
++    {
++      values << QString();
++    }
++    return values;
+   }
+-
+   QString upperTag = tag.toUpper();
+ 
+-  // Check if tag cache exists - if not, fall back to individual queries
+   if (!this->tagCacheExists())
+   {
+-    // Fallback to individual instanceValue calls
+-    foreach (const QString& sopInstanceUID, sopInstanceUIDs)
++    // Tag cache is not available, retrieve values one by one
++    for (const QString& sopInstanceUID : sopInstanceUIDs)
+     {
+-      QString value = this->instanceValue(sopInstanceUID, upperTag);
+-      if (!value.isEmpty())
+-      {
+-        result[sopInstanceUID] = value;
+-      }
++      values << this->instanceValue(sopInstanceUID, upperTag);
+     }
+-    return result;
++    return values;
+   }
+ 
+-  // Use bulk query from TagCache database for efficiency
+-  QSqlQuery query(d->TagCacheDatabase);
+-
+-  // Build IN clause with placeholders
+-  QStringList placeholders;
+-  for (int i = 0; i < sopInstanceUIDs.size(); ++i)
++  QStringList sopInstanceUIDsToQuery;
++  QSet<QString> sopInstanceUIDsToQuerySet;
++  for (const QString& sopInstanceUID : sopInstanceUIDs)
+   {
+-    placeholders << "?";
++    if (!sopInstanceUID.isEmpty() && !sopInstanceUIDsToQuerySet.contains(sopInstanceUID))
++    {
++      sopInstanceUIDsToQuerySet.insert(sopInstanceUID);
++      sopInstanceUIDsToQuery << sopInstanceUID;
++    }
+   }
++  QHash<QString, QString> cachedValues = d->cachedTagValues(sopInstanceUIDsToQuery, upperTag);
+ 
+-  QString queryString = QString(
+-    "SELECT SOPInstanceUID, Value FROM TagCache "
+-    "WHERE SOPInstanceUID IN (%1) AND Tag = ?"
+-  ).arg(placeholders.join(","));
++  for (const QString& sopInstanceUID : sopInstanceUIDs)
++  {
++    QHash<QString, QString>::const_iterator cachedValue = cachedValues.constFind(sopInstanceUID);
++    if (cachedValue == cachedValues.constEnd()
++      || cachedValue.value() == TagNotInInstance || cachedValue.value() == ValueIsEmptyString || cachedValue.value() == ValueIsNotStored)
++    {
++      values << QString();
++      continue;
++    }
++    values << cachedValue.value();
++  }
++  return values;
++}
+ 
+-  query.prepare(queryString);
++//------------------------------------------------------------------------------
++QStringList ctkDICOMDatabasePrivate::instancesForFiles(const QStringList& fileNames)
++{
++  // File names as stored in the database
++  QStringList internalPaths;
++  internalPaths.reserve(fileNames.size());
++  QSet<QString> internalPathsToQuery;
++  for (const QString& fileName : fileNames)
++  {
++    QString internalPath = fileName.isEmpty() ? QString() : this->internalPathFromAbsolute(fileName);
++    internalPaths << internalPath;
++    if (!internalPath.isEmpty())
++    {
++      internalPathsToQuery.insert(internalPath);
++    }
++  }
+ 
+-  // Bind all instance UIDs first
+-  foreach (const QString& sopInstanceUID, sopInstanceUIDs)
++  // Query in batches to not exceed the maximum number of parameters in a query
++  QHash<QString, QString> sopInstanceUIDForInternalPath;
++  const int batchSize = 500;
++  QStringList uniqueInternalPaths = internalPathsToQuery.values();
++  for (int batchStartIndex = 0; batchStartIndex < uniqueInternalPaths.size(); batchStartIndex += batchSize)
+   {
+-    query.addBindValue(sopInstanceUID);
++    QStringList batchInternalPaths = uniqueInternalPaths.mid(batchStartIndex, batchSize);
++    QStringList placeholders;
++    for (int i = 0; i < batchInternalPaths.size(); ++i)
++    {
++      placeholders << "?";
++    }
++    QSqlQuery query(this->Database);
++    query.prepare(QString("SELECT Filename, SOPInstanceUID FROM Images WHERE Filename IN (%1)").arg(placeholders.join(",")));
++    for (const QString& internalPath : batchInternalPaths)
++    {
++      query.addBindValue(internalPath);
++    }
++    if (!this->loggedExec(query))
++    {
++      continue;
++    }
++    while (query.next())
++    {
++      sopInstanceUIDForInternalPath.insert(query.value(0).toString(), query.value(1).toString());
++    }
+   }
+ 
+-  // Bind the tag last
+-  query.addBindValue(upperTag);
++  QStringList sopInstanceUIDs;
++  sopInstanceUIDs.reserve(fileNames.size());
++  for (const QString& internalPath : internalPaths)
++  {
++    sopInstanceUIDs << (internalPath.isEmpty() ? QString() : sopInstanceUIDForInternalPath.value(internalPath));
++  }
++  return sopInstanceUIDs;
++}
+ 
+-  if (d->loggedExec(query))
++//------------------------------------------------------------------------------
++QHash<QString, QString> ctkDICOMDatabasePrivate::cachedTagValues(const QStringList& sopInstanceUIDs, const QString& upperTag)
++{
++  QHash<QString, QString> values;
++  // Query in batches to not exceed the maximum number of parameters in a query
++  const int batchSize = 500;
++  for (int batchStartIndex = 0; batchStartIndex < sopInstanceUIDs.size(); batchStartIndex += batchSize)
+   {
++    QStringList batchSopInstanceUIDs = sopInstanceUIDs.mid(batchStartIndex, batchSize);
++    QStringList placeholders;
++    for (int i = 0; i < batchSopInstanceUIDs.size(); ++i)
++    {
++      placeholders << "?";
++    }
++    QSqlQuery query(this->TagCacheDatabase);
++    query.prepare(QString("SELECT SOPInstanceUID, Value FROM TagCache WHERE Tag = ? AND SOPInstanceUID IN (%1)").arg(placeholders.join(",")));
++    query.addBindValue(upperTag);
++    for (const QString& sopInstanceUID : batchSopInstanceUIDs)
++    {
++      query.addBindValue(sopInstanceUID);
++    }
++    if (!this->loggedExec(query))
++    {
++      continue;
++    }
+     while (query.next())
+     {
+-      QString sopInstanceUID = query.value(0).toString();
+       QString value = query.value(1).toString();
++      // Same convention as in cachedTag(): empty string means that the value is not in the cache
++      values.insert(query.value(0).toString(), value.isEmpty() ? ValueIsEmptyString : value);
++    }
++  }
++  return values;
++}
++
++//------------------------------------------------------------------------------
++QStringList ctkDICOMDatabase::fileValues(const QStringList& fileNames, const QString& tag)
++{
++  Q_D(ctkDICOMDatabase);
++  QStringList values;
++  values.reserve(fileNames.size());
++  if (tag.isEmpty())
++  {
++    for (int i = 0; i < fileNames.size(); ++i)
++    {
++      values << QString();
++    }
++    return values;
++  }
++  QString upperTag = tag.toUpper();
++
++  if (!this->tagCacheExists() && !this->initializeTagCache())
++  {
++    // Tag cache is not available, retrieve values one by one
++    for (const QString& fileName : fileNames)
++    {
++      values << this->fileValue(fileName, upperTag);
++    }
++    return values;
++  }
++
++  QStringList sopInstanceUIDs = d->instancesForFiles(fileNames);
++  QStringList sopInstanceUIDsToQuery;
++  QSet<QString> sopInstanceUIDsToQuerySet;
++  for (const QString& sopInstanceUID : sopInstanceUIDs)
++  {
++    if (!sopInstanceUID.isEmpty() && !sopInstanceUIDsToQuerySet.contains(sopInstanceUID))
++    {
++      sopInstanceUIDsToQuerySet.insert(sopInstanceUID);
++      sopInstanceUIDsToQuery << sopInstanceUID;
++    }
++  }
++  QHash<QString, QString> cachedValues = d->cachedTagValues(sopInstanceUIDsToQuery, upperTag);
+ 
+-      // Only include non-empty values that are not special markers
+-      if (!value.isEmpty() &&
+-          value != TagNotInInstance &&
+-          value != ValueIsEmptyString &&
+-          value != ValueIsNotStored)
++  for (int i = 0; i < fileNames.size(); ++i)
++  {
++    const QString& fileName = fileNames[i];
++    if (fileName.isEmpty())
++    {
++      values << QString();
++      continue;
++    }
++    QHash<QString, QString>::const_iterator cachedValue = cachedValues.constFind(sopInstanceUIDs[i]);
++    if (cachedValue != cachedValues.constEnd())
++    {
++      const QString& value = cachedValue.value();
++      if (value == TagNotInInstance || value == ValueIsEmptyString || value == ValueIsNotStored)
+       {
+-        result[sopInstanceUID] = value;
++        values << QString();
+       }
++      else
++      {
++        values << value;
++      }
++      continue;
+     }
++    // The instance is not found by local file path or the value is not in the tag cache.
++    // Use fileValue(), which handles URLs and reads the value from the file.
++    values << this->fileValue(fileName, upperTag);
+   }
+-
+-  return result;
++  return values;
+ }
+ 
+ //------------------------------------------------------------------------------
+@@ -3308,17 +3434,9 @@ ctkDICOMDatabase::InsertResult ctkDICOMDatabase::insert(const QList<ctkDICOMJobR
+         if (!alreadyInserted)
+         {
+           // Get filename that will be stored in the database.
+-          // Use relative path if a copy is stored in the database to make the database relocatable.
+-          QString storedFilePathInDatabase;
+-          if (storeFile)
+-          {
+-            QDir databaseDirectory(this->databaseDirectory());
+-            storedFilePathInDatabase = databaseDirectory.relativeFilePath(storedFilePath);
+-          }
+-          else
+-          {
+-            storedFilePathInDatabase = storedFilePath;
+-          }
++          // Use relative path if the file is within the database folder (for example, a copy is stored in the database)
++          // to make the database relocatable. Files are looked up using the same conversion (see instanceForFile()).
++          QString storedFilePathInDatabase = d->internalPathFromAbsolute(storedFilePath);
+ 
+           QSqlQuery insertImageStatement(d->Database);
+           insertImageStatement.prepare("INSERT INTO Images ( 'SOPInstanceUID', 'Filename', 'URL', 'SeriesInstanceUID', 'InsertTimestamp' ) VALUES ( ?, ?, ?, ?, ? )");
+diff --git a/Libs/DICOM/Core/ctkDICOMDatabase.h b/Libs/DICOM/Core/ctkDICOMDatabase.h
+index 3127760fef..e2df44df22 100644
+--- a/Libs/DICOM/Core/ctkDICOMDatabase.h
++++ b/Libs/DICOM/Core/ctkDICOMDatabase.h
+@@ -382,11 +382,23 @@ class CTK_DICOM_CORE_EXPORT ctkDICOMDatabase : public QObject
+   Q_INVOKABLE QString fileValue (const QString fileName, const QString tag);
+   Q_INVOKABLE QString fileValue (const QString fileName, const unsigned short group, const unsigned short element);
+ 
+-  /// \brief Efficiently retrieve tag values for multiple instances in a single query
++  /// \brief Efficiently retrieve tag values for multiple instances
++  /// Values are retrieved from the tag cache, the database is queried in batches.
++  /// If the tag cache does not exist then values are retrieved using instanceValue().
+   /// @param sopInstanceUIDs List of instance UIDs to query
+   /// @param tag The DICOM tag to retrieve (e.g., "0020,0013" for Instance Number)
+-  /// @returns Map of sopInstanceUID -> tag value. Missing or empty values are not included.
+-  Q_INVOKABLE QMap<QString, QString> instanceValues(const QStringList& sopInstanceUIDs, const QString& tag);
++  /// @returns List of values, in the same order as sopInstanceUIDs.
++  ///   Empty string is returned for an item if the value is not found, empty, or excluded from storage.
++  Q_INVOKABLE QStringList instanceValues(const QStringList& sopInstanceUIDs, const QString& tag);
++
++  /// \brief Efficiently retrieve tag values for multiple files
++  /// The result is the same as calling fileValue() for each file, but it is much faster when
++  /// values are retrieved for many files, because the database is queried in batches.
++  /// @param fileNames List of local file paths or URLs (see fileValue())
++  /// @param tag The DICOM tag to retrieve (e.g., "0020,0013" for Instance Number)
++  /// @returns List of values, in the same order as fileNames.
++  ///   Empty string is returned for an item if the element is missing or excluded from storage.
++  Q_INVOKABLE QStringList fileValues(const QStringList& fileNames, const QString& tag);
+ 
+   /// Convert between string and (unsigned short int, unsigned short int) representation of a DICOM tag.
+   Q_INVOKABLE bool tagToGroupElement (const QString tag, unsigned short& group, unsigned short& element);
+diff --git a/Libs/DICOM/Core/ctkDICOMDatabase_p.h b/Libs/DICOM/Core/ctkDICOMDatabase_p.h
+index 2f4bb1cbdf..f203238b53 100644
+--- a/Libs/DICOM/Core/ctkDICOMDatabase_p.h
++++ b/Libs/DICOM/Core/ctkDICOMDatabase_p.h
+@@ -32,6 +32,9 @@
+ // We mean it.
+ //
+ 
++// Qt includes
++#include <QHash>
++
+ // ctkDICOM includes
+ #include "ctkDICOMDatabase.h"
+ #include "ctkDICOMDisplayedFieldGenerator.h"
+@@ -164,6 +167,14 @@ class CTK_DICOM_CORE_EXPORT ctkDICOMDatabasePrivate
+   /// resets the variables to new inserts won't be fooled by leftover values
+   void resetLastInsertedValues();
+ 
++  /// Get SOP instance UIDs for multiple local files using batch queries.
++  /// Returns empty string for files that are not found in the Images table.
++  QStringList instancesForFiles(const QStringList& fileNames);
++  /// Get values stored in the tag cache for multiple instances using batch queries.
++  /// Returns map from SOP instance UID to the stored value. Stored empty value is returned as ValueIsEmptyString,
++  /// instances that do not have the value in the tag cache are not included in the result.
++  QHash<QString, QString> cachedTagValues(const QStringList& sopInstanceUIDs, const QString& upperTag);
++
+   /// tagCache table has been checked to exist
+   bool TagCacheVerified;
+   /// tag cache has independent database to avoid locking issue
+diff --git a/Libs/DICOM/Core/ctkDICOMSeriesModel.cpp b/Libs/DICOM/Core/ctkDICOMSeriesModel.cpp
+index e6b31fe169..6b87cb2901 100644
+--- a/Libs/DICOM/Core/ctkDICOMSeriesModel.cpp
++++ b/Libs/DICOM/Core/ctkDICOMSeriesModel.cpp
+@@ -519,21 +519,17 @@ QString ctkDICOMSeriesModelPrivate::getDICOMCenterFrameFromInstances(QStringList
+   if (this->DicomDatabase && this->DicomDatabase->tagCacheExists())
+   {
+     // Get all instance numbers in a single efficient database query
+-    QMap<QString, QString> instanceNumbers = this->DicomDatabase->instanceValues(instancesList, "0020,0013");
++    QStringList instanceNumbers = this->DicomDatabase->instanceValues(instancesList, "0020,0013");
+ 
+-    // Build the sorted map
+-    for (QMap<QString, QString>::const_iterator it = instanceNumbers.constBegin(); it != instanceNumbers.constEnd(); ++it)
++    // Build the sorted map (instances without instance number are not included)
++    for (int instanceIndex = 0; instanceIndex < instancesList.size(); ++instanceIndex)
+     {
+-      const QString& sopInstanceUID = it.key();
+-      const QString& instanceNumberStr = it.value();
+-
+-      int instanceNumber = 0;
+-      if (!instanceNumberStr.isEmpty())
++      const QString& instanceNumberStr = instanceNumbers[instanceIndex];
++      if (instanceNumberStr.isEmpty())
+       {
+-        instanceNumber = instanceNumberStr.toInt();
++        continue;
+       }
+-
+-      sortedInstancesMap[instanceNumber] = sopInstanceUID;
++      sortedInstancesMap[instanceNumberStr.toInt()] = instancesList[instanceIndex];
+     }
+   }
+ 

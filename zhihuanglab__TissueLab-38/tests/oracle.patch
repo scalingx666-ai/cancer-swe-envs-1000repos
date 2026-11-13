@@ -1,0 +1,315 @@
+diff --git a/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx b/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
+index 261fe4d..0feecd0 100644
+--- a/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
++++ b/app/render/components/imageViewer/sidebar/agent/chat/Chatbox.tsx
+@@ -41,6 +41,7 @@ type WorkflowPreviewStep = {
+   ui?: Record<string, unknown> | null
+   /** Chat web-search toggle at planning time; the Coding Agent step forwards it to the backend. */
+   web_search_enabled?: boolean
++  slide_mpp?: number | null
+ }
+ 
+ export type GeneratedWorkflowStep = WorkflowPreviewStep
+@@ -674,9 +675,10 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+             prompt: typeof item.input === "string" ? item.input : "",
+             impl: item.impl || undefined,
+             web_search_enabled: webSearchEnabled,
++            slide_mpp: slideInfo?.mpp ?? null,
+           };
+         }
+-        return { ...item, web_search_enabled: webSearchEnabled };
++        return { ...item, web_search_enabled: webSearchEnabled, slide_mpp: slideInfo?.mpp ?? null };
+       });
+ 
+       const formattedPath = formatPath(currentPath ?? "");
+@@ -699,6 +701,7 @@ export const Chatbox: React.FC<ChatboxProps> = ({ onWorkflowClick = () => {} })
+           input: s.input,
+           prompt: typeof s.input === 'string' ? s.input : undefined,
+           web_search_enabled: webSearchEnabled,
++          slide_mpp: slideInfo?.mpp ?? null,
+         })),
+         formattedPath,
+       });
+diff --git a/app/render/constants/modelRegistryFallback.json b/app/render/constants/modelRegistryFallback.json
+index 5d8c2e0..19730eb 100644
+--- a/app/render/constants/modelRegistryFallback.json
++++ b/app/render/constants/modelRegistryFallback.json
+@@ -173,12 +173,28 @@
+     },
+     "CellCharter": {
+       "displayName": "CellCharter",
+-      "description": "Spatial transcriptomics clustering for identifying tissue domains and cellular neighborhoods. We need nuclei segmentation to precede this tasknode and also nuclei classification to tell us what is the name of the cell clusters.",
++      "description": "Spatial-domain clustering of nuclei from spatial transcriptomics (CellCharter: PCA of nucleus expression, Delaunay neighbourhood aggregation, Gaussian-mixture clustering). Needs the slide's nucleus segmentation (NucleiSeg) and, to name the domains, the nucleus classification (NucleiClassify); takes the per-nucleus expression .h5ad that accompanies the slide. Writes a domain label per nucleus for each requested K plus marker genes per domain, so a CodingAgent step can combine the domains with the patch classification (TissueClassify) and cell classification on the TissueSeg patch grid and count multicellular structures as connected groups of patches.",
+       "icon": "/images/icons/cellcharter.png",
+       "factory": "SpatialOmics",
+       "source": "builtin",
+-      "inputs": "Spatial transcriptomics data",
+-      "outputs": "Cluster assignments and spatial domains"
++      "inputs": "st_path=<per-nucleus expression .h5ad with nucleus centroids> (default: the .h5ad next to the opened slide); n_clusters=<K or list, e.g. 9 or 5,6,7,8,9,10> (default 9)",
++      "outputs": "Spatial-Omics/clusters/k<K> (int32 domain label per nucleus), Spatial-Omics/centroids (x, y per nucleus, level-0 pixels), Spatial-Omics/cluster_markers/k<K> (JSON {label: top marker genes}), Spatial-Omics/nucleus_id, Spatial-Omics/segmentation_index (row of Cell-Segmentation / Cell-Classification for each nucleus, when the .h5ad nuclei are the slide's segmented nuclei)",
++      "panel": [
++        {
++          "key": "st_path",
++          "type": "input",
++          "value": "",
++          "label": "Spatial transcriptomics file (.h5ad)",
++          "placeholder": "per-nucleus expression with centroids; empty = next to the slide"
++        },
++        {
++          "key": "n_clusters",
++          "type": "input",
++          "value": "9",
++          "label": "Number of domains (K)",
++          "placeholder": "e.g. 9 or 5,6,7,8,9,10"
++        }
++      ]
+     },
+     "Ark": {
+       "displayName": "Ark",
+diff --git a/app/render/constants/workflow.constants.ts b/app/render/constants/workflow.constants.ts
+index c028dcb..865b18c 100644
+--- a/app/render/constants/workflow.constants.ts
++++ b/app/render/constants/workflow.constants.ts
+@@ -36,6 +36,9 @@ export const panelMap: Record<string, PanelConfig> = {
+         // "1" when the chat's web-search toggle was on for this plan; sent to the
+         // backend so script generation fetches the same guidelines the planner saw.
+         { key: "web_search_enabled", type: "input", value: "" },
++        // The slide's microns per pixel (viewer slideInfo), stated to the coding agent so scripts
++        // do not guess a calibration; empty when the slide has none.
++        { key: "slide_mpp", type: "input", value: "" },
+         { key: "script_run_policy", type: "input", value: "auto_bypass" },
+         { key: "script_last_run_digest", type: "input", value: "" },
+         { key: "script_last_run_raw", type: "input", value: "" },
+diff --git a/app/render/store/slices/chat/workflowSlice.ts b/app/render/store/slices/chat/workflowSlice.ts
+index efc8cec..6a39ad5 100644
+--- a/app/render/store/slices/chat/workflowSlice.ts
++++ b/app/render/store/slices/chat/workflowSlice.ts
+@@ -80,7 +80,9 @@ export const generatePanelsFromWorkflow = (workflow: any[]): WorkflowPanel[] =>
+         // The web-search flag is a boolean from the chat toggle, never the step text.
+         value: contentItem.key === "web_search_enabled"
+           ? (step.web_search_enabled === true ? "1" : "")
+-          : joinedValue,
++          : contentItem.key === "slide_mpp"
++            ? (Number.isFinite(Number(step.slide_mpp)) && Number(step.slide_mpp) > 0 ? String(step.slide_mpp) : "")
++            : joinedValue,
+       })),
+       ui: (step?.ui && typeof step.ui === 'object') ? step.ui : null,
+       stepName: step.model, // Save step name (e.g., "NucleiSeg") for factory matching
+diff --git a/app/render/store/zustand/slice/workflowGraphChatBridge.ts b/app/render/store/zustand/slice/workflowGraphChatBridge.ts
+index 22d481e..3db2278 100644
+--- a/app/render/store/zustand/slice/workflowGraphChatBridge.ts
++++ b/app/render/store/zustand/slice/workflowGraphChatBridge.ts
+@@ -11,6 +11,7 @@ export type PendingWorkflowGraphApply = {
+     type?: string;
+     ui?: Record<string, unknown> | null;
+     web_search_enabled?: boolean;
++    slide_mpp?: number | null;
+   }>;
+   formattedPath: string;
+ };
+diff --git a/app/render/utils/agent/graph/panel.ts b/app/render/utils/agent/graph/panel.ts
+index cf41d35..9f9c071 100644
+--- a/app/render/utils/agent/graph/panel.ts
++++ b/app/render/utils/agent/graph/panel.ts
+@@ -66,6 +66,10 @@ export const buildGeneratedPanel = (
+     if (isCodingAgent && contentItem.key === "web_search_enabled") {
+       return { ...contentItem, value: step.web_search_enabled === true ? "1" : "" }
+     }
++    if (isCodingAgent && contentItem.key === "slide_mpp") {
++      const mpp = Number(step.slide_mpp)
++      return { ...contentItem, value: Number.isFinite(mpp) && mpp > 0 ? String(mpp) : "" }
++    }
+     if (isCodingAgent && contentItem.key !== "prompt") return { ...contentItem }
+     // `prompt` always carries the joined chat step text (calculation text / classes / etc.).
+     if (contentItem.key === "prompt") return { ...contentItem, value: joinedValue }
+diff --git a/app/render/utils/agent/workflow/buildStartPayload.ts b/app/render/utils/agent/workflow/buildStartPayload.ts
+index 6e68fad..413e828 100644
+--- a/app/render/utils/agent/workflow/buildStartPayload.ts
++++ b/app/render/utils/agent/workflow/buildStartPayload.ts
+@@ -112,6 +112,12 @@ export function buildStartWorkflowPayload(
+       }
+       // Chat web-search toggle, stored as "1"/"" on the panel; the backend
+       // reuses it for the coding agent's guideline lookup.
++      const mpp = Number(inputObject.slide_mpp);
++      if (Number.isFinite(mpp) && mpp > 0) {
++        inputObject.slide_mpp = mpp;
++      } else {
++        delete inputObject.slide_mpp;
++      }
+       const ws = inputObject.web_search_enabled;
+       inputObject.web_search_enabled =
+         ws === true || ws === 1 || (typeof ws === "string" && ["1", "true", "yes", "on"].includes(ws.trim().toLowerCase()));
+diff --git a/app/service/app/api/tasks.py b/app/service/app/api/tasks.py
+index 0e2017e..6fbfb43 100644
+--- a/app/service/app/api/tasks.py
++++ b/app/service/app/api/tasks.py
+@@ -1724,6 +1724,7 @@ class GenerateScriptRequest(BaseModel):
+     zarr_path: str
+     prompt: str
+     web_search_enabled: bool = False
++    slide_mpp: Optional[float] = None
+ 
+ 
+ @tasks_router.post("/v1/generate_script")
+@@ -1750,6 +1751,7 @@ async def generate_script(
+         auth_header=http_request.headers.get("Authorization"),
+         uid=getattr(auth_user, "uid", None),
+         web_search_enabled=bool(request.web_search_enabled),
++        slide_mpp=request.slide_mpp,
+     )
+     if result.get("error"):
+         return error_response(result["error"])
+diff --git a/app/service/app/services/prompts/code_system_prompt.txt b/app/service/app/services/prompts/code_system_prompt.txt
+index 9676ecb..4fb014c 100644
+--- a/app/service/app/services/prompts/code_system_prompt.txt
++++ b/app/service/app/services/prompts/code_system_prompt.txt
+@@ -12,6 +12,7 @@ Analysis results are stored in a Zarr file. The exact structure (groups, arrays,
+ - Spatial calibration: mpp / microns-per-pixel — read from group/array attributes
+ The canonical radiology (CT/MRI) layout, written by organ segmentation nodes such as TotalSegmentator:
+ - Organ masks → group "Tissue-Segmentation": masks/<organ>/mask is a 3D boolean array (NIfTI voxel order), one per organ, plus classes/name and classes/color. Each mask group's attrs carry voxel_count and volume_ml.
++- Spatial transcriptomics domains (SpatialOmics, e.g. CellCharter) → group "Spatial-Omics": `clusters/k<K>` is an int32 domain label per nucleus, aligned with `centroids` (x, y in level-0 slide pixels) and `nucleus_id`; `cluster_markers/k<K>` is a JSON string {label: [top marker genes]} to name the domains. These nuclei are the slide's segmented nuclei: if `segmentation_index` exists, segmentation_index[i] is the row of `Cell-Segmentation/centroids`, `Cell-Classification/class_indices` and `User-Annotations/cell` for nucleus i (use it to combine domain labels with cell types); otherwise match by nearest centroid. To count multicellular structures: assign each nucleus to the `Patch-Segmentation` patch containing its centroid and compute per patch the fraction of nuclei in the matching ST domain (and in the matching cell class when `Cell-Classification` has one). When `Patch-Classification` exists, the patches classified as the structure are the candidate regions: keep those whose nuclei fractions support the label, then count connected groups of kept patches (DFS/BFS over neighbouring patches on the grid; the grid provides the length scale). Without a patch classification, mark patches by the fractions alone; without a patch grid, count spatially connected groups of nuclei. Report the parameters you used.
+ - Cardiac MR segmentation (CardiacMRSegmentation) → group named after the node: `voxel_mask/<view>` is a uint8 label map on the input grid (LVSA: 0 background, 1 LV cavity, 2 myocardium, 3 RV cavity); read `class_names` and the pixel `spacing` (mm) from the dataset attrs. For a cine series the first axis is slice-major (index = slice_index * n_frames + frame_index; attrs n_slices, n_frames, slice_location_mm, trigger_time_ms; `voxel_mask/slice_index` and `voxel_mask/frame_index` give the per-image indices), so reshape to (n_slices, n_frames, rows, cols), pick the end-diastolic frame (largest LV cavity) and measure per slice.
+ - Whole-image classifiers (e.g. chest X-ray models such as Ark+ or CheXzero) → group "Image-Classification" (attrs name the model): `predictions` (sigmoid probabilities) aligned index-by-index with `disease_list`, and `scores_json` (JSON string) with the same values grouped per label set / head. A finding name can occur in more than one head; pick the head that matches the image type and say which one you used. Report the probability and the decision threshold you applied.
+ - Intensities → "Tissue-Segmentation/image": int16 Hounsfield units (HU) on the SAME voxel grid as the masks, so `image[mask]` is the HU values inside an organ. Group attrs carry `affine` and `voxel_spacing_mm` (voxel volume in ml = prod(voxel_spacing_mm) / 1000). Never rescale or re-window these values before thresholding. userData/path holds the source NIfTI/DICOM path; read it only if the zarr has no `image` array.
+diff --git a/app/service/app/services/prompts/workflow_system_prompt.txt b/app/service/app/services/prompts/workflow_system_prompt.txt
+index 27b7bd5..945ae2b 100644
+--- a/app/service/app/services/prompts/workflow_system_prompt.txt
++++ b/app/service/app/services/prompts/workflow_system_prompt.txt
+@@ -72,7 +72,7 @@ Key Practices for Workflow Design:
+ - If the user query relates to tissue counting with spatial omics analysis, we should also segment out and classify the tissue.
+ - For organ-level analysis with external criteria (HU values, thresholds), classify relevant organs then apply criteria in CodingAgent
+ - The tissue classes you choose should enable the CodingAgent step to answer the question
+-- For spatial transcriptomics (ST) clustering-based counting: Use TissueSeg → NucleiSeg → NucleiClassify → SpatialOmics (ST clustering) → CodingAgent (ST clustering REPLACES TissueClassify). The script will match ST cluster spatial distributions with nuclei features to estimate counts of biological structures (e.g., glomeruli based on cluster proportions in patches).
++- For spatial transcriptomics (ST) clustering-based counting of multicellular structures: Use TissueSeg → TissueClassify → NucleiSeg → NucleiClassify → SpatialOmics (ST clustering) → CodingAgent, and keep all three branches. TissueClassify labels the patches of the structure (the structure's region vs 'other') from the user's patch annotations on the TissueSeg patch grid; NucleiClassify labels the structure's cells; SpatialOmics assigns each nucleus an ST domain. The script then uses the classified patches as the candidate regions, keeps the patches supported by the ST domain and cell-type proportions of their nuclei, and counts structures as connected groups of patches. Do not drop TissueSeg or TissueClassify from an ST counting workflow.
+ 
+ MINIMALITY RULES:
+ - Use the fewest steps that can answer the question
+diff --git a/app/service/app/services/tasks.py b/app/service/app/services/tasks.py
+index 4644c45..fd442a4 100644
+--- a/app/service/app/services/tasks.py
++++ b/app/service/app/services/tasks.py
+@@ -233,9 +233,13 @@ async def _generate_script_output(
+     auth_header: str | None = None,
+     uid: str | None = None,
+     web_search_enabled: bool = False,
++    slide_mpp: float | None = None,
+ ) -> dict:
+     """Generate the analysis script with the in-process coding agent (streamed when uid is set).
+ 
++    ``slide_mpp`` is the slide's microns-per-pixel as the viewer reports it; it is
++    stated in the task text so scripts do not have to guess a calibration.
++
+     ``web_search_enabled`` is the chat's web-search toggle: when set, the coding
+     agent fetches published guidelines/criteria for the task (same lookup the
+     planner does) before writing the script.
+@@ -286,6 +290,11 @@ def _read_structure():
+     except Exception as struct_err:
+         logger.warning(f"[CodingAgent] Failed to fetch local Zarr structure for script preview: {struct_err}")
+ 
++    if slide_mpp is not None:
++        prompt_text = (
++            f"{prompt_text}\n\nSlide calibration: {slide_mpp:g} microns per pixel at level 0 (from the slide "
++            "file's metadata; if this is implausible for a microscope slide, say so and derive length scales from the data)."
++        )
+     combined_prompt = (
+         f"{prompt_text}\n\nZarr structure:\n{structure_json}"
+         if structure_json else prompt_text
+diff --git a/app/service/app/services/workflow/runtime.py b/app/service/app/services/workflow/runtime.py
+index 1a9abc0..b19281e 100644
+--- a/app/service/app/services/workflow/runtime.py
++++ b/app/service/app/services/workflow/runtime.py
+@@ -53,6 +53,8 @@ class WorkflowExecution:
+     script_prompt: Optional[str] = None
+     # Coding Agent guideline web search, as set by the chat's web-search toggle.
+     web_search_enabled: bool = False
++    # Slide calibration (microns per pixel at level 0) as the viewer reports it; None when unknown.
++    slide_mpp: Optional[float] = None
+     script_task_started: bool = False
+     created_at: float = field(default_factory=time.time)
+     # Stamped by purge_finished_executions, not at the status assignment sites.
+diff --git a/app/service/app/services/workflow/start.py b/app/service/app/services/workflow/start.py
+index f3c0218..850e359 100644
+--- a/app/service/app/services/workflow/start.py
++++ b/app/service/app/services/workflow/start.py
+@@ -197,6 +197,7 @@ def _fail(result: dict) -> dict:
+     # The chat's web-search toggle rides on the Coding Agent step so the same
+     # guideline lookup the planner had also reaches script generation.
+     script_web_search = False
++    script_slide_mpp = None
+ 
+     for stepKey, stepVal in steps:
+         panel_type = stepVal["nodeId"] # This is TaskNodeManager registry node id from frontend
+@@ -222,6 +223,13 @@ def _fail(result: dict) -> dict:
+                 or (isinstance(raw_ws, (int, float)) and raw_ws == 1)
+                 or (isinstance(raw_ws, str) and raw_ws.strip().lower() in ("1", "true", "yes", "on"))
+             )
++            raw_mpp = userInput.get("slide_mpp")
++            try:
++                script_slide_mpp = float(raw_mpp) if raw_mpp not in (None, "") else None
++            except (TypeError, ValueError):
++                script_slide_mpp = None
++            if script_slide_mpp is not None and not (script_slide_mpp > 0):
++                script_slide_mpp = None
+             if script_prompt is not None:
+                 script_seen = True
+             else:
+@@ -415,6 +423,7 @@ def _fail(result: dict) -> dict:
+     provisional.failed_tasks = set()
+     provisional.script_prompt = normalized_script_prompt
+     provisional.web_search_enabled = bool(script_web_search)
++    provisional.slide_mpp = script_slide_mpp
+     provisional.auth_header = auth_header
+     provisional.zarr_path = zarr_path
+ 
+diff --git a/app/service/app/utils/workflow/scheduler.py b/app/service/app/utils/workflow/scheduler.py
+index 2c214e1..2a78461 100644
+--- a/app/service/app/utils/workflow/scheduler.py
++++ b/app/service/app/utils/workflow/scheduler.py
+@@ -816,6 +816,7 @@ async def _animate_scripts_progress(duration_seconds: float = 30.0):
+                     auth_header=execution.auth_header,
+                     uid=uid,
+                     web_search_enabled=execution.web_search_enabled,
++                    slide_mpp=execution.slide_mpp,
+                 )
+             finally:
+                 # Cancel progress animation when script generation completes
+diff --git a/app/service/storage/model_registry_preset.json b/app/service/storage/model_registry_preset.json
+index 246a7b3..940527c 100644
+--- a/app/service/storage/model_registry_preset.json
++++ b/app/service/storage/model_registry_preset.json
+@@ -233,15 +233,31 @@
+     },
+     "CellCharter": {
+       "displayName": "CellCharter",
+-      "description": "Spatial transcriptomics clustering for identifying tissue domains and cellular neighborhoods. We need nuclei segmentation to precede this tasknode and also nuclei classification to tell us what is the name of the cell clusters.",
++      "description": "Spatial-domain clustering of nuclei from spatial transcriptomics (CellCharter: PCA of nucleus expression, Delaunay neighbourhood aggregation, Gaussian-mixture clustering). Needs the slide's nucleus segmentation (NucleiSeg) and, to name the domains, the nucleus classification (NucleiClassify); takes the per-nucleus expression .h5ad that accompanies the slide. Writes a domain label per nucleus for each requested K plus marker genes per domain, so a CodingAgent step can combine the domains with the patch classification (TissueClassify) and cell classification on the TissueSeg patch grid and count multicellular structures as connected groups of patches.",
+       "icon": "/images/icons/cellcharter.png",
+       "factory": "SpatialOmics",
+       "schema": null,
+       "version": null,
+       "source": "builtin",
+-      "zarr_group": null,
+-      "inputs": "Spatial transcriptomics data",
+-      "outputs": "Cluster assignments and spatial domains"
++      "zarr_group": "Spatial-Omics",
++      "inputs": "st_path=<per-nucleus expression .h5ad with nucleus centroids> (default: the .h5ad next to the opened slide); n_clusters=<K or list, e.g. 9 or 5,6,7,8,9,10> (default 9)",
++      "outputs": "Spatial-Omics/clusters/k<K> (int32 domain label per nucleus), Spatial-Omics/centroids (x, y per nucleus, level-0 pixels), Spatial-Omics/cluster_markers/k<K> (JSON {label: top marker genes}), Spatial-Omics/nucleus_id, Spatial-Omics/segmentation_index (row of Cell-Segmentation / Cell-Classification for each nucleus, when the .h5ad nuclei are the slide's segmented nuclei)",
++      "panel": [
++        {
++          "key": "st_path",
++          "type": "input",
++          "value": "",
++          "label": "Spatial transcriptomics file (.h5ad)",
++          "placeholder": "per-nucleus expression with centroids; empty = next to the slide"
++        },
++        {
++          "key": "n_clusters",
++          "type": "input",
++          "value": "9",
++          "label": "Number of domains (K)",
++          "placeholder": "e.g. 9 or 5,6,7,8,9,10"
++        }
++      ]
+     },
+     "Ark": {
+       "displayName": "Ark",

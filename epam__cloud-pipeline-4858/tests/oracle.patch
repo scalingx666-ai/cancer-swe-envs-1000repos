@@ -1,0 +1,524 @@
+diff --git a/docs/md/manual/08_Manage_Data_Storage/8.2._Upload_Download_data.md b/docs/md/manual/08_Manage_Data_Storage/8.2._Upload_Download_data.md
+index 6191f5e375..624517614f 100644
+--- a/docs/md/manual/08_Manage_Data_Storage/8.2._Upload_Download_data.md
++++ b/docs/md/manual/08_Manage_Data_Storage/8.2._Upload_Download_data.md
+@@ -35,6 +35,8 @@
+ 
+ Besides downloading files one by one (see [Download data](#download-data) above), a selection of files **and folders** can be downloaded as a single `ZIP` archive. This is the only download option that accepts folders. The plain **Download** item ignores any folder in the selection and works on the selected files alone, and it is offered for **one to three** of them - four files or more are covered by **Download archive** alone. Conversely, **Download archive** is the item that disappears for a single selected **file**, which **Download** and the file's own row button (see [Download data](#download-data) above) already cover; for a single selected **folder** it stays, being the only way to download one.
+ 
++The archive holds what you selected and nothing above it: a selected folder is unpacked under its own name, with its own tree inside it, and a selected file is unpacked on its own with no folder around it. So selecting `ggplot2` inside `R/x86_64-pc-linux-gnu-library` gives you a `ggplot2` folder at the top of the archive, rather than an `R` folder to walk down to reach it.
++
+ 1. Select one or more files and/or folders in the storage using checkboxes.
+ 2. Click the selection button (shown as **"N items selected"**) and choose the **Download archive** item. Where the selection also holds one to three downloadable files, it is listed right next to **Download** - any folders among them are not counted towards that. A selection of exactly one file is the one case with no **Download archive** item; a selection of four files or more is the one case with no **Download** item.  
+     **_Note_**: **Download archive** is offered only on AWS S3 storages and on NFS storages whose share is mounted as NFS. On other storages (Azure, GCP, or an SMB or Lustre share) there is no **Download archive** item, and **Download** has no limit of three files.  
+diff --git a/storage-async-task-service/README.md b/storage-async-task-service/README.md
+index 93718043a2..a4eb4ffa20 100644
+--- a/storage-async-task-service/README.md
++++ b/storage-async-task-service/README.md
+@@ -21,6 +21,23 @@ POST /async-task/{id}/status                SUCCESS, with the size and the skipp
+ GET  /async-task/{id}/consume               the user gets a signed link
+ ```
+ 
++Inside the archive a file is named without the folders the selection has in common above the items
++it names - `archive_preparation_worker._archive_root`. One folder picked deep in a tree is unpacked
++under its own name (`sub1/sub2/folder` gives `folder/...`), and a selection spread across folders
++keeps as much of the tree as it takes to tell its items apart (`sub1/sub2/folder` and
++`sub1/sub3/folder` give `sub2/folder/...` and `sub3/folder/...`). One prefix for the whole selection,
++not the parent of each item: taking the same prefix off every path cannot turn two paths that differ
++in the storage into one name, while cutting each item back to its own name would - two folders
++called `folder` would become one.
++
++The paths are normalised before any of that, because an entry name that starts with `..` is written
++outside the folder the archive is unpacked into by extractors that do not sanitise it. A path that
++still climbs above the storage root once normalised - only a literal S3 key of that spelling does -
++has its leading `..` dropped, which is the one place two different paths can still meet under one
++name, and a path normalising to nothing at all is skipped and reported in the archive's note rather
++than packed: `ZipFile.extractall` raises on an entry called `.` or `..` and abandons the rest of
++the archive with it.
++
+ A cancelled task stops within `--status-poll-seconds` and deletes what it had built. A task whose
+ worker was killed is finished by the cleaner, which also expires archives past `ttlDays`.
+ 
+diff --git a/storage-async-task-service/sats/worker/archive_preparation_worker.py b/storage-async-task-service/sats/worker/archive_preparation_worker.py
+index e242f39a48..d6c329d367 100644
+--- a/storage-async-task-service/sats/worker/archive_preparation_worker.py
++++ b/storage-async-task-service/sats/worker/archive_preparation_worker.py
+@@ -40,6 +40,7 @@
+ from __future__ import annotations
+ 
+ import itertools
++import posixpath
+ import shutil
+ import threading
+ import time
+@@ -74,6 +75,11 @@
+ # this service's log.
+ MAX_ERROR_MESSAGE = 1000
+ 
++# What a path can be left as once it is normalised, and no file can be packed under: the folder
++# itself, its parent, or nothing at all. `ZipFile.extractall` raises on such an entry and abandons
++# the rest of the archive with it, so the file is skipped instead - see `_archive_name`.
++_UNUSABLE_NAMES = frozenset({'', '.', '..'})
++
+ 
+ class ArchivePreparationWorker(AsyncTaskWorker):
+     """
+@@ -272,14 +278,30 @@ def _pack(self, source: FileSource, files: list[SourceFile],
+         a user whose nine hundred and ninety-ninth file has a permission problem wants the rest.
+ 
+         `zipfile` writes ZIP64 by itself when it needs to, so a file above 4 GiB is not a special case.
++
++        The entry names are the storage paths with `_archive_root` taken off - see `_archive_name` -
++        so the archive holds what the user picked rather than the folders above it.
+         """
+         archive_path = self._task_dir / LOCAL_ARCHIVE_NAME
+         temp_path = self._task_dir / DOWNLOAD_TEMP_NAME
+         failed: list[tuple[str, str]] = []
++        root = _archive_root(self._task.paths)
++        LOG.debug('Task %s packs its files under %s', self._task.id, root or 'their storage paths')
++        self._warn_about_paths_outside(files, root)
+         with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED,
+                              compresslevel=self._config.compress_level) as archive:
+             for found in files:
+                 self._watcher.check()
++                name = _archive_name(found.path, root)
++                if name in _UNUSABLE_NAMES:
++                    # Nothing is left of the path to name the entry by. Such an entry is not merely
++                    # useless: `ZipFile.extractall` raises on it and stops, so the files after it
++                    # would not be extracted either. Skipped before the download, and named in the
++                    # note like any other file that could not be packed.
++                    LOG.warning('Task %s: %s has no name that can be used inside an archive, '
++                                'skipping it', self._task.id, found.path)
++                    failed.append((found.path, 'it has no name that can be used inside an archive'))
++                    continue
+                 try:
+                     source.download(found, temp_path, self._watcher.check)
+                 except StopRequested:
+@@ -292,7 +314,7 @@ def _pack(self, source: FileSource, files: list[SourceFile],
+                     temp_path.unlink(missing_ok=True)
+                     continue
+                 # Without `arcname` every entry would be called `current.part`.
+-                archive.write(temp_path, arcname=found.path)
++                archive.write(temp_path, arcname=name)
+                 temp_path.unlink(missing_ok=True)
+             if unreadable or failed:
+                 # The name is chosen against what is already in the archive: `zipfile` would happily
+@@ -303,6 +325,21 @@ def _pack(self, source: FileSource, files: list[SourceFile],
+                  len(files) - len(failed), len(unreadable) + len(failed))
+         return archive_path, failed
+ 
++    def _warn_about_paths_outside(self, files: list[SourceFile], root: str) -> None:
++        """
++        Says once, rather than per file, that some paths are not under the selection's own folder.
++
++        No source produces such a path today - `_archive_name` packs it whole rather than by a
++        half-match - and an archive where one file keeps its folders while its neighbours do not is
++        impossible to explain without this line. One warning for the task and not one per file,
++        because a selection may hold a hundred thousand of them.
++        """
++        outside = [found.path for found in files if not _is_under(found.path, root)]
++        if outside:
++            LOG.warning('Task %s: %s file(s) are not under %s, which this selection has in common, '
++                        'starting with %s. They are packed under their whole paths', self._task.id,
++                        len(outside), root, outside[0])
++
+     def _upload(self, archive_path: Path) -> int:
+         """
+         Puts the archive in the bucket and returns its size.
+@@ -424,6 +461,82 @@ def _remove_task_dir(self) -> None:
+                         self._task_dir)
+ 
+ 
++def _archive_root(paths: tuple[str, ...]) -> str:
++    """
++    The prefix taken off every file's storage path to name it inside the archive.
++
++    What the selection has in common *above* the items it names, so a folder picked deep in a tree
++    is unpacked under its own name and nothing of the way to it survives:
++
++        sub1/sub2/folder                      ->  folder/...
++        sub1/sub2/folder, sub1/sub2/folder2   ->  folder/..., folder2/...
++        sub1/sub2/folder, sub1/sub3/folder2   ->  sub2/folder/..., sub3/folder2/...
++
++    The third case is why this is one prefix for the whole selection rather than the parent of each
++    selected path: cutting each item back to its own name would give two folders of the same name
++    picked in different places one name in the archive, and the files under them would then
++    overwrite each other. Taking the same prefix off every path cannot do that - two paths that
++    differ in the storage still differ once a common head is gone - so nothing has to be renamed on
++    the way in, and what is left tells the user which of the two they are looking at.
++
++    Compared folder by folder, never by characters: `sub2` and `sub20` share four characters and no
++    folder at all.
++
++    The answer is `''` - nothing is stripped - for a selection whose items have no folder in common,
++    which includes any selection holding an item at the storage root, and for a task with no paths.
++    It ends in `/` otherwise, so it can be removed from a path as it is.
++    """
++    common: list[str] | None = None
++    for path in paths:
++        # Everything above the item: a selected `a/b/c` contributes `a/b`, and one at the root `''`.
++        # Normalised first, so that `a//b` and `a/x/../b` are the one folder they name - see
++        # `_archive_name`, which normalises the file paths the same way.
++        parent = posixpath.normpath(path).lstrip('/').rpartition('/')[0]
++        folders = parent.split('/') if parent else []
++        if common is None:
++            common = folders
++            continue
++        kept = 0
++        while kept < len(common) and kept < len(folders) and common[kept] == folders[kept]:
++            kept += 1
++        common = common[:kept]
++    return f'{"/".join(common)}/' if common else ''
++
++
++def _is_under(path: str, root: str) -> bool:
++    """Whether a storage path is under the folder the selection has in common, once normalised."""
++    return not root or posixpath.normpath(path).lstrip('/').startswith(root)
++
++
++def _archive_name(path: str, root: str) -> str:
++    """
++    The name one file is packed under: its storage path, normalised, with `root` taken off.
++
++    Normalised because a path is text here and may hold `.` or `..` segments - the GUI cannot
++    produce one, a task created through the REST API can, and an S3 key may simply contain `..`.
++    `NfsSource` only guarantees that such a path stays inside the storage, not that it is written
++    without them, and `zipfile` normalises an `arcname` of its own accord **except** when it already
++    starts with `..`. So taking a prefix off `sub1/sub2/../other/x.txt` is what would turn a name
++    that unpacks inside the folder the user chose into `../other/x.txt`, which extractors that do
++    not sanitise their input write outside it. Normalising before anything is stripped is what
++    stops that, and the loop below is the second line of defence.
++
++    What the loop cannot do is give the file a name where normalising left none: a path of `a/..`
++    answers `.` and one of `a/../..` answers `..`, which only a literal S3 key of that spelling
++    produces, and which the caller refuses to pack - see `_UNUSABLE_NAMES`. Those are also the one
++    case where two paths that differ in the storage can meet under one name, because the number of
++    `..` segments dropped is per path rather than the one prefix everything else loses.
++
++    A path the root does not cover is packed whole, rather than by a half-match. `_is_under` is the
++    same question asked ahead of the loop, so the caller can say so once.
++    """
++    normalised = posixpath.normpath(path).lstrip('/')
++    name = normalised.removeprefix(root) if _is_under(path, root) else normalised
++    while name.startswith('../'):
++        name = name.removeprefix('../')
++    return name
++
++
+ def _note_name(taken: list[str]) -> str:
+     """
+     Picks a name for the note that no file in the archive already uses.
+diff --git a/storage-async-task-service/tests/test_archive_preparation_worker.py b/storage-async-task-service/tests/test_archive_preparation_worker.py
+index b3144696b3..d37b03bcef 100644
+--- a/storage-async-task-service/tests/test_archive_preparation_worker.py
++++ b/storage-async-task-service/tests/test_archive_preparation_worker.py
+@@ -58,8 +58,9 @@ def _archive_config(max_files=None, max_size=None, worker_minutes=10, prefix='ar
+     )
+ 
+ 
+-def _task(status=TaskStatus.RUNNING):
+-    return ArchiveTask(id=TASK_ID, status=status, owner='USER', storage_id=1, paths=('data/',))
++def _task(status=TaskStatus.RUNNING, paths=('data/',)):
++    """A task over `paths`. The default is one folder at the storage root, with nothing above it."""
++    return ArchiveTask(id=TASK_ID, status=status, owner='USER', storage_id=1, paths=paths)
+ 
+ 
+ def _run(tmp_path, monkeypatch, source, api=None, archive_config=None, bucket=None,
+@@ -99,6 +100,100 @@ def test_packs_the_selection_and_reports_success(tmp_path, monkeypatch):
+     assert not (tmp_path / TASK_ID).exists()
+ 
+ 
++def test_packs_a_selected_folder_without_the_folders_above_it(tmp_path, monkeypatch):
++    # The case this exists for: the user asked for `ggplot2`, so that is what they unpack - not a
++    # chain of folders to walk down before they reach it.
++    selected = 'R/x86_64-pc-linux-gnu-library/ggplot2/'
++    source = FakeSource({f'{selected}DESCRIPTION': b'package', f'{selected}R/plot.R': b'code'})
++    api = FakeApi(_task(paths=(selected,)))
++
++    api, bucket = _run(tmp_path, monkeypatch, source, api=api)
++
++    assert api.statuses == [TaskStatus.SUCCESS]
++    assert sorted(bucket.uploaded) == ['ggplot2/DESCRIPTION', 'ggplot2/R/plot.R']
++
++
++def test_keeps_enough_of_the_tree_to_tell_the_selected_items_apart(tmp_path, monkeypatch):
++    # Two folders of the same name picked in different places. Cutting each item back to its own
++    # name would give both of them `folder`, and their files would then overwrite each other, so
++    # what is stripped is only what the whole selection has in common.
++    source = FakeSource({'root/sub1/sub2/folder/a.txt': b'first',
++                         'root/sub1/sub3/folder/a.txt': b'second'})
++    api = FakeApi(_task(paths=('root/sub1/sub2/folder/', 'root/sub1/sub3/folder/')))
++
++    api, bucket = _run(tmp_path, monkeypatch, source, api=api)
++
++    assert api.statuses == [TaskStatus.SUCCESS]
++    assert sorted(bucket.uploaded) == ['sub2/folder/a.txt', 'sub3/folder/a.txt']
++
++
++def test_packs_a_single_selected_file_under_its_own_name(tmp_path, monkeypatch):
++    source = FakeSource({'R/lib/notes.txt': b'hello'})
++    api = FakeApi(_task(paths=('R/lib/notes.txt',)))
++
++    api, bucket = _run(tmp_path, monkeypatch, source, api=api)
++
++    assert api.statuses == [TaskStatus.SUCCESS]
++    assert bucket.uploaded == ['notes.txt']
++
++
++def test_never_writes_an_entry_that_unpacks_outside_the_archive(tmp_path, monkeypatch):
++    # A selected path holding `..`, which the GUI cannot produce and a task created through the REST
++    # API can; `NfsSource` keeps it in the paths it reports. Asserted on the archive itself, because
++    # what matters is the name `zipfile` ends up storing - it sanitises a name of its own accord
++    # except when it already starts with `..`.
++    source = FakeSource({'sub1/sub2/../other/x.txt': b'data'})
++    api = FakeApi(_task(paths=('sub1/sub2/..',)))
++
++    api, bucket = _run(tmp_path, monkeypatch, source, api=api)
++
++    assert api.statuses == [TaskStatus.SUCCESS]
++    assert bucket.uploaded == ['sub1/other/x.txt']
++
++
++def test_skips_a_file_that_has_no_name_to_be_packed_under(tmp_path, monkeypatch):
++    # A storage path that normalises to nothing - only an S3 key spelt this way produces one. The
++    # entry would be called `..`, and `ZipFile.extractall` raises on such an entry and abandons
++    # every file after it, so the one file is given up instead of the rest of the archive.
++    source = FakeSource({'a/../..': b'odd', 'a/b.txt': b'wanted'})
++
++    api, bucket = _run(tmp_path, monkeypatch, source)
++
++    assert api.statuses == [TaskStatus.SUCCESS]
++    # The other file, and the note that says what happened to this one.
++    assert sorted(bucket.uploaded) == ['README.txt', 'a/b.txt']
++    assert api.reports[0][1]['skippedFiles'] == 1
++    # It was not downloaded either: the name is known before a byte is fetched.
++    assert source.heartbeats == 1
++
++
++def test_keeps_the_users_own_readme_when_the_prefix_leaves_it_at_the_root(tmp_path, monkeypatch):
++    # Stripping is what brings a file to the top of the archive, which is where the note goes, so a
++    # selected `README.txt` can now collide with the note from any folder rather than only from the
++    # storage root.
++    source = FakeSource({'sub1/sub2/README.txt': b'the user wrote this'},
++                        unreadable={'sub1/sub2/cold.bin': 'stored in GLACIER'})
++
++    api = FakeApi(_task(paths=('sub1/sub2/README.txt',)))
++    bucket = FakeBucket()
++    monkeypatch.setattr('sats.worker.archive_preparation_worker.open_source', lambda *_args: source)
++    captured = {}
++
++    def capture(path, key, heartbeat):
++        with zipfile.ZipFile(path) as archive:
++            captured['names'] = archive.namelist()
++            captured['readme'] = archive.read('README.txt').decode()
++        return path.stat().st_size
++
++    bucket.upload = capture
++    ArchivePreparationWorker(api, _service_config(tmp_path), _archive_config(), api.task,
++                             bucket=bucket).run()
++
++    assert api.statuses == [TaskStatus.SUCCESS]
++    assert captured['readme'] == 'the user wrote this'
++    assert sorted(captured['names']) == ['CLOUD-PIPELINE-SKIPPED-FILES.txt', 'README.txt']
++
++
+ def test_names_the_unreadable_files_in_the_archive(tmp_path, monkeypatch):
+     source = FakeSource({'a.txt': b'hello'},
+                         unreadable={'cold.bin': 'stored in GLACIER and not restored'})
+@@ -145,6 +240,33 @@ def capture(path, key, heartbeat):
+     assert 'cold.bin: stored in GLACIER' in captured['note']
+ 
+ 
++def test_the_note_names_a_missing_file_by_its_storage_path(tmp_path, monkeypatch):
++    # The note is read beside the unpacked folder, and whoever reads it then goes looking for the
++    # file in the storage. So it names the file the way they selected it - with the folders above it -
++    # even though the files that did make it in are packed without them.
++    selected = 'R/lib/ggplot2/'
++    source = FakeSource({f'{selected}DESCRIPTION': b'package'},
++                        unreadable={f'{selected}data.rds': 'stored in GLACIER'})
++
++    api = FakeApi(_task(paths=(selected,)))
++    bucket = FakeBucket()
++    monkeypatch.setattr('sats.worker.archive_preparation_worker.open_source', lambda *_args: source)
++    captured = {}
++
++    def capture(path, key, heartbeat):
++        with zipfile.ZipFile(path) as archive:
++            captured['names'] = archive.namelist()
++            captured['note'] = archive.read('README.txt').decode()
++        return path.stat().st_size
++
++    bucket.upload = capture
++    ArchivePreparationWorker(api, _service_config(tmp_path), _archive_config(), api.task,
++                             bucket=bucket).run()
++
++    assert 'R/lib/ggplot2/data.rds: stored in GLACIER' in captured['note']
++    assert captured['names'] == ['ggplot2/DESCRIPTION', 'README.txt']
++
++
+ def test_refuses_a_selection_with_too_many_files(tmp_path, monkeypatch):
+     source = FakeSource({'a.txt': b'1', 'b.txt': b'2', 'c.txt': b'3'})
+ 
+diff --git a/storage-async-task-service/tests/test_archive_root.py b/storage-async-task-service/tests/test_archive_root.py
+new file mode 100644
+index 0000000000..c7b54be8c1
+--- /dev/null
++++ b/storage-async-task-service/tests/test_archive_root.py
+@@ -0,0 +1,157 @@
++# Copyright 2025 EPAM Systems, Inc. (https://www.epam.com/)
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""
++Tests of how an archive's entries are named: the prefix the selection has in common above the items
++it names, and one file's name once that prefix is off it.
++
++Two pure functions, so their cases live here rather than being driven through a worker; that the
++worker actually packs under them is `test_archive_preparation_worker.py`.
++"""
++
++import pytest
++
++from sats.worker.archive_preparation_worker import _UNUSABLE_NAMES, _archive_name, _archive_root, \
++    _is_under
++
++
++@pytest.mark.parametrize('paths,expected', [
++    # One folder, picked deep in a tree: everything above it goes, and it is unpacked under its own
++    # name. The case this exists for.
++    (('sub1/sub2/folder/',), 'sub1/sub2/'),
++    # One file.
++    (('sub1/sub2/notes.txt',), 'sub1/sub2/'),
++    # Two items of one folder - which is every selection the GUI can make, since it clears the
++    # selection when you navigate. Both keep their own name and nothing above it.
++    (('sub1/sub2/folder/', 'sub1/sub2/folder2/'), 'sub1/sub2/'),
++    (('sub1/sub2/folder/', 'sub1/sub2/notes.txt'), 'sub1/sub2/'),
++    # Items in different folders: the archive keeps just enough of the tree to tell them apart, so
++    # `sub2/folder` and `sub3/folder2` rather than `folder` and `folder2`.
++    (('sub1/sub2/folder/', 'sub1/sub3/folder2/'), 'sub1/'),
++    # The same name in two places. Cutting each item back to its own name would give both of them
++    # `folder`, and their files would overwrite each other.
++    (('sub1/sub2/folder/', 'sub1/sub3/folder/'), 'sub1/'),
++    # Nothing in common, so nothing is stripped.
++    (('one/data/', 'two/data/'), ''),
++    # An item at the storage root has no folder above it, which leaves the whole selection with none.
++    (('data/',), ''),
++    (('notes.txt',), ''),
++    (('sub1/sub2/folder/', 'notes.txt'), ''),
++    # A folder is not a prefix of another folder's name: `sub2` and `sub20` share four characters and
++    # no folder, which is why this is compared folder by folder.
++    (('sub1/sub2/folder/', 'sub1/sub20/folder/'), 'sub1/'),
++    # One item inside another, which the GUI cannot produce and a task created through the REST API
++    # can. The inner one has the deeper parent, so the outer one's is what they share.
++    (('sub1/sub2/', 'sub1/sub2/folder/'), 'sub1/'),
++    # A leading slash is not part of a storage-relative path and must not count as a folder of its
++    # own: with one, the first case here would strip nothing.
++    (('/sub1/sub2/folder/',), 'sub1/sub2/'),
++    (('/sub1/sub2/folder/', '/sub1/sub3/folder2/'), 'sub1/'),
++    # Spelling that only a task created through the REST API can carry. The folder a path names is
++    # what counts, not how it is written, so these answer the same as their plain forms above.
++    (('sub1//sub2/folder/',), 'sub1/sub2/'),
++    (('sub1/./sub2/folder/',), 'sub1/sub2/'),
++    (('sub1/sub2/other/../folder/',), 'sub1/sub2/'),
++    # `..` as the item itself: the path names `sub1`, so the selection is that folder and nothing
++    # above it is stripped.
++    (('sub1/sub2/..',), ''),
++    (('sub1/sub2/sub3/..',), 'sub1/'),
++    (('sub1/sub2/folder/', 'sub1/sub2/../sub2/folder2/'), 'sub1/sub2/'),
++    # A task with no paths at all. It fails before anything is packed, and the answer still has to be
++    # a prefix rather than an exception.
++    ((), ''),
++])
++def test_finds_what_the_selection_has_in_common_above_its_items(paths, expected):
++    assert _archive_root(paths) == expected
++
++
++@pytest.mark.parametrize('paths,path,expected', [
++    # What the worker does with the prefix, end to end: the storage path minus it.
++    (('R/x86_64-pc-linux-gnu-library/ggplot2/',),
++     'R/x86_64-pc-linux-gnu-library/ggplot2/DESCRIPTION', 'ggplot2/DESCRIPTION'),
++    (('R/x86_64-pc-linux-gnu-library/ggplot2/',),
++     'R/x86_64-pc-linux-gnu-library/ggplot2/R/plot.R', 'ggplot2/R/plot.R'),
++    (('sub1/sub2/notes.txt',), 'sub1/sub2/notes.txt', 'notes.txt'),
++    (('sub1/sub2/folder/', 'sub1/sub3/folder2/'), 'sub1/sub2/folder/a.txt', 'sub2/folder/a.txt'),
++    (('data/',), 'data/nested/b.txt', 'data/nested/b.txt'),
++    # A listing that spells the same folder another way - `NfsSource` keeps a `..` of the selected
++    # path in the paths it reports under it. The name is what the file is, not how it was written.
++    (('sub1/sub2/..',), 'sub1/sub2/../other/x.txt', 'sub1/other/x.txt'),
++    (('sub1/sub2/folder/', 'sub1/sub2/../sub2/folder2/'), 'sub1/sub2/../sub2/folder2/x.txt',
++     'folder2/x.txt'),
++    (('sub1//sub2/folder/',), 'sub1/sub2/folder/a.txt', 'folder/a.txt'),
++    # A leading slash on the file's own path is not a folder either, and an entry name may not be
++    # absolute: `zipfile` would store it, and an extractor may then write to it.
++    (('sub1/sub2/folder/',), '/sub1/sub2/folder/a.txt', 'folder/a.txt'),
++])
++def test_names_a_file_relative_to_that_prefix(paths, path, expected):
++    assert _archive_name(path, _archive_root(paths)) == expected
++
++
++@pytest.mark.parametrize('root,path', [
++    # An S3 key may hold `..` literally, and such a key is listed under the storage's own prefix,
++    # so this needs no REST-built task at all.
++    ('sub1/sub2/', 'sub1/sub2/../../../etc/passwd'),
++    ('', '../../etc/passwd'),
++    ('sub1/', '../sub1/x.txt'),
++    ('', '/etc/passwd'),
++])
++def test_never_names_a_file_outside_the_archive(root, path):
++    # An entry called `../x` is written outside the folder the user unpacks into by every extractor
++    # that does not sanitise its input. `zipfile` sanitises a name of its own accord *except* when
++    # it already starts with `..`, which is exactly what taking a prefix off a path can leave.
++    name = _archive_name(path, root)
++
++    assert not name.startswith('../')
++    assert not name.startswith('/')
++
++
++@pytest.mark.parametrize('root,path,expected', [
++    # Normalising can leave a path with no name in it at all. Only a literal S3 key of this spelling
++    # produces one, and the worker refuses to pack it rather than writing an entry called `.` or
++    # `..`: `ZipFile.extractall` raises on such an entry and abandons the rest of the archive.
++    ('', 'a/..', '.'),
++    ('', 'a/../..', '..'),
++    ('', '.', '.'),
++    # The path names the storage root, which is not under the folder the selection has in common,
++    # so nothing is stripped off it - and `.` is all it was in the first place.
++    ('sub1/', 'sub1/..', '.'),
++])
++def test_answers_an_unusable_name_where_normalising_leaves_none(root, path, expected):
++    name = _archive_name(path, root)
++
++    assert name == expected
++    # The caller checks exactly this, so the two cannot drift apart.
++    assert name in _UNUSABLE_NAMES
++
++
++def test_packs_a_file_the_prefix_does_not_cover_under_its_whole_path():
++    # The two paths disagree about their own spelling, which neither source can do today. Stripping
++    # nothing keeps the file in the archive and whole, rather than naming it by a half-match.
++    assert _archive_name('other/place/a.txt', 'sub1/sub2/') == 'other/place/a.txt'
++
++
++@pytest.mark.parametrize('path,root,expected', [
++    ('sub1/sub2/folder/a.txt', 'sub1/sub2/', True),
++    # Spelt another way, and still the same folder.
++    ('sub1//sub2/folder/a.txt', 'sub1/sub2/', True),
++    ('/sub1/sub2/folder/a.txt', 'sub1/sub2/', True),
++    ('other/a.txt', 'sub1/sub2/', False),
++    # A folder is not half of another folder's name.
++    ('sub1/sub20/a.txt', 'sub1/sub2/', False),
++    # Nothing is stripped, so every path is under it.
++    ('other/a.txt', '', True),
++])
++def test_tells_whether_a_path_is_under_the_common_folder(path, root, expected):
++    assert _is_under(path, root) is expected

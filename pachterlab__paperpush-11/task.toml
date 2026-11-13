@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/pachterlab__paperpush-11"
+description = "Replace portal-drift tests with a scheduled full submit walkthrough"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "paperpush",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pachterlab/paperpush"
+ref = "ed0f4cf9efea0e0297eb59dcf2e207ab14c2585e"
+reference = "https://github.com/pachterlab/paperpush/pull/11"
+source_access = "auto"
+built_at = "2026-11-13T15:32:59.279539+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:202e024c6c38273bc17e7cc2cd47dfe5b47e2002f4c17382ff7c0e7ae650645b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-05T03:37:34Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "DEVELOPMENT.md",
+    "paperpush/_skills/paperpush-add-venue/SKILL.md",
+    "paperpush/venues/common.py",
+    "scripts/check_submit_walkthrough.py",
+    "scripts/scheduled_submit_walkthrough.sh",
+    "skills/paperpush-add-venue/SKILL.md",
+    "tests/conftest.py",
+    "tests/drift.py",
+    "tests/portal_snapshots/README.md",
+    "tests/portal_snapshots/biorxiv.json",
+    "tests/test_check_submit_walkthrough.py",
+    "tests/test_portal_drift.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1258
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

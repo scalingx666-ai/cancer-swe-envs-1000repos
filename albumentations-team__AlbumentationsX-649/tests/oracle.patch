@@ -1,0 +1,158 @@
+diff --git a/albumentations/augmentations/pixel/_functional_color.py b/albumentations/augmentations/pixel/_functional_color.py
+index fe0a6401..deb2fb9c 100644
+--- a/albumentations/augmentations/pixel/_functional_color.py
++++ b/albumentations/augmentations/pixel/_functional_color.py
+@@ -718,6 +718,13 @@ def invert(
+     return MAX_VALUES_BY_DTYPE[img.dtype] - img
+ 
+ 
++def _swap_rgb_channels(img: np.ndarray) -> np.ndarray:
++    # OpenCV accepts uint16 for this permutation. A view preserves every FP16 bit.
++    if img.dtype == np.float16:
++        return cv2.cvtColor(img.view(np.uint16), cv2.COLOR_RGB2BGR).view(np.float16)
++    return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
++
++
+ def channel_shuffle(
+     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], channels_shuffled: list[int]
+ ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+@@ -732,6 +739,11 @@ def channel_shuffle(
+         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The shuffled image.
+ 
+     """
++    if img.ndim == 4:
++        return cast(
++            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
++            volume_channel_shuffle(img, channels_shuffled),
++        )
+     if (
+         img.dtype in (np.uint8, np.float16, np.float32)
+         and channels_shuffled == [2, 1, 0]
+@@ -739,10 +751,7 @@ def channel_shuffle(
+         and img.shape[-1] == NUM_RGB_CHANNELS
+         and img.size
+     ):
+-        if img.dtype == np.float16:
+-            # OpenCV accepts uint16 for this channel permutation. A view preserves every FP16 bit.
+-            return cast("NDArray[np.float16]", cv2.cvtColor(img.view(np.uint16), cv2.COLOR_RGB2BGR).view(np.float16))
+-        return cast("NDArray[np.uint8] | NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
++        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", _swap_rgb_channels(img))
+ 
+     img = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", np.ascontiguousarray(img))
+     output = np.empty(img.shape, dtype=img.dtype)
+@@ -765,7 +774,18 @@ def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int])
+         np.ndarray: Volume with channels shuffled.
+ 
+     """
+-    return volume.copy()[..., channels_shuffled] if volume.ndim == 4 else volume
++    if volume.ndim != 4:
++        return volume
++    if (
++        volume.shape[-1] == NUM_RGB_CHANNELS
++        and volume.size
++        and volume.dtype in (np.uint8, np.float16, np.float32)
++        and isinstance(channels_shuffled, Sequence)
++        and tuple(channels_shuffled) == (2, 1, 0)
++    ):
++        source, shape = _reshape_xhwc_for_opencv(volume)
++        return _restore_xhwc_from_opencv(_swap_rgb_channels(source), shape)
++    return volume.copy()[..., channels_shuffled]
+ 
+ 
+ def get_exposure_gains(
+diff --git a/tests/test_new_transforms.py b/tests/test_new_transforms.py
+index 043b97c7..47a18831 100644
+--- a/tests/test_new_transforms.py
++++ b/tests/test_new_transforms.py
+@@ -191,22 +191,79 @@ def test_dtype_preserved(self, dtype):
+         result = aug(image=img)["image"]
+         assert result.dtype == dtype
+ 
+-    def test_batch_images_same_permutation(self):
+-        images = np.stack([_make_image(seed=i) for i in range(3)])
+-        aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
+-        result = aug(images=images)["images"]
+-        assert result.shape == images.shape
+-        for i in range(3):
+-            np.testing.assert_array_equal(result[i, :, :, 0], images[i, :, :, 2])
+-            np.testing.assert_array_equal(result[i, :, :, 2], images[i, :, :, 0])
++    @pytest.mark.parametrize("route", ["compose", "functional"])
++    @pytest.mark.parametrize("column_slice", [slice(None), slice(None, None, -2)])
++    @pytest.mark.parametrize(
++        ("dtype", "bits_dtype"), [(np.uint8, np.uint8), (np.float16, np.uint16), (np.float32, np.uint32)]
++    )
++    def test_batch_images_same_permutation(
++        self,
++        route: str,
++        dtype: type[np.uint8 | np.float16 | np.float32],
++        bits_dtype: type[np.uint8 | np.uint16 | np.uint32],
++        column_slice: slice,
++        mocker: MockerFixture,
++    ) -> None:
++        rng = np.random.default_rng(137)
++        bits = rng.integers(0, np.iinfo(bits_dtype).max, (4, 27, 31, 3), dtype=bits_dtype, endpoint=True)
++        images = bits.view(dtype)
++        if dtype != np.uint8:
++            images[:, 0, :3] = (0.0, -0.0, np.nan)
++        images = images[:, :, column_slice, :]
++        images.setflags(write=False)
++        expected = images.copy()[..., [2, 1, 0]]
++        convert = mocker.spy(cv2, "cvtColor")
++
++        if route == "compose":
++            aug = A.Compose([A.ChannelSwap(p=1.0)], telemetry=False)
++            result = aug(images=images)["images"]
++        else:
++            result = fpixel.channel_shuffle(images, [2, 1, 0])
++
++        convert.assert_called_once()
++        assert convert.call_args.args[0].shape == (images.shape[0] * images.shape[1], *images.shape[2:])
++        assert convert.call_args.args[1] == cv2.COLOR_RGB2BGR
++        assert result.dtype == images.dtype
++        np.testing.assert_array_equal(result.view(bits_dtype), expected.view(bits_dtype), strict=True)
++        assert result.flags.c_contiguous
++        assert not np.shares_memory(result, images)
++
++    @pytest.mark.parametrize(
++        ("shape", "order"),
++        [
++            ((4, 7, 11, 1), [0]),
++            ((4, 7, 11, 3), [0, 2, 1]),
++            ((4, 7, 11, 5), [4, 3, 2, 1, 0]),
++            ((0, 7, 11, 3), [2, 1, 0]),
++        ],
++    )
++    def test_functional_batch_general_permutation(self, shape: tuple[int, ...], order: list[int]) -> None:
++        images = _make_image(shape=shape)
++
++        result = fpixel.channel_shuffle(images, order)
+ 
+-    def test_volume_channel_permutation(self):
++        np.testing.assert_array_equal(result, images[..., order], strict=True)
++        assert not np.shares_memory(result, images)
++
++    def test_volume_channel_permutation_accepts_range(self, mocker: MockerFixture) -> None:
++        volume = _make_image(shape=(4, 7, 11, 3))
++        convert = mocker.spy(cv2, "cvtColor")
++
++        result = fpixel.volume_channel_shuffle(volume, range(2, -1, -1))
++
++        convert.assert_called_once()
++        np.testing.assert_array_equal(result, volume[..., ::-1], strict=True)
++
++    def test_volume_channel_permutation(self, mocker: MockerFixture) -> None:
+         volume = _make_image(shape=(4, 50, 50, 3), seed=8)
+         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
++        convert = mocker.spy(cv2, "cvtColor")
++
+         result = aug(volume=volume)["volume"]
+-        assert result.shape == volume.shape
+-        np.testing.assert_array_equal(result[:, :, :, 0], volume[:, :, :, 2])
+-        np.testing.assert_array_equal(result[:, :, :, 2], volume[:, :, :, 0])
++
++        convert.assert_called_once()
++        assert convert.call_args.args[0].shape == (200, 50, 3)
++        np.testing.assert_array_equal(result, volume[..., ::-1], strict=True)
+ 
+     def test_volume_channel_mismatch_unchanged(self):
+         volume = _make_image(shape=(4, 50, 50, 1), seed=9)

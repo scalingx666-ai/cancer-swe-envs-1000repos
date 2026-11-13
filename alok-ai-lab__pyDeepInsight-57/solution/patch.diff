@@ -1,0 +1,253 @@
+diff --git a/stubs/pyDeepInsight/__init__.pyi b/pyDeepInsight/__init__.pyi
+similarity index 100%
+rename from stubs/pyDeepInsight/__init__.pyi
+rename to pyDeepInsight/__init__.pyi
+diff --git a/stubs/pyDeepInsight/feature_selection.pyi b/pyDeepInsight/feature_selection.pyi
+similarity index 100%
+rename from stubs/pyDeepInsight/feature_selection.pyi
+rename to pyDeepInsight/feature_selection.pyi
+diff --git a/pyDeepInsight/image_transformer.py b/pyDeepInsight/image_transformer.py
+index b6926bbc..052d6df3 100644
+--- a/pyDeepInsight/image_transformer.py
++++ b/pyDeepInsight/image_transformer.py
+@@ -12,7 +12,7 @@
+ import inspect
+ import warnings
+ 
+-from .utils import sparse_assignment
++from .utils._assignment import sparse_assignment
+ 
+ 
+ class ImageTransformer:
+@@ -25,13 +25,13 @@ class ImageTransformer:
+     Attributes:
+         _fe (ManifoldLearner): The feature extraction method used for
+             dimensionality reduction. It must have a `fit_transform` method.
+-        _dm (function): The discretization method used to assign data points to
++        _dm (Callable): The discretization method used to assign data points to
+             pixel coordinates.
+-        _pixels (tuple): The dimensions of the image matrix (height, width) to
++        _pixels (Tuple[int, int]): The dimensions of the image matrix (height, width) to
+             which the data will be mapped.
+-        _xrot (ndarray): The rotated coordinates of the data after
++        _xrot (np.ndarray): The rotated coordinates of the data after
+             dimensionality reduction.
+-        _coords (ndarray): The final pixel coordinates assigned to the data
++        _coords (np.ndarray): The final pixel coordinates assigned to the data
+             points after discretization.
+         DISCRETIZATION_OPTIONS (dict): A dictionary mapping discretization
+             method names  to their corresponding class methods for pixel
+diff --git a/stubs/pyDeepInsight/image_transformer.pyi b/pyDeepInsight/image_transformer.pyi
+similarity index 91%
+rename from stubs/pyDeepInsight/image_transformer.pyi
+rename to pyDeepInsight/image_transformer.pyi
+index dc61bb83..2e4a55e0 100644
+--- a/stubs/pyDeepInsight/image_transformer.pyi
++++ b/pyDeepInsight/image_transformer.pyi
+@@ -2,7 +2,7 @@ from typing import Any, Optional, Callable
+ from typing_extensions import Protocol
+ from numpy.typing import ArrayLike
+ import numpy as np
+-import torch
++from torch import Tensor
+ 
+ 
+ class ManifoldLearner(Protocol):
+@@ -85,10 +85,10 @@ class ImageTransformer:
+     def _calculate_coords(self) -> None: ...
+ 
+     def transform(self, X: np.ndarray, img_format: str = 'rgb',
+-                  empty_value: int = 0) -> np.ndarray | torch.Tensor: ...
++                  empty_value: int = 0) -> np.ndarray | Tensor: ...
+ 
+     def fit_transform(self, X: np.ndarray, **kwargs: Any
+-                      ) -> np.ndarray | torch.Tensor: ...
++                      ) -> np.ndarray | Tensor: ...
+ 
+     def inverse_transform(self, img: np.ndarray) -> np.ndarray: ...
+ 
+@@ -104,7 +104,7 @@ class ImageTransformer:
+     def _mat_to_rgb(mat: np.ndarray) -> np.ndarray: ...
+ 
+     @staticmethod
+-    def _mat_to_pytorch(mat: np.ndarray) -> torch.Tensor: ...
++    def _mat_to_pytorch(mat: np.ndarray) -> Tensor: ...
+ 
+ 
+ class MRepImageTransformer:
+@@ -134,15 +134,15 @@ class MRepImageTransformer:
+                   empty_value: int = 0, collate: str = 'sample',
+                   return_index: bool = True
+                   ) -> (np.ndarray
+-                        | torch.Tensor
++                        | Tensor
+                         | tuple[np.ndarray, np.ndarray, np.ndarray]
+-                        | tuple[torch.Tensor, np.ndarray, np.ndarray]): ...
++                        | tuple[Tensor, np.ndarray, np.ndarray]): ...
+ 
+     def fit_transform(self, X: np.ndarray, **kwargs: Any
+                       ) -> (np.ndarray
+-                            | torch.Tensor
++                            | Tensor
+                             | tuple[np.ndarray, np.ndarray, np.ndarray]
+-                            | tuple[torch.Tensor, np.ndarray, np.ndarray]): ...
++                            | tuple[Tensor, np.ndarray, np.ndarray]): ...
+ 
+     @staticmethod
+     def prediction_reduction(input: np.ndarray, index: np.ndarray,
+diff --git a/pyDeepInsight/py.typed b/pyDeepInsight/py.typed
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/stubs/pyDeepInsight/utils/__init__.pyi b/pyDeepInsight/utils/__init__.pyi
+similarity index 100%
+rename from stubs/pyDeepInsight/utils/__init__.pyi
+rename to pyDeepInsight/utils/__init__.pyi
+diff --git a/pyDeepInsight/utils/_assignment.py b/pyDeepInsight/utils/_assignment.py
+index ce70e00c..b80430f9 100644
+--- a/pyDeepInsight/utils/_assignment.py
++++ b/pyDeepInsight/utils/_assignment.py
+@@ -9,7 +9,7 @@ def _sparsify_top_percentile(arr, p):
+     smallest top-percentile values in each row.
+ 
+     Args:
+-        arr (ndarray): 2D array of shape (n_rows, n_cols) representing the
++        arr (np.ndarray): 2D array of shape (n_rows, n_cols) representing the
+             input cost matrix.
+         p (float): The fraction (0 < p <= 1) of the smallest values to retain
+             per row.
+@@ -34,7 +34,7 @@ def sparse_assignment(cost_matrix, p=0.1):
+         smallest top-percentile values in each row.
+ 
+         Args:
+-            cost_matrix (ndarray): 2D array of shape (n_rows, n_cols)
++            cost_matrix (np.ndarray): 2D array of shape (n_rows, n_cols)
+                 representing the cost matrix.
+             p (float): The fraction (0 < p <= 1) of the smallest values to
+                 retain per row during sparsification.
+diff --git a/pyDeepInsight/utils/_assignment.pyi b/pyDeepInsight/utils/_assignment.pyi
+new file mode 100644
+index 00000000..5d9b5ff4
+--- /dev/null
++++ b/pyDeepInsight/utils/_assignment.pyi
+@@ -0,0 +1,8 @@
++from typing import Tuple
++import numpy as np
++
++
++def _sparsify_top_percentile(arr: np.ndarray, p: float) -> np.ndarray: ...
++
++def sparse_assignment(cost_matrix: np.ndarray, p: float) -> Tuple[np.ndarray, np.ndarray]: ...
++
+diff --git a/stubs/pyDeepInsight/utils/_norm2.pyi b/pyDeepInsight/utils/_norm2.pyi
+similarity index 100%
+rename from stubs/pyDeepInsight/utils/_norm2.pyi
+rename to pyDeepInsight/utils/_norm2.pyi
+diff --git a/stubs/pyDeepInsight/utils/filters.pyi b/pyDeepInsight/utils/filters.pyi
+similarity index 61%
+rename from stubs/pyDeepInsight/utils/filters.pyi
+rename to pyDeepInsight/utils/filters.pyi
+index c88cba2e..20a6f5a2 100644
+--- a/stubs/pyDeepInsight/utils/filters.pyi
++++ b/pyDeepInsight/utils/filters.pyi
+@@ -1,5 +1,5 @@
+ import numpy as np
+-import torch
++from torch import nn, Tensor
+ 
+ 
+ def step_blur_kernel(kernel_size: int, amplification: float) -> np.ndarray: ...
+@@ -9,14 +9,14 @@ def apply_blur_kernel(img: np.ndarray, kernel: np.ndarray) -> np.ndarray: ...
+ def step_blur(img: np.ndarray, kernel_size: int,
+               amplification: float) -> np.ndarray: ...
+ 
+-class StepBlur2d(torch.nn.Module):
++class StepBlur2d(nn.Module):
+ 
+     def_amp: float
+-    kernel: torch.tensor
++    kernel: Tensor
+ 
+-    def __init__(self, kernel_size: torch.tensor, amplification: float): ...
++    def __init__(self, kernel_size: Tensor, amplification: float): ...
+ 
+-    def forward(self, input: torch.tensor) -> torch.tensor: ...
++    def forward(self, input: Tensor) -> Tensor: ...
+ 
+     @staticmethod
+     def step_kernel(kernel_size: int, amplification: float): ...
+@@ -25,14 +25,14 @@ def imgaborfilt(image: np.ndarray, wavelength: float, orientation: float,
+               SpatialFrequencyBandwidth: float,
+               SpatialAspectRatio: float) -> np.ndarray: ...
+ 
+-class GaborFilter2d(torch.nn.Module):
++class GaborFilter2d(nn.Module):
+ 
+     def __init__(self, wavelength: float, orientation: float): ...
+ 
+-    def forward(self, img: torch.tensor) -> torch.tensor: ...
++    def forward(self, img: Tensor) -> Tensor: ...
+ 
+     @staticmethod
+-    def pil_to_tensor(img: np.ndarray) -> torch.tensor: ...
++    def pil_to_tensor(img: np.ndarray) -> Tensor: ...
+ 
+     @staticmethod
+-    def tensor_to_pil(img: torch.tensor) -> np.ndarray: ...
++    def tensor_to_pil(img: Tensor) -> np.ndarray: ...
+diff --git a/stubs/pyDeepInsight/utils/sampler.pyi b/pyDeepInsight/utils/sampler.pyi
+similarity index 83%
+rename from stubs/pyDeepInsight/utils/sampler.pyi
+rename to pyDeepInsight/utils/sampler.pyi
+index 2cfb2a42..ca4284a0 100644
+--- a/stubs/pyDeepInsight/utils/sampler.pyi
++++ b/pyDeepInsight/utils/sampler.pyi
+@@ -1,14 +1,14 @@
+ from typing import Sequence, Iterator, List
+-import torch
++from torch import Tensor
+ from torch.utils.data.sampler import Sampler
+ 
+ 
+ class StratifiedEventBatchSampler(Sampler):
+ 
+-    events: torch.Tensor
++    events: Tensor
+     batch_size: int
+-    events0_idx: torch.Tensor
+-    events1_idx: torch.Tensor
++    events0_idx: Tensor
++    events1_idx: Tensor
+     _len: int
+     batch0_size: int
+     batch1_size: int
+diff --git a/pyproject.toml b/pyproject.toml
+index 8a8e295a..ef90f08d 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -34,10 +34,4 @@ dependencies = [
+ ags = ["assymetric-greedy-search", "numba"]
+ 
+ [project.urls]
+-Homepage = "https://github.com/alok-ai-lab/pyDeepInsight"
+-
+-[tool.setuptools]
+-packages = { find = {} }
+-
+-[tool.setuptools.packages.find]
+-include = ["pyDeepInsight*"]
+\ No newline at end of file
++Homepage = "https://github.com/alok-ai-lab/pyDeepInsight"
+\ No newline at end of file
+diff --git a/stubs/pyDeepInsight/utils/_assignment.pyi b/stubs/pyDeepInsight/utils/_assignment.pyi
+deleted file mode 100644
+index 0172c3dd..00000000
+--- a/stubs/pyDeepInsight/utils/_assignment.pyi
++++ /dev/null
+@@ -1,7 +0,0 @@
+-import numpy as np
+-
+-
+-def _sparsify_top_percentile(arr: np.ndarray, p: float) -> np.ndarray: ...
+-
+-def sparse_assignment(cost_matrix: np.ndarray, p: float) -> np.ndarray: ...
+-

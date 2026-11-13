@@ -1,0 +1,36 @@
+diff --git a/R/bootstrap.R b/R/bootstrap.R
+index 6e1d11f..1c94b07 100644
+--- a/R/bootstrap.R
++++ b/R/bootstrap.R
+@@ -418,10 +418,9 @@ process_bootstrap <- function(i, samp_name, kal_path,
+       rm(bs_tpm)
+       # Make long tidy table; this step is much faster
+       # using data.table melt rather than tidyr gather
+-      tidy_tpm <- data.table::melt(bs_tpm_df, id.vars = "bootstrap_num",
++      tidy_tpm <- data.table::melt(as.data.table(bs_tpm_df), id.vars = "bootstrap_num",
+                                    variable.name = "target_id",
+                                    value.name = "tpm")
+-      tidy_tpm <- data.table::as.data.table(tidy_tpm)
+       rm(bs_tpm_df)
+       tidy_tpm$target_id <- as.character(tidy_tpm$target_id)
+       tidy_tpm <- merge(tidy_tpm, mappings, by = "target_id",
+@@ -458,7 +457,7 @@ process_bootstrap <- function(i, samp_name, kal_path,
+     rm(bs_mat)
+     # data.table melt function is much faster than tidyr's gather function
+     # output is a long table with each bootstrap's value for each target_id
+-    tidy_bs <- data.table::melt(bs_df, id.vars = "bootstrap_num",
++    tidy_bs <- data.table::melt(data.table::as.data.table(bs_df), id.vars = "bootstrap_num",
+                                 variable.name = "target_id",
+                                 value.name = "est_counts")
+     rm(bs_df)
+@@ -485,8 +484,9 @@ process_bootstrap <- function(i, samp_name, kal_path,
+                                           mappings)
+     # this step undoes the tidying to get back a matrix format
+     # target_ids here are now the aggregation column ids
+-    bs_mat <- data.table::dcast(scaled_bs, sample ~ target_id,
++    bs_mat <- data.table::dcast(data.table::as.data.table(scaled_bs), sample ~ target_id,
+                                 value.var = "scaled_reads_per_base")
++    bs_mat <- as.data.frame(bs_mat)
+     # this now has the same format as the transcript matrix
+     # but it uses gene ids
+     bs_mat <- as.matrix(bs_mat[, -1])

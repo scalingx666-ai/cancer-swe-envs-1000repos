@@ -1,0 +1,33 @@
+diff --git a/Modules/Common/include/mirtk/Vtk.h b/Modules/Common/include/mirtk/Vtk.h
+index c10433d4..64cf7b34 100644
+--- a/Modules/Common/include/mirtk/Vtk.h
++++ b/Modules/Common/include/mirtk/Vtk.h
+@@ -22,13 +22,13 @@
+ 
+ #include "mirtk/String.h"
+ 
+-#include "vtkConfigure.h"
++#include "vtkVersionMacros.h"
++
+ #include "vtkNew.h"
+ #include "vtkSmartPointer.h"
+ #include "vtkDataArray.h"
+ #include "vtkDataSetAttributes.h"
+ #include "vtkIdList.h"
+-#include "vtkVersionMacros.h"
+ #include "vtkDataSet.h"
+ #include "vtkPolyData.h"
+ 
+diff --git a/Modules/Common/include/mirtk/VtkMath.h b/Modules/Common/include/mirtk/VtkMath.h
+index fbc4b7db..278d5639 100644
+--- a/Modules/Common/include/mirtk/VtkMath.h
++++ b/Modules/Common/include/mirtk/VtkMath.h
+@@ -20,7 +20,7 @@
+ #ifndef MIRTK_VtkMath_H
+ #define MIRTK_VtkMath_H
+ 
+-#include "vtkConfigure.h" // VTK version macros 
++#include "vtkVersionMacros.h"
+ 
+ 
+ // See http://www.paraview.org/Bug/view.php?id=14164

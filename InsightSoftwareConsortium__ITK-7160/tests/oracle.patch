@@ -1,0 +1,33 @@
+diff --git a/Modules/Remote/CudaCommon.remote.cmake b/Modules/Remote/CudaCommon.remote.cmake
+index 86c85e2f9b9..8cffc7e0250 100644
+--- a/Modules/Remote/CudaCommon.remote.cmake
++++ b/Modules/Remote/CudaCommon.remote.cmake
+@@ -42,5 +42,5 @@ itk_fetch_module(
+   "Framework for processing images with Cuda."
+   MODULE_COMPLIANCE_LEVEL 3
+   GIT_REPOSITORY https://github.com/RTKConsortium/ITKCudaCommon.git
+-  GIT_TAG a68dd36342ee907859087d052cb4841ba3cf5fce
++  GIT_TAG a4df831f8068a8bdea88a1169b9bae61e6aab1e2
+   )
+diff --git a/Modules/Remote/RTK.remote.cmake b/Modules/Remote/RTK.remote.cmake
+index 6c456775d28..4ff8e9cc561 100644
+--- a/Modules/Remote/RTK.remote.cmake
++++ b/Modules/Remote/RTK.remote.cmake
+@@ -42,5 +42,5 @@ itk_fetch_module(
+   "Reconstruction Toolkit (RTK) https://www.openrtk.org/"
+   MODULE_COMPLIANCE_LEVEL 3
+   GIT_REPOSITORY https://github.com/RTKConsortium/RTK.git
+-  GIT_TAG 8628836c0a5ae0df4c1ea03d238b2831937f2a7e
++  GIT_TAG d396e17c034f92bd141714fa0b02ad97e0eef7d7
+   )
+diff --git a/Modules/Remote/Ultrasound.remote.cmake b/Modules/Remote/Ultrasound.remote.cmake
+index 8ee70ce93db..401ac1f09d6 100644
+--- a/Modules/Remote/Ultrasound.remote.cmake
++++ b/Modules/Remote/Ultrasound.remote.cmake
+@@ -63,5 +63,5 @@ https://dx.doi.org/10.1109/ISBI.2016.7493437
+ https://pdfs.semanticscholar.org/6bcd/1e7adbc24e15c928a7ad5af77bbd5da29c30.pdf"
+   MODULE_COMPLIANCE_LEVEL 3
+   GIT_REPOSITORY https://github.com/KitwareMedical/ITKUltrasound.git
+-  GIT_TAG 44b5def634f5f13c2ab1e5647f7d3cdb6c58afbf
++  GIT_TAG 7fa7c2e658a9018223aa7e9d79783964ed05c084
+   )

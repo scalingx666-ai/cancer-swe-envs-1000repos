@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Tesseract-MI__prostatecancer.ai-42"
+description = "first reroute failed, trying another approach"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "prostatecancer.ai",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Tesseract-MI/prostatecancer.ai"
+ref = "9ad79da08869fd2f706d6cbfa1e4ff10663e7e50"
+reference = "https://github.com/Tesseract-MI/prostatecancer.ai/pull/42"
+source_access = "auto"
+built_at = "2026-11-13T15:44:35.875138+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:308bbed06773838001d3565c7c1f77d6eddf793eb10967b45eeabb0c9a210b4a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-10-07T22:20:05Z"
+diff_format = "unified"
+context_files = [
+    "packages/ohif-core/client/components/bootstrap/dialog/ai.js",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

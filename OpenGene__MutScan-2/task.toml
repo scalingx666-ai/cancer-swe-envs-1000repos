@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/OpenGene__MutScan-2"
+description = "update cancer.csv"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "MutScan",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "OpenGene/MutScan"
+ref = "2bd86d7ea7af9f663d0e27eb922de30c43cfe8a9"
+reference = "https://github.com/OpenGene/MutScan/pull/2"
+source_access = "auto"
+built_at = "2026-11-13T15:43:23.520161+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e8f86fd024ef6053c0c67d083c5edcfdf2404922cc504a7c0f67f9c0cf0702b8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2016-11-22T06:16:49Z"
+diff_format = "unified"
+context_files = [
+    "mutation/cancer.csv",
+    "src/builtinmutation.h",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 22
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

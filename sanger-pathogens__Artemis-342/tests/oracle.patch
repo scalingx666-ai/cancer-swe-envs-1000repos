@@ -1,0 +1,13 @@
+diff --git a/src/main/java/uk/ac/sanger/artemis/components/alignment/SAMRecordFilter.java b/src/main/java/uk/ac/sanger/artemis/components/alignment/SAMRecordFilter.java
+index f769a5bbe..0a4d66809 100644
+--- a/src/main/java/uk/ac/sanger/artemis/components/alignment/SAMRecordFilter.java
++++ b/src/main/java/uk/ac/sanger/artemis/components/alignment/SAMRecordFilter.java
+@@ -46,7 +46,7 @@ public SAMRecordFilter(final BamView bamView)
+     c.gridy = nrows++;
+     
+     // MAPQ
+-    pane.add(new JLabel(" By Mappying Quality (mapq) cut-off:"),c);
++    pane.add(new JLabel(" By Mapping Quality (mapq) cut-off:"),c);
+     
+     c.gridy = nrows++;
+     c.gridwidth = 1;

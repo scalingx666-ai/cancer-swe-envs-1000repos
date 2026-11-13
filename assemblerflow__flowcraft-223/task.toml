@@ -1,0 +1,75 @@
+version = "1.0"
+
+[task]
+name = "default/assemblerflow__flowcraft-223"
+description = "update with changes in dev"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "flowcraft",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "assemblerflow/flowcraft"
+ref = "b03b42770b6da465368a3ff1c41524bc527cdd94"
+reference = "https://github.com/assemblerflow/flowcraft/pull/223"
+source_access = "auto"
+built_at = "2026-11-13T16:06:11.690045+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fb49904e2b08f7c6db997bd443360b2215193523d78e375ecfdd7d50ea2cdcfa"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-09-16T13:41:49Z"
+diff_format = "unified"
+context_files = [
+    "changelog.md",
+    "flowcraft/flowcraft.py",
+    "flowcraft/generator/components/mapping.py",
+    "flowcraft/generator/components/metagenomics.py",
+    "flowcraft/generator/components/variant_calling.py",
+    "flowcraft/generator/engine.py",
+    "flowcraft/generator/error_handling.py",
+    "flowcraft/generator/inspect.py",
+    "flowcraft/generator/templates/Helper.groovy",
+    "flowcraft/generator/templates/downsample_fastq.nf",
+    "flowcraft/generator/templates/vamb.nf",
+    "flowcraft/templates/downsample_fastq.py",
+    "flowcraft/templates/trimmomatic.py",
+    "flowcraft/tests/test_flowcraft.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 300
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

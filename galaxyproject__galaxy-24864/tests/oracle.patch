@@ -1,0 +1,80 @@
+diff --git a/.github/workflows/build_container_image.yaml b/.github/workflows/build_container_image.yaml
+index 1d7af411562a..9312c72ee312 100644
+--- a/.github/workflows/build_container_image.yaml
++++ b/.github/workflows/build_container_image.yaml
+@@ -60,7 +60,7 @@ jobs:
+           platforms: linux/amd64
+ 
+       - name: Login to GHCR
+-        uses: docker/login-action@v4.7.0
++        uses: docker/login-action@v4.8.0
+         with:
+           registry: ghcr.io
+           username: ${{ github.repository_owner }}
+@@ -122,13 +122,13 @@ jobs:
+       - name: Set up Docker Buildx
+         uses: docker/setup-buildx-action@v4.4.1
+       - name: Login to quay.io
+-        uses: docker/login-action@v4.7.0
++        uses: docker/login-action@v4.8.0
+         with:
+           registry: quay.io
+           username: ${{ secrets.QUAY_USERNAME }}
+           password: ${{ secrets.QUAY_PASSWORD }}
+       - name: Login to DockerHub
+-        uses: docker/login-action@v4.7.0
++        uses: docker/login-action@v4.8.0
+         with:
+           username: ${{ secrets.DOCKERHUB_USERNAME }}
+           password: ${{ secrets.DOCKERHUB_PASSWORD }}
+diff --git a/.github/workflows/codeql-analysis.yml b/.github/workflows/codeql-analysis.yml
+index f5da60b88761..e6cccd440ff2 100644
+--- a/.github/workflows/codeql-analysis.yml
++++ b/.github/workflows/codeql-analysis.yml
+@@ -46,7 +46,7 @@ jobs:
+ 
+       # Initializes the CodeQL tools for scanning.
+       - name: Initialize CodeQL
+-        uses: github/codeql-action/init@v4.39.1
++        uses: github/codeql-action/init@v4.39.3
+         with:
+           languages: ${{ matrix.language }}
+           # If you wish to specify custom queries, you can do so here or in a config file.
+@@ -62,7 +62,7 @@ jobs:
+       # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
+       # If this step fails, then you should remove it and run the build manually (see below)
+       - name: Autobuild
+-        uses: github/codeql-action/autobuild@v4.39.1
++        uses: github/codeql-action/autobuild@v4.39.3
+ 
+       # ℹ️ Command-line programs to run using the OS shell.
+       # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
+@@ -76,4 +76,4 @@ jobs:
+       #   make release
+ 
+       - name: Perform CodeQL Analysis
+-        uses: github/codeql-action/analyze@v4.39.1
++        uses: github/codeql-action/analyze@v4.39.3
+diff --git a/.github/workflows/metadata_image.yaml b/.github/workflows/metadata_image.yaml
+index 57adf69c1f76..3cc6ccc678e5 100644
+--- a/.github/workflows/metadata_image.yaml
++++ b/.github/workflows/metadata_image.yaml
+@@ -64,7 +64,7 @@ jobs:
+           # Defaults deliberately exercise the latest stable release build.
+       - name: Login to Quay
+         if: github.event_name != 'pull_request' && github.repository == 'galaxyproject/galaxy'
+-        uses: docker/login-action@v4.7.0
++        uses: docker/login-action@v4.8.0
+         with:
+           registry: quay.io
+           username: ${{ secrets.QUAY_USERNAME }}
+diff --git a/.github/workflows/zizmor.yaml b/.github/workflows/zizmor.yaml
+index 0ad753209573..8858cfef7f66 100644
+--- a/.github/workflows/zizmor.yaml
++++ b/.github/workflows/zizmor.yaml
+@@ -32,4 +32,4 @@ jobs:
+           persist-credentials: false
+ 
+       - name: Run zizmor 🌈
+-        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
++        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1

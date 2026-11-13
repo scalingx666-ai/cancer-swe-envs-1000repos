@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/getzlab__deTiN-28"
+description = "Fix bug in cluster_segments found while testing on CPTAC data.  This …"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "deTiN",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "getzlab/deTiN"
+ref = "3b0b9598894db0820d79a179b83df8b01f7174d8"
+reference = "https://github.com/getzlab/deTiN/pull/28"
+source_access = "auto"
+built_at = "2026-11-13T15:45:07.639340+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ce192b5f137ea9a32c3479829f3da40a3761d2049560bb58f59a10e3d04dae7b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-09-22T19:14:34Z"
+diff_format = "unified"
+context_files = [
+    "deTiN/deTiN_aSCNA_based_estimate.py",
+    "deTiN/deTiN_utilities.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

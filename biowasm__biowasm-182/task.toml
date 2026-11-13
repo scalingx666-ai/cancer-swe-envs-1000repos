@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/biowasm__biowasm-182"
+description = "Add DIAMOND, Infernal"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "biowasm",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "biowasm/biowasm"
+ref = "da8e1c0297614463420dfb1cf16c99669c420ba0"
+reference = "https://github.com/biowasm/biowasm/pull/182"
+source_access = "auto"
+built_at = "2026-11-13T16:02:48.732117+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7db32f1a74e0a9dd5af8a3ef738b0655ccc3b753d0355e20128de0fdebcb7ec5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-10T08:44:35Z"
+diff_format = "unified"
+context_files = [
+    "biowasm.json",
+    "biowasm.manifest.stg.json",
+    "biowasm.sizes.json",
+    "tools/diamond/compile.sh",
+    "tools/diamond/examples/v2.2.8.html",
+    "tools/diamond/patches/v2.2.8.patch",
+    "tools/infernal/compile.sh",
+    "tools/infernal/examples/infernal-1.1.5.html",
+    "tools/infernal/patches/easel-infernal-1.1.5.patch",
+    "tools/infernal/patches/hmmer-infernal-1.1.5.patch",
+    "tools/infernal/patches/infernal-1.1.5.patch",
+    "web/tests/test_cdn.cy.js",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1060
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

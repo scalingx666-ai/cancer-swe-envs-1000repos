@@ -1,0 +1,63 @@
+diff --git a/R/biplot.R b/R/biplot.R
+index 361ee03..51e1b9e 100644
+--- a/R/biplot.R
++++ b/R/biplot.R
+@@ -206,6 +206,7 @@ biplot <- function(
+   y = 'PC2',
+   showLoadings = FALSE,
+   ntopLoadings = 5,
++  LoadingsNames = NULL,
+   showLoadingsNames = if (showLoadings) TRUE else FALSE,
+   colLoadingsNames = 'black',
+   sizeLoadingsNames = 3,
+@@ -405,12 +406,22 @@ biplot <- function(
+ 
+   # plot loadings arrows?
+   if (showLoadings) {
+-    # get top ntopLoadings to display
++    # get top ntopLoadings to display, or use user-supplied LoadingsNames
+     xidx <- order(abs(pcaobj$loadings[,x]), decreasing = TRUE)
+     yidx <- order(abs(pcaobj$loadings[,y]), decreasing = TRUE)
+-    vars <- unique(c(
+-      rownames(pcaobj$loadings)[xidx][seq_len(ntopLoadings)],
+-      rownames(pcaobj$loadings)[yidx][seq_len(ntopLoadings)]))
++    if (!is.null(LoadingsNames)) {
++      # validate provided names exist in loadings
++      missing.names <- setdiff(LoadingsNames, rownames(pcaobj$loadings))
++      if (length(missing.names) > 0) {
++        stop(paste0('The following LoadingsNames are not present in pcaobj$loadings: ',
++          paste(missing.names, collapse = ', ')))
++      }
++      vars <- unique(LoadingsNames)
++    } else {
++      vars <- unique(c(
++        rownames(pcaobj$loadings)[xidx][seq_len(ntopLoadings)],
++        rownames(pcaobj$loadings)[yidx][seq_len(ntopLoadings)]))
++    }
+ 
+     # get scaling parameter to match between variable loadings and rotated loadings
+     r <- min(
+diff --git a/man/biplot.Rd b/man/biplot.Rd
+index 356a8fc..e89b5f6 100644
+--- a/man/biplot.Rd
++++ b/man/biplot.Rd
+@@ -10,6 +10,7 @@ biplot(
+   y = "PC2",
+   showLoadings = FALSE,
+   ntopLoadings = 5,
++  LoadingsNames = NULL,
+   showLoadingsNames = if (showLoadings) TRUE else FALSE,
+   colLoadingsNames = "black",
+   sizeLoadingsNames = 3,
+@@ -117,6 +118,11 @@ based on absolute ordered variable loading for each PC in the biplot.
+ As a result of looking across 2 PCs, it can occur whereby greater than
+ this number are actually displayed.}
+ 
++\item{LoadingsNames}{Optional character vector of variable names to display
++as loadings. If provided, these names will be used instead of selecting the
++top variables by absolute loading magnitude. All names must be present in
++\code{rownames(pcaobj$loadings)}.}
++
+ \item{showLoadingsNames}{Logical, indicating to show variable loadings names
+ or not.}
+ 

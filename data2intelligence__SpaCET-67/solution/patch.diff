@@ -1,0 +1,85 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index ce254f1..efc45ae 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -26,6 +26,7 @@ Imports:
+     cluster,
+     parallel,
+     pbmcapply,
++    RhpcBLASctl,
+     psych,
+     BiRewire,
+     limma,
+diff --git a/R/deconvolution.R b/R/deconvolution.R
+index d906a0a..f6f834b 100644
+--- a/R/deconvolution.R
++++ b/R/deconvolution.R
+@@ -466,6 +466,7 @@ SpatialDeconv <- function(
+     coreNo
+ )
+ {
++  restoreThreads <- pinBLASThreads(); on.exit(restoreThreads(), add=TRUE)
+   Reference <- Ref$refProfiles
+   Signature <- Ref$sigGenes
+   Tree <- Ref$lineageTree
+diff --git a/R/extensions.R b/R/extensions.R
+index fa5bbe8..e56ec34 100644
+--- a/R/extensions.R
++++ b/R/extensions.R
+@@ -456,6 +456,7 @@ generateRef <- function(
+     coreNo = coreNo
+ )
+ {
++  restoreThreads <- pinBLASThreads(); on.exit(restoreThreads(), add=TRUE)
+   sc.matrix.data.norm <- sweep(sc.matrix.data, 2, Matrix::colSums(sc.matrix.data), "/") *1e5
+ 
+   sc.matrix.data.log2 <- log2(sc.matrix.data.norm+1)
+diff --git a/R/interaction.R b/R/interaction.R
+index 955a06b..a2976da 100644
+--- a/R/interaction.R
++++ b/R/interaction.R
+@@ -177,6 +177,7 @@ SpaCET.visualize.colocalization <- function(SpaCET_obj)
+ #'
+ SpaCET.CCI.LRNetworkScore <- function(SpaCET_obj, coreNo=6)
+ {
++  restoreThreads <- pinBLASThreads(); on.exit(restoreThreads(), add=TRUE)
+   coreNoDect <- parallel::detectCores(logical = FALSE)
+   if(coreNoDect<coreNo)
+   {
+diff --git a/R/utilities.R b/R/utilities.R
+index 81d5b3b..aad7369 100644
+--- a/R/utilities.R
++++ b/R/utilities.R
+@@ -978,3 +978,32 @@ mouse2human_mat <- function(mat) {
+ #
+ #  return(SpaCET_obj)
+ #}
++
++
++# Fork-based parallelism (pbmcapply::pbmclapply -> parallel::mclapply) deadlocks
++# when the parent process has already executed a multi-threaded BLAS call under
++# an OpenMP runtime (e.g. OpenBLAS-OpenMP, the FlexiBLAS default on Rocky/RHEL 9):
++# libgomp's worker-thread pool does not survive fork(), so the first threaded
++# BLAS call in a child waits forever. Pin BLAS/OpenMP to a single thread for the
++# duration of any function that forks, and restore afterwards (GitHub issue #66).
++# Setting OMP_NUM_THREADS via Sys.setenv() does not work once R has started.
++pinBLASThreads <- function()
++{
++  if(!requireNamespace("RhpcBLASctl", quietly=TRUE))
++  {
++    warning("RhpcBLASctl is not installed; if R uses an OpenMP-threaded BLAS, ",
++            "parallel steps may hang. Start R with OMP_NUM_THREADS=1.", call.=FALSE)
++    return(function() invisible(NULL))
++  }
++  omp0 <- RhpcBLASctl::omp_get_max_threads()
++  blas0 <- RhpcBLASctl::blas_get_num_procs()
++  RhpcBLASctl::blas_set_num_threads(1)
++  RhpcBLASctl::omp_set_num_threads(1)
++  function()
++  {
++    # blas_set_num_threads() also moves the OpenMP count on OpenMP-threaded
++    # BLAS builds, but not the reverse, so restore the OpenMP count last.
++    RhpcBLASctl::blas_set_num_threads(blas0)
++    RhpcBLASctl::omp_set_num_threads(omp0)
++  }
++}

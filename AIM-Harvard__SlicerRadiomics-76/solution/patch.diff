@@ -1,0 +1,13 @@
+diff --git a/SlicerRadiomics/SlicerRadiomics.py b/SlicerRadiomics/SlicerRadiomics.py
+index 813d3ed..dfd842c 100644
+--- a/SlicerRadiomics/SlicerRadiomics.py
++++ b/SlicerRadiomics/SlicerRadiomics.py
+@@ -281,7 +281,7 @@ def _addCustomizationSection(self):
+     self.binWidthSliderWidget.singleStep = 1
+     self.binWidthSliderWidget.decimals = 2
+     self.binWidthSliderWidget.minimum = 0.01
+-    self.binWidthSliderWidget.maximum = 100
++    self.binWidthSliderWidget.maximum = 200
+     self.binWidthSliderWidget.value = 25
+     self.binWidthSliderWidget.toolTip = 'Set the bin width'
+     settingsFormLayout.addRow('Bin Width', self.binWidthSliderWidget)

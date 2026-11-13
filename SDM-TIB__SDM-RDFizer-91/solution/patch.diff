@@ -1,0 +1,13 @@
+diff --git a/rdfizer/rdfizer/semantify.py b/rdfizer/rdfizer/semantify.py
+index 10dc97e..11448a6 100755
+--- a/rdfizer/rdfizer/semantify.py
++++ b/rdfizer/rdfizer/semantify.py
+@@ -11,7 +11,7 @@
+ import time
+ import json
+ import xml.etree.ElementTree as ET
+-#import psycopg2
++import psycopg2
+ import pandas as pd
+ from .functions import *
+ 

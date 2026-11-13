@@ -1,0 +1,75 @@
+version = "1.0"
+
+[task]
+name = "default/biowasm__biowasm-183"
+description = "Add Rust tools to biowasm!"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "biowasm",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "biowasm/biowasm"
+ref = "44a13272abf8831b18bba578489351abb4c71330"
+reference = "https://github.com/biowasm/biowasm/pull/183"
+source_access = "auto"
+built_at = "2026-11-13T16:02:45.089603+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6491416e2d5184ddcb84f2bbf7334e8baa965a16836794cbd5300f800fc1a00a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-10T09:46:16Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "bin/shared.sh",
+    "biowasm.json",
+    "biowasm.manifest.stg.json",
+    "biowasm.sizes.json",
+    "tools/perbase/compile.sh",
+    "tools/perbase/examples/v1.4.1.html",
+    "tools/perbase/patches/v1.4.1.patch",
+    "tools/rammap/compile.sh",
+    "tools/rammap/examples/v1.2.0.html",
+    "tools/rammap/patches/v1.2.0.patch",
+    "web/src/routes/+page.svelte",
+    "web/src/routes/documentation/+page.svelte",
+    "web/tests/test_cdn.cy.js",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 340
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

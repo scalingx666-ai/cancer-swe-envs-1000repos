@@ -1,0 +1,18 @@
+diff --git a/R/visualization.R b/R/visualization.R
+index 806d49f0..c38a5a44 100644
+--- a/R/visualization.R
++++ b/R/visualization.R
+@@ -1001,9 +1001,11 @@ RegionPlot <- function(
+           )
+         )
+       }
+-      # fix bin label
+-      df$bin <- (df$bin - (upstream/window)) * window
+     }
++    
++    # fix bin label
++    df$bin <- (df$bin - (upstream/window)) * window
++
+     df$assay <- assay[[j]]
+     all.assay <- rbind(all.assay, df)
+   }

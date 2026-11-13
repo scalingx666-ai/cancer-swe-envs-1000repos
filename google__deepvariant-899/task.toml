@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/google__deepvariant-899"
+description = "Adding new blog post."
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "deepvariant",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "google/deepvariant"
+ref = "98bef22429978cc8b6fb3cb6c603311059623ea8"
+reference = "https://github.com/google/deepvariant/pull/899"
+source_access = "auto"
+built_at = "2026-11-13T15:46:46.310741+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ea14fa5e6d849a73d73be83d22dc7e5fbcf35b8635f89fe70e63844b97917178"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-10-22T22:53:03Z"
+diff_format = "unified"
+context_files = [
+    "_data/authors.yml",
+    "_posts/2024-10-22-learning-deepvariants-hidden-powers.markdown",
+    "assets/images/2024-10-22/figure1.nospace.json",
+    "assets/images/2024-10-22/figure2.nospace.json",
+    "assets/images/2024-10-22/figure3.nospace.json",
+    "assets/images/2024-10-22/figure4.nospace.json",
+    "assets/images/2024-10-22/figure5.nospace.json",
+    "assets/images/2024-10-22/thumbnail.png",
+    "assets/images/authors/akiraly.jpg",
+    "assets/images/authors/beenkim.jpg",
+    "assets/images/authors/yuchenzz.jpg",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 216
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

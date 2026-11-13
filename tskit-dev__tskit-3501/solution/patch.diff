@@ -1,0 +1,71 @@
+diff --git a/c/CHANGELOG.rst b/c/CHANGELOG.rst
+index 253d64316e..4daf2132f9 100644
+--- a/c/CHANGELOG.rst
++++ b/c/CHANGELOG.rst
+@@ -1,8 +1,8 @@
+ --------------------
+-[1.3.2] - 2026-XX-XX
++[1.3.2] - 2026-10-30
+ --------------------
+ 
+-In development
++**Features**
+ 
+ - Add ``tsk_json_struct_metadata_get_blob`` function
+   (:user:`benjeffery`, :pr:`3306`)
+diff --git a/c/VERSION.txt b/c/VERSION.txt
+index 6261a05bb0..d5e98f723f 100644
+--- a/c/VERSION.txt
++++ b/c/VERSION.txt
+@@ -1 +1 @@
+-1.3.1
+\ No newline at end of file
++1.3.2
+\ No newline at end of file
+diff --git a/c/tskit/core.h b/c/tskit/core.h
+index bd958129c0..1d15f3b712 100644
+--- a/c/tskit/core.h
++++ b/c/tskit/core.h
+@@ -152,7 +152,7 @@ to the API or ABI are introduced, i.e., the addition of a new function.
+ The library patch version. Incremented when any changes not relevant to the
+ to the API or ABI are introduced, i.e., internal refactors of bugfixes.
+ */
+-#define TSK_VERSION_PATCH   1
++#define TSK_VERSION_PATCH   2
+ /** @} */
+ 
+ /*
+diff --git a/python/CHANGELOG.rst b/python/CHANGELOG.rst
+index 346c1b7307..ee9bf8a2cf 100644
+--- a/python/CHANGELOG.rst
++++ b/python/CHANGELOG.rst
+@@ -1,5 +1,5 @@
+ --------------------
+-[1.0.4] - 2026-XX-XX
++[1.0.4] - 2026-10-30
+ --------------------
+ 
+ **Maintenance**
+diff --git a/python/tests/test_python_c.py b/python/tests/test_python_c.py
+index 5f18699d82..799ce810a8 100644
+--- a/python/tests/test_python_c.py
++++ b/python/tests/test_python_c.py
+@@ -4912,7 +4912,7 @@ def test_kastore_version(self):
+ 
+     def test_tskit_version(self):
+         version = _tskit.get_tskit_version()
+-        assert version == (1, 3, 1)
++        assert version == (1, 3, 2)
+ 
+     def test_tskit_version_file(self):
+         maj, min_, patch = _tskit.get_tskit_version()
+diff --git a/python/tskit/_version.py b/python/tskit/_version.py
+index ba4310803d..12358aa06c 100644
+--- a/python/tskit/_version.py
++++ b/python/tskit/_version.py
+@@ -1,4 +1,4 @@
+ # Definitive location for the version number.
+ # During development, should be x.y.z.devN
+ # For beta should be x.y.zbN
+-tskit_version = "1.0.4.dev0"
++tskit_version = "1.0.4"

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/schatzlab__genomescope-2"
+description = "Add k value used to plots."
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "genomescope",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "schatzlab/genomescope"
+ref = "9611169fe1e0ce16a8d1f4d2cd4d32763daa3a7a"
+reference = "https://github.com/schatzlab/genomescope/pull/2"
+source_access = "auto"
+built_at = "2026-11-13T15:31:59.639126+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:28497fe18492485b35a3412178111850d2ebd028dba3bce1d90ed851e6e3838a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-03-03T14:37:20Z"
+diff_format = "unified"
+context_files = [
+    "genomescope.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 34
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

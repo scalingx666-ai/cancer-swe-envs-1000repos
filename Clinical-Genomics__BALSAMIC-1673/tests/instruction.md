@@ -1,0 +1,183 @@
+# Issue
+
+**Title:** fix: tn cnvkit plots
+
+## Description
+
+## Description
+
+<!-- Provide a brief overview of your PR and link any relevant user stories or issues. -->
+
+Discovered during validation that the tumor normal TGA cases did not have the case id in the CNVkit plots, and realized that the changes made for the CNVkit plots had only been applied to the tumor only workflow. 
+
+Opened issue for the min-probes parameter: 
+
+#### Added
+
+- cust-id to CNVkit plots for tumor normal workflow
+- VAF panel to CNVkit plots for tumor normal workflow
+
+## Documentation
+
+<!-- Link all added or updated documents. -->
+
+- [ ] N/A
+- [ ] Updated Balsamic documentation to reflect the changes as needed for this PR.
+    - [Document Name]
+
+## Tests
+
+<!-- Describe in detail how you tested your changes to help reviewers validate the code. -->
+<!-- Include screenshots or visual representations of your changes. -->
+
+### Feature Tests
+
+<!-- Include tests relevant to the changes in this PR. -->
+
+- [ ] N/A
+- [ ] Test [Description]
+    - [Screenshot]
+
+### Pipeline Integrity Tests
+
+<!-- Include tests to verify the integrity of the different Balsamic workflows. -->
+
+- **Report deliver (generation of the `.hk` file)**
+    - [x] N/A
+    - [ ] Verified
+- **TGA T/O Workflow**
+    - [x] N/A
+    - [ ] Verified
+- **TGA T/N Workflow**
+    - [x] N/A
+    - [ ] Verified
+- **UMI T/O Workflow**
+    - [x] N/A
+    - [ ] Verified
+- **UMI T/N Workflow**
+    - [x] N/A
+    - [ ] Verified
+- **WGS T/O Workflow**
+    - [x] N/A
+    - [ ] Verified
+- **WGS T/N Workflow**
+    - [x] N/A
+    - [ ] Verified
+- **QC Workflow**
+    - [x] N/A
+    - [ ] Verified
+- **PON Workflow**
+    - [x] N/A
+    - [ ] Verified
+
+## Clinical Genomics Stockholm
+
+<!-- Do not reveal clinical data, and if applicable, place it within the internal Google Drive directory. -->
+
+### Documentation
+
+<!-- Link related issues or PRs for necessary changes. -->
+
+- **Atlas documentation**
+    - [x] N/A
+    - [ ] Updated: [Link]
+- **Web portal for Clinical Genomics**
+    - [x] N/A
+    - [ ] Updated: [Link]
+
+### Panel of Normal specific criteria
+
+<!-- If the PR includes a new PoN adhere to the criteria below. -->
+
+- [ ] The PR includes the addition of a new Panel of Normals
+- [ ] The samples have been verified to adhere to the sample selection criteria on [Atlas PoN creation instructions for Balsamic](https://atlas.scilifelab.se/infrastructure/BALSAMIC/balsamic_pon/#procedure)
+
+### User Changes
+
+<!-- Please provide justification if you select N/A and the changes affect the output or results. -->
+
+- [x] N/A
+- [ ] This PR affects the output files or results.
+    - [ ] User feedback is considered unnecessary because [Justification].
+    - [ ] Affected users have been included in the development process and given a chance to provide feedback.
+
+### Infrastructure Changes
+
+<!-- Link related issues or PRs for necessary changes. -->
+<!-- Make sure that the linked PRs include relevant tests. -->
+
+- **Stored files in Housekeeper**
+    - [x] N/A
+    - [ ] Updated: [Link]
+- **CG (CLI and delivered/uploaded files)**
+    - [x] N/A
+    - [ ] Updated: [Link]
+- **Servers (configuration files on Hasta)**
+    - [x] N/A
+    - [ ] Updated: [Link]
+- **Scout interface**
+    - [x] N/A
+    - [ ] Updated: [Link]
+
+### Validation criteria
+
+<!-- Create validation criteria for this PR or mark as unnecessary. -->
+
+Validation criteria to be added to validation report PR: [LINK-TO-VALIDATION-REPORT-PR from the [validations repository](https://github.com/Clinical-Genomics/validations/)]
+
+**Version specific criteria**
+
+- Text here or N/A
+
+
+
+> [!IMPORTANT]
+> One of the below checkboxes for validation need to be checked 
+
+- [ ] Added version specific validation criteria to validation report
+- [ ] Changes validated in standard sections: [validation-section]
+- [ ] Validation criteria not necessary
+
+## Checklist
+
+> [!IMPORTANT]  
+> Ensure that all checkboxes below are ticked before merging.
+
+### For Developers
+
+- **PR Description**
+    - [ ] Provided a comprehensive description of the PR.
+    - [ ] Linked relevant user stories or issues to the PR.
+- **Documentation**
+    - [ ] Verified and updated documentation if necessary.
+- **Validation criteria**
+    - [ ] Completed the validation criteria section of the template.
+- **Tests**
+    - [ ] Described and tested the functionality addressed in the PR.
+    - [ ] Ensured integration of the new code with existing workflows.
+    - [ ] Confirmed that meaningful unit tests were added for the changes introduced.
+    - [ ] Checked that the PR has successfully passed all relevant code smells and coverage checks.
+- **Review**
+    - [ ] Addressed and resolved all the feedback provided during the code review process.
+    - [ ] Obtained final approval from designated reviewers.
+
+### For Reviewers
+
+- **Code**
+    - [ ] Code implements the intended features or fixes the reported issue.
+    - [ ] Code follows the project's coding standards and style guide.
+- **Documentation**
+    - [ ] Pipeline changes are well-documented in the CHANGELOG and relevant documentation.
+- **Validation criteria**
+    - [ ] The author has completed the validation criteria section of the template
+- **Tests**
+    - [ ] The author provided a description of their manual testing, including consideration of edge cases and boundary
+      conditions where applicable, with satisfactory results.
+- **Review**
+    - [ ] Confirmed that the developer has addressed all the comments during the code review.
+
+<!-- Add any other relevant information or specific checks necessary for your PR. -->
+
+## Task
+
+Modify the repository so that the issue described above is resolved. The repository is checked out at base commit `c6fb06648f00`. Edit files in place; the verifier captures your changes via `git diff` and scores them against an oracle patch using SWE-RL-style diff-similarity reward.

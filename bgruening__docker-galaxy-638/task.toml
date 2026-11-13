@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/bgruening__docker-galaxy-638"
+description = "Build the Galaxy 26.1 image with HTCondor and ARM64 support"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "docker-galaxy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bgruening/docker-galaxy"
+ref = "a704596b4a7308f996c00453d3ab61f2109c1e5d"
+reference = "https://github.com/bgruening/docker-galaxy/pull/638"
+source_access = "auto"
+built_at = "2026-11-13T15:32:32.373439+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a17e9df3be650f4a44dce449d989b44ec4ee3b1a4572156598fff0458c462726"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-23T15:54:50Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/galaxy-arm64.yml",
+    ".github/workflows/single.sh",
+    "galaxy/Dockerfile",
+    "galaxy/ansible/flower.yml",
+    "galaxy/ansible/nginx.yml",
+    "galaxy/ansible/rabbitmq.yml",
+    "galaxy/ansible/templates/job_conf.xml.j2",
+    "galaxy/ansible/tusd.yml",
+    "galaxy/startup2.sh",
+    "test/smoke.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 230
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

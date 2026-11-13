@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/cbg-ethz__NGS-pipe-32"
+description = "Function emcncf2 is deprectated. Use emcncf instead. Additionally, th…"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "NGS-pipe",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "cbg-ethz/NGS-pipe"
+ref = "16087f227cfe7c5a36e87186a406e333b300695d"
+reference = "https://github.com/cbg-ethz/NGS-pipe/pull/32"
+source_access = "auto"
+built_at = "2026-11-13T15:43:49.185465+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f330762e859efd4804423352738c5bbd2967854867cd21c05ffed6f6fc9f0f76"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-01-28T15:10:22Z"
+diff_format = "unified"
+context_files = [
+    "scripts/facets.R",
+    "scripts/facets_reformat_correctChromName.py",
+    "scripts/filter_facets_copynumber.py",
+    "snake/common/copy_number/copy_number_snake.py",
+    "snake/config.json",
+    "snake/wes/wes_snake.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 290
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

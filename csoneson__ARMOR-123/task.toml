@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/csoneson__ARMOR-123"
+description = "Fix workflow (STAR) for macOS ARM"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "ARMOR",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "csoneson/ARMOR"
+ref = "7c318df283ca868d55121c1734d42b7a5e239369"
+reference = "https://github.com/csoneson/ARMOR/pull/123"
+source_access = "auto"
+built_at = "2026-11-13T16:14:39.455534+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:808d93aaa395a905b295b965d3eb755c159619c30d8cd1bbf836a52230e4fcbf"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T07:01:38Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/snakemake-run.yaml",
+    "NEWS",
+    "Snakefile",
+    "config.yaml",
+    "envs/environment.yaml",
+    "envs/environment_STAR.yaml",
+    "version",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 26
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

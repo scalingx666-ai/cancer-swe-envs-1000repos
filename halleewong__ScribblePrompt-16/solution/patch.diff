@@ -1,0 +1,40 @@
+diff --git a/requirements.txt b/requirements.txt
+index ffcdb9b..1cf8848 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -6,6 +6,5 @@ numpy
+ matplotlib
+ neurite
+ scikit-image
+-voxynth @ git+https://github.com/dalcalab/voxynth.git
+ pylot @ git+https://github.com/JJGO/pylot.git
+ wandb
+diff --git a/requirements_training.txt b/requirements_training.txt
+new file mode 100644
+index 0000000..9070e08
+--- /dev/null
++++ b/requirements_training.txt
+@@ -0,0 +1 @@
++voxynth @ git+https://github.com/dalcalab/voxynth.git
+\ No newline at end of file
+diff --git a/setup.py b/setup.py
+index 92b77e1..ccb9a07 100644
+--- a/setup.py
++++ b/setup.py
+@@ -3,10 +3,16 @@
+ with open("requirements.txt") as f:
+     requirements = f.read().splitlines()
+ 
++with open("requirements_training.txt") as f:
++    requirements_training = f.read().splitlines()
++
+ setup(
+     name="scribbleprompt",
+     version="0.1.0",
+     python_requires=">=3.9",
+     packages=find_packages(exclude="notebooks"),
+     install_requires=requirements,
++    extras_require={
++        "training": requirements_training,
++    }
+ )

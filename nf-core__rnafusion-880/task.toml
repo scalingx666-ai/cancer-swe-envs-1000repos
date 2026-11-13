@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/nf-core__rnafusion-880"
+description = "Bump version to 4.2.1dev"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "rnafusion",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nf-core/rnafusion"
+ref = "7fd6cc7d808aa1c3091bcdc0dee06b0ebe973eb0"
+reference = "https://github.com/nf-core/rnafusion/pull/880"
+source_access = "auto"
+built_at = "2026-11-13T16:13:42.113079+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a8f074fc58f8982c6eeeaf647540f2750425a57e93b94d428b202d39802f33f9"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T15:08:42Z"
+diff_format = "unified"
+context_files = [
+    ".nf-core.yml",
+    "CHANGELOG.md",
+    "assets/multiqc_config.yml",
+    "nextflow.config",
+    "ro-crate-metadata.json",
+    "tests/test_build.nf.test.snap",
+    "tests/test_stub.nf.test.snap",
+    "tests/test_stub_bam.nf.test.snap",
+    "tests/test_stub_bam_no_index.nf.test.snap",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 106
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

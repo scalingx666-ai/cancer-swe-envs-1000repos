@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/ngless-toolkit__ngless-146"
+description = "Build static Linux image with GitHub Actions"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ngless",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ngless-toolkit/ngless"
+ref = "8fa9b0018e562a04a8dc680207c8a02b92ecfb11"
+reference = "https://github.com/ngless-toolkit/ngless/pull/146"
+source_access = "auto"
+built_at = "2026-11-13T16:17:10.756985+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:30abb5d5920490e25fdb56fee5203019f14a0a9d8c6e5ade04cf4f791e59997d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-06-29T05:25:11Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/build_linux.yml",
+    ".gitlab-ci.yml",
+    "build-scripts/docker_bases/alpine/Dockerfile",
+    "build-scripts/docker_bases/alpine/build.sh",
+    "build-scripts/docker_bases/alpine/upload.sh",
+    "build-scripts/docker_bases/build_upload_all.sh",
+    "build-scripts/docker_bases/ubuntu-devel/Dockerfile",
+    "build-scripts/docker_bases/ubuntu-devel/build.sh",
+    "build-scripts/docker_bases/ubuntu-devel/upload.sh",
+    "build-scripts/docker_bases/ubuntu-ghc-wsl/Dockerfile",
+    "build-scripts/docker_bases/ubuntu-ghc-wsl/build.sh",
+    "build-scripts/docker_bases/ubuntu-ghc-wsl/upload.sh",
+    "build-scripts/docker_bases/ubuntu-old/Dockerfile",
+    "build-scripts/docker_bases/ubuntu-old/build.sh",
+    "build-scripts/docker_bases/ubuntu-old/upload.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 504
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

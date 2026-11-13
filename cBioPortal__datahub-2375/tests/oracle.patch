@@ -1,0 +1,25 @@
+diff --git a/.circleci/config.yml b/.circleci/config.yml
+index 7dbe0b5b8..651c34aa8 100644
+--- a/.circleci/config.yml
++++ b/.circleci/config.yml
+@@ -1,8 +1,8 @@
+-# Python CircleCI 2.0 configuration file
++# Python CircleCI configuration file
+ #
+-# Check https://circleci.com/docs/2.0/language-python/ for more details
++# Check https://circleci.com/docs/language-python/ for more details
+ #
+-version: 2
++version: 2.1
+ jobs:
+   
+   # Job to validate only the changed studies
+@@ -78,8 +78,6 @@ jobs:
+ 
+ # Workflow containing the different jobs
+ workflows:
+-  version: 2
+-
+   # Workflow to run on every commit for new PRs. Does not run when commit
+   # is merged into the master branch.
+   workflow_on_commit:

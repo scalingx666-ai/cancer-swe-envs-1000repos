@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/AdmiralenOla__Scoary-63"
+description = "Changes to vcf2scoary"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "Scoary",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AdmiralenOla/Scoary"
+ref = "36d2e769d413918101bc707a1c283b49c88ae61c"
+reference = "https://github.com/AdmiralenOla/Scoary/pull/63"
+source_access = "auto"
+built_at = "2026-11-13T16:08:00.882138+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:607d5cf7f092bac8c0ca50c8b8a62203ddd17b494a15f4817fde041c0939b30e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-10-04T12:24:29Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "README.md",
+    "scoary/__init__.py",
+    "scoary/vcf2scoary.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 42
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

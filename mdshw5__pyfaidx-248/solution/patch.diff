@@ -1,0 +1,58 @@
+diff --git a/pyfaidx/__init__.py b/pyfaidx/__init__.py
+index 021e667..0560e2d 100755
+--- a/pyfaidx/__init__.py
++++ b/pyfaidx/__init__.py
+@@ -164,10 +164,9 @@ def __getitem__(self, n):
+                 start = None
+                 end = None
+             elif slice_step == -1:  # flip the coordinates when we reverse
+-                if slice_stop == -1:
+-                    slice_stop = 0
+-                start = self_end - slice_stop
+-                end = self_start + slice_stop
++                direction = -1 if self_start > self_end else 1
++                start = self_start + direction * (slice_start + 1 + correction_factor)
++                end = self_start + direction * (slice_stop + 1)
+             else:
+                 # Adjust coordinates based on the original orientation.
+                 # If start > end, the sequence is in reverse orientation and
+diff --git a/tests/test_reverse_sequence_coordinates.py b/tests/test_reverse_sequence_coordinates.py
+new file mode 100644
+index 0000000..776fa6e
+--- /dev/null
++++ b/tests/test_reverse_sequence_coordinates.py
+@@ -0,0 +1,34 @@
++import pytest
++
++from pyfaidx import Sequence
++
++
++@pytest.mark.parametrize('one_based', [False, True])
++@pytest.mark.parametrize('reverse', [False, True])
++@pytest.mark.parametrize('comp', [False, True])
++@pytest.mark.parametrize('region', [
++    slice(8, 2, -1), slice(5, 1, -1), slice(7, None, -1),
++    slice(None, 3, -1), slice(-2, -7, -1), slice(None, None, -1),
++])
++def test_reverse_slice_coordinates(one_based, reverse, comp, region):
++    text = 'ACGTTAGCCTAA'
++    start = 100
++    end = start + len(text) - int(one_based)
++    sequence = Sequence('record', text, start, end)
++    # Track each base's endpoint labels independently of Sequence arithmetic.
++    labels = [(i, i + int(not one_based))
++              for i in range(start, start + len(text))]
++    if reverse:
++        sequence = sequence.reverse
++        labels = [pair[::-1] for pair in labels[::-1]]
++    if comp:
++        sequence = sequence.complement
++
++    result = sequence[region]
++    selected = [pair[::-1] for pair in labels[region]]
++    assert result.seq == sequence.seq[region]
++    assert (result.start, result.end) == (selected[0][0], selected[-1][1])
++    assert result.comp == comp
++    assert result[:].seq == result.seq
++    assert (result[:].start, result[:].end) == (result.start, result.end)
++    assert result.reverse.reverse.fancy_name == result.fancy_name

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Neurosurgery-Brain-Tumor-Center-DiazLab__CONICS-5"
+description = "remove http prefix"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "CONICS",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Neurosurgery-Brain-Tumor-Center-DiazLab/CONICS"
+ref = "eec3c6af6c98aa1e97e81ab2f37010df349c9197"
+reference = "https://github.com/Neurosurgery-Brain-Tumor-Center-DiazLab/CONICS/pull/5"
+source_access = "auto"
+built_at = "2026-11-13T15:38:32.404896+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e1254c884d2031b0f51efd4d4769cafdf8ef6def53dc56c8f7a64de52279d6ae"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-08-14T22:15:25Z"
+diff_format = "unified"
+context_files = [
+    "CONICSmat/R/GetPositions.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

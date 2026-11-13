@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Nesvilab__FragPipe-2731"
+description = "convert . to _ directly in speclib. Supported by DIA-NN, MSBooster, a…"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "FragPipe",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Nesvilab/FragPipe"
+ref = "75b94220b003e0245ac30ca479149bc7724953cc"
+reference = "https://github.com/Nesvilab/FragPipe/pull/2731"
+source_access = "auto"
+built_at = "2026-11-13T15:59:32.425684+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:36eb5475662200b85feef196cd61528bcc8b984b3e094c8f1265caec6b1c1c23"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-03T15:28:13Z"
+diff_format = "unified"
+context_files = [
+    "tools/speclib/gen_con_spec_lib.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/PapenfussLab__gridss-651"
+description = "#615 Updated libgridss to fix misplaced bracket"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "gridss",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "PapenfussLab/gridss"
+ref = "09900c48d6d0e899a155cbc185f3d8e7c511bf05"
+reference = "https://github.com/PapenfussLab/gridss/pull/651"
+source_access = "auto"
+built_at = "2026-11-13T15:32:14.320857+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f8caba99ea6f5ea67a54f67c3e2ea23b8544bdb24dd5d5ae21032890f4856875"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-05-21T07:01:34Z"
+diff_format = "unified"
+context_files = [
+    "scripts/libgridss.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

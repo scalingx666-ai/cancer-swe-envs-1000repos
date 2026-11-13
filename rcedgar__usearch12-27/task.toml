@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/rcedgar__usearch12-27"
+description = "Blocklist"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "usearch12",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "rcedgar/usearch12"
+ref = "4c62ff2b30506e801ed248e4777cf0c6868a1d76"
+reference = "https://github.com/rcedgar/usearch12/pull/27"
+source_access = "auto"
+built_at = "2026-11-13T16:18:42.882149+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4c45ea92ac2f9bcc4e3d25fa50fa3eb53f1a530d6bcca4ae3bc977a86505e606"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-09T13:50:36Z"
+diff_format = "unified"
+context_files = [
+    "src/Makefile",
+    "src/accepter.cpp",
+    "src/o_str.h",
+    "src/queryblocklist.cpp",
+    "src/queryblocklist.h",
+    "src/search.cpp",
+    "src/searcher.cpp",
+    "src/sintaxsearcher.cpp",
+    "src/udbusortedsearcher.cpp",
+    "src/udbusortedsearcherbig.cpp",
+    "src/usearch12.vcxproj",
+    "src/usearch12.vcxproj.filters",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 675
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

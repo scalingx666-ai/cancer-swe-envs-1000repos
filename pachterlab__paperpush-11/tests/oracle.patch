@@ -1,0 +1,1400 @@
+diff --git a/.gitignore b/.gitignore
+index 9dca0cb..c5892af 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -186,13 +186,11 @@ prompts.txt
+ # per-session security tokens, so they must not be committed.
+ *_declarations.html
+ 
+-# Screenshot + HTML captures written by the portal-drift tests when a check
+-# fails (tests/test_portal_drift.py -> common.capture_failure). Diagnostic
+-# scratch that embeds per-session tokens; never commit it.
+-tests/portal_snapshots/_failures/
+ /paper/
+ # Page texts and run state of scripts/check_guidelines.py
+ .guideline_cache/
++# Reports, logs, env and worktree of scripts/scheduled_submit_walkthrough.sh
++.submit_walkthrough/
+ .neon
+ node_modules/
+ .env.local
+diff --git a/DEVELOPMENT.md b/DEVELOPMENT.md
+index 0514d53..52bda1c 100644
+--- a/DEVELOPMENT.md
++++ b/DEVELOPMENT.md
+@@ -256,14 +256,37 @@ pytest --run-submit-only arxiv -s
+ pytest --run-submit-only arxiv,biorxiv -s
+ ```
+ 
+-Update portal snapshots:
++### Scheduled submit walkthrough
++
++`scripts/check_submit_walkthrough.py` runs the live submit walkthrough above for
++every venue (no `-s`, so each runner's `hold_open` returns at the final page and
++the venues run back to back), and sorts each venue into failed (all three
++attempts), skipped, or walked to the final page. The report goes to
++`.submit_walkthrough/report.md` and `report.json` (gitignored). When a venue
++failed, it opens a GitHub issue labelled `submit-walkthrough`, or adds the report
++as a comment if one is already open. It never closes the issue: close it once
++the runner fix is merged. A run that takes longer than four hours
++(`--timeout-hours`) is interrupted, and the venues it finished are still reported.
+ 
+ ```bash
+-# All venues
+-pytest tests/test_portal_drift.py --run-portal --update-snapshots
++python scripts/check_submit_walkthrough.py --dry-run            # run, report, print instead of filing
++python scripts/check_submit_walkthrough.py --venue biorxiv      # one venue
++python scripts/check_submit_walkthrough.py --headless           # no browser windows
++python scripts/check_submit_walkthrough.py --junit FILE --dry-run   # re-report an earlier run
++```
+ 
+-# Single venue (e.g. Nature)
+-pytest tests/test_portal_drift.py --run-portal --update-snapshots --venue nature
++`scripts/scheduled_submit_walkthrough.sh` is the scheduled entry point, meant to
++run every three months. It runs the check against a detached checkout of
++`origin/main` (`.submit_walkthrough/worktree`), reuses the saved logins in
++paperpush's config directory, and reads optional `PAPERPUSH_TEST_USERNAME` /
++`PAPERPUSH_TEST_PASSWORD` from the gitignored `.submit_walkthrough/env`. Browsers
++run headed: in the desktop session on macOS, under `xvfb-run` on Linux when
++there is no display. Logs go to `.submit_walkthrough/logs/`. It runs on the
++maintainer's machine because that is where the logins are. Each run leaves an
++unsent draft on every portal, and an expired login shows up as a failure.
++
++```
++0 5 1 */3 * /path/to/paperpush/scripts/scheduled_submit_walkthrough.sh
+ ```
+ 
+ Update venues.md checklist after running `pytest tests/test_submit.py --run-portal` (also run automatically by the pre-commit hook):
+diff --git a/paperpush/_skills/paperpush-add-venue/SKILL.md b/paperpush/_skills/paperpush-add-venue/SKILL.md
+index 2e6b348..ff57bfc 100644
+--- a/paperpush/_skills/paperpush-add-venue/SKILL.md
++++ b/paperpush/_skills/paperpush-add-venue/SKILL.md
+@@ -133,8 +133,6 @@ Then do credentials step 3 and have the user run `paperpush login <slug>`.
+   `tests/test_nature_machine_intelligence.py`: dispatch through
+   `get_runner`, form and field invariants, and each tricky helper (author
+   rows, file metadata, branch choices) checked against a `Mock` page.
+-- Optionally add a `SPECS` entry in `tests/test_portal_drift.py` and a
+-  baseline with `--update-snapshots`.
+ 
+ **A6. Test until it passes**, then go to **Verify** below.
+ 
+diff --git a/paperpush/venues/common.py b/paperpush/venues/common.py
+index 2373ebf..6ad1566 100644
+--- a/paperpush/venues/common.py
++++ b/paperpush/venues/common.py
+@@ -14,9 +14,6 @@
+   through, so a failed wizard leaves its window on screen instead of vanishing.
+ * :func:`session_path` / :func:`save_storage` -- persisting and locating a
+   signed-in Playwright session so later runs skip the login.
+-* :func:`capture_failure` -- dumping a screenshot and the live HTML of a page
+-  when a portal check fails, so the changed page can be inspected (and the
+-  broken selector fixed) offline instead of only from a text diff.
+ 
+ The sign-in helpers (the login error types, ``verify_login``, ``first_visible``,
+ ``fill_login_form``) live next door in :mod:`paperpush.venues.login`, which
+@@ -222,57 +219,6 @@ def open_run_context(browser, session: Path, *, new_session: bool = False):
+     return browser.new_context()
+ 
+ 
+-def capture_failure(page, slug: str, page_name: str, dest_dir: Path) -> dict[str, Path]:
+-    """Save a screenshot and the live HTML of ``page`` for offline diagnosis.
+-
+-    When a portal check fails -- a selector the runner depends on is gone, or the
+-    page's structure drifted from its committed baseline -- the failure text says
+-    *that* something changed but not *what* the page now looks like. This writes
+-    two artifacts so the changed page can be inspected, and the broken selector
+-    re-derived, without re-running against the live portal:
+-
+-      * ``<slug>_<page_name>.png``  -- a full-page screenshot, and
+-      * ``<slug>_<page_name>.html`` -- the page's current DOM (``page.content()``).
+-
+-    Both are best-effort: a browser that has already crashed or navigated away
+-    may refuse one or the other, so each is guarded and a failure to capture
+-    never masks the original test failure. Returns a dict of the artifacts
+-    actually written, keyed ``"screenshot"`` / ``"html"`` (empty if both failed).
+-
+-    The captures embed whatever the live page held at failure time, including
+-    per-session tokens, so ``dest_dir`` must be git-ignored (it is: see the
+-    ``tests/portal_snapshots/_failures`` rule in ``.gitignore``).
+-    """
+-    dest_dir.mkdir(parents=True, exist_ok=True)
+-    written: dict[str, Path] = {}
+-    stem = f"{slug}_{page_name}"
+-
+-    png = dest_dir / f"{stem}.png"
+-    try:
+-        page.screenshot(path=str(png), full_page=True)
+-        written["screenshot"] = png
+-    except Exception as exc:  # noqa: BLE001 -- capture is best-effort, never fatal
+-        logger.warning("capture_failure: screenshot of %s failed (%s)", stem, exc)
+-
+-    html = dest_dir / f"{stem}.html"
+-    try:
+-        html.write_text(page.content(), encoding="utf-8")
+-        written["html"] = html
+-    except Exception as exc:  # noqa: BLE001 -- capture is best-effort, never fatal
+-        logger.warning("capture_failure: HTML dump of %s failed (%s)", stem, exc)
+-
+-    return written
+-
+-
+-# ---------------------------------------------------------------------------
+-# Pure-data helpers shared by the per-venue runners.
+-#
+-# These reshape a name or parse a ``.sub`` field value for a submission form and
+-# carry no Playwright or venue-specific logic, so every runner that needs one
+-# imports it from here instead of keeping a private copy.
+-# ---------------------------------------------------------------------------
+-
+-
+ def split_name_first_last(name: str) -> tuple[str, str]:
+     """Split a "First Last" name into ``(first, last)`` on the last space.
+ 
+diff --git a/scripts/check_submit_walkthrough.py b/scripts/check_submit_walkthrough.py
+new file mode 100755
+index 0000000..bbd9d8c
+--- /dev/null
++++ b/scripts/check_submit_walkthrough.py
+@@ -0,0 +1,248 @@
++#!/usr/bin/env python3
++"""Run the live submit walkthrough and file a GitHub issue for venues that broke.
++
++``tests/test_submit.py::test_submit_walkthrough`` runs the real ``paperpush
++submit`` for every venue that has a runner, through every page of the portal's
++form, and stops before the final submit button. Each venue gets three attempts;
++only a venue that fails all three counts as broken. It hits real portals with
++the maintainer's saved logins, so CI never runs it. This script runs it
++unattended and reports the result where a maintainer will see it:
++
++* every venue is sorted into ``failed``, ``skipped`` or ``passed``;
++* the report is written to ``.submit_walkthrough/report.md`` and ``report.json``;
++* when a venue failed, an issue labelled ``submit-walkthrough`` is opened, or,
++  if one is already open, the new report is added to it as a comment. A run
++  with no failures comments on an open issue (so the maintainer knows the
++  portals were walked again) but never closes it: closing is for whoever fixed
++  the runner.
++
++Each run leaves an unsent draft on every portal it walks.
++
++    python scripts/check_submit_walkthrough.py                  # run, report, file/update the issue
++    python scripts/check_submit_walkthrough.py --dry-run        # run and report; print the issue instead
++    python scripts/check_submit_walkthrough.py --venue biorxiv  # one venue (repeatable)
++    python scripts/check_submit_walkthrough.py --headless       # no browser windows
++    python scripts/check_submit_walkthrough.py --junit FILE --dry-run   # re-report an earlier run
++
++``scripts/scheduled_submit_walkthrough.sh`` is the scheduled entry point; it
++runs this against a fresh checkout of ``origin/main`` so a maintainer's working
++tree never affects the result.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import re
++import signal
++import subprocess  # fixed pytest/gh/git invocations, never a shell  # nosec B404
++import sys
++import xml.etree.ElementTree as ET  # parses the junit file this script wrote  # nosec B405
++from dataclasses import asdict, dataclass
++from datetime import date
++from pathlib import Path
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++OUT_DIR = REPO_ROOT / ".submit_walkthrough"
++TEST = "tests/test_submit.py::test_submit_walkthrough"
++LABEL = "submit-walkthrough"
++LABEL_COLOR = "d93f0b"
++LABEL_DESCRIPTION = "A venue's live submit walkthrough failed (scripts/check_submit_walkthrough.py)"
++# A runner waiting on a human (an expired login, a CAPTCHA) must not hold the
++# whole run forever.
++DEFAULT_TIMEOUT_HOURS = 4
++
++GROUPS = ("failed", "skipped", "passed")
++GROUP_TITLES = {"failed": "Failed all attempts: the runner needs fixing", "skipped": "Skipped", "passed": "Walked to the final page"}
++# Longest failure text kept per venue; a Playwright traceback runs to hundreds
++# of lines and the useful part comes first.
++MAX_DETAIL_CHARS = 4000
++
++_CASE_NAME = re.compile(r"^test_submit_walkthrough\[(?P<id>[^\]]+)\]$")
++
++
++@dataclass
++class Outcome:
++    venue: str  # the test id: the venue slug, or a .sub stem with --subfile
++    group: str
++    message: str = ""
++    detail: str = ""
++
++
++def _redact(text: str) -> str:
++    """Drop the maintainer's home directory from paths (the issue may be public)."""
++    home = str(Path.home())
++    return text.replace(home, "~") if home and home != "/" else text
++
++
++def classify(junit_path: Path) -> list[Outcome]:
++    """Sort every walkthrough case in a junit XML file into one of :data:`GROUPS`."""
++    root = ET.parse(junit_path).getroot()  # our own pytest output  # nosec B314
++    outcomes: list[Outcome] = []
++    for case in root.iter("testcase"):
++        m = _CASE_NAME.match(case.get("name", ""))
++        if not m:
++            continue
++        venue = m.group("id")
++        problem = case.find("failure")
++        if problem is None:
++            problem = case.find("error")
++        skipped = case.find("skipped")
++        if problem is not None:
++            message, detail = problem.get("message", "") or "", (problem.text or "").strip()
++            outcomes.append(Outcome(venue, "failed", _redact(message), _redact(detail)[:MAX_DETAIL_CHARS]))
++        elif skipped is not None:
++            outcomes.append(Outcome(venue, "skipped", _redact((skipped.get("message", "") or skipped.text or "").strip())))
++        else:
++            outcomes.append(Outcome(venue, "passed"))
++    return sorted(outcomes, key=lambda o: (GROUPS.index(o.group), o.venue))
++
++
++def failed_venues(outcomes: list[Outcome]) -> list[str]:
++    return [o.venue for o in outcomes if o.group == "failed"]
++
++
++def _short(message: str) -> str:
++    first = message.strip().splitlines()[0] if message.strip() else ""
++    first = re.sub(r"^(Skipped|Failed|AssertionError): ", "", first)
++    return first if len(first) <= 200 else first[:197] + "..."
++
++
++def render_markdown(outcomes: list[Outcome], run_date: str, commit: str = "", note: str = "") -> str:
++    """The report, as the body of a GitHub issue or comment."""
++    lines = [f"Submit walkthrough, {run_date}" + (f" (main at `{commit[:10]}`)" if commit else "") + "."]
++    if note:
++        lines += ["", note]
++    lines += ["", " · ".join(f"{GROUP_TITLES[g]}: {sum(o.group == g for o in outcomes)}" for g in GROUPS)]
++    for group in GROUPS:
++        items = [o for o in outcomes if o.group == group]
++        if not items:
++            continue
++        lines += ["", f"### {GROUP_TITLES[group]}", ""]
++        if group == "passed":
++            lines.append(", ".join(f"`{o.venue}`" for o in items))
++            continue
++        for o in items:
++            lines.append(f"- `{o.venue}`" + (f": {_short(o.message)}" if o.message else ""))
++            if o.detail:
++                lines += ["", "  <details><summary>details</summary>", "", "  ```", *("  " + ln for ln in o.detail.splitlines()), "  ```", "  </details>"]
++    if failed_venues(outcomes):
++        lines += [
++            "",
++            "Next: re-run one venue in a visible browser with `pytest tests/test_submit.py --run-portal -s --venue <slug>` "
++            "and see where it stops. An expired login fails here too: `paperpush login <slug>` fixes that. If the portal "
++            "changed, fix the runner (the `paperpush-portal-debug` skill walks through it). Close this issue once the fix is merged.",
++        ]
++    return "\n".join(lines) + "\n"
++
++
++# --- running pytest ---------------------------------------------------------
++
++
++def run_pytest(repo_dir: Path, junit_path: Path, venues: list[str], headless: bool, timeout_hours: float) -> tuple[int | None, str]:
++    """Run the walkthrough in ``repo_dir``; returns (pytest exit code or None on timeout, note)."""
++    # No -s: with pytest capturing stdin, each runner's hold_open returns at the
++    # final page instead of waiting for Ctrl+D, so venues run back to back.
++    cmd = [sys.executable, "-m", "pytest", TEST, "--run-portal", "-p", "no:cacheprovider", "-q", "-rs", f"--junitxml={junit_path}"]
++    for v in venues:
++        cmd += ["--venue", v]
++    env = dict(os.environ)
++    # Import the checkout under test, not whichever copy is pip-installed in -e mode.
++    env["PYTHONPATH"] = os.pathsep.join(p for p in [str(repo_dir), env.get("PYTHONPATH", "")] if p)
++    if headless:
++        env["PAPERPUSH_WALKTHROUGH_HEADLESS"] = "1"
++    print("$ " + " ".join(cmd), flush=True)
++    proc = subprocess.Popen(cmd, cwd=repo_dir, env=env, stdin=subprocess.DEVNULL)  # nosec B603
++    try:
++        return proc.wait(timeout=timeout_hours * 3600), ""
++    except subprocess.TimeoutExpired:
++        # Interrupt rather than kill, so pytest still writes the junit report
++        # for the venues it finished.
++        proc.send_signal(signal.SIGINT)
++        try:
++            proc.wait(timeout=120)
++        except subprocess.TimeoutExpired:
++            proc.kill()
++            proc.wait()
++        return None, f"The run was stopped after {timeout_hours:g} hours; venues not listed below were not walked."
++
++
++def head_commit(repo_dir: Path) -> str:
++    try:
++        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True, text=True, check=True).stdout.strip()  # nosec B603 B607
++    except (OSError, subprocess.CalledProcessError):
++        return ""
++
++
++# --- GitHub issue -----------------------------------------------------------
++
++
++def _gh(args: list[str], cwd: Path) -> str:
++    return subprocess.run(["gh", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout  # nosec B603 B607
++
++
++def report_to_github(outcomes: list[Outcome], body: str, run_date: str, cwd: Path, gh=_gh) -> str:
++    """Open or update the ``submit-walkthrough`` issue; returns what was done."""
++    failed = failed_venues(outcomes)
++    open_issues = json.loads(gh(["issue", "list", "--label", LABEL, "--state", "open", "--json", "number,url"], cwd) or "[]")
++    if open_issues:
++        number, url = open_issues[0]["number"], open_issues[0]["url"]
++        if failed:
++            gh(["issue", "comment", str(number), "--body", body], cwd)
++            return f"commented on {url} (failed: {', '.join(failed)})"
++        gh(["issue", "comment", str(number), "--body", "Every venue walked through in this run; this issue stays open until someone closes it.\n\n" + body], cwd)
++        return f"commented on {url} (no failures this run)"
++    if not failed:
++        return "no failures; no issue filed"
++    gh(["label", "create", LABEL, "--color", LABEL_COLOR, "--description", LABEL_DESCRIPTION, "--force"], cwd)
++    title = f"Submit walkthrough failed: {', '.join(failed)} ({run_date})"
++    url = gh(["issue", "create", "--title", title[:120], "--label", LABEL, "--body", body], cwd).strip()
++    return f"opened {url}"
++
++
++# --- main -------------------------------------------------------------------
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
++    parser.add_argument("--repo-dir", type=Path, default=REPO_ROOT, help="checkout whose tests and code are run (default: this one)")
++    parser.add_argument("--venue", action="append", default=[], help="walk only this venue slug (repeatable)")
++    parser.add_argument("--headless", action="store_true", help="run the browsers headless (more portals bot-wall a headless browser)")
++    parser.add_argument("--timeout-hours", type=float, default=DEFAULT_TIMEOUT_HOURS, help=f"stop the whole run after this long (default {DEFAULT_TIMEOUT_HOURS})")
++    parser.add_argument("--junit", type=Path, help="report on this existing junit XML instead of running pytest")
++    parser.add_argument("--out-dir", type=Path, default=OUT_DIR, help="where report.md/report.json go (default: .submit_walkthrough/)")
++    parser.add_argument("--dry-run", action="store_true", help="print the issue body instead of filing it")
++    args = parser.parse_args(argv)
++
++    args.out_dir.mkdir(parents=True, exist_ok=True)
++    junit, note = args.junit, ""
++    if junit is None:
++        junit = args.out_dir / "junit.xml"
++        junit.unlink(missing_ok=True)
++        code, note = run_pytest(args.repo_dir.resolve(), junit, args.venue, args.headless, args.timeout_hours)
++        # 0: all passed/skipped, 1: some failed. Anything else (usage error,
++        # collection error, nothing collected) means the check itself broke.
++        if code not in (0, 1, None) or not junit.exists():
++            print(f"ERROR: pytest exited {code}; the walkthrough did not run" + (f" ({note})" if note else ""), file=sys.stderr)
++            return 2
++
++    outcomes = classify(junit)
++    if not outcomes:
++        print("ERROR: no submit-walkthrough cases in the junit report", file=sys.stderr)
++        return 2
++    run_date = date.today().isoformat()
++    body = render_markdown(outcomes, run_date, head_commit(args.repo_dir), note)
++    (args.out_dir / "report.md").write_text(body, encoding="utf-8")
++    (args.out_dir / "report.json").write_text(json.dumps({"date": run_date, "note": note, "outcomes": [asdict(o) for o in outcomes]}, indent=2) + "\n", encoding="utf-8")
++    print(body)
++
++    if args.dry_run:
++        print(f"[dry-run] would {'file/update' if failed_venues(outcomes) else 'not file'} a '{LABEL}' issue")
++        return 0
++    print(report_to_github(outcomes, body, run_date, args.repo_dir))
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/scripts/scheduled_submit_walkthrough.sh b/scripts/scheduled_submit_walkthrough.sh
+new file mode 100755
+index 0000000..50de2a6
+--- /dev/null
++++ b/scripts/scheduled_submit_walkthrough.sh
+@@ -0,0 +1,101 @@
++#!/bin/bash
++# Scheduled submit walkthrough: meant to run every three months.
++#
++# Runs scripts/check_submit_walkthrough.py against a fresh checkout of
++# origin/main (.submit_walkthrough/worktree, detached), so it tests what users
++# get and the maintainer's working tree is never touched. The walkthrough runs
++# the real `paperpush submit` for every venue with a runner, through every page,
++# and stops before the final submit button, reusing the saved logins in
++# paperpush's config directory. Optional PAPERPUSH_TEST_USERNAME /
++# PAPERPUSH_TEST_PASSWORD can go in the gitignored .submit_walkthrough/env.
++# When a venue fails all three attempts, an issue labelled `submit-walkthrough`
++# is opened on GitHub (or commented on, if one is open).
++#
++# Browsers run headed (fewer portals bot-wall them): in the desktop session on
++# macOS, under xvfb-run on Linux when there is no display, and headless only
++# when neither is available. Each run leaves an unsent draft on every portal.
++#
++# Logs go to .submit_walkthrough/logs/; one run at a time.
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
++STATE_DIR="$PROJECT_DIR/.submit_walkthrough"
++LOG_DIR="$STATE_DIR/logs"
++WORKTREE="$STATE_DIR/worktree"
++mkdir -p "$LOG_DIR"
++
++# A scheduler starts with a minimal PATH (/usr/bin:/bin); `gh` and `git` may live
++# in /usr/local/bin or /opt/homebrew/bin (macOS), and conda in ~/miniconda3 etc.
++export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
++for d in "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/miniforge3" "$HOME/mambaforge" /opt/miniconda3 /opt/anaconda3; do
++  [ -x "$d/bin/conda" ] && { export PATH="$PATH:$d/bin"; break; }
++done
++export PYTHONUNBUFFERED=1
++
++# One run at a time. flock where it exists (Linux); macOS has no flock, so
++# fall back to an atomic mkdir lock, cleared if its holder is gone.
++if command -v flock >/dev/null; then
++  exec 9>"$LOG_DIR/.scheduled_submit_walkthrough.lock"
++  flock -n 9 || exit 0
++else
++  LOCK_DIR="$LOG_DIR/.scheduled_submit_walkthrough.lockdir"
++  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
++    kill -0 "$(cat "$LOCK_DIR/pid" 2>/dev/null)" 2>/dev/null && exit 0
++    rm -rf "$LOCK_DIR"; mkdir "$LOCK_DIR" || exit 0
++  fi
++  echo $$ > "$LOCK_DIR/pid"
++  trap 'rm -rf "$LOCK_DIR"' EXIT
++fi
++
++TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
++LOG_FILE="$LOG_DIR/submit_walkthrough_${TIMESTAMP}.log"
++
++run() {
++  echo "=== Scheduled Submit Walkthrough Start: $TIMESTAMP ==="
++  echo "Project: $PROJECT_DIR"
++  echo ""
++
++  for tool in git gh conda; do
++    command -v "$tool" >/dev/null || { echo "ERROR: '$tool' not found on PATH ($PATH)"; return 1; }
++  done
++
++  if [ -f "$STATE_DIR/env" ]; then
++    set -a; . "$STATE_DIR/env"; set +a
++  fi
++
++  eval "$(conda shell.bash hook)"
++  conda activate paperpush || return 1
++  cd "$PROJECT_DIR" || return 1
++
++  git fetch -q origin main || return 1
++  if [ -e "$WORKTREE/.git" ]; then
++    git -C "$WORKTREE" checkout -q --detach origin/main || return 1
++    git -C "$WORKTREE" reset -q --hard origin/main || return 1
++    git -C "$WORKTREE" clean -qfdx || return 1
++  else
++    git worktree prune
++    git worktree add -q --detach "$WORKTREE" origin/main || return 1
++  fi
++
++  local cmd=(python "$WORKTREE/scripts/check_submit_walkthrough.py" --repo-dir "$WORKTREE" --out-dir "$STATE_DIR")
++  if [ "$(uname)" != "Darwin" ] && [ -z "$DISPLAY" ]; then
++    if command -v xvfb-run >/dev/null; then
++      cmd=(xvfb-run -a "${cmd[@]}")
++    else
++      echo "no display and no xvfb-run: running headless"
++      cmd+=(--headless)
++    fi
++  fi
++  "${cmd[@]}" "$@"
++}
++
++run "$@" >> "$LOG_FILE" 2>&1
++STATUS=$?
++if [ "$STATUS" -eq 0 ]; then
++  echo "=== Scheduled Submit Walkthrough Complete: $(date +%Y-%m-%d_%H-%M-%S) ===" >> "$LOG_FILE"
++else
++  echo "=== Scheduled Submit Walkthrough FAILED (exit $STATUS): $(date +%Y-%m-%d_%H-%M-%S) ===" >> "$LOG_FILE"
++fi
++# Keep the last twelve logs.
++ls -1t "$LOG_DIR"/submit_walkthrough_*.log 2>/dev/null | tail -n +13 | xargs -r rm -f
++exit "$STATUS"
+diff --git a/skills/paperpush-add-venue/SKILL.md b/skills/paperpush-add-venue/SKILL.md
+index 2e6b348..ff57bfc 100644
+--- a/skills/paperpush-add-venue/SKILL.md
++++ b/skills/paperpush-add-venue/SKILL.md
+@@ -133,8 +133,6 @@ Then do credentials step 3 and have the user run `paperpush login <slug>`.
+   `tests/test_nature_machine_intelligence.py`: dispatch through
+   `get_runner`, form and field invariants, and each tricky helper (author
+   rows, file metadata, branch choices) checked against a `Mock` page.
+-- Optionally add a `SPECS` entry in `tests/test_portal_drift.py` and a
+-  baseline with `--update-snapshots`.
+ 
+ **A6. Test until it passes**, then go to **Verify** below.
+ 
+diff --git a/tests/conftest.py b/tests/conftest.py
+index 42e93e8..97676ad 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -43,8 +43,9 @@
+ # are skipped by default; everything else -- including submit logic that does
+ # not touch a live portal -- runs as usual. So a bare ``pytest`` exercises all
+ # offline behavior and skips only the network/portal tests. Opt in with
+-# ``pytest --run-portal`` or by setting ``PAPERPUSH_RUN_PORTAL=1`` (the
+-# monthly CI job does the latter). ``pytest --run-portal-only`` runs the portal
++# ``pytest --run-portal`` or by setting ``PAPERPUSH_RUN_PORTAL=1``. The quarterly
++# walkthrough check (scripts/scheduled_submit_walkthrough.sh, run on the
++# maintainer's machine, not CI) uses ``--run-submit-only``. ``pytest --run-portal-only`` runs the portal
+ # tests and deselects everything else; ``pytest --run-submit-only`` runs only the
+ # live submit walkthrough. Both take optional venue slug(s), e.g.
+ # ``pytest --run-submit-only arxiv`` or ``--run-submit-only arxiv,biorxiv``.
+@@ -156,12 +157,6 @@ def pytest_addoption(parser):
+         "Optionally name venue slug(s), e.g. ``--run-submit-only arxiv`` or "
+         "``--run-submit-only arxiv,biorxiv`` (same as adding ``--venue``)",
+     )
+-    parser.addoption(
+-        "--update-snapshots",
+-        action="store_true",
+-        default=False,
+-        help="rewrite the committed portal-page fingerprints in " "tests/portal_snapshots from the live pages instead of comparing " "against them (used with --run-portal after an intended portal change)",
+-    )
+     parser.addoption(
+         "--venue",
+         action="append",
+@@ -214,7 +209,7 @@ def _item_venue(item) -> str | None:
+     """The venue slug a collected test is parametrized for, or None.
+ 
+     Covers every way a test names a venue in this suite: a ``slug`` string
+-    (drift, submit walkthrough), a ``venue`` :class:`Venue` object (subfile,
++    (submit walkthrough), a ``venue`` :class:`Venue` object (subfile,
+     login loops), or a ``scenario`` object carrying ``.venue`` (validate/submit
+     sample sweeps). A test with no venue parameter returns None and is left
+     alone by the filter.
+@@ -301,14 +296,6 @@ def keep(item) -> bool:
+ TEST_PASSWORD_ENV = "PAPERPUSH_TEST_PASSWORD"
+ 
+ 
+-@pytest.fixture
+-def update_snapshots(request) -> bool:
+-    """True when ``--update-snapshots`` (or ``PAPERPUSH_UPDATE_SNAPSHOTS=1``)
+-    is set, telling the portal-drift tests to rewrite their baselines rather than
+-    assert against them."""
+-    return bool(request.config.getoption("--update-snapshots")) or os.environ.get("PAPERPUSH_UPDATE_SNAPSHOTS") == "1"
+-
+-
+ @pytest.fixture
+ def test_username() -> str:
+     """The shared test account's username, from ``PAPERPUSH_TEST_USERNAME``.
+diff --git a/tests/drift.py b/tests/drift.py
+deleted file mode 100644
+index 4dd3ea8..0000000
+--- a/tests/drift.py
++++ /dev/null
+@@ -1,150 +0,0 @@
+-"""Structural fingerprints of a portal page, for change detection.
+-
+-The per-venue runners (:mod:`paperpush.venues.openrxiv.main`,
+-:mod:`paperpush.venues.scholarone.bioinformatics`) bet on a fixed set of
+-selectors. A
+-contract check (does each selector our code uses still resolve?) catches a break
+-in something we already click, but it is blind to a portal *adding* a required
+-field we do not yet handle. A fingerprint closes that gap: it captures the
+-stable structure of a page -- the form-control names, button labels, field
+-labels, and headings -- so the drift test can diff the live page against a
+-committed baseline and flag anything that appeared or disappeared.
+-
+-Why not diff the raw HTML? These portals (ScholarOne especially) embed
+-per-session ``PARAMS=`` tokens, CSRF fields, and timestamps that change on every
+-load, so a byte/HTML comparison reports a change every single time. The
+-fingerprint deliberately drops those volatile parts: hidden inputs are excluded
+-(that is where the tokens live) and only human-meaningful, structural text is
+-kept. What is left is stable across loads but moves when the portal actually
+-restyles a page.
+-
+-The functions here are pure (no browser launch, no disk IO): :func:`fingerprint`
+-takes an already-open Playwright ``page`` and returns a plain dict, and
+-:func:`diff` compares two such dicts. Baseline storage lives with the test that
+-owns the baselines, not here.
+-"""
+-
+-from __future__ import annotations
+-
+-import re
+-
+-# Categories collected for each page, in a stable order. Each maps to a sorted,
+-# de-duplicated list of strings, so two fingerprints of the same page compare
+-# equal regardless of DOM order.
+-CATEGORIES = ("fields", "buttons", "labels", "headings")
+-
+-# Form-control names/ids that carry a per-session token rather than identifying a
+-# real field. Matched case-insensitively as a substring and dropped from the
+-# ``fields`` category so a fresh token never reads as a page change. Hidden
+-# inputs are already excluded wholesale (see the script below); this also catches
+-# visible-but-volatile controls.
+-_VOLATILE_FIELD = re.compile(r"csrf|xsrf|token|nonce|viewstate|params|session|captcha|__RequestVerification", re.IGNORECASE)
+-
+-# Collected entirely in the page so each category is one round-trip rather than
+-# one per element. Returns the four lists; Python normalizes/sorts them.
+-#
+-#   fields   -- visible input/select/textarea, keyed by `name` (else `id`).
+-#               type=hidden is skipped: that is where CSRF/session tokens live.
+-#   buttons  -- <button>, input[type=submit|button|reset], and role=button,
+-#               by their visible text (or value).
+-#   labels   -- <label> text; the questions a form asks, which is exactly what a
+-#               portal changes when it adds or renames a field.
+-#   headings -- h1..h3 text; the page's section structure.
+-_EXTRACT_JS = r"""
+-() => {
+-  const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
+-  const visible = (el) => {
+-    if (!el) return false;
+-    if (el.type === "hidden") return false;
+-    const s = window.getComputedStyle(el);
+-    if (s.display === "none" || s.visibility === "hidden") return false;
+-    return true;
+-  };
+-  const fields = [];
+-  for (const el of document.querySelectorAll("input, select, textarea")) {
+-    if (!visible(el)) continue;
+-    const key = el.getAttribute("name") || el.getAttribute("id");
+-    if (key) fields.push(key);
+-  }
+-  const buttons = [];
+-  for (const el of document.querySelectorAll(
+-      "button, input[type=submit], input[type=button], input[type=reset], [role=button]")) {
+-    if (!visible(el)) continue;
+-    const text = clean(el.innerText || el.textContent || el.value || el.getAttribute("aria-label"));
+-    if (text) buttons.push(text);
+-  }
+-  const labels = [];
+-  for (const el of document.querySelectorAll("label")) {
+-    if (!visible(el)) continue;
+-    const text = clean(el.innerText || el.textContent);
+-    if (text) labels.push(text);
+-  }
+-  const headings = [];
+-  for (const el of document.querySelectorAll("h1, h2, h3")) {
+-    if (!visible(el)) continue;
+-    const text = clean(el.innerText || el.textContent);
+-    if (text) headings.push(text);
+-  }
+-  return { fields, buttons, labels, headings };
+-}
+-"""
+-
+-
+-def _normalize(values: list[str], *, drop_volatile: bool = False) -> list[str]:
+-    """Collapse whitespace, drop empties (and volatile field keys), sort, dedup."""
+-    out = set()
+-    for raw in values:
+-        text = " ".join((raw or "").split())
+-        if not text:
+-            continue
+-        if drop_volatile and _VOLATILE_FIELD.search(text):
+-            continue
+-        out.add(text)
+-    return sorted(out)
+-
+-
+-def fingerprint(page) -> dict[str, list[str]]:
+-    """Return a structural fingerprint of the currently-loaded ``page``.
+-
+-    The result is a JSON-serializable dict with the keys in :data:`CATEGORIES`,
+-    each a sorted, de-duplicated list of strings. Stable across reloads of an
+-    unchanged page (volatile tokens are excluded), so a later run can diff
+-    against it with :func:`diff`.
+-    """
+-    raw = page.evaluate(_EXTRACT_JS)
+-    return {
+-        "fields": _normalize(raw.get("fields", []), drop_volatile=True),
+-        "buttons": _normalize(raw.get("buttons", [])),
+-        "labels": _normalize(raw.get("labels", [])),
+-        "headings": _normalize(raw.get("headings", [])),
+-    }
+-
+-
+-def diff(baseline: dict[str, list[str]], current: dict[str, list[str]]) -> dict[str, dict[str, list[str]]]:
+-    """Compare two fingerprints, returning what each category gained/lost.
+-
+-    The result maps each changed category to ``{"added": [...], "removed":
+-    [...]}`` (entries present only in ``current`` / only in ``baseline``).
+-    Unchanged categories are omitted, so an empty dict means the page matches its
+-    baseline.
+-    """
+-    out: dict[str, dict[str, list[str]]] = {}
+-    for cat in CATEGORIES:
+-        base = set(baseline.get(cat, []))
+-        cur = set(current.get(cat, []))
+-        added = sorted(cur - base)
+-        removed = sorted(base - cur)
+-        if added or removed:
+-            out[cat] = {"added": added, "removed": removed}
+-    return out
+-
+-
+-def format_diff(page_diff: dict[str, dict[str, list[str]]]) -> str:
+-    """Render a :func:`diff` result as a short, human-readable report."""
+-    lines: list[str] = []
+-    for cat, change in page_diff.items():
+-        for item in change.get("removed", []):
+-            lines.append(f"  - [{cat}] removed: {item!r}")
+-        for item in change.get("added", []):
+-            lines.append(f"  + [{cat}] added:   {item!r}")
+-    return "\n".join(lines)
+diff --git a/tests/portal_snapshots/README.md b/tests/portal_snapshots/README.md
+deleted file mode 100644
+index 24ac2bd..0000000
+--- a/tests/portal_snapshots/README.md
++++ /dev/null
+@@ -1,33 +0,0 @@
+-# Portal page fingerprints
+-
+-Committed baselines for `tests/test_portal_drift.py`. One JSON file per venue
+-(`biorxiv.json`, `bioinformatics.json`), each keyed by page name (`login`,
+-`first_step`). Every page maps to a structural fingerprint produced by
+-`tests/drift.py`'s `fingerprint`: the sorted form-control names, button
+-labels, field labels, and headings of that page, with per-session tokens and
+-hidden inputs stripped out.
+-
+-The drift test diffs the live portal page against these files and fails when the
+-structure has changed, catching a portal redesign before it breaks a real
+-submission.
+-
+-## Generating / refreshing baselines
+-
+-There is no baseline until you capture one against the live portal:
+-
+-```bash
+-# login-page baselines need only network access:
+-pytest --run-portal --update-snapshots tests/test_portal_drift.py::test_login_page_drift
+-
+-# first-wizard-step baselines need to be signed in (saved session, or
+-# PAPERPUSH_TEST_USERNAME / PAPERPUSH_TEST_PASSWORD). This creates a
+-# dummy draft on the portal:
+-pytest --run-portal --update-snapshots tests/test_portal_drift.py::test_first_step_drift
+-```
+-
+-Review the resulting diff, confirm the change is one the portal actually made
+-(not a logged-out page or a transient banner), then commit the updated JSON.
+-
+-When the test later fails with a structural diff, that is the signal to update
+-the matching selector(s) in `paperpush/venues/<venue>.py`, then refresh
+-the baseline the same way.
+diff --git a/tests/portal_snapshots/biorxiv.json b/tests/portal_snapshots/biorxiv.json
+deleted file mode 100644
+index 70e515f..0000000
+--- a/tests/portal_snapshots/biorxiv.json
++++ /dev/null
+@@ -1,24 +0,0 @@
+-{
+-  "login": {
+-    "buttons": [
+-      "Log in with ORCiD",
+-      "Sign in"
+-    ],
+-    "fields": [
+-      "MSTRServlet.emailAddr",
+-      "MSTRServlet.password",
+-      "login",
+-      "remember_me",
+-      "system_area"
+-    ],
+-    "headings": [],
+-    "labels": [
+-      "Email:",
+-      "Enter the Affiliate Area to:",
+-      "Enter the Author Area to:",
+-      "Enter the Personal Info Area to:",
+-      "Password:",
+-      "remember my email address"
+-    ]
+-  }
+-}
+diff --git a/tests/test_check_submit_walkthrough.py b/tests/test_check_submit_walkthrough.py
+new file mode 100644
+index 0000000..1ffbebe
+--- /dev/null
++++ b/tests/test_check_submit_walkthrough.py
+@@ -0,0 +1,125 @@
++"""Offline tests for scripts/check_submit_walkthrough.py (no portal, no gh)."""
++
++from __future__ import annotations
++
++import importlib.util
++import json
++import sys
++from pathlib import Path
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++
++
++def _load():
++    spec = importlib.util.spec_from_file_location("check_submit_walkthrough", REPO_ROOT / "scripts" / "check_submit_walkthrough.py")
++    module = importlib.util.module_from_spec(spec)
++    sys.modules["check_submit_walkthrough"] = module
++    spec.loader.exec_module(module)
++    return module
++
++
++csw = _load()
++
++JUNIT = """<?xml version="1.0" encoding="utf-8"?>
++<testsuites><testsuite name="pytest">
++  <testcase classname="tests.test_submit" name="test_submit_walkthrough[biorxiv]"/>
++  <testcase classname="tests.test_submit" name="test_submit_walkthrough[nature]">
++    <failure message="AssertionError: submit nature failed all 3 attempts; last error: TimeoutError('Upload')">HOME/x/nature.log
++assert rc == 0</failure>
++  </testcase>
++  <testcase classname="tests.test_submit" name="test_submit_walkthrough[arxiv]">
++    <skipped type="pytest.skip" message="arxiv: no saved session"/>
++  </testcase>
++  <testcase classname="tests.test_submit" name="test_submit_command_for_each_subfile[biorxiv]"/>
++</testsuite></testsuites>
++"""
++
++
++def _junit(tmp_path: Path) -> Path:
++    path = tmp_path / "junit.xml"
++    path.write_text(JUNIT.replace("HOME", str(Path.home())), encoding="utf-8")
++    return path
++
++
++def test_classify_only_walkthrough_cases(tmp_path):
++    outcomes = csw.classify(_junit(tmp_path))
++    assert [(o.venue, o.group) for o in outcomes] == [("nature", "failed"), ("arxiv", "skipped"), ("biorxiv", "passed")]
++    assert csw.failed_venues(outcomes) == ["nature"]
++
++
++def test_report_redacts_home_and_says_what_to_do(tmp_path):
++    body = csw.render_markdown(csw.classify(_junit(tmp_path)), "2027-02-01", "abcdef1234567", note="stopped early")
++    assert str(Path.home()) not in body
++    assert "~/x/nature.log" in body
++    assert "`abcdef1234`" in body and "stopped early" in body
++    assert "submit nature failed all 3 attempts" in body
++    assert "paperpush login <slug>" in body
++
++
++class FakeGh:
++    def __init__(self, open_issues):
++        self.open_issues = open_issues
++        self.calls = []
++
++    def __call__(self, args, cwd):
++        self.calls.append(args)
++        if args[:2] == ["issue", "list"]:
++            return json.dumps(self.open_issues)
++        if args[:2] == ["issue", "create"]:
++            return "https://github.com/o/r/issues/7\n"
++        return ""
++
++
++def _outcomes(*groups):
++    return [csw.Outcome(f"v{i}", g) for i, g in enumerate(groups)]
++
++
++def test_failure_with_no_open_issue_opens_one():
++    gh = FakeGh([])
++    assert csw.report_to_github(_outcomes("failed", "passed"), "body", "2027-02-01", Path("."), gh=gh) == "opened https://github.com/o/r/issues/7"
++    create = next(c for c in gh.calls if c[:2] == ["issue", "create"])
++    assert "Submit walkthrough failed: v0 (2027-02-01)" in create and csw.LABEL in create
++
++
++def test_failure_with_open_issue_comments_instead_of_duplicating():
++    gh = FakeGh([{"number": 3, "url": "u3"}])
++    csw.report_to_github(_outcomes("failed"), "body", "d", Path("."), gh=gh)
++    assert not any(c[:2] == ["issue", "create"] for c in gh.calls)
++    assert any(c[:3] == ["issue", "comment", "3"] for c in gh.calls)
++
++
++def test_no_failure_never_opens_or_closes():
++    gh = FakeGh([])
++    assert csw.report_to_github(_outcomes("passed", "skipped"), "b", "d", Path("."), gh=gh) == "no failures; no issue filed"
++    assert all(c[:2] == ["issue", "list"] for c in gh.calls)
++
++    gh = FakeGh([{"number": 3, "url": "u3"}])
++    csw.report_to_github(_outcomes("passed"), "b", "d", Path("."), gh=gh)
++    assert not any("close" in c for c in gh.calls)
++    assert any(c[:3] == ["issue", "comment", "3"] for c in gh.calls)
++
++
++def test_main_dry_run_from_existing_junit(tmp_path, capsys):
++    out = tmp_path / "out"
++    assert csw.main(["--junit", str(_junit(tmp_path)), "--out-dir", str(out), "--dry-run"]) == 0
++    assert (out / "report.md").exists()
++    assert {o["group"] for o in json.loads((out / "report.json").read_text())["outcomes"]} == set(csw.GROUPS)
++    assert "would file/update" in capsys.readouterr().out
++
++
++def test_run_pytest_passes_venue_and_headless(tmp_path, monkeypatch):
++    seen = {}
++
++    class FakePopen:
++        def __init__(self, cmd, cwd, env, stdin):
++            seen.update(cmd=cmd, env=env)
++
++        def wait(self, timeout=None):
++            return 0
++
++    monkeypatch.setattr(csw.subprocess, "Popen", FakePopen)
++    assert csw.run_pytest(tmp_path, tmp_path / "j.xml", ["nature"], True, 1) == (0, "")
++    assert csw.TEST in seen["cmd"] and "--run-portal" in seen["cmd"] and "-s" not in seen["cmd"]
++    assert seen["cmd"][seen["cmd"].index("--venue") + 1] == "nature"
++    assert seen["env"]["PAPERPUSH_WALKTHROUGH_HEADLESS"] == "1"
++    assert seen["env"]["PYTHONPATH"].split(":")[0] == str(tmp_path)
+diff --git a/tests/test_portal_drift.py b/tests/test_portal_drift.py
+deleted file mode 100644
+index 2e52f16..0000000
+--- a/tests/test_portal_drift.py
++++ /dev/null
+@@ -1,459 +0,0 @@
+-"""Detect when a venue submission portal changes out from under us.
+-
+-These are *not* tests of paperpush's own code. They open a real submission
+-portal and check two things against a committed baseline:
+-
+-  * **contract** -- every selector the venue's runner depends on still
+-    resolves on the live page (a break here is what would otherwise fail a real
+-    submission partway through); and
+-  * **fingerprint** -- the page's stable structure (form-control names, button
+-    labels, field labels, headings) still matches ``tests/portal_snapshots`` ,
+-    so a portal *adding* a required field we do not yet handle also trips the
+-    test, not just changes to selectors we already use.
+-
+-A raw HTML diff is useless here: ScholarOne and bioRxiv embed per-session
+-tokens that change every load. The ``drift`` helper (``tests/drift.py``) builds the
+-fingerprint from human-meaningful structure and drops the volatile parts.
+-
+-Running them
+-------------
+-They hit the network, so they carry ``@pytest.mark.portal`` and are skipped by a
+-bare ``pytest``. Opt in with ``pytest --run-portal`` (see ``tests/conftest.py``).
+-
+-Both tests are parametrized over *every* venue in the database, so a venue
+-added to ``submission_forms.json`` is checked automatically without editing this file.
+-A venue that does not yet have a drift spec (see ``SPECS`` below) is reported
+-as a skip naming what to add, rather than being silently left unchecked.
+-
+-  * ``test_login_page_drift`` needs only network access -- it checks the public
+-    sign-in page and never signs in.
+-  * ``test_first_step_drift`` needs to be signed in. It reuses a saved Playwright
+-    session (created locally by running ``paperpush submit`` once for
+-    bioRxiv, or restored from a CI secret) and falls back to signing in with
+-    ``PAPERPUSH_TEST_USERNAME`` / ``PAPERPUSH_TEST_PASSWORD``. With
+-    neither it skips. Note: reaching the first wizard step creates a clearly
+-    titled dummy *draft* on the portal -- the unavoidable cost of exercising the
+-    first real form.
+-
+-Baselines
+----------
+-The expected fingerprints live in ``tests/portal_snapshots/<slug>.json``. The
+-first time (or after an intended portal change) regenerate them with
+-``pytest --run-portal --update-snapshots``, review the diff, and commit.
+-"""
+-
+-from __future__ import annotations
+-
+-import json
+-from pathlib import Path
+-
+-import drift
+-import pytest
+-
+-from paperpush.database import list_venues
+-from paperpush.venues import common
+-from paperpush.venues.openrxiv import main as biorxiv
+-from paperpush.venues.openrxiv.biorxiv import VENUE as biorxiv_venue
+-from paperpush.venues.scholarone import bioinformatics
+-
+-pytestmark = pytest.mark.portal
+-
+-# Where committed baseline fingerprints live, one JSON file per venue keyed by
+-# page name ("login", "first_step").
+-SNAPSHOT_DIR = Path(__file__).parent / "portal_snapshots"
+-
+-# Where screenshot + HTML captures land when a check fails. Git-ignored (see
+-# .gitignore): the captures embed per-session tokens, and they are diagnostic
+-# scratch, not baselines to commit.
+-FAILURE_DIR = SNAPSHOT_DIR / "_failures"
+-
+-# How long to wait for a contract element before calling it missing.
+-CONTRACT_TIMEOUT_MS = 10000
+-
+-
+-# --- per-venue specs ------------------------------------------------------
+-#
+-# Each spec wires the generic test to one portal. The selector strings are
+-# imported from the venue's own runner module wherever they are already
+-# defined as constants, so the check and the real submitter can never disagree
+-# about what to look for. A few bioinformatics navigation labels are still inline
+-# literals in bioinformatics.py (the module is noted there as close to the raw
+-# recording); those are repeated here with a comment until they are lifted into
+-# constants.
+-
+-
+-def _biorxiv_login_contract(page):
+-    return [
+-        ("email field", page.get_by_role("textbox", name=biorxiv.LOGIN_EMAIL_LABEL)),
+-        (
+-            "password field",
+-            page.get_by_role("textbox", name=biorxiv.LOGIN_PASSWORD_LABEL),
+-        ),
+-        ("sign-in button", page.get_by_role("button", name=biorxiv.LOGIN_BUTTON_NAME)),
+-    ]
+-
+-
+-def _biorxiv_reach_first_step(page):
+-    page.goto(biorxiv.QUEUES_URL)
+-    page.get_by_role("link", name=biorxiv.BTN_SUBMIT_NEW).click()
+-
+-
+-def _biorxiv_first_step_contract(page):
+-    return [
+-        (
+-            f"server radio {biorxiv.SEL_SERVER_BIO}",
+-            page.locator(biorxiv.SEL_SERVER_BIO),
+-        ),
+-        (
+-            f"server radio {biorxiv.SEL_SERVER_MED}",
+-            page.locator(biorxiv.SEL_SERVER_MED),
+-        ),
+-        (
+-            f'button "{biorxiv.BTN_CONTINUE}"',
+-            page.get_by_role("button", name=biorxiv.BTN_CONTINUE),
+-        ),
+-    ]
+-
+-
+-def _bioinformatics_login_contract(page):
+-    return [
+-        ("username field", page.locator(bioinformatics.LOGIN_USERID)),
+-        ("password field", page.locator(bioinformatics.LOGIN_PASSWORD)),
+-        ("log-in button", page.locator(bioinformatics.LOGIN_BUTTON)),
+-    ]
+-
+-
+-def _bioinformatics_reach_first_step(page):
+-    page.goto(bioinformatics.PORTAL_URL)
+-    # The cookie banner sometimes covers the dashboard; dismiss it if shown.
+-    reject = page.get_by_role("button", name="Reject All")
+-    try:
+-        if reject.is_visible(timeout=3000):
+-            reject.click()
+-    except Exception:
+-        pass
+-    # Mirror submit_bioinformatics' opening navigation (bioinformatics.py). These
+-    # labels are inline literals there; keep them in sync.
+-    page.get_by_role("link", name=bioinformatics.AUTHOR_LINK).click()
+-    page.get_by_role("link", name=" Start New Submission").click()
+-    page.get_by_role("link", name="Begin Submission").click()
+-    page.get_by_role("link", name="or continue without pre-").click()
+-
+-
+-def _bioinformatics_first_step_contract(page):
+-    return [
+-        ("title field", page.get_by_role("textbox", name="DOCUMENT_TITLE")),
+-        ("abstract field", page.get_by_role("textbox", name="DOCUMENT_ABSTRACT")),
+-        (
+-            "subject-category select",
+-            page.get_by_label("Please select your manuscript subject category:"),
+-        ),
+-    ]
+-
+-
+-class _Spec:
+-    def __init__(
+-        self,
+-        slug,
+-        module,
+-        login_url,
+-        login_contract,
+-        sign_in,
+-        reach_first_step,
+-        first_step_contract,
+-        logged_in,
+-    ):
+-        self.slug = slug
+-        self.module = module
+-        self.login_url = login_url
+-        self.login_contract = login_contract
+-        self.sign_in = sign_in
+-        self.reach_first_step = reach_first_step
+-        self.first_step_contract = first_step_contract
+-        self.logged_in = logged_in
+-
+-
+-# Per-venue drift specs. Every venue in the database is parametrized
+-# automatically (see ``_all_venue_slugs``); a venue *with* a spec here is
+-# fully checked, while one *without* a spec is skipped with a pointer to add
+-# one. So adding a venue to submission_forms.json immediately surfaces it here as a
+-# visible coverage gap rather than silently going unchecked, and writing its
+-# spec below is all that is needed to start checking it.
+-SPECS = {
+-    "biorxiv": _Spec(
+-        slug="biorxiv",
+-        module=biorxiv,
+-        login_url=biorxiv.LOGIN_URL,
+-        login_contract=_biorxiv_login_contract,
+-        # biorxiv_venue.login navigates to the login URL itself.
+-        sign_in=lambda page, u, p: biorxiv_venue.login(page, u, p),
+-        reach_first_step=_biorxiv_reach_first_step,
+-        first_step_contract=_biorxiv_first_step_contract,
+-        logged_in=lambda page: biorxiv_venue.is_logged_in(page),
+-    ),
+-    "bioinformatics": _Spec(
+-        slug="bioinformatics",
+-        module=bioinformatics,
+-        login_url=bioinformatics.PORTAL_URL,
+-        login_contract=_bioinformatics_login_contract,
+-        # bioinformatics.VENUE.login navigates to the portal (its login form) itself.
+-        sign_in=lambda page, u, p: bioinformatics.VENUE.login(page, u, p),
+-        reach_first_step=_bioinformatics_reach_first_step,
+-        first_step_contract=_bioinformatics_first_step_contract,
+-        logged_in=lambda page: bioinformatics.VENUE.is_logged_in(page),
+-    ),
+-}
+-
+-
+-# --- venue discovery ------------------------------------------------------
+-
+-
+-def _all_venue_slugs() -> list[str]:
+-    """Every venue slug paperpush can submit to, so the drift tests track the registry.
+-
+-    Parametrizing over this (rather than over ``SPECS``) means a venue added
+-    to submission_forms.json is covered the moment it exists: it is collected here and,
+-    until it has a spec, reported as a skip by :func:`_spec_or_skip`.
+-    """
+-    return [venue.slug for venue in list_venues() if venue.has_form]
+-
+-
+-def _spec_or_skip(slug: str) -> "_Spec":
+-    """The drift spec for ``slug``, or a skip explaining how to add one.
+-
+-    Keeps coverage gaps visible: a venue without a spec is not silently
+-    ignored, it is skipped with a pointer to the per-venue specs to copy.
+-    """
+-    spec = SPECS.get(slug)
+-    if spec is None:
+-        pytest.skip(f"no portal-drift spec for {slug!r} yet. Drift checking needs that " "venue's login/first-step selectors and navigation; add a _Spec " "entry for it to SPECS in tests/test_portal_drift.py (model it on the " "biorxiv/bioinformatics specs).")
+-    return spec
+-
+-
+-# --- baseline IO ------------------------------------------------------------
+-
+-
+-def _baseline_path(slug: str) -> Path:
+-    return SNAPSHOT_DIR / f"{slug}.json"
+-
+-
+-def _load_baseline(slug: str) -> dict:
+-    path = _baseline_path(slug)
+-    if not path.exists():
+-        return {}
+-    return json.loads(path.read_text(encoding="utf-8"))
+-
+-
+-def _save_baseline(slug: str, page_name: str, fp: dict) -> None:
+-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+-    data = _load_baseline(slug)
+-    data[page_name] = fp
+-    path = _baseline_path(slug)
+-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+-
+-
+-# --- shared assertions ------------------------------------------------------
+-
+-
+-def _skip_if_blocked(page, slug):
+-    """Skip (not fail) when an anti-bot wall stands between us and the real page.
+-
+-    ScholarOne (bioinformatics) sits behind Cloudflare, which serves a "Just a
+-    moment..." interstitial to fresh headless browsers. That is not a portal UI
+-    change, so it must not read as drift. A saved session carrying a valid
+-    ``cf_clearance`` cookie usually passes the challenge; a cold fetch in CI does
+-    not. bioRxiv is not behind such a wall.
+-    """
+-    blocked = False
+-    try:
+-        title = (page.title() or "").lower()
+-        if "just a moment" in title or "attention required" in title:
+-            blocked = True
+-        elif page.locator("#challenge-form, #challenge-running, [id^=cf-chl]").count() > 0:
+-            blocked = True
+-    except Exception:
+-        pass
+-    if blocked:
+-        pytest.skip(f"{slug}: blocked by an anti-bot challenge (Cloudflare). A fresh " "headless browser cannot reach the page; supply a saved session " "with a valid cf_clearance cookie to check this portal.")
+-
+-
+-def _sign_in_or_skip_if_blocked(spec, page, slug, username, password):
+-    """Sign in, but treat an anti-bot wall met during sign-in as a skip.
+-
+-    Sign-in navigates the portal afresh, so a bot-wall (Cloudflare) can appear
+-    *here* even when the first page load looked clear -- for instance when a saved
+-    session's ``cf_clearance`` cookie has expired, so the run falls back to a
+-    real sign-in and the re-navigation trips the challenge. Without this the
+-    absent login form surfaces as a venue ``...LoginError`` that reads like the
+-    sign-in form changed, which is a false drift signal. So when sign-in fails we
+-    first check whether the page is really an anti-bot wall (``_skip_if_blocked``
+-    skips if so); only a failure that is *not* a block propagates as a genuine
+-    error worth capturing and fixing.
+-    """
+-    try:
+-        spec.sign_in(page, username, password)
+-    except Exception:
+-        _skip_if_blocked(page, slug)
+-        raise
+-
+-
+-def _assert_contract(items):
+-    """Fail with the list of every missing selector, not just the first."""
+-    from playwright.sync_api import TimeoutError as PWTimeout
+-    from playwright.sync_api import expect
+-
+-    missing = []
+-    for desc, locator in items:
+-        try:
+-            expect(locator.first).to_be_visible(timeout=CONTRACT_TIMEOUT_MS)
+-        except (AssertionError, PWTimeout):
+-            missing.append(desc)
+-    assert not missing, "selector(s) the runner depends on are gone (portal UI changed):\n" + "\n".join(f"  - {m}" for m in missing)
+-
+-
+-def _check_fingerprint(slug, page_name, page, update_snapshots):
+-    """Compare the page's fingerprint to its baseline (or refresh the baseline)."""
+-    current = drift.fingerprint(page)
+-    if update_snapshots:
+-        _save_baseline(slug, page_name, current)
+-        pytest.skip(f"updated {slug} '{page_name}' baseline")
+-    baseline = _load_baseline(slug).get(page_name)
+-    if baseline is None:
+-        pytest.fail(f"no committed baseline for {slug} '{page_name}'. " "Generate it with: pytest --run-portal --update-snapshots")
+-    page_diff = drift.diff(baseline, current)
+-    assert not page_diff, f"{slug} '{page_name}' page structure changed vs. baseline:\n" + drift.format_diff(page_diff) + "\n\nIf this change is expected, refresh with: " "pytest --run-portal --update-snapshots"
+-
+-
+-def _capture_note(page, slug, page_name):
+-    """Dump a screenshot + HTML of the failed page and describe where they went.
+-
+-    Called only on a real check failure (a missing selector or a fingerprint
+-    drift), so the person fixing the runner has the changed page to look at --
+-    the pixels and the DOM -- rather than only a text diff. Returns a string to
+-    append to the assertion message; empty when nothing could be captured (the
+-    capture itself never raises, so it cannot mask the original failure).
+-    """
+-    artifacts = common.capture_failure(page, slug, page_name, FAILURE_DIR)
+-    if not artifacts:
+-        return ""
+-    lines = "\n".join(f"  - {kind}: {path}" for kind, path in artifacts.items())
+-    return "\n\nSaved a capture of the failed page for offline diagnosis " "(open the screenshot, then grep the HTML for the changed control):\n" + lines
+-
+-
+-def _run_with_capture(page, slug, page_name, body):
+-    """Run ``body`` and, on any failure, capture the page before re-raising.
+-
+-    ``body`` is a zero-argument callable covering everything that touches the
+-    live page for one check: sign-in, navigation to the step, and the contract
+-    and fingerprint assertions. A page can fail at any of those points -- a
+-    changed sign-in form, a renamed wizard link, a missing field -- and each is a
+-    "this page did not work" that a screenshot and the live HTML help diagnose,
+-    so the capture wraps the whole flow rather than only the final asserts.
+-
+-    Every real error (:class:`AssertionError` from a contract/fingerprint check,
+-    a venue ``...LoginError`` from sign-in, a Playwright timeout from
+-    navigation) is an :class:`Exception`, so it is captured and re-raised with
+-    the artifact paths attached. ``pytest.skip`` / ``pytest.fail`` raise
+-    ``OutcomeException`` (a ``BaseException``, not an ``Exception``), so a blocked
+-    page or a missing baseline propagates untouched with no spurious capture.
+-    """
+-    try:
+-        body()
+-    except Exception as exc:
+-        note = _capture_note(page, slug, page_name)
+-        if note:
+-            # add_note (Python 3.11+) shows the paths in the traceback while
+-            # preserving the exception's type; fall back to stdout on 3.10.
+-            if hasattr(exc, "add_note"):
+-                exc.add_note(note)
+-            else:
+-                print(note)
+-        raise
+-
+-
+-def _saved_session(spec):
+-    """Path to a usable saved Playwright session for ``spec``, or None."""
+-    path = spec.module.session_path()
+-    return path if path.exists() else None
+-
+-
+-# --- the tests --------------------------------------------------------------
+-
+-
+-@pytest.mark.parametrize("slug", _all_venue_slugs())
+-def test_login_page_drift(slug, update_snapshots):
+-    """The public sign-in page still has our login fields and matches baseline.
+-
+-    Needs only network access -- never signs in -- so it runs on every opted-in
+-    CI run regardless of whether portal credentials/sessions are configured.
+-    Parametrized over every venue in the registry; venues without a drift
+-    spec yet are skipped (see :func:`_spec_or_skip`).
+-    """
+-    from playwright.sync_api import sync_playwright
+-
+-    spec = _spec_or_skip(slug)
+-    with sync_playwright() as pw:
+-        browser = pw.chromium.launch(headless=True)
+-        context = browser.new_context()
+-        page = context.new_page()
+-        try:
+-            page.goto(spec.login_url)
+-            _skip_if_blocked(page, slug)
+-
+-            def body():
+-                _assert_contract(spec.login_contract(page))
+-                _check_fingerprint(slug, "login", page, update_snapshots)
+-
+-            _run_with_capture(page, slug, "login", body)
+-        finally:
+-            context.close()
+-            browser.close()
+-
+-
+-@pytest.mark.parametrize("slug", _all_venue_slugs())
+-def test_first_step_drift(slug, update_snapshots):
+-    """Signed in, the first wizard step still has our fields and matches baseline.
+-
+-    Reuses a saved session when one exists; otherwise signs in with the shared
+-    test account (``PAPERPUSH_TEST_USERNAME`` / ``_PASSWORD``). Skips when
+-    neither is available. Reaching the first step leaves a dummy draft on the
+-    portal. Parametrized over every venue in the registry; venues without a
+-    drift spec yet are skipped (see :func:`_spec_or_skip`).
+-    """
+-    import os
+-
+-    from playwright.sync_api import sync_playwright
+-
+-    spec = _spec_or_skip(slug)
+-    session = _saved_session(spec)
+-    username = os.environ.get("PAPERPUSH_TEST_USERNAME")
+-    password = os.environ.get("PAPERPUSH_TEST_PASSWORD")
+-    if not session and not (username and password):
+-        pytest.skip(f"no saved {slug} session and no PAPERPUSH_TEST_USERNAME/" "PASSWORD; cannot sign in to check the first wizard step")
+-
+-    with sync_playwright() as pw:
+-        browser = pw.chromium.launch(headless=True)
+-        context = browser.new_context(storage_state=str(session)) if session else browser.new_context()
+-        page = context.new_page()
+-        try:
+-
+-            def body():
+-                if session:
+-                    page.goto(spec.login_url)
+-                    _skip_if_blocked(page, slug)
+-                    if not spec.logged_in(page):
+-                        # A stale cookie is not a UI change; do not fail on it.
+-                        if not (username and password):
+-                            pytest.skip(f"saved {slug} session looks expired and no credentials " "to re-authenticate; re-run 'paperpush submit'")
+-                        _sign_in_or_skip_if_blocked(spec, page, slug, username, password)
+-                else:
+-                    _sign_in_or_skip_if_blocked(spec, page, slug, username, password)
+-
+-                spec.reach_first_step(page)
+-                _assert_contract(spec.first_step_contract(page))
+-                _check_fingerprint(slug, "first_step", page, update_snapshots)
+-
+-            _run_with_capture(page, slug, "first_step", body)
+-        finally:
+-            context.close()
+-            browser.close()

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/openvax__neoantigen-vaccine-pipeline-167"
+description = "Making VCF annotation optional, adding --annotate-vcfs flag"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "neoantigen-vaccine-pipeline",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "openvax/neoantigen-vaccine-pipeline"
+ref = "4bbcc85f0d37dbed02bd56a8725dea7033ff9aee"
+reference = "https://github.com/openvax/neoantigen-vaccine-pipeline/pull/167"
+source_access = "auto"
+built_at = "2026-11-13T15:37:13.342811+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:97210abfb91d6c548ab4f033fd957441652db27f0a783c13451fb3b79aa3c2c2"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-09-15T19:23:20Z"
+diff_format = "unified"
+context_files = [
+    "run_snakemake.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 10
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,118 @@
+diff --git a/R/palimpsest_deconvolution.R b/R/palimpsest_deconvolution.R
+index 1636600..57b2d06 100644
+--- a/R/palimpsest_deconvolution.R
++++ b/R/palimpsest_deconvolution.R
+@@ -34,7 +34,7 @@ NMF_Extraction <- function (input_matrices = NULL, range_of_sigs = 1:20,
+     print(paste("Estimating the optimal number of",Type,"mutational signatures in the",ncol(input_data),"input samples.. (be patient!)"),quote = F)
+     estimate <- nmfEstimateRank(x = input_data, range_of_sigs,
+                                 method = method, nrun = nrun, seed = 123456)
+-    pdf(paste0(resdir, "NMF_Rank_Estimates.pdf"), width = 8, 
++    pdf(file.path(resdir, "NMF_Rank_Estimates.pdf"), width = 8, 
+         height = 6)
+     p <- plot(estimate, y = NULL, what = "all", na.rm = FALSE, 
+          xname = "x", yname = "y", xlab = "Factorization rank", 
+@@ -66,13 +66,13 @@ NMF_Extraction <- function (input_matrices = NULL, range_of_sigs = 1:20,
+       dev.off()
+     }
+     if (Type %in% c("SBS","DBS","ID")) {
+-      pdf(file=paste0(resdir,Type,"_Denovo_Signature_Profiles.pdf"),width=24,height=7)
++      pdf(file=file.path(resdir,paste0(Type,"_Denovo_Signature_Profiles.pdf")),width=24,height=7)
+       plot_signatures(input_data = spec,Title = rownames(spec))
+       dev.off()
+     }
+   }
+   denovo_signatures <- spec
+-  save(denovo_signatures,file = paste0(resdir,Type,"_denovo_signatures.RData"))
++  save(denovo_signatures,file = file.path(resdir,paste0(Type,"_denovo_signatures.RData")))
+   return(denovo_signatures)
+ }
+ 
+@@ -266,7 +266,7 @@ deconvolution_fit <- function (input_matrices = NULL,
+   resdir_parent <- resdir
+   if (doplot == TRUE) {
+     print(paste("Plotting the contribution of",Type,"signatures in each sample.."),quote = F)
+-    resdir <- paste0(resdir,"Samples/");if (!file.exists(resdir)) dir.create(resdir)
++    resdir <- file.path(resdir,"Samples");if (!file.exists(resdir)) dir.create(resdir)
+   }
+ 
+   mutSign_props <- c()
+@@ -322,7 +322,7 @@ deconvolution_fit <- function (input_matrices = NULL,
+   mutSign_nums <- round(mutSign_nums * mutSign_nums$total_mutations)
+   mutSign_nums <- mutSign_nums[-dim(mutSign_nums)[2]]
+   signatures_exp <- list(sig_props = mutSign_props, sig_nums = mutSign_nums)
+-  if(save_signatures_exp == TRUE) save(signatures_exp,file = paste0(resdir_parent,Type,"_signatures_exposure.RData"))
++  if(save_signatures_exp == TRUE) save(signatures_exp,file = file.path(resdir_parent,paste0(Type,"_signatures_exposure.RData")))
+   return(signatures_exp)
+   dev.off()
+   
+@@ -357,7 +357,7 @@ deconvolution_fit_SV <- function (vcf = vcf, input_data = data,
+     print(s)
+     vcf. <- vcf[which(vcf[, "Sample"] == s), ]
+     if (plot == TRUE) {
+-      resdir_samp <- paste0(resdir,"Samples/");if (!file.exists(resdir_samp)) dir.create(resdir_samp)
++      resdir_samp <- file.path(resdir,"Samples");if (!file.exists(resdir_samp)) dir.create(resdir_samp)
+       resdir.. <- file.path(resdir_samp, s)
+       if (!file.exists(resdir..)) {
+         dir.create(resdir..)
+diff --git a/R/palimpsest_utils.R b/R/palimpsest_utils.R
+index c98bbbb..ed690f3 100644
+--- a/R/palimpsest_utils.R
++++ b/R/palimpsest_utils.R
+@@ -761,8 +761,11 @@ compare_results <- function(reference_sigs = NA, extraction_1 = NA, extraction_2
+     
+     longest <- max(c(length(denovs1),length(denovs2)))
+     
+-    res <- as.data.frame(matrix(nrow = nrow(reference_sigs)+longest,ncol = 0)) %>% 
+-      mutate(References = NA, denovo1 = NA, ref_denovo1_cos = NA, denovo2 = NA, ref_denovo2_cos = NA, denovo1_denovo2_cos = NA, keep_version = NA)
++    # res <- as.data.frame(matrix(nrow = nrow(reference_sigs)+longest,ncol = 0)) %>% 
++      # mutate(References = NA, denovo1 = NA, ref_denovo1_cos = NA, denovo2 = NA, ref_denovo2_cos = NA, denovo1_denovo2_cos = NA, keep_version = NA)
++
++    repnum = nrow(reference_sigs) + longest
++    res = data.frame(References = rep(NA,repnum),  denovo1 = rep(NA,repnum), ref_denovo1_cos = rep(NA,repnum), keep_version = rep(NA,repnum))
+   
+     res$References[1:nrow(reference_sigs)] <- c(rownames(reference_sigs))
+                                                 
+@@ -860,10 +863,12 @@ compare_results <- function(reference_sigs = NA, extraction_1 = NA, extraction_2
+ 
+   refs <- rownames(reference_sigs)
+   denovs1 <- rownames(extraction_1)
++    
++  # res <- as.data.frame(matrix(nrow = nrow(reference_sigs)+length(denovs1),ncol = 0)) %>% 
++    # mutate(References = NA, denovo1 = NA, ref_denovo1_cos = NA, keep_version = NA)
+ 
+-  
+-  res <- as.data.frame(matrix(nrow = nrow(reference_sigs)+length(denovs1),ncol = 0)) %>% 
+-    mutate(References = NA, denovo1 = NA, ref_denovo1_cos = NA, keep_version = NA)
++  repnum = nrow(reference_sigs) + length(denovs1)
++  res = data.frame(References = rep(NA,repnum),  denovo1 = rep(NA,repnum), ref_denovo1_cos = rep(NA,repnum), keep_version = rep(NA,repnum))
+   
+   res$References[1:nrow(reference_sigs)] <- c(rownames(reference_sigs))
+   
+diff --git a/README.md b/README.md
+index ea17aea..8e24824 100644
+--- a/README.md
++++ b/README.md
+@@ -12,7 +12,6 @@ Installation
+ Install from the GitHub repository using devtools:
+ 
+     install.packages("devtools")
+-    library(devtools)
+     devtools::install_github("FunGeST/Palimpsest")
+ 
+ Dependencies
+diff --git a/RUNNING_PALIMPSEST_EXAMPLE/LiC1162/.Rhistory b/RUNNING_PALIMPSEST_EXAMPLE/LiC1162/.Rhistory
+new file mode 100644
+index 0000000..e69de29
+diff --git a/RUNNING_PALIMPSEST_EXAMPLE/Palimpsest_Test_Script.R b/RUNNING_PALIMPSEST_EXAMPLE/Palimpsest_Test_Script.R
+index a3c31a8..afbd2ca 100644
+--- a/RUNNING_PALIMPSEST_EXAMPLE/Palimpsest_Test_Script.R
++++ b/RUNNING_PALIMPSEST_EXAMPLE/Palimpsest_Test_Script.R
+@@ -48,7 +48,7 @@ SBS_denovo_sigs <- NMF_Extraction(input_matrices = SBS_input, range_of_sigs = 2:
+ 
+ # Compare the de novo signatures with published COSMIC signatures
+ compare_tab <- compare_results(reference_sigs = SBS_cosmic, extraction_1 = SBS_denovo_sigs); compare_tab
+-readr::write_delim(compare_tab, path = file.path(resdir,"Comparison_table.txt"))
++readr::write_delim(compare_tab, file = file.path(resdir,"Comparison_table.txt"))
+ 
+ pdf(file.path(resdir, "Cosine_Similarity_Heatmap.pdf"), width = 11, height = 10)
+ SBS_cosine_similarities <- deconvolution_compare(SBS_denovo_sigs, SBS_cosmic)

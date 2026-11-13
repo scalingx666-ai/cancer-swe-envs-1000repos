@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/openvax__vaxrank-810"
+description = "Plan MS-dependent prediction scoring across antigen categories"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "vaxrank",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "openvax/vaxrank"
+ref = "2584701f696600650738082b2da5dd9d858c33ff"
+reference = "https://github.com/openvax/vaxrank/pull/810"
+source_access = "auto"
+built_at = "2026-11-12T04:12:06.239066+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:07c43c86232025e567350c45df1c1aa94bdc992d3f804e3c811c2699f309b57d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-08T14:01:07Z"
+diff_format = "unified"
+context_files = [
+    "notes/design/antigen-ms-evidence.md",
+    "vaxrank/version.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 489
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

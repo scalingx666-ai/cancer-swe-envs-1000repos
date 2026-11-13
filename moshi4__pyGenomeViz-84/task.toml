@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/moshi4__pyGenomeViz-84"
+description = "Bump to v1.6.1"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "pyGenomeViz",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "moshi4/pyGenomeViz"
+ref = "9fe3ef0374aca53cfd4e8560ea926b565f074f58"
+reference = "https://github.com/moshi4/pyGenomeViz/pull/84"
+source_access = "auto"
+built_at = "2026-11-13T15:55:34.067417+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e9048da3662c366fb4d8b86e58e09b55872d5845b6535610b88ca0f6a0cc93d9"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-05-13T15:37:08Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/ci.yml",
+    "docs/images/pgv-gui_screen.png",
+    "src/pygenomeviz/__init__.py",
+    "src/pygenomeviz/align/tool/base.py",
+    "src/pygenomeviz/gui/plot.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 42
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

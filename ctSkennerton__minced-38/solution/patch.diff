@@ -1,0 +1,28 @@
+diff --git a/CRISPRFinder.java b/CRISPRFinder.java
+index 7817a7f..aaba426 100644
+--- a/CRISPRFinder.java
++++ b/CRISPRFinder.java
+@@ -188,7 +188,6 @@ private boolean findRepeats( DNASequence sequence, int readNum )
+       for (int j = 0; j <= searchEnd; j = j + skips)
+       {
+          candidateCRISPR = new CRISPR();
+-
+          int beginSearch = j + minRepeatLength + minSpacerLength;
+          int endSearch = j + maxRepeatLength + maxSpacerLength + searchWindowLength;
+ 
+@@ -347,10 +346,13 @@ private boolean findRepeats( DNASequence sequence, int readNum )
+ 
+          if (screenDisplay == 0)
+             out.close();
++            if (gffOut != null) {
++                gffOut.close();
++            }
+ 
+       }
+-      catch (Exception e)   {   
+-        System.err.println ("--Error writing to file-- \n");   
++      catch (Exception e)   {
++        System.err.println ("--Error writing to file-- \n");
+         e.printStackTrace(System.err);
+       }
+ 

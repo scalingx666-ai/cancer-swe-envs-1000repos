@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/NVIDIA-Genomics-Research__GenomeWorks-658"
+description = "[common] Added debug output to preallocated allocator"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "GenomeWorks",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "NVIDIA-Genomics-Research/GenomeWorks"
+ref = "1a933af1f6f4b617b4cedcd261f184d1024b1b7e"
+reference = "https://github.com/NVIDIA-Genomics-Research/GenomeWorks/pull/658"
+source_access = "auto"
+built_at = "2026-11-13T16:01:02.279431+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e183b77eb7d019c354856c348bba3cc7234d10d8a2f74679a6094a7ddb41f947"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-08-12T13:16:17Z"
+diff_format = "unified"
+context_files = [
+    "common/base/include/claraparabricks/genomeworks/utils/device_preallocated_allocator.cuh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 21
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

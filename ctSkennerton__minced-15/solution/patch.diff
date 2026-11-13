@@ -1,0 +1,58 @@
+diff --git a/Makefile b/Makefile
+index 600e297..f8df66f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,17 +2,16 @@ JFLAGS = -g
+ JC = javac
+ JAR = jar
+ .SUFFIXES: .java .class
++JAVA_FILES = CRISPR.java CRISPRFinder.java CRISPRUtil.java DNASequence.java FASTAReader.java SearchUtil.java minced.java IntervalSearchTree.java
++JAVA_CLASSES = $(JAVA_FILES:.java=.class)
++.PHONY: default clean test
+ 
+ .java.class:
+ 	$(JC) $(JFLAGS) $*.java
+ 
+-CLASSES = CRISPR.java CRISPRFinder.java CRISPRUtil.java DNASequence.java FASTAReader.java SearchUtil.java minced.java IntervalSearchTree.java
++default: minced.jar
+ 
+-default: classes minced.jar
+-
+-classes: $(CLASSES:.java=.class)
+-
+-minced.jar: classes
++minced.jar: $(JAVA_CLASSES)
+ 	$(JAR) cfm minced.jar MANIFEST.txt *class
+ 
+ clean:
+diff --git a/minced.java b/minced.java
+index 0ad1d1d..8b07144 100644
+--- a/minced.java
++++ b/minced.java
+@@ -39,7 +39,7 @@ public static void main(String[] args)
+       if (args[0].equals("--version"))
+       {
+          printVersion();
+-         System.exit(1);
++         System.exit(0);
+       }
+ 
+       int i = 0;
+diff --git a/t/Aquifex_aeolicus_VF5.expected b/t/Aquifex_aeolicus_VF5.expected
+index bba930f..c504150 100644
+--- a/t/Aquifex_aeolicus_VF5.expected
++++ b/t/Aquifex_aeolicus_VF5.expected
+@@ -1,7 +1,7 @@
+ ##gff-version 3
+-gi|15282445|ref|NC_000918.1|	minced:0.1.6	CRISPR	156460	156767	5	.	.	ID=CRISPR1
+-gi|15282445|ref|NC_000918.1|	minced:0.1.6	CRISPR	244561	244791	4	.	.	ID=CRISPR2
+-gi|15282445|ref|NC_000918.1|	minced:0.1.6	CRISPR	279264	279555	5	.	.	ID=CRISPR3
+-gi|15282445|ref|NC_000918.1|	minced:0.1.6	CRISPR	1226626	1226861	4	.	.	ID=CRISPR4
+-gi|15282445|ref|NC_000918.1|	minced:0.1.6	CRISPR	1379598	1379894	5	.	.	ID=CRISPR5
+-gi|15282445|ref|NC_000918.1|	minced:0.1.6	CRISPR	1418900	1419060	3	.	.	ID=CRISPR6
++gi|15282445|ref|NC_000918.1|	minced:0.2.0	CRISPR	156460	156767	5	.	.	ID=CRISPR1
++gi|15282445|ref|NC_000918.1|	minced:0.2.0	CRISPR	244561	244791	4	.	.	ID=CRISPR2
++gi|15282445|ref|NC_000918.1|	minced:0.2.0	CRISPR	279264	279555	5	.	.	ID=CRISPR3
++gi|15282445|ref|NC_000918.1|	minced:0.2.0	CRISPR	1226626	1226861	4	.	.	ID=CRISPR4
++gi|15282445|ref|NC_000918.1|	minced:0.2.0	CRISPR	1379598	1379894	5	.	.	ID=CRISPR5
++gi|15282445|ref|NC_000918.1|	minced:0.2.0	CRISPR	1418900	1419060	3	.	.	ID=CRISPR6

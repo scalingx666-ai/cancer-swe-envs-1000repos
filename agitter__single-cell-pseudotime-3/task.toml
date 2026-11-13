@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/agitter__single-cell-pseudotime-3"
+description = "Add awesome_bot link validation"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "single-cell-pseudotime",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "agitter/single-cell-pseudotime"
+ref = "c698949c839747082225e76a651d2af327bc5cb0"
+reference = "https://github.com/agitter/single-cell-pseudotime/pull/3"
+source_access = "auto"
+built_at = "2026-11-13T16:31:15.576040+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:cc710bd5b15d24327b627849f289d54f1d544d45864449696b19917b6b6b8e0e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2018-09-13T11:33:13Z"
+diff_format = "unified"
+context_files = [
+    ".travis.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

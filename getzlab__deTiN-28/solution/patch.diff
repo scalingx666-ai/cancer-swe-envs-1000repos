@@ -1,0 +1,26 @@
+diff --git a/deTiN/deTiN_aSCNA_based_estimate.py b/deTiN/deTiN_aSCNA_based_estimate.py
+index b08fc6a..5e6a4ba 100644
+--- a/deTiN/deTiN_aSCNA_based_estimate.py
++++ b/deTiN/deTiN_aSCNA_based_estimate.py
+@@ -147,7 +147,7 @@ def cluster_segments(self):
+                 self.centroids = centroids[solution_idx]
+ 
+         else:
+-            self.cluster_assignment = 0
++            self.cluster_assignment = np.zeros((self.n_segs,))
+             self.centroids = [np.mean(self.segs['TiN_MAP'])]
+ 
+     def perform_inference(self):
+diff --git a/deTiN/deTiN_utilities.py b/deTiN/deTiN_utilities.py
+index a1a1eba..c724130 100644
+--- a/deTiN/deTiN_utilities.py
++++ b/deTiN/deTiN_utilities.py
+@@ -203,7 +203,7 @@ def plot_kmeans_info(ascna_based_model, output_path, sample_name):
+     X_low = np.array(ascna_based_model.segs['TiN_ci_l'])
+     X_high = np.array(ascna_based_model.segs['TiN_ci_h'])
+     Y = np.array(ascna_based_model.segs['Chromosome'])
+-    kIdx = np.max(ascna_based_model.cluster_assignment)
++    kIdx = int(np.max(ascna_based_model.cluster_assignment))
+     K = range(1, 4)
+ 
+     # variance explained by incorporating additional clusters

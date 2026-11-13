@@ -1,0 +1,745 @@
+diff --git a/.github/workflows/pr_check.yml b/.github/workflows/pr_check.yml
+index f4ffbb9..829f75b 100644
+--- a/.github/workflows/pr_check.yml
++++ b/.github/workflows/pr_check.yml
+@@ -25,7 +25,12 @@ jobs:
+       - name: Set Matrix Bioconductor Version
+         id: set
+         run: |
+-          MATRIX="{\"include\":[{\"bioc_version\":\"$GITHUB_REF_NAME\"}]}"
++          if [ "${{ github.event_name }}" = "pull_request" ]; then
++            bioc_version="devel"
++          else
++            bioc_version="${GITHUB_REF_NAME}"
++          fi
++          MATRIX="{\"include\":[{\"bioc_version\":\"$bioc_version\"}]}"
+           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+ 
+   check:
+@@ -48,7 +53,6 @@ jobs:
+         shell: Rscript {0}
+ 
+       - name: Cache R packages
+-        if: runner.os != 'Windows'
+         uses: actions/cache@v4
+         with:
+           path: /usr/local/lib/R/site-library
+@@ -56,6 +60,7 @@ jobs:
+           restore-keys: ${{ runner.os }}-r-${{ matrix.bioc_version }}-
+ 
+       - name: Install GPG
++        if: ${{ github.ref == 'refs/heads/devel' && github.event_name != 'pull_request' }}
+         run: sudo apt-get update && sudo apt-get install -y gpg
+ 
+       - name: Install Dependencies
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 4ae2110..32d03dc 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -31,6 +31,7 @@ Imports:
+     DelayedArray,
+     GenomicRanges,
+     IRanges,
++    MatrixGenerics,
+     methods,
+     S4Vectors,
+     tidyr,
+diff --git a/NAMESPACE b/NAMESPACE
+index feb1633..6dba82b 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -15,7 +15,9 @@ export(experiments)
+ export(exportClass)
+ export(getWithColData)
+ export(hasAssay)
++export(hasRowData)
+ export(hasRowRanges)
++export(intersectByRowData)
+ export(intersectColumns)
+ export(intersectRows)
+ export(listToMap)
+@@ -36,6 +38,7 @@ export(subsetByAssay)
+ export(subsetByColData)
+ export(subsetByColumn)
+ export(subsetByRow)
++export(subsetByRowData)
+ export(upsetSamples)
+ export(wideFormat)
+ exportClasses(ExperimentList)
+@@ -64,7 +67,9 @@ exportMethods(dimnames)
+ exportMethods(drops)
+ exportMethods(experiments)
+ exportMethods(exportClass)
++exportMethods(hasRowData)
+ exportMethods(hasRowRanges)
++exportMethods(intersectByRowData)
+ exportMethods(isEmpty)
+ exportMethods(length)
+ exportMethods(longForm)
+@@ -79,6 +84,7 @@ exportMethods(sampleMap)
+ exportMethods(show)
+ exportMethods(showReplicated)
+ exportMethods(splitAssays)
++exportMethods(subsetByRow)
+ exportMethods(updateObject)
+ import(BiocGenerics)
+ import(GenomicRanges)
+@@ -90,7 +96,9 @@ importFrom(BiocBaseUtils,lifeCycle)
+ importFrom(BiocGenerics,colnames)
+ importFrom(BiocGenerics,longForm)
+ importFrom(BiocGenerics,rownames)
++importFrom(MatrixGenerics,rowRanges)
+ importFrom(S4Vectors,"metadata<-")
+ importFrom(S4Vectors,metadata)
++importFrom(SummarizedExperiment,rowData)
+ importFrom(methods,as)
+ importFrom(utils,.DollarNames)
+diff --git a/R/MultiAssayExperiment-class.R b/R/MultiAssayExperiment-class.R
+index bb6fd6a..8b8a884 100644
+--- a/R/MultiAssayExperiment-class.R
++++ b/R/MultiAssayExperiment-class.R
+@@ -24,7 +24,8 @@ NULL
+ #' diverse assays on a collection of specimen. Currently,  the class can handle
+ #' assays that are organized instances of
+ #' [`SummarizedExperiment`][SummarizedExperiment::SummarizedExperiment-class],
+-#' [ExpressionSet][Biobase::ExpressionSet], `matrix`, `RaggedExperiment`
++#' \code{\link[Biobase:ExpressionSet-class]{ExpressionSet}},
++#' `matrix`, `RaggedExperiment`
+ #' (inherits from [`GRangesList`][GenomicRanges::GRangesList-class]), and
+ #' `RangedVcfStack`. Create new `MultiAssayExperiment` instances with the
+ #' homonymous constructor, minimally with the argument [`ExperimentList`],
+diff --git a/R/MultiAssayExperiment-helpers.R b/R/MultiAssayExperiment-helpers.R
+index 7eba1cd..92afa36 100644
+--- a/R/MultiAssayExperiment-helpers.R
++++ b/R/MultiAssayExperiment-helpers.R
+@@ -49,6 +49,10 @@ NULL
+ #'     that have a
+ #'     [`rowRanges`][SummarizedExperiment::RangedSummarizedExperiment-class]
+ #'     method
++#' * hasRowData: A function that identifies ExperimentList elements
++#'     that have a
++#'     [`rowData`][SummarizedExperiment::SummarizedExperiment-class]
++#'     method
+ #' * getWithColData: A convenience function for extracting an assay
+ #'     and associated colData
+ #' * renamePrimary: A convenience function to rename the primary
+@@ -363,7 +367,7 @@ setMethod("mergeReplicates", "ANY",
+ #' @rdname MultiAssayExperiment-helpers
+ #'
+ #' @details The `longForm` "ANY" class method, works with classes such as
+-#' [`ExpressionSet`][Biobase::ExpressionSet] and
++#' \code{\link[Biobase:ExpressionSet-class]{ExpressionSet}} and
+ #' [`SummarizedExperiment`][SummarizedExperiment::SummarizedExperiment-class] as
+ #' well as `matrix` to provide a consistent long and skinny
+ #' [`DataFrame`][S4Vectors::DataFrame-class].
+@@ -599,6 +603,7 @@ wideFormat <- function(object, colDataCols = NULL, check.names = TRUE,
+ 
+ # hasRowRanges section ----------------------------------------------------
+ 
++#' @importFrom MatrixGenerics rowRanges
+ .tryRowRanges <- function(obj) {
+     res <- try(rowRanges(obj), silent = TRUE)
+     if (!is(res, "try-error"))
+@@ -625,6 +630,8 @@ setGeneric("hasRowRanges", function(x) standardGeneric("hasRowRanges"))
+ #' @details The `hasRowRanges` method identifies assays that support
+ #' a [`rowRanges`][SummarizedExperiment::RangedSummarizedExperiment-class]
+ #' method _and_ return a [`GRanges`][GenomicRanges::GRanges-class] object.
++#'
++#' @exportMethod hasRowRanges
+ setMethod("hasRowRanges", "MultiAssayExperiment", function(x) {
+     hasRowRanges(experiments(x))
+ })
+@@ -635,6 +642,44 @@ setMethod("hasRowRanges", "ExperimentList", function(x) {
+     vapply(x, .tryRowRanges, logical(1L))
+ })
+ 
++# hasRowData section ------------------------------------------------------
++
++#' @importFrom SummarizedExperiment rowData
++.tryRowData <- function(obj) {
++    res <- try(rowData(obj), silent = TRUE)
++    if (!is(res, "try-error"))
++        is(res, "DataFrame")
++    else
++        FALSE
++}
++
++#' @rdname MultiAssayExperiment-helpers
++#'
++#' @aliases hasRowData
++#'
++#' @details The `hasRowData` method identifies assays that support a
++#'   [`rowData`][SummarizedExperiment::SummarizedExperiment-class] method _and_
++#'   return a [`DataFrame`][S4Vectors::DataFrame-class] object.
++#'
++#' @export
++setGeneric("hasRowData", function(x) standardGeneric("hasRowData"))
++
++#' @describeIn MultiAssayExperiment-helpers The `hasRowData` method identifies
++#'   experiments that have a `rowData` method via direct testing
++#'
++#' @exportMethod hasRowData
++setMethod("hasRowData", "MultiAssayExperiment", function(x) {
++    hasRowData(experiments(x))
++})
++
++#' @describeIn MultiAssayExperiment-helpers The `hasRowData` method identifies
++#'   experiments that have a `rowData` method via direct testing
++#'
++#' @exportMethod hasRowData
++setMethod("hasRowData", "ExperimentList", function(x) {
++    vapply(x, .tryRowData, logical(1L))
++})
++
+ #' @rdname MultiAssayExperiment-helpers
+ #'
+ #' @param mode String indicating how `MultiAssayExperiment`
+diff --git a/R/longFormat-deprecated.R b/R/longFormat-deprecated.R
+index 7d45f4a..f816dc0 100644
+--- a/R/longFormat-deprecated.R
++++ b/R/longFormat-deprecated.R
+@@ -6,7 +6,7 @@
+ #'   future release. Please use the `longForm` method instead.
+ #'
+ #' @details The `longFormat` "ANY" class method, works with classes such as
+-#' [`ExpressionSet`][Biobase::ExpressionSet] and
++#' \code{\link[Biobase:ExpressionSet-class]{ExpressionSet}} and
+ #' [`SummarizedExperiment`][SummarizedExperiment::SummarizedExperiment-class] as
+ #' well as `matrix` to provide a consistent long and skinny
+ #' [`DataFrame`][S4Vectors::DataFrame-class].
+diff --git a/R/subsetBy-methods.R b/R/subsetBy-methods.R
+index c5bedbc..987ee5a 100644
+--- a/R/subsetBy-methods.R
++++ b/R/subsetBy-methods.R
+@@ -67,8 +67,8 @@ NULL
+ #' @param y Either a `character`, `integer`, `logical`, `list`, `List`,
+ #' or `GRanges` object for subsetting by rows _within the experiments_
+ #'
+-#' @param i For the `subsetByRow` `MultiAssayExperiment` method,
+-#' either a `character`, `logical`, or `numeric` vector to selectively
++#' @param i For the `subsetByRow` and `subsetByRowData` `MultiAssayExperiment`
++#' methods, either a `character`, `logical`, or `numeric` vector to selectively
+ #' subset experiments with `y` (default is `TRUE`). For **bracket** (`[`)
+ #' methods, see `y` input.
+ #'
+@@ -83,11 +83,16 @@ NULL
+ #' @param drop logical (default FALSE) whether to drop all empty assay elements
+ #' in the `ExperimentList`
+ #'
++#' @param rowDataCol `character(1)` The name of the column in the `rowData`.
++#' If the column is not present, the experiment will be skipped. When
++#' `rowDataCol` is `"rownames"` or `"row.names"`, the values of `y` will
++#' be matched with the row names in the `rowData` of the experiment.
++#'
+ #' @aliases [,MultiAssayExperiment,ANY-method subsetByColData subsetByRow
+ #' subsetByColumn subsetByAssay subset subsetBy
+ #'
+ #' @details
+-#' Subsetting a MultiAssayExperiment by the **j** index can yield a call
++#' Subsetting a `MultiAssayExperiment` by the **j** index can yield a call
+ #' to either `subsetByColData` or `subsetByColumn`. For vector inputs,
+ #' the subset will be applied to the `colData` rows. For `List`-type
+ #' inputs, the List will be applied to each of the elements in the
+@@ -100,6 +105,31 @@ NULL
+ #' * `subsetByColumn`: Select observations by assay or for each assay
+ #' * `subsetByRow`: Select rows by assay or for each assay
+ #' * `subsetByAssay`: Select experiments
++#' * `subsetByRowData`: Select rows by values in the rowData
++#' * `intersectByRowData`: Intersect with values in the rowData
++#'
++#' @section rowData:
++#'
++#' Some assays may have additional metadata associated with the rows.
++#' This metadata is stored in the `rowData` slot of the object, typically a
++#' `SummarizedExperiment` or `RangedSummarizedExperiment`.
++#'
++#' `subsetByRowData` allows the user to subset the rows of the assays
++#' based on the values in the `rowData`.
++#'
++#' `intersectByRowData` is a special case of `subsetByRowData` where
++#' the `rowData` values are intersected with the `y` values. Naturally,
++#' the `y` values are expected to be of type `character`.
++#'
++#' Note that `rowDataCol` allows the user to specify a particular
++#' column from which to extract the values for subsetting. This column
++#' name must be consistent across assays. If the column is not present
++#' in an assay, the assay will be skipped and considered a no-op. Assays
++#' are also skipped when there are no values in the `rowData` that match
++#' the `y` values.
++#'
++#' Note that the use of `rownames` or `row.names` as the `rowDataCol` requires
++#' that the assay class have a `rownames()` method.
+ #'
+ #' @return `subsetBy*`: operations are endomorphic and return either
+ #' `MultiAssayExperiment` or `ExperimentList` depending on the
+@@ -145,6 +175,33 @@ NULL
+ #' ## Use a character vector
+ #' subsetByRow(mae, "ENST00000355076")
+ #'
++#' ## Use i index to selectively subsetByRow
++#' subsetByRow(mae, "ENST00000355076", i = c(TRUE, TRUE, FALSE, FALSE))
++#'
++#' ## only subset assays with rowRanges with GRanges input
++#' subsetByRow(mae, egr, i = hasRowRanges(mae))
++#'
++#' ## Use i index to selectively subsetByRowData
++#' subsetByRowData(
++#'     mae, "ENST00000355076", "rownames", i = "Affy"
++#' )
++#'
++#' ## use miniACC as example MAE
++#' data("miniACC")
++#'
++#' ## intersect values of y with rownames in rowData
++#' intersectByRowData(
++#'     x = miniACC,
++#'     y = c("G6PD", "PETN"),
++#'     rowDataCol = "rownames",
++#'     i = c("RNASeq2GeneNorm", "gistict")
++#' )
++#'
++#' ## no-op when rowDataCol is not present or there is no data
++#' intersectByRowData(
++#'     x = miniACC, y = c("G6PD", "PETN"), rowDataCol = "Genes",
++#'     i = c("RNASeq2GeneNorm", "gistict")
++#' )
+ NULL
+ 
+ # subsetBy Generics -------------------------------------------------------
+@@ -153,6 +210,13 @@ NULL
+ #' @export subsetByRow
+ setGeneric("subsetByRow", function(x, y, ...) standardGeneric("subsetByRow"))
+ 
++#' @rdname subsetBy
++#' @export subsetByRowData
++setGeneric(
++    "subsetByRowData",
++    function(x, y, rowDataCol, ...) standardGeneric("subsetByRowData")
++)
++
+ #' @rdname subsetBy
+ #' @export subsetByColData
+ setGeneric("subsetByColData", function(x, y) standardGeneric("subsetByColData"))
+@@ -258,7 +322,7 @@ setMethod("subsetByAssay", c("ExperimentList", "ANY"), function(x, y) {
+     x[y]
+ })
+ 
+-# subsetByColData,MultiAssayExperiment-methods -----------------------------------------
++# subsetByColData,MultiAssayExperiment-methods ----------------------------
+ 
+ #' @rdname subsetBy
+ setMethod("subsetByColData", c("MultiAssayExperiment", "ANY"), function(x, y) {
+@@ -315,6 +379,7 @@ setMethod("subsetByColData", c("MultiAssayExperiment", "character"),
+ # subsetByRow,MultiAssayExperiment-method ---------------------------------
+ 
+ #' @rdname subsetBy
++#' @exportMethod subsetByRow
+ setMethod(
+     "subsetByRow", c("MultiAssayExperiment", "ANY"),
+     function(x, y, i = TRUE, ...) {
+@@ -327,6 +392,26 @@ setMethod(
+     }
+ )
+ 
++#' @rdname subsetBy
++setMethod(
++    "subsetByRow", c("MultiAssayExperiment", "list"),
++    function(x, y, ...) {
++        experiments(x) <- subsetByRow(experiments(x), y)
++        return(x)
++    }
++)
++
++#' @rdname subsetBy
++setMethod(
++    "subsetByRow", c("MultiAssayExperiment", "List"),
++    function(x, y, ...) {
++        if (is(y, "GRanges"))
++            return(callNextMethod())
++        y <- as.list(y)
++        subsetByRow(x, y)
++    }
++)
++
+ # subsetByColumn,MultiAssayExperiment-method ------------------------------
+ 
+ #' @rdname subsetBy
+@@ -353,3 +438,94 @@ setMethod("subsetByAssay", c("MultiAssayExperiment", "ANY"), function(x, y) {
+     experiments(x) <- subexp
+     return(x)
+ })
++
++# subsetByRowData,MultiAssayExperiment-method -----------------------------
++
++#' @rdname subsetBy
++setMethod(
++    "subsetByRowData", c("MultiAssayExperiment", "character", "character"),
++    function(x, y, rowDataCol, i = TRUE, ...) {
++        if (is.character(i))
++            logi <- names(x) %in% i
++        else if (is.logical(i) || is.numeric(i))
++            logi <- names(x) %in% names(x)[i]
++        else
++            stop("Invalid experiment subscript type for 'i'")
++        valids <- hasRowData(x)[which(logi)]
++        if (any(!valids)) {
++            notValids <- paste(
++                names(valids[!valids]), collapse = ", "
++            )
++            stop("Selected experiments have no 'rowData': ", notValids)
++        }
++        i <- hasRowData(x) & logi
++        if (!any(i))
++            stop("No 'rowData' available for subsetting")
++        y <- lapply(
++            experiments(x)[i],
++            function(exper) {
++                rd <- rowData(exper)
++                if (rowDataCol %in% c("rownames", "row.names"))
++                    rownames(rd) %in% y
++                else if (rowDataCol %in% colnames(rd))
++                    rd[[rowDataCol]] %in% y
++                else
++                    TRUE
++            }
++        )
++        subsetByRow(x = x, y = y, i = i)
++    }
++)
++
++
++# intersectByRowData,MultiAssayExperiment-method --------------------------
++
++#' @rdname subsetBy
++#'
++#' @aliases intersectByRowData
++#'
++#' @export
++setGeneric(
++    "intersectByRowData",
++    function(x, y, rowDataCol, i, ...)
++        standardGeneric("intersectByRowData")
++)
++
++#' @rdname subsetBy
++#' @exportMethod intersectByRowData
++setMethod(
++    "intersectByRowData", c("MultiAssayExperiment", "character", "character"),
++    function(x, y, rowDataCol, i = TRUE, ...) {
++        if (is.character(i))
++            logi <- names(x) %in% i
++        else if (is.logical(i) || is.numeric(i))
++            logi <- names(x) %in% names(x)[i]
++        else
++            stop("Invalid experiment subscript type for 'i'")
++        i <- hasRowData(x) & logi
++        if (!any(i))
++            stop("No 'rowData' available for subsetting")
++        y <- lapply(
++            experiments(x)[i],
++            function(exper) {
++                rd <- rowData(exper)
++                if (rowDataCol %in% c("rownames", "row.names"))
++                    intersect(rownames(rd), y)
++                else if (rowDataCol %in% colnames(rd))
++                    intersect(rd[[rowDataCol]], y)
++                else
++                    NULL
++            }
++        )
++        noRowData <-
++            vapply(y, function(z) is.null(z) || !length(z), logical(1))
++        if (any(noRowData)) {
++            noRDnames <- paste(shQuote(names(y)[noRowData]), collapse = ", ")
++            warning(
++                "No 'rowData' intersected for assays:\n  ", noRDnames,
++                call. = FALSE
++            )
++        }
++        subsetByRow(x = x, y = y, i = i)
++    }
++)
+diff --git a/man/MultiAssayExperiment-class.Rd b/man/MultiAssayExperiment-class.Rd
+index 4d45c44..71ee29c 100644
+--- a/man/MultiAssayExperiment-class.Rd
++++ b/man/MultiAssayExperiment-class.Rd
+@@ -92,7 +92,8 @@ The \code{MultiAssayExperiment} class can be used to manage results of
+ diverse assays on a collection of specimen. Currently,  the class can handle
+ assays that are organized instances of
+ \code{\link[SummarizedExperiment:SummarizedExperiment-class]{SummarizedExperiment}},
+-\link[Biobase:class.ExpressionSet]{ExpressionSet}, \code{matrix}, \code{RaggedExperiment}
++\code{\link[Biobase:ExpressionSet-class]{ExpressionSet}},
++\code{matrix}, \code{RaggedExperiment}
+ (inherits from \code{\link[GenomicRanges:GRangesList-class]{GRangesList}}), and
+ \code{RangedVcfStack}. Create new \code{MultiAssayExperiment} instances with the
+ homonymous constructor, minimally with the argument \code{\link{ExperimentList}},
+diff --git a/man/MultiAssayExperiment-helpers.Rd b/man/MultiAssayExperiment-helpers.Rd
+index f24c165..93263ff 100644
+--- a/man/MultiAssayExperiment-helpers.Rd
++++ b/man/MultiAssayExperiment-helpers.Rd
+@@ -24,6 +24,9 @@
+ \alias{hasRowRanges}
+ \alias{hasRowRanges,MultiAssayExperiment-method}
+ \alias{hasRowRanges,ExperimentList-method}
++\alias{hasRowData}
++\alias{hasRowData,MultiAssayExperiment-method}
++\alias{hasRowData,ExperimentList-method}
+ \alias{getWithColData}
+ \alias{renamePrimary}
+ \alias{renameColname}
+@@ -89,6 +92,12 @@ hasRowRanges(x)
+ 
+ \S4method{hasRowRanges}{ExperimentList}(x)
+ 
++hasRowData(x)
++
++\S4method{hasRowData}{MultiAssayExperiment}(x)
++
++\S4method{hasRowData}{ExperimentList}(x)
++
+ getWithColData(x, i, mode = c("append", "replace"), verbose = FALSE)
+ 
+ renamePrimary(x, value)
+@@ -196,6 +205,10 @@ original object is a \code{MultiAssayExperiment}.
+ that have a
+ \code{\link[SummarizedExperiment:RangedSummarizedExperiment-class]{rowRanges}}
+ method
++\item hasRowData: A function that identifies ExperimentList elements
++that have a
++\code{\link[SummarizedExperiment:SummarizedExperiment-class]{rowData}}
++method
+ \item getWithColData: A convenience function for extracting an assay
+ and associated colData
+ \item renamePrimary: A convenience function to rename the primary
+@@ -248,7 +261,7 @@ user to provide additional arguments to the \code{simplify} functional
+ argument.
+ 
+ The \code{longForm} "ANY" class method, works with classes such as
+-\code{\link[Biobase:class.ExpressionSet]{ExpressionSet}} and
++\code{\link[Biobase:ExpressionSet-class]{ExpressionSet}} and
+ \code{\link[SummarizedExperiment:SummarizedExperiment-class]{SummarizedExperiment}} as
+ well as \code{matrix} to provide a consistent long and skinny
+ \code{\link[S4Vectors:DataFrame-class]{DataFrame}}.
+@@ -256,7 +269,20 @@ well as \code{matrix} to provide a consistent long and skinny
+ The \code{hasRowRanges} method identifies assays that support
+ a \code{\link[SummarizedExperiment:RangedSummarizedExperiment-class]{rowRanges}}
+ method \emph{and} return a \code{\link[GenomicRanges:GRanges-class]{GRanges}} object.
++
++The \code{hasRowData} method identifies assays that support a
++\code{\link[SummarizedExperiment:SummarizedExperiment-class]{rowData}} method \emph{and}
++return a \code{\link[S4Vectors:DataFrame-class]{DataFrame}} object.
+ }
++\section{Functions}{
++\itemize{
++\item \code{hasRowData(MultiAssayExperiment)}: The \code{hasRowData} method identifies
++experiments that have a \code{rowData} method via direct testing
++
++\item \code{hasRowData(ExperimentList)}: The \code{hasRowData} method identifies
++experiments that have a \code{rowData} method via direct testing
++
++}}
+ \section{mergeReplicates}{
+ 
+ The \code{mergeReplicates} function makes use of the output from
+diff --git a/man/longFormat-deprecated.Rd b/man/longFormat-deprecated.Rd
+index 9515528..1d7af79 100644
+--- a/man/longFormat-deprecated.Rd
++++ b/man/longFormat-deprecated.Rd
+@@ -37,7 +37,7 @@ future release. Please use the \code{longForm} method instead.
+ }
+ \details{
+ The \code{longFormat} "ANY" class method, works with classes such as
+-\code{\link[Biobase:class.ExpressionSet]{ExpressionSet}} and
++\code{\link[Biobase:ExpressionSet-class]{ExpressionSet}} and
+ \code{\link[SummarizedExperiment:SummarizedExperiment-class]{SummarizedExperiment}} as
+ well as \code{matrix} to provide a consistent long and skinny
+ \code{\link[S4Vectors:DataFrame-class]{DataFrame}}.
+diff --git a/man/subsetBy.Rd b/man/subsetBy.Rd
+index 4931399..e3738dc 100644
+--- a/man/subsetBy.Rd
++++ b/man/subsetBy.Rd
+@@ -9,6 +9,7 @@
+ \alias{subsetByColumn}
+ \alias{subsetByAssay}
+ \alias{subset}
++\alias{subsetByRowData}
+ \alias{subsetByRow,ExperimentList,ANY-method}
+ \alias{subsetByRow,ExperimentList,list-method}
+ \alias{subsetByRow,ExperimentList,List-method}
+@@ -20,8 +21,13 @@
+ \alias{subsetByColData,MultiAssayExperiment,ANY-method}
+ \alias{subsetByColData,MultiAssayExperiment,character-method}
+ \alias{subsetByRow,MultiAssayExperiment,ANY-method}
++\alias{subsetByRow,MultiAssayExperiment,list-method}
++\alias{subsetByRow,MultiAssayExperiment,List-method}
+ \alias{subsetByColumn,MultiAssayExperiment,ANY-method}
+ \alias{subsetByAssay,MultiAssayExperiment-method}
++\alias{subsetByRowData,MultiAssayExperiment,character,character-method}
++\alias{intersectByRowData}
++\alias{intersectByRowData,MultiAssayExperiment,character,character-method}
+ \alias{[,MultiAssayExperiment,ANY,ANY,ANY-method}
+ \alias{[[,MultiAssayExperiment,ANY,ANY-method}
+ \alias{[[<-,MultiAssayExperiment,ANY,ANY-method}
+@@ -30,6 +36,8 @@
+ \usage{
+ subsetByRow(x, y, ...)
+ 
++subsetByRowData(x, y, rowDataCol, ...)
++
+ subsetByColData(x, y)
+ 
+ subsetByColumn(x, y)
+@@ -58,10 +66,20 @@ subsetByAssay(x, y)
+ 
+ \S4method{subsetByRow}{MultiAssayExperiment,ANY}(x, y, i = TRUE, ...)
+ 
++\S4method{subsetByRow}{MultiAssayExperiment,list}(x, y, ...)
++
++\S4method{subsetByRow}{MultiAssayExperiment,List}(x, y, ...)
++
+ \S4method{subsetByColumn}{MultiAssayExperiment,ANY}(x, y)
+ 
+ \S4method{subsetByAssay}{MultiAssayExperiment}(x, y)
+ 
++\S4method{subsetByRowData}{MultiAssayExperiment,character,character}(x, y, rowDataCol, i = TRUE, ...)
++
++intersectByRowData(x, y, rowDataCol, i, ...)
++
++\S4method{intersectByRowData}{MultiAssayExperiment,character,character}(x, y, rowDataCol, i = TRUE, ...)
++
+ \S4method{[}{MultiAssayExperiment,ANY,ANY,ANY}(x, i, j, k, ..., drop = FALSE)
+ 
+ \S4method{[[}{MultiAssayExperiment,ANY,ANY}(x, i, j, ...)
+@@ -78,8 +96,13 @@ or \code{GRanges} object for subsetting by rows \emph{within the experiments}}
+ 
+ \item{...}{Additional arguments passed on to lower level functions.}
+ 
+-\item{i}{For the \code{subsetByRow} \code{MultiAssayExperiment} method,
+-either a \code{character}, \code{logical}, or \code{numeric} vector to selectively
++\item{rowDataCol}{\code{character(1)} The name of the column in the \code{rowData}.
++If the column is not present, the experiment will be skipped. When
++\code{rowDataCol} is \code{"rownames"} or \code{"row.names"}, the values of \code{y} will
++be matched with the row names in the \code{rowData} of the experiment.}
++
++\item{i}{For the \code{subsetByRow} and \code{subsetByRowData} \code{MultiAssayExperiment}
++methods, either a \code{character}, \code{logical}, or \code{numeric} vector to selectively
+ subset experiments with \code{y} (default is \code{TRUE}). For \strong{bracket} (\code{[})
+ methods, see \code{y} input.}
+ 
+@@ -104,7 +127,7 @@ A set of functions for extracting and dividing a
+ \code{MultiAssayExperiment}
+ }
+ \details{
+-Subsetting a MultiAssayExperiment by the \strong{j} index can yield a call
++Subsetting a \code{MultiAssayExperiment} by the \strong{j} index can yield a call
+ to either \code{subsetByColData} or \code{subsetByColumn}. For vector inputs,
+ the subset will be applied to the \code{colData} rows. For \code{List}-type
+ inputs, the List will be applied to each of the elements in the
+@@ -117,8 +140,35 @@ The order of the subsetting elements in the
+ \item \code{subsetByColumn}: Select observations by assay or for each assay
+ \item \code{subsetByRow}: Select rows by assay or for each assay
+ \item \code{subsetByAssay}: Select experiments
++\item \code{subsetByRowData}: Select rows by values in the rowData
++\item \code{intersectByRowData}: Intersect with values in the rowData
+ }
+ }
++\section{rowData}{
++
++
++Some assays may have additional metadata associated with the rows.
++This metadata is stored in the \code{rowData} slot of the object, typically a
++\code{SummarizedExperiment} or \code{RangedSummarizedExperiment}.
++
++\code{subsetByRowData} allows the user to subset the rows of the assays
++based on the values in the \code{rowData}.
++
++\code{intersectByRowData} is a special case of \code{subsetByRowData} where
++the \code{rowData} values are intersected with the \code{y} values. Naturally,
++the \code{y} values are expected to be of type \code{character}.
++
++Note that \code{rowDataCol} allows the user to specify a particular
++column from which to extract the values for subsetting. This column
++name must be consistent across assays. If the column is not present
++in an assay, the assay will be skipped and considered a no-op. Assays
++are also skipped when there are no values in the \code{rowData} that match
++the \code{y} values.
++
++Note that the use of \code{rownames} or \code{row.names} as the \code{rowDataCol} requires
++that the assay class have a \code{rownames()} method.
++}
++
+ \examples{
+ ## Load the example MultiAssayExperiment
+ example("MultiAssayExperiment")
+@@ -159,4 +209,31 @@ subsetByRow(mae, c(TRUE, FALSE))
+ ## Use a character vector
+ subsetByRow(mae, "ENST00000355076")
+ 
++## Use i index to selectively subsetByRow
++subsetByRow(mae, "ENST00000355076", i = c(TRUE, TRUE, FALSE, FALSE))
++
++## only subset assays with rowRanges with GRanges input
++subsetByRow(mae, egr, i = hasRowRanges(mae))
++
++## Use i index to selectively subsetByRowData
++subsetByRowData(
++    mae, "ENST00000355076", "rownames", i = "Affy"
++)
++
++## use miniACC as example MAE
++data("miniACC")
++
++## intersect values of y with rownames in rowData
++intersectByRowData(
++    x = miniACC,
++    y = c("G6PD", "PETN"),
++    rowDataCol = "rownames",
++    i = c("RNASeq2GeneNorm", "gistict")
++)
++
++## no-op when rowDataCol is not present or there is no data
++intersectByRowData(
++    x = miniACC, y = c("G6PD", "PETN"), rowDataCol = "Genes",
++    i = c("RNASeq2GeneNorm", "gistict")
++)
+ }
+diff --git a/tests/testthat/test-subset.R b/tests/testthat/test-subset.R
+index fac6844..90fd6c0 100644
+--- a/tests/testthat/test-subset.R
++++ b/tests/testthat/test-subset.R
+@@ -32,6 +32,35 @@ test_that("subsetByRow keeps assay order in MultiAssayExperiment", {
+     expect_identical(names(mae), names(mae[rows, ]))
+ })
+ 
++test_that("subsetByRow works with i index", {
++    expect_identical(
++        vapply(
++            experiments(
++                subsetByRow(
++                    mae, "ENST00000355076", i = c(TRUE, TRUE, FALSE, FALSE)
++                )
++            )[1:2],
++            nrow,
++            integer(1L)
++        ),
++        c(Affy = 1L, Methyl450k = 1L)
++    )
++    expect_identical(
++        list(
++            Affy = 1L, Methyl450k = 5L, RNASeqGene = 5L, GISTIC = 5L
++        ),
++        lapply(
++            experiments(
++                subsetByRowData(
++                    mae, "ENST00000355076", "rownames", i = "Affy"
++                )
++            ),
++            nrow
++        )
++    )
++})
++
++
+ test_that("assay subsets work", {
+     noAffy <- list(noAffy = 1:5)
+     expect_error(experiments(mae)[noAffy])

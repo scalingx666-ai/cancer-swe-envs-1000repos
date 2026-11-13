@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/vcflib__vcflib-451"
+description = "vcfclassify: only flag single base substitutions as transversions"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "vcflib",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "vcflib/vcflib"
+ref = "b118a9bfd99b07da9d40d0bd8b3c2bdc4523b568"
+reference = "https://github.com/vcflib/vcflib/pull/451"
+source_access = "auto"
+built_at = "2026-11-13T15:50:38.836687+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5f39c4c1aa2588d7cb2b2ddecc2d4c46fb21e76607d84cd5b790ed452e5cffe3"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-02T09:42:18Z"
+diff_format = "unified"
+context_files = [
+    "CMakeLists.txt",
+    "src/vcfclassify.cpp",
+    "test/data/issue_171_vcfclassify.vcf",
+    "test/pytest/vcfclassify.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 121
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/lgatto__MSnbase-614"
+description = "refactor: use selective imports from BiocGenerics"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MSnbase",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lgatto/MSnbase"
+ref = "a69e0cb891a649b9f9b79a9b31f5edf784138880"
+reference = "https://github.com/lgatto/MSnbase/pull/614"
+source_access = "auto"
+built_at = "2026-11-13T16:19:03.124739+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a7ebd9374b62f08964d7c8dd98f954687f99b8bc9ae75a2d1999ce08ffd3847b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-07T14:29:53Z"
+diff_format = "unified"
+context_files = [
+    ".editorconfig",
+    "DESCRIPTION",
+    "NAMESPACE",
+    "NEWS.md",
+    "man/MSnSet-class.Rd",
+    "man/MSnSetList-class.Rd",
+    "man/ProcessingStep-class.Rd",
+    "man/pSet-class.Rd",
+    "tests/testthat/test_MSmap.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 146
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

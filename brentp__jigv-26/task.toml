@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/brentp__jigv-26"
+description = "Add GitHub Actions workflow for multi-platform builds including macOS"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "jigv",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "brentp/jigv"
+ref = "dfcb37e16d1a217fc2df0028c4ee62cc30b1403f"
+reference = "https://github.com/brentp/jigv/pull/26"
+source_access = "auto"
+built_at = "2026-11-13T16:21:36.746881+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1617781e44d4531c576a56c5f654f435a484840091f4c0430e575e4f8417147b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-10-14T03:56:30Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/build.yml",
+    "BUILD.md",
+    "README.md",
+    "jigv.nimble",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 309
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

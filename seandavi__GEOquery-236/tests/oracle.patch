@@ -1,0 +1,58 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 357a842..f81555e 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,8 +1,8 @@
+ Package: GEOquery
+ Type: Package
+ Title: Get data from NCBI Gene Expression Omnibus (GEO)
+-Version: 2.81.34
+-Date: 2026-07-18
++Version: 2.81.35
++Date: 2026-10-23
+ Authors@R: 
+   c(person(given = "Sean",
+            family = "Davis",
+diff --git a/NEWS.md b/NEWS.md
+index 71daca3..064ef77 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -1,3 +1,14 @@
++# GEOquery 2.81.35
++
++## Bug fixes
++
++- `getRNASeqData()` works again for human series. NCBI blocks the shared gene
++  annotation table on its web download endpoint with a reCAPTCHA page, so the
++  annotation is now read from the GEO FTP mirror
++  (`geo/rnaseq_counts/annot/`) instead. Mouse annotation is not on the mirror
++  yet, so mouse series still get the clear `geoquery_ncbi_challenge` error
++  (#230, #235).
++
+ # GEOquery 2.81.34
+ 
+ ## Bug fixes
+diff --git a/R/rnaseq.R b/R/rnaseq.R
+index 22c0689..ee8204e 100644
+--- a/R/rnaseq.R
++++ b/R/rnaseq.R
+@@ -185,6 +185,19 @@ getRNASeqQuantGenomeInfo <- function(gse) {
+ #'
+ #' @keywords internal
+ readRNAQuantAnnotation <- function(link) {
++  # NCBI serves the shared annotation files on the web download endpoint
++  # behind a Google reCAPTCHA page (#235). Read the FTP mirror copy instead
++  # when it exists (currently human only); otherwise downloadFile() rejects
++  # the bot-check page with a clear error (#230).
++  fname <- extractFilenameFromDownloadURL(link)
++  if (!is.null(fname)) {
++    ftp <- paste0("https://ftp.ncbi.nlm.nih.gov/geo/rnaseq_counts/annot/", fname)
++    resp <- .geo_request(ftp) |>
++      httr2::req_method("HEAD") |>
++      httr2::req_error(is_error = function(resp) FALSE) |>
++      httr2::req_perform()
++    if (httr2::resp_status(resp) == 200) link <- ftp
++  }
+   path <- .downloadRNAQuantFile(link)
+   on.exit(unlink(path))
+   annotation <- as.data.frame(readr::read_tsv(path, show_col_types = FALSE))

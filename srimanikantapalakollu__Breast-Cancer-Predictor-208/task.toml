@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/srimanikantapalakollu__Breast-Cancer-Predictor-208"
+description = "docs: Added Issue templates"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "Breast-Cancer-Predictor",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "srimanikantapalakollu/Breast-Cancer-Predictor"
+ref = "58f6d408349ab86cf1e0763bf8c7cfb15198c832"
+reference = "https://github.com/srimanikantapalakollu/Breast-Cancer-Predictor/pull/208"
+source_access = "auto"
+built_at = "2026-11-13T15:33:32.795325+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6eac76c6d0dbdfe088909a405fcffeec3373c02f174d422f23a93220e4ee1b50"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-04-08T04:50:45Z"
+diff_format = "unified"
+context_files = [
+    ".github/ISSUE_TEMPLATE/bug.yaml",
+    ".github/ISSUE_TEMPLATE/doc_issue.yaml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 56
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

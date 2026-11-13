@@ -1,0 +1,727 @@
+diff --git a/albumentations/augmentations/medical/functional.py b/albumentations/augmentations/medical/functional.py
+index 1a05ac26..b5f16747 100644
+--- a/albumentations/augmentations/medical/functional.py
++++ b/albumentations/augmentations/medical/functional.py
+@@ -8,6 +8,7 @@
+ from albucore import add, clip, convert_dtype, matmul, multiply, resize3d, warp_affine3d
+ from albucore import exp as albucore_exp
+ from albucore import mean as albucore_mean
++from albucore.tensor_bridge import numpy_to_tensor_storage, tensor_to_numpy_storage
+ from numpy.typing import NDArray
+ from scipy import fft
+ 
+@@ -193,8 +194,8 @@ def rician_noise(
+         and imaginary_noise.flags.writeable
+         and all(stride >= 0 and stride % imaginary_noise.itemsize == 0 for stride in imaginary_noise.strides)
+     ):
+-        working = torch.from_numpy(result)
+-        imaginary = torch.from_numpy(imaginary_noise)
++        working = numpy_to_tensor_storage(result)
++        imaginary = numpy_to_tensor_storage(imaginary_noise)
+         with torch.no_grad():
+             working.square_().addcmul_(imaginary, imaginary).sqrt_().clamp_(0, 1)
+         return convert_dtype(result, input_dtype)
+@@ -421,7 +422,7 @@ def motion_artifact(
+     )
+     with torch.no_grad():
+         if use_torch:
+-            spectrum = torch.fft.fft(torch.from_numpy(volume), dim=axis).numpy()
++            spectrum = tensor_to_numpy_storage(torch.fft.fft(numpy_to_tensor_storage(volume), dim=axis))
+         else:
+             spectrum = fft.fft(volume, axis=axis, workers=1)
+         for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
+@@ -436,14 +437,14 @@ def motion_artifact(
+                 border_value=0,
+             )
+             if use_torch:
+-                moved_spectrum = torch.fft.fft(torch.from_numpy(moved), dim=axis).numpy()
++                moved_spectrum = tensor_to_numpy_storage(torch.fft.fft(numpy_to_tensor_storage(moved), dim=axis))
+             else:
+                 moved_spectrum = fft.fft(moved, axis=axis, workers=1)
+             _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
+             del moved, moved_spectrum
+ 
+         if use_torch:
+-            working = torch.from_numpy(spectrum)
++            working = numpy_to_tensor_storage(spectrum)
+             torch.fft.ifft(working, dim=axis, out=working)
+             reconstructed = spectrum
+         else:
+diff --git a/albumentations/core/composition.py b/albumentations/core/composition.py
+index a8714cca..ae96f215 100644
+--- a/albumentations/core/composition.py
++++ b/albumentations/core/composition.py
+@@ -21,6 +21,7 @@
+ import cv2
+ import numpy as np
+ import torch
++from albucore.tensor_bridge import tensor_to_numpy_storage
+ from numpy.typing import NDArray
+ from pydantic import PydanticSchemaGenerationError, PydanticUserError, TypeAdapter, ValidationError
+ 
+@@ -56,7 +57,6 @@
+     TENSOR_TARGETS,
+     numpy_to_tensor_annotation,
+     numpy_to_tensor_spatial,
+-    tensor_to_numpy_annotation,
+     tensor_to_numpy_spatial,
+     validate_tensor_input,
+     validate_tensor_metadata_input,
+@@ -1572,7 +1572,7 @@ def _nonempty_bound_mask_rows(
+             return None
+ 
+         mask, instance_axis = mask_with_axis
+-        mask_array = mask.numpy()
++        mask_array = tensor_to_numpy_storage(mask)
+         reduction_axes = tuple(axis for axis in range(mask_array.ndim) if axis != instance_axis % mask_array.ndim)
+         return np.any(mask_array, axis=reduction_axes)
+ 
+@@ -2842,7 +2842,7 @@ def _flatten_frame_targets(self, data: dict[str, Any], state: FrameBinding) -> N
+                 arrays = [
+                     processor.prepare_coordinates(
+                         f"frame_annotations[{index}].{name}",
+-                        tensor_to_numpy_annotation(value, canonical) if isinstance(value, torch.Tensor) else value,
++                        tensor_to_numpy_storage(value) if isinstance(value, torch.Tensor) else value,
+                     ).astype(np.float32, copy=False)
+                     for index, value in entries
+                 ]
+@@ -2915,10 +2915,10 @@ def _bridge_tensor_annotations_to_numpy(
+         """Convert accepted Tensor bbox and keypoint matrices once for existing NumPy-only
+         processors, keeping all public annotations Tensor at Compose entry and exit.
+         """
+-        for data_name, canonical_name in tensor_boundary_state.annotation_targets:
++        for data_name, _ in tensor_boundary_state.annotation_targets:
+             value = data.get(data_name)
+             if isinstance(value, torch.Tensor):
+-                data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
++                data[data_name] = tensor_to_numpy_storage(value)
+ 
+     def _validate_spatial_inputs(
+         self,
+diff --git a/albumentations/core/tensor.py b/albumentations/core/tensor.py
+index bd8b0d9d..7a0b27c9 100644
+--- a/albumentations/core/tensor.py
++++ b/albumentations/core/tensor.py
+@@ -4,6 +4,13 @@
+ 
+ import numpy as np
+ import torch
++from albucore import TensorLayout
++from albucore.tensor_bridge import (
++    numpy_to_tensor_layout,
++    numpy_to_tensor_storage,
++    tensor_to_numpy_channel_last,
++    tensor_to_numpy_storage,
++)
+ from numpy.typing import NDArray
+ 
+ from .type_definitions import (
+@@ -19,32 +26,25 @@
+ TENSOR_VECTOR_FIELD_3D_TARGETS = frozenset(
+     name for name, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items() if spatial_rank == 3
+ )
+-TENSOR_SPATIAL_TARGETS: Final[frozenset[str]] = frozenset(
+-    {
+-        "image",
+-        "images",
+-        "volume",
+-        "volumes",
+-        "mask",
+-        "masks",
+-        "mask3d",
+-        "masks3d",
+-        *TENSOR_VECTOR_FIELD_TARGETS,
+-    },
+-)
++_VECTOR_FIELD_2D_LAYOUT: Final[TensorLayout] = "CHW"
++_VECTOR_FIELD_3D_LAYOUT: Final[TensorLayout] = "CDHW"
++_TENSOR_SPATIAL_LAYOUTS: Final[dict[str, TensorLayout]] = {
++    "image": "CHW",
++    "images": "NCHW",
++    "volume": "CDHW",
++    "volumes": "NCDHW",
++    "mask": "CHW",
++    "masks": "NCHW",
++    "mask3d": "CDHW",
++    "masks3d": "NCDHW",
++    **dict.fromkeys(TENSOR_VECTOR_FIELD_2D_TARGETS, _VECTOR_FIELD_2D_LAYOUT),
++    **dict.fromkeys(TENSOR_VECTOR_FIELD_3D_TARGETS, _VECTOR_FIELD_3D_LAYOUT),
++}
++TENSOR_SPATIAL_TARGETS: Final[frozenset[str]] = frozenset(_TENSOR_SPATIAL_LAYOUTS)
+ TENSOR_TARGETS: Final[frozenset[str]] = TENSOR_SPATIAL_TARGETS | TENSOR_ANNOTATION_TARGETS
+ 
+ TENSOR_CANONICAL_RANKS: Final[dict[str, int]] = {
+-    "image": 3,
+-    "images": 4,
+-    "volume": 4,
+-    "volumes": 5,
+-    "mask": 3,
+-    "masks": 4,
+-    "mask3d": 4,
+-    "masks3d": 5,
+-    **dict.fromkeys(TENSOR_VECTOR_FIELD_2D_TARGETS, 3),
+-    **dict.fromkeys(TENSOR_VECTOR_FIELD_3D_TARGETS, 4),
++    **{target: len(layout) for target, layout in _TENSOR_SPATIAL_LAYOUTS.items()},
+     "bboxes": 2,
+     "keypoints": 2,
+ }
+@@ -56,16 +56,7 @@
+     "masks3d": 4,
+ }
+ TENSOR_CHANNEL_AXIS: Final[dict[str, int]] = {
+-    "image": 0,
+-    "images": 1,
+-    "volume": 0,
+-    "volumes": 1,
+-    "mask": 0,
+-    "masks": 1,
+-    "mask3d": 0,
+-    "masks3d": 1,
+-    **dict.fromkeys(TENSOR_VECTOR_FIELD_2D_TARGETS, 0),
+-    **dict.fromkeys(TENSOR_VECTOR_FIELD_3D_TARGETS, 0),
++    target: layout.index("C") for target, layout in _TENSOR_SPATIAL_LAYOUTS.items()
+ }
+ TENSOR_IMAGE_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float16, torch.float32})
+ TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.int16, torch.float16, torch.float32})
+@@ -176,26 +167,12 @@ def validate_vector_field_input(value: Any, data_name: str, canonical_name: str)
+         raise TypeError(f"{data_name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
+ 
+ 
+-def tensor_to_numpy_annotation(value: torch.Tensor, target: str) -> NDArray[np.generic]:
+-    """Return a NumPy view of a validated Tensor annotation matrix."""
+-    return value.numpy()
+-
+-
+ def tensor_to_numpy_spatial(value: torch.Tensor, target: str) -> NDArray[np.generic]:
+     """Return a canonical channel-last NumPy view of a canonical Tensor target."""
+-    if target == "image":
+-        return value.permute(1, 2, 0).numpy()
+-    if target == "images":
+-        return value.permute(0, 2, 3, 1).numpy()
+-    if target in {"volume", "mask3d", *TENSOR_VECTOR_FIELD_3D_TARGETS}:
+-        return value.permute(1, 2, 3, 0).numpy()
+-    if target in {"volumes", "masks3d"}:
+-        return value.permute(0, 2, 3, 4, 1).numpy()
+-    if target in {"mask", *TENSOR_VECTOR_FIELD_2D_TARGETS}:
+-        return value.permute(1, 2, 0).numpy()
+-    if target == "masks":
+-        return value.permute(0, 2, 3, 1).numpy()
+-    raise TypeError(f"{target} is not a spatial Tensor target")
++    layout = _TENSOR_SPATIAL_LAYOUTS.get(target)
++    if layout is None:
++        raise TypeError(f"{target} is not a spatial Tensor target")
++    return tensor_to_numpy_channel_last(value, layout)
+ 
+ 
+ def validate_tensor_metadata_input(value: torch.Tensor, data_name: str, target: str | None) -> None:
+@@ -217,35 +194,20 @@ def tensor_metadata_field_target(name: object) -> str | None:
+ 
+ def tensor_metadata_to_numpy(value: torch.Tensor, target: str | None) -> NDArray[np.generic]:
+     """Convert one validated `targets_as_params` Tensor to the NumPy layout consumed by a transform."""
+-    if target is None or target in TENSOR_ANNOTATION_TARGETS:
+-        return value.numpy()
+-    if value.ndim == TENSOR_CHANNELLESS_RANKS.get(target):
+-        return value.numpy()
++    if target is None or target in TENSOR_ANNOTATION_TARGETS or value.ndim == TENSOR_CHANNELLESS_RANKS.get(target):
++        return tensor_to_numpy_storage(value)
+     return tensor_to_numpy_spatial(value, target)
+ 
+ 
+-def _numpy_to_tensor(value: NDArray[np.generic]) -> torch.Tensor:
+-    if not value.flags.writeable or any(stride < 0 for stride in value.strides):
+-        value = np.array(value, copy=True, order="K")
+-    return torch.from_numpy(value)
+-
+-
+ def numpy_to_tensor_spatial(value: NDArray[np.generic], target: str) -> torch.Tensor:
+     """Return a canonical Tensor view of a canonical channel-last NumPy target."""
+     expected_rank = TENSOR_CANONICAL_RANKS[target]
+     if value.ndim != expected_rank:
+         raise TypeError(f"{target} fallback expected a {expected_rank}D NumPy array, got {value.ndim}D")
+-    if target in {"image", *TENSOR_VECTOR_FIELD_2D_TARGETS} or target in TENSOR_VECTOR_FIELD_3D_TARGETS:
+-        value = np.moveaxis(value, -1, 0)
+-    elif target == "images":
+-        value = np.moveaxis(value, -1, 1)
+-    elif target in {"volume", "mask", "mask3d"}:
+-        value = np.moveaxis(value, -1, 0)
+-    elif target in {"volumes", "masks3d"} or target == "masks":
+-        value = np.moveaxis(value, -1, 1)
+-    else:
++    layout = _TENSOR_SPATIAL_LAYOUTS.get(target)
++    if layout is None:
+         raise TypeError(f"{target} is not a spatial Tensor target")
+-    return _numpy_to_tensor(value)
++    return numpy_to_tensor_layout(value, layout)
+ 
+ 
+ def numpy_to_tensor_annotation(value: NDArray[np.generic], target: str) -> torch.Tensor:
+@@ -255,4 +217,4 @@ def numpy_to_tensor_annotation(value: NDArray[np.generic], target: str) -> torch
+         raise TypeError(f"{target} bridge expected a {expected_rank}D NumPy array, got {value.ndim}D")
+     if value.dtype != np.float32:
+         value = value.astype(np.float32, copy=False)
+-    return _numpy_to_tensor(value)
++    return numpy_to_tensor_storage(value)
+diff --git a/albumentations/core/transforms_interface.py b/albumentations/core/transforms_interface.py
+index 84d64d2b..56769fe0 100644
+--- a/albumentations/core/transforms_interface.py
++++ b/albumentations/core/transforms_interface.py
+@@ -19,6 +19,7 @@
+ import numpy as np
+ import torch
+ from albucore import apply_uint8_lut
++from albucore.tensor_bridge import tensor_to_numpy_storage
+ from numpy.typing import NDArray
+ from pydantic import BaseModel, ConfigDict, Field
+ 
+@@ -43,7 +44,6 @@
+     numpy_to_tensor_spatial,
+     tensor_metadata_field_target,
+     tensor_metadata_to_numpy,
+-    tensor_to_numpy_annotation,
+     tensor_to_numpy_spatial,
+     validate_tensor_input,
+     validate_tensor_metadata_input,
+@@ -540,7 +540,7 @@ def _enter_tensor_fallback(
+         for data_name, target in route.targets:
+             value = data[data_name]
+             numpy_data[data_name] = (
+-                tensor_to_numpy_annotation(value, target)
++                tensor_to_numpy_storage(value)
+                 if target in TENSOR_ANNOTATION_TARGETS
+                 else tensor_to_numpy_spatial(value, target)
+             )
+diff --git a/albumentations/pytorch/transforms.py b/albumentations/pytorch/transforms.py
+index 279c5e42..55568393 100644
+--- a/albumentations/pytorch/transforms.py
++++ b/albumentations/pytorch/transforms.py
+@@ -10,6 +10,7 @@
+ 
+ import numpy as np
+ import torch
++from albucore.tensor_bridge import numpy_to_tensor_layout, numpy_to_tensor_storage
+ from numpy.typing import NDArray
+ 
+ from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform
+@@ -31,15 +32,11 @@ class BaseTensorTransform(BasicTransform):
+     _is_tensor_terminal = True
+ 
+ 
+-def _native_contiguous_array(array: np.ndarray) -> np.ndarray:
+-    return np.ascontiguousarray(array, dtype=array.dtype.newbyteorder("="))
+-
+-
+ def _vector_field_to_tensor(field: np.ndarray, dimensions: int) -> torch.Tensor:
+     """Move vector components before their spatial axes and preserve field dtype."""
+     if field.ndim != dimensions + 1:
+         raise TypeError(f"Expected a {dimensions}D spatial vector field with a component axis, got {field.ndim}D")
+-    return torch.from_numpy(_native_contiguous_array(np.moveaxis(field, -1, 0)))
++    return numpy_to_tensor_layout(field, "CHW" if dimensions == 2 else "CDHW", contiguous=True)
+ 
+ 
+ class ToTensorV2(BaseTensorTransform):
+@@ -94,27 +91,26 @@ def apply(
+             msg = "Albumentations only supports images in HW or HWC format"
+             raise ValueError(msg)
+ 
+-        image = np.expand_dims(img, 2) if img.ndim == MONO_CHANNEL_DIMENSIONS else img
+-
+-        return torch.from_numpy(_native_contiguous_array(image.transpose(2, 0, 1)))
++        if img.ndim == MONO_CHANNEL_DIMENSIONS:
++            return numpy_to_tensor_storage(img[np.newaxis, ...], contiguous=True)
++        return numpy_to_tensor_layout(img, "CHW", contiguous=True)
+ 
+     def apply_to_mask(
+         self, mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+     ) -> torch.Tensor:
+         if self.transpose_mask and mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+-            mask = mask.transpose(2, 0, 1)
+-        return torch.from_numpy(_native_contiguous_array(mask))
++            return numpy_to_tensor_layout(mask, "CHW", contiguous=True)
++        return numpy_to_tensor_storage(mask, contiguous=True)
+ 
+     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> torch.Tensor:
+-        arr: np.ndarray = masks
+-        if self.transpose_mask and arr.ndim == NUM_VOLUME_DIMENSIONS:  # (N, H, W, C)
+-            arr = np.transpose(arr, (0, 3, 1, 2))  # -> (N, C, H, W)
+-        return torch.from_numpy(_native_contiguous_array(arr))
++        if self.transpose_mask and masks.ndim == NUM_VOLUME_DIMENSIONS:
++            return numpy_to_tensor_layout(masks, "NCHW", contiguous=True)
++        return numpy_to_tensor_storage(masks, contiguous=True)
+ 
+     def apply_to_images(
+         self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+     ) -> torch.Tensor:
+-        return torch.from_numpy(_native_contiguous_array(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
++        return numpy_to_tensor_layout(images, "NCHW", contiguous=True)
+ 
+     def _to_tensor_gradient(self, gradient: np.ndarray, **params: Any) -> torch.Tensor:
+         return _vector_field_to_tensor(gradient, 2)
+@@ -182,9 +178,9 @@ def __init__(self, p: float = 1.0):
+ 
+     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> torch.Tensor:
+         if volume.ndim == NUM_VOLUME_DIMENSIONS:  # D,H,W,C
+-            return torch.from_numpy(_native_contiguous_array(volume.transpose(3, 0, 1, 2)))
++            return numpy_to_tensor_layout(volume, "CDHW", contiguous=True)
+         if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:  # D,H,W
+-            return torch.from_numpy(_native_contiguous_array(volume[np.newaxis, ...]))
++            return numpy_to_tensor_storage(volume[np.newaxis, ...], contiguous=True)
+         raise TypeError(f"volume must be 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
+ 
+     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
+@@ -192,9 +188,9 @@ def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
+ 
+     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> torch.Tensor:
+         if volumes.ndim == NUM_VOLUME_DIMENSIONS + 1:  # N,D,H,W,C
+-            return torch.from_numpy(_native_contiguous_array(volumes.transpose(0, 4, 1, 2, 3)))
++            return numpy_to_tensor_layout(volumes, "NCDHW", contiguous=True)
+         if volumes.ndim == NUM_VOLUME_DIMENSIONS:  # N,D,H,W
+-            return torch.from_numpy(_native_contiguous_array(volumes[:, np.newaxis, ...]))
++            return numpy_to_tensor_storage(volumes[:, np.newaxis, ...], contiguous=True)
+         raise TypeError(f"volumes must be a 4D or 5D array (N,D,H,W) or (N,D,H,W,C), got {volumes.ndim}D array")
+ 
+     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> torch.Tensor:
+diff --git a/conda.recipe/meta.yaml b/conda.recipe/meta.yaml
+index 4b6c44e9..d38e80b4 100644
+--- a/conda.recipe/meta.yaml
++++ b/conda.recipe/meta.yaml
+@@ -33,7 +33,7 @@ requirements:
+     - pydantic>=2.12.4
+     - typing-extensions>=4.9.0
+     - opencv-python-headless>=5.0.0.93
+-    - albucore==0.3.5
++    - albucore==0.3.6
+     - numkong>=7.8.7
+     - stringzilla>=5.3.2
+ 
+diff --git a/docs/contributing/coding_guidelines.md b/docs/contributing/coding_guidelines.md
+index ce1512fc..f2c60c2e 100644
+--- a/docs/contributing/coding_guidelines.md
++++ b/docs/contributing/coding_guidelines.md
+@@ -41,7 +41,7 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
+ AX repository checks run through one configurable hook: `pre-commit run check-ax-rules --all-files`. Its enabled
+ rules are listed in `[tool.ax-rules.rules]` in `pyproject.toml`; set an entry to `false` to disable it. On commit,
+ each enabled rule runs only for the files in its own scope; `uv run python -m tools.ax_rules` without filenames runs
+-every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG026` diagnostics for transform API, sampling, schema, naming,
++every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG028` diagnostics for transform API, sampling, schema, naming,
+ performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
+ `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional. At the call boundary, `BasicTransform`
+ treats box targets as normalized HBBs when no bounding-box processor is configured. Internal transform, processor,
+@@ -213,6 +213,12 @@ requirement and define a safe no-op for inputs that cannot produce the effect, f
+ - It is fine to branch on `img.ndim` when selecting image, batch, and volume semantics. Do not use rank to guess where
+   a channel axis is.
+ 
++### CPU NumPy–Tensor conversion
++
++In `albumentations/`, use `albucore.tensor_bridge` to convert between NumPy arrays and CPU Tensors.
++Use the storage helpers to preserve axes or the layout helpers to move the channel axis.
++`AXG028` rejects direct `torch.from_numpy` and `.numpy` access, including imports of `torch.from_numpy`.
++
+ ### Handling Auxiliary Data via Metadata
+ 
+ When a transform requires complex or variable auxiliary data beyond simple configuration parameters (e.g., additional images and labels for `Mosaic`, extra images for domain adaptation transforms like `FDA` or `HistogramMatching`), **do not pass this data directly through the `__init__` constructor**.
+diff --git a/docs/design/numpy-tensor-routing.md b/docs/design/numpy-tensor-routing.md
+index 16b02f66..5c695156 100644
+--- a/docs/design/numpy-tensor-routing.md
++++ b/docs/design/numpy-tensor-routing.md
+@@ -246,10 +246,10 @@ graph raises an error before probability or parameter sampling. Mixed-container
+ 
+ ### Conversion and storage
+ 
+-Fallback uses `Tensor.numpy()` and `torch.from_numpy()` views when the dtype, strides, and writability permit them.
+-Axis changes such as `C,H,W` to `H,W,C` are views when possible. A helper materializes data when a kernel requires contiguous
+-or writable input. Before wrapping a NumPy result as a Tensor, the bridge copies readonly storage and arrays with
+-negative strides, including negative strides on singleton axes. Compatible writable results retain zero-copy conversion.
++AX selects the target layout and calls the CPU bridge in `albucore.tensor_bridge`. Leaf fallback and annotation
++processors preserve compatible views, including strided views. `ToTensorV2` and `ToTensor3D` request contiguous storage.
++The bridge copies read-only arrays, normalizes foreign byte order, and materializes strides PyTorch cannot represent,
++including negative strides on singleton axes. Compatible writable arrays can share storage.
+ 
+ Transforms must not modify caller input values in place. Applied outputs carry no public storage-sharing guarantee.
+ 
+diff --git a/legal/dependency-licenses.json b/legal/dependency-licenses.json
+index 5dcfb7ef..bee785be 100644
+--- a/legal/dependency-licenses.json
++++ b/legal/dependency-licenses.json
+@@ -1,12 +1,12 @@
+ {
+   "schema_version": 1,
+-  "reviewed_on": "2026-11-05",
++  "reviewed_on": "2026-11-13",
+   "scope": "Runtime components resolved by uv for the base package, including transitive dependencies and Python or platform-specific lock variants. Declared extras are outside this registry unless a component is also resolved by the base package. Build, test, and CI tools are outside this registry.",
+   "evidence_sources": {
+     "pypi": "Locked distribution METADATA and license files, cross-checked at https://pypi.org/project/<name>/<version>/."
+   },
+   "components": [
+-    {"name": "albucore", "reviewed_versions": ["0.2.18", "0.2.20", "0.2.21", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.4", "0.3.5"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
++    {"name": "albucore", "reviewed_versions": ["0.2.18", "0.2.20", "0.2.21", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.4", "0.3.5", "0.3.6"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
+     {"name": "annotated-types", "reviewed_versions": ["0.7.0", "0.8.0"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
+     {"name": "numkong", "reviewed_versions": ["7.8.0", "7.8.2", "7.8.4", "7.8.5", "7.8.6", "7.8.7"], "license_expression": "Apache-2.0", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
+     {"name": "numpy", "reviewed_versions": ["2.2.6", "2.4.6", "2.5.1", "2.5.4"], "license_expression": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0", "metadata_identifiers": ["BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0", "License :: OSI Approved :: BSD License"], "evidence_source": "pypi", "decision": "accepted", "notice": "Binary-wheel notices remain with the separately installed distribution."},
+diff --git a/pyproject.toml b/pyproject.toml
+index dcada5b1..b9499914 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -110,7 +110,7 @@ classifiers = [
+ ]
+ 
+ dependencies = [
+-  "albucore==0.3.5",
++  "albucore==0.3.6",
+   "numkong>=7.8.7",
+   "stringzilla>=5.3.2",
+   "numpy>=2.2.6",
+diff --git a/tests/test_ax_coding_guidance.py b/tests/test_ax_coding_guidance.py
+index f0443093..22da98cf 100644
+--- a/tests/test_ax_coding_guidance.py
++++ b/tests/test_ax_coding_guidance.py
+@@ -11,6 +11,46 @@ def rule_ids(sources: dict[str, str]) -> list[str]:
+     return [diagnostic.rule for diagnostic in run_sources(sources)]
+ 
+ 
++@pytest.mark.parametrize(
++    ("source", "symbol", "replacement"),
++    [
++        ("import torch\nresult = torch.from_numpy(array)", "torch.from_numpy", "numpy_to_tensor_storage"),
++        (
++            "def convert():\n    import torch as pt\n    return pt.from_numpy(array)",
++            "torch.from_numpy",
++            "numpy_to_tensor_storage",
++        ),
++        ("from torch import from_numpy as wrap\nresult = wrap(array)", "torch.from_numpy", "numpy_to_tensor_storage"),
++        ("result = tensor.detach().numpy(force=True)", ".numpy", "tensor_to_numpy_storage"),
++        ("convert = tensor.numpy", ".numpy", "tensor_to_numpy_storage"),
++    ],
++)
++def test_tensor_bridge_rejects_direct_pytorch_conversions(source: str, symbol: str, replacement: str) -> None:
++    diagnostics = run_sources({"albumentations/core/example.py": source})
++
++    (diagnostic,) = diagnostics
++    assert diagnostic.rule == "AXG028"
++    assert diagnostic.symbol == symbol
++    assert f"albucore.tensor_bridge.{replacement}" in diagnostic.message
++
++
++def test_tensor_bridge_allows_shared_bridge_and_non_package_sources() -> None:
++    assert "AXG028" not in rule_ids(
++        {
++            "albumentations/core/example.py": """
++import torch
++from albucore.tensor_bridge import numpy_to_tensor_storage, tensor_to_numpy_storage
++tensor = numpy_to_tensor_storage(array)
++result = tensor_to_numpy_storage(tensor)
++index = torch.as_tensor([0])
++example = "tensor.numpy()"
++""",
++            "tests/test_example.py": "result = torch.from_numpy(array).numpy()",
++            "benchmark/bench_example.py": "result = torch.from_numpy(array).numpy()",
++        }
++    )
++
++
+ def test_init_schema_defaults_are_checked_without_base_model_false_positives() -> None:
+     assert rule_ids(
+         {
+diff --git a/tests/test_pytorch.py b/tests/test_pytorch.py
+index 514e0fcd..b2ca9ed9 100644
+--- a/tests/test_pytorch.py
++++ b/tests/test_pytorch.py
+@@ -8,6 +8,54 @@
+ pytestmark = pytest.mark.pytorch
+ 
+ 
++@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
++@pytest.mark.parametrize("batched", [False, True])
++@pytest.mark.parametrize("flip", [False, True])
++def test_to_tensor_v2_preserves_bits_after_crop(dtype: type[np.generic], batched: bool, flip: bool) -> None:
++    rng = np.random.default_rng(137)
++    shape = (4, 117, 123, 3) if batched else (117, 123, 3)
++    bits_dtype = {np.uint8: np.uint8, np.float16: np.uint16, np.float32: np.uint32}[dtype]
++    image = rng.integers(0, np.iinfo(bits_dtype).max, shape, dtype=bits_dtype, endpoint=True).view(dtype)
++    mask = rng.integers(0, np.iinfo(bits_dtype).max, shape, dtype=bits_dtype, endpoint=True).view(dtype)
++    pipeline = [A.CenterCrop(97, 103, p=1)]
++    if flip:
++        pipeline.append(A.HorizontalFlip(p=1))
++    pipeline.append(A.ToTensorV2(transpose_mask=True))
++    image_key, mask_key = ("images", "masks") if batched else ("image", "mask")
++
++    result = A.Compose(pipeline, telemetry=False)(**{image_key: image, mask_key: mask})
++
++    for key, source in ((image_key, image), (mask_key, mask)):
++        cropped = source[..., 10:107, 10:113, :]
++        if flip:
++            cropped = cropped[..., ::-1, :]
++        expected = np.moveaxis(cropped, -1, int(batched)).view(bits_dtype)
++        assert result[key].is_contiguous()
++        assert result[key].numpy().dtype == dtype
++        np.testing.assert_array_equal(result[key].numpy().view(bits_dtype), expected)
++
++
++def test_to_tensor_v2_accepts_negative_stride_on_singleton_axis() -> None:
++    image = np.arange(19, dtype=np.uint8).reshape(19, 1, 1)[:, ::-1, :]
++    pipeline = A.Compose([A.ToTensorV2()], telemetry=False)
++
++    result = pipeline(image=image, mask=image[..., 0])
++
++    np.testing.assert_array_equal(result["image"].numpy(), image.transpose(2, 0, 1))
++    np.testing.assert_array_equal(result["mask"].numpy(), image[..., 0])
++
++
++@pytest.mark.parametrize("readonly", [False, True])
++def test_to_tensor_v2_wraps_only_writable_dense_mask_storage(readonly: bool) -> None:
++    mask = np.arange(19 * 23, dtype=np.int64).reshape(19, 23)
++    mask.setflags(write=not readonly)
++
++    result = A.Compose([A.ToTensorV2()], telemetry=False)(mask=mask)["mask"].numpy()
++
++    np.testing.assert_array_equal(result, mask, strict=True)
++    assert np.shares_memory(result, mask) is not readonly
++
++
+ @pytest.mark.parametrize("image", UINT8_IMAGES)
+ def test_torch_to_tensor_v2_augmentations(image):
+     mask = image.copy()
+diff --git a/tests/transforms3d/test_pytorch.py b/tests/transforms3d/test_pytorch.py
+index 5ba37a43..67eeccb0 100644
+--- a/tests/transforms3d/test_pytorch.py
++++ b/tests/transforms3d/test_pytorch.py
+@@ -6,6 +6,39 @@
+ 
+ pytestmark = pytest.mark.pytorch
+ 
++
++@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
++@pytest.mark.parametrize("batched", [False, True])
++def test_to_tensor_3d_preserves_interleaved_volume_and_mask_bits(dtype: type[np.generic], batched: bool) -> None:
++    rng = np.random.default_rng(137)
++    shape = (2, 5, 43, 47, 4) if batched else (5, 43, 47, 4)
++    bits_dtype = {np.uint8: np.uint8, np.float16: np.uint16, np.float32: np.uint32}[dtype]
++    volume = rng.integers(0, np.iinfo(bits_dtype).max, shape, dtype=bits_dtype, endpoint=True).view(dtype)
++    mask = rng.integers(0, np.iinfo(bits_dtype).max, shape, dtype=bits_dtype, endpoint=True).view(dtype)
++    volume.setflags(write=False)
++    mask.setflags(write=False)
++    volume_key, mask_key = ("volumes", "masks3d") if batched else ("volume", "mask3d")
++    pipeline = A.Compose([A.ToTensor3D()], telemetry=False)
++
++    result = pipeline(**{volume_key: volume, mask_key: mask})
++
++    for key, source in ((volume_key, volume), (mask_key, mask)):
++        expected = np.moveaxis(source, -1, int(batched)).view(bits_dtype)
++        assert result[key].is_contiguous()
++        assert result[key].numpy().dtype == dtype
++        np.testing.assert_array_equal(result[key].numpy().view(bits_dtype), expected)
++
++
++def test_to_tensor_3d_materializes_flipped_scalar_mask() -> None:
++    mask = np.arange(4 * 37 * 43, dtype=np.uint8).reshape(4, 37, 43)
++    pipeline = A.Compose([A.HorizontalFlip(p=1), A.ToTensor3D()], telemetry=False)
++
++    result = pipeline(mask3d=mask)["mask3d"]
++
++    assert result.is_contiguous()
++    np.testing.assert_array_equal(result.numpy(), mask[None, ..., ::-1])
++
++
+ test_cases = [
+     pytest.param(
+         (64, 64, 64, 3),  # volume shape
+diff --git a/tools/ax_coding_guidance/rules.py b/tools/ax_coding_guidance/rules.py
+index 7d13ee4c..e610ef4b 100644
+--- a/tools/ax_coding_guidance/rules.py
++++ b/tools/ax_coding_guidance/rules.py
+@@ -949,6 +949,54 @@ def rule_cv2(index: SourceIndex) -> list[Diagnostic]:
+     return result
+ 
+ 
++def rule_tensor_bridge(index: SourceIndex) -> list[Diagnostic]:
++    result: list[Diagnostic] = []
++    for unit in index.units:
++        if not unit.key.startswith("albumentations/"):
++            continue
++        nodes = list(ast.walk(unit.tree))
++        torch_names = {"torch"} | {
++            alias.asname
++            for node in nodes
++            if isinstance(node, ast.Import)
++            for alias in node.names
++            if alias.name == "torch" and alias.asname is not None
++        }
++        for node in nodes:
++            if _is_torch_from_numpy(node, torch_names):
++                result.append(
++                    _unit_d(
++                        "AXG028",
++                        unit,
++                        node,
++                        "Use albucore.tensor_bridge.numpy_to_tensor_storage or numpy_to_tensor_layout.",
++                        "torch.from_numpy",
++                    )
++                )
++            elif isinstance(node, ast.Attribute) and node.attr == "numpy" and isinstance(node.ctx, ast.Load):
++                result.append(
++                    _unit_d(
++                        "AXG028",
++                        unit,
++                        node,
++                        "Use albucore.tensor_bridge.tensor_to_numpy_storage or tensor_to_numpy_channel_last.",
++                        ".numpy",
++                    )
++                )
++    return result
++
++
++def _is_torch_from_numpy(node: ast.AST, torch_names: set[str]) -> bool:
++    if isinstance(node, ast.ImportFrom):
++        return node.level == 0 and node.module == "torch" and any(alias.name == "from_numpy" for alias in node.names)
++    return (
++        isinstance(node, ast.Attribute)
++        and node.attr == "from_numpy"
++        and isinstance(node.value, ast.Name)
++        and node.value.id in torch_names
++    )
++
++
+ def rule_bbox_defaults(index: SourceIndex) -> list[Diagnostic]:
+     result: list[Diagnostic] = []
+     for info in index.classes.values():
+@@ -1497,6 +1545,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
+         rule_sampled_dispatch_override,
+         rule_serialization_override,
+         rule_cv2,
++        rule_tensor_bridge,
+         rule_bbox_defaults,
+         rule_integrity,
+         rule_scalar_numpy_math,
+diff --git a/uv.lock b/uv.lock
+index a2b7d5de..3ce78c64 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -28,7 +28,7 @@ wheels = [
+ 
+ [[package]]
+ name = "albucore"
+-version = "0.3.5"
++version = "0.3.6"
+ source = { registry = "https://pypi.org/simple" }
+ dependencies = [
+     { name = "numkong" },
+@@ -36,9 +36,9 @@ dependencies = [
+     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+     { name = "stringzilla" },
+ ]
+-sdist = { url = "https://files.pythonhosted.org/packages/78/be/9f5514c09325524fbcf395e6348953507ae316dd2637654093c069540eea/albucore-0.3.5.tar.gz", hash = "sha256:f921b8b61dbc06524bb9ab085e06be9deb151a09d5303a98e88fa6249180bda8", size = 252895, upload-time = "2026-11-05T01:43:28.338Z" }
++sdist = { url = "https://files.pythonhosted.org/packages/d9/da/a6299ed5d0aba7a076ace187f5c45b78ad37f116c7c8ec795442b083f452/albucore-0.3.6.tar.gz", hash = "sha256:5a4c99e93cca2e8551fe92a71b8ff2e91edc924d24d1da234c1b93f969500a1c", size = 255647, upload-time = "2026-11-13T08:03:58.59Z" }
+ wheels = [
+-    { url = "https://files.pythonhosted.org/packages/d2/10/31918107a5c594eeafd160df0739dd125adebca3175815bf9f4c6c3eda18/albucore-0.3.5-py3-none-any.whl", hash = "sha256:7489a4cdae140febf724a29ed77605a7bef1e8a76b416b03c21af5b2d81e61ce", size = 81457, upload-time = "2026-11-05T01:43:26.505Z" },
++    { url = "https://files.pythonhosted.org/packages/48/73/a1e6d46297ed8742f7922e6c541605e4af51bca07ee29afafd774f43601c/albucore-0.3.6-py3-none-any.whl", hash = "sha256:f9a039534a457c8464ef59572336ff9ba8e54aba4fdce8b69fd4b65f6054439f", size = 83658, upload-time = "2026-11-13T08:03:57.26Z" },
+ ]
+ 
+ [[package]]
+@@ -190,7 +190,7 @@ dev = [
+ 
+ [package.metadata]
+ requires-dist = [
+-    { name = "albucore", specifier = "==0.3.5" },
++    { name = "albucore", specifier = "==0.3.6" },
+     { name = "huggingface-hub", marker = "extra == 'hub'" },
+     { name = "numkong", specifier = ">=7.8.7" },
+     { name = "numpy", specifier = ">=2.2.6" },

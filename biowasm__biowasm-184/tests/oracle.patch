@@ -1,0 +1,222 @@
+diff --git a/biowasm.json b/biowasm.json
+index 412f3f3..03b1351 100644
+--- a/biowasm.json
++++ b/biowasm.json
+@@ -35,6 +35,19 @@
+ 				}
+ 			]
+ 		},
++		{
++			"name": "amrfinderplus",
++			"url": "https://github.com/ncbi/amr.git",
++			"programs": ["amr_report", "dna_mutation", "fasta_check", "fasta_extract", "fasta2parts", "gff_check"],
++			"description": "Components of AMRFinderPlus: call acquired antimicrobial resistance genes from BLAST output against NCBI's reference database",
++			"categories": ["annotation", "variants"],
++			"versions": [
++				{
++					"version": "4.2.7",
++					"branch": "amrfinder_v4.2.7"
++				}
++			]
++		},
+ 		{
+ 			"name": "ASTER",
+ 			"url": "https://github.com/chaoszhang/ASTER.git",
+diff --git a/biowasm.manifest.stg.json b/biowasm.manifest.stg.json
+index f398984..d4c960b 100644
+--- a/biowasm.manifest.stg.json
++++ b/biowasm.manifest.stg.json
+@@ -32,6 +32,18 @@
+   "aioli/3.2.1/aioli.js": "aioli/3.2.1/aioli.js:07ce52c62385dc420ca0752633490872",
+   "aioli/3.2.3/aioli.js": "aioli/3.2.3/aioli.js:0b0b5007b83890b6d394e30332e51bbf",
+   "aioli/3.2.4/aioli.js": "aioli/3.2.4/aioli.js:666e09460e41df8e9cb0132e5934a13c",
++  "amrfinderplus/4.2.7/amr_report.js": "amrfinderplus/4.2.7/amr_report.js:375a2e2e971ff086336d46e4492d8f0e",
++  "amrfinderplus/4.2.7/amr_report.wasm": "amrfinderplus/4.2.7/amr_report.wasm:452e57a120203587f3dc1cdb62a1727c",
++  "amrfinderplus/4.2.7/dna_mutation.js": "amrfinderplus/4.2.7/dna_mutation.js:7af72178aaf64c89e2dc9a4fd8691ce5",
++  "amrfinderplus/4.2.7/dna_mutation.wasm": "amrfinderplus/4.2.7/dna_mutation.wasm:2c784e6935a3a88b2b4ba0b4a93de80d",
++  "amrfinderplus/4.2.7/fasta2parts.js": "amrfinderplus/4.2.7/fasta2parts.js:23b3acb183d1698481bfd8ebaf4cfb1d",
++  "amrfinderplus/4.2.7/fasta2parts.wasm": "amrfinderplus/4.2.7/fasta2parts.wasm:01509647e0b129c77fb8b5f9f58d61c4",
++  "amrfinderplus/4.2.7/fasta_check.js": "amrfinderplus/4.2.7/fasta_check.js:a9ebd82b94f02f8140bfdc4b2efd06c1",
++  "amrfinderplus/4.2.7/fasta_check.wasm": "amrfinderplus/4.2.7/fasta_check.wasm:f47ded9e943330c9beb5be3ee061900f",
++  "amrfinderplus/4.2.7/fasta_extract.js": "amrfinderplus/4.2.7/fasta_extract.js:1f8c6aa4f583b8ff4696f1e4379fcc5c",
++  "amrfinderplus/4.2.7/fasta_extract.wasm": "amrfinderplus/4.2.7/fasta_extract.wasm:0211fcf76a83b51becb510af66973317",
++  "amrfinderplus/4.2.7/gff_check.js": "amrfinderplus/4.2.7/gff_check.js:437bb51cb485ad0727cd1c388373537b",
++  "amrfinderplus/4.2.7/gff_check.wasm": "amrfinderplus/4.2.7/gff_check.wasm:090d60e1bcbbf1b7df82fea9d4724a71",
+   "base/1.0.0/base.js": "base/1.0.0/base.js:fc9a74fc82b59a6f75cb94fa228202e5",
+   "base/1.0.0/base.wasm": "base/1.0.0/base.wasm:14a4f945419e5e17b6d1b80d9ee6370e",
+   "bcftools/1.10/bcftools.data": "bcftools/1.10/bcftools.data:644b743543ded2d23ca5513723b91dba",
+diff --git a/biowasm.sizes.json b/biowasm.sizes.json
+index d6e57c6..42abc54 100644
+--- a/biowasm.sizes.json
++++ b/biowasm.sizes.json
+@@ -26,6 +26,18 @@
+   "ViralConsensus/0.0.5/viral_consensus.wasm": 523749,
+   "ViralConsensus/1.0.0/viral_consensus.js": 114835,
+   "ViralConsensus/1.0.0/viral_consensus.wasm": 639965,
++  "amrfinderplus/4.2.7/amr_report.js": 81263,
++  "amrfinderplus/4.2.7/amr_report.wasm": 1132947,
++  "amrfinderplus/4.2.7/dna_mutation.js": 79895,
++  "amrfinderplus/4.2.7/dna_mutation.wasm": 632188,
++  "amrfinderplus/4.2.7/fasta2parts.js": 79894,
++  "amrfinderplus/4.2.7/fasta2parts.wasm": 351585,
++  "amrfinderplus/4.2.7/fasta_check.js": 79517,
++  "amrfinderplus/4.2.7/fasta_check.wasm": 372234,
++  "amrfinderplus/4.2.7/fasta_extract.js": 79711,
++  "amrfinderplus/4.2.7/fasta_extract.wasm": 362779,
++  "amrfinderplus/4.2.7/gff_check.js": 79751,
++  "amrfinderplus/4.2.7/gff_check.wasm": 416852,
+   "bcftools/1.10/bcftools.data": 2651,
+   "bcftools/1.10/bcftools.js": 121183,
+   "bcftools/1.10/bcftools.wasm": 1512205,
+diff --git a/tools/amrfinderplus/compile.sh b/tools/amrfinderplus/compile.sh
+new file mode 100755
+index 0000000..02a1334
+--- /dev/null
++++ b/tools/amrfinderplus/compile.sh
+@@ -0,0 +1,18 @@
++#!/bin/bash
++
++set -e
++
++# amrfinder and stxtyper drive these through system(), which WebAssembly has no equivalent of,
++# so the programs they drive are built instead and the pipeline is run from JavaScript
++PROGRAMS="amr_report dna_mutation fasta_check fasta_extract fasta2parts gff_check"
++
++# The Makefile passes the version in as a macro; it is not read from version.txt
++VERSION=$(cat version.txt)
++
++for program in $PROGRAMS; do
++	objs=$(grep "^${program}OBJS=" Makefile | cut -d= -f2)
++	em++ -O2 -std=gnu++20 -DNDEBUG -fexceptions -DSVN_REV=\"$VERSION\" \
++		${objs//.o/.cpp} \
++		-o ../build/$program.js \
++		$EM_FLAGS -sERROR_ON_UNDEFINED_SYMBOLS=0
++done
+diff --git a/tools/amrfinderplus/examples/amrfinder_v4.2.7.html b/tools/amrfinderplus/examples/amrfinder_v4.2.7.html
+new file mode 100644
+index 0000000..670c652
+--- /dev/null
++++ b/tools/amrfinderplus/examples/amrfinder_v4.2.7.html
+@@ -0,0 +1,31 @@
++<script src="https://biowasm.com/cdn/v3/aioli.js"></script>
++<script type="module">
++const CLI = await new Aioli([
++	{ tool: "amrfinderplus", version: "4.2.7", program: "amr_report" },
++	{ tool: "blast", version: "2.17.0", program: "makeblastdb" },
++	{ tool: "blast", version: "2.17.0", program: "blastp" }
++], { printInterleaved: false });
++
++// NCBI hosts the database so we mount it
++const DB = "https://ftp.ncbi.nlm.nih.gov/pathogen/Antimicrobial_resistance/AMRFinderPlus/database/4.2/2026-10-29.1";
++const [proteins, families] = await CLI.mount([`${DB}/AMRProt.fa`, `${DB}/fam.tsv`]);
++await CLI.mount([{ name: "query.faa", data: ">blaTEM-156\nMSIQHFRVALIPFFAAFCLPVFAHPETLVKVKDAEDQLGARVGYIELDLNSGKILESFRPEERFPMMSTFKVLLCGAVLSRVDAGQEQLGRRIHYSQNDLVEYSPVTEKHLTDGMTVRELCSAAITMSDNTAANLLLTTIGGPKELTAFLHNIGDHVTRLDRWEPELNEAIPNDERDTTMPAAMATTLRKLLTGELLTLASRQQLIDWMEADKVAGPLLRSALPAGWFIADKSGAGERGSRGIIAALGPDGKPSRIVVIYTTGSQATMDERNRQIAEIGASLIKHW\n" }]);
++
++// -blastdb_version 4: v5 not supported because of mmap requirement
++await CLI.exec(`makeblastdb -in ${proteins} -dbtype prot -blastdb_version 4 -out amr`);
++
++// The search parameters AMRFinderPlus uses, and the ten columns amr_report expects
++const blast = await CLI.exec("blastp", ["-query", "query.faa", "-db", "amr", "-out", "blastp.tsv",
++	"-task", "blastp-fast", "-comp_based_stats", "0", "-seg", "no", "-max_target_seqs", "10000",
++	"-dbsize", "10000", "-evalue", "1e-10", "-word_size", "5",
++	"-outfmt", "6 sseqid qseqid sstart send slen qstart qend qlen sseq qseq"]);
++
++// -nohmm: that would require download a 110MB file so we skip it
++const report = await CLI.exec("amr_report", ["-fam", families, "-blastp", "blastp.tsv",
++	"-organism", "", "-coverage_min", "0.5", "-nohmm"]);
++
++document.getElementById("output").textContent = report.stdout;
++</script>
++
++<h4>Resistance genes called in a single protein, against NCBI's reference database:</h4>
++<pre id="output">Loading...</pre>
+diff --git a/tools/amrfinderplus/patches/amrfinder_v4.2.7.patch b/tools/amrfinderplus/patches/amrfinder_v4.2.7.patch
+new file mode 100644
+index 0000000..79fc64a
+--- /dev/null
++++ b/tools/amrfinderplus/patches/amrfinder_v4.2.7.patch
+@@ -0,0 +1,74 @@
++--- a/common.cpp
+++++ b/common.cpp
++@@ -43,7 +43,9 @@
++ #ifndef _MSC_VER
++   extern "C"
++   {
++-	  #include <execinfo.h>
+++	  #if __has_include(<execinfo.h>)
+++	    #include <execinfo.h>
+++	  #endif
++ 	  #include <sys/types.h>
++ 	  #include <sys/stat.h>
++ 	  #include <unistd.h>
++@@ -209,7 +211,7 @@ bool initCommon ()
++ 
++   static_assert (SIZE_MAX == std::numeric_limits<size_t>::max ());
++ 
++-  static_assert (sizeof (size_t) == 8);
+++  // size_t is 4 bytes on wasm32; no_index and the str2/hash helpers only need SIZE_MAX above
++ 
++   return true;
++ }
++@@ -285,7 +287,7 @@ namespace
++ string getStack ()
++ // Print function names:   // --> exec() ??
++ {
++-#ifdef _MSC_VER
+++#if defined(_MSC_VER) || ! __has_include(<execinfo.h>)
++   return "Stack trace is not implemented";
++ #else
++   string s;
++@@ -3969,12 +3971,15 @@ void Application::initEnvironment ()
++ 	execDir = getProgramDirName ();
++ 	if (execDir. empty ())
++ 		execDir = which (programArgs. front ());
+++  if (execDir. empty ())
+++    execDir = "/";  // argv[0] carries no path and there is no PATH to search
++   if (! isDirName (execDir))
++     throw logic_error ("Cannot identify the directory of the executable");
++   {
++     string s (programArgs. front ());
++     programName = rfindSplit (s, fileSlash);
++-    execDir = getDirName (path2canonical (execDir + programName));
+++    if (fileExists (execDir + programName))  // the executable is not in the filesystem here
+++      execDir = getDirName (path2canonical (execDir + programName));
++   }
++ 
++   string execDir_ (execDir);
++--- a/common.hpp
+++++ b/common.hpp
++@@ -3901,17 +3901,18 @@ struct Stderr : Singleton<Stderr>
++ struct Warning : Singleton<Warning>
++ {
++ private:
++-  Stderr& stderr;
+++  // musl defines stderr as a macro, so this member cannot carry that name
+++  Stderr& stderr_;
++   const OColor oc;
++ public:  
++ 
++   
++   explicit Warning (Stderr &stderr_arg)
++-    : stderr (stderr_arg)
++-    , oc (cerr, Color::yellow /*PAR*/, true, ! stderr. quiet)  
++-    { stderr << "WARNING: "; }
+++    : stderr_ (stderr_arg)
+++    , oc (cerr, Color::yellow /*PAR*/, true, ! stderr_. quiet)  
+++    { stderr_ << "WARNING: "; }
++  ~Warning ()
++-    { stderr << "\n"; }
+++    { stderr_ << "\n"; }
++ };
++ 
++ 
+diff --git a/web/tests/test_cdn.cy.js b/web/tests/test_cdn.cy.js
+index 17f97a2..19a217b 100644
+--- a/web/tests/test_cdn.cy.js
++++ b/web/tests/test_cdn.cy.js
+@@ -1,5 +1,6 @@
+ const EXAMPLE_SAM = `@SQ	SN:ref	LN:45\n@SQ	SN:ref2	LN:40\nr001	163	ref	7	30	8M4I4M1D3M	=	37	39	TTAGATAAAGAGGATACTG	*	XX:B:S,12561,2,20,112\nr002	0	ref	9	30	1S2I6M1P1I1P1I4M2I	*	0	0	AAAAGATAAGGGATAAA	*\nr003	0	ref	9	30	5H6M	*	0	0	AGCTAA	*\nr004	0	ref	16	30	6M14N1I5M	*	0	0	ATAGCTCTCAGC	*\nr003	16	ref	29	30	6H5M	*	0	0	TAGGC	*\nr001	83	ref	37	30	9M	=	7	-39	CAGCGCCAT	*\nx1	0	ref2	1	30	20M	*	0	0	aggttttataaaacaaataa	????????????????????\nx2	0	ref2	2	30	21M	*	0	0	ggttttataaaacaaataatt	?????????????????????\nx3	0	ref2	6	30	9M4I13M	*	0	0	ttataaaacAAATaattaagtctaca	??????????????????????????\nx4	0	ref2	10	30	25M	*	0	0	CaaaTaattaagtctacagagcaac	?????????????????????????\nx5	0	ref2	12	30	24M	*	0	0	aaTaattaagtctacagagcaact	????????????????????????\nx6	0	ref2	14	30	23M	*	0	0	Taattaagtctacagagcaacta	???????????????????????`;
+ const EXPECTED_OUTPUTS = {
++	"tools/amrfinderplus/examples/amrfinder_v4.2.7.html": [`Protein id\tElement symbol\tElement name\tScope\tType\tSubtype\tClass\tSubclass\tMethod\tTarget length\tReference sequence length\t% Coverage of reference\t% Identity to reference\tAlignment length\tClosest reference accession\tClosest reference name\tHMM accession\tHMM description\nblaTEM-156\tblaTEM-156\tclass A beta-lactamase TEM-156\tcore\tAMR\tAMR\tBETA-LACTAM\tBETA-LACTAM\tALLELEP\t286\t286\t100.00\t100.00\t286\tWP_061158039.1\tclass A beta-lactamase TEM-156\tNA\tNA`],
+ 	"tools/perbase/examples/v1.4.1.html": [`REF\tPOS\tREF_BASE\tDEPTH\tA\tC\tG\tT\tN\tR\tY\tS\tW\tK\tM\tINS\tDEL\tREF_SKIP\tFAIL\tCOUNT_OF_MATE_RESOLUTIONS\tNEAR_MAX_DEPTH\nchrT\t20\tT\t2\t0\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\tfalse\nchrT\t21\tT\t2\t0\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t22\tA\t2\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t23\tG\t2\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t24\tC\t2\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t25\tA\t2\t1\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t26\tT\t2\t0\t0\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t27\tA\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t28\tG\t1\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t29\tG\t1\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse\nchrT\t30\tA\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\tfalse`, `REF\tPOS\tEND\tDEPTH\nchrT\t1\t5\t1\nchrT\t5\t21\t2\nchrT\t21\t27\t3\nchrT\t27\t41\t2\nchrT\t41\t51\t3\nchrT\t51\t56\t2\nchrT\t56\t61\t1`],
+ 	"tools/rammap/examples/v1.2.0.html": [`@HD\tVN:1.6\tSO:unsorted\tGO:query\n@SQ\tSN:chr1\tLN:1200\n@PG\tID:rammap\tPN:rammap\tVN:1.2.0\tCL:rammap -x sr -a ref.fa r1.fq r2.fq\npair1\t99\tchr1\t151\t60\t100M\t=\t401\t350\tAAATACCTAGCCCATGTAGCCGGACATAGTCTAGTAGTGTCTCCCACCCCTCCCCATTTTATTGCTTGTCAGGGAGGGACCGACTAGTGAGGCTCCCACT\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:1\tms:i:190\tAS:i:190\tnn:i:0\ttp:A:P\tcm:i:7\ts1:i:154\ts2:i:0\tde:f:0.0100\trl:i:0\npair1\t147\tchr1\t401\t60\t100M\t=\t151\t-350\tTTAGAGATGTGACCAAGATCTGCGGCTAGTGCGATACCTACGCTGTCAAGGCTCTCAGGACTCTCAGATGACCCAGGCGTTTTGGACCTGAGCCGCTCTC\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:0\tms:i:200\tAS:i:200\tnn:i:0\ttp:A:P\tcm:i:13\ts1:i:154\ts2:i:0\tde:f:0\trl:i:0\npair2\t99\tchr1\t701\t60\t100M\t=\t951\t350\tAGATGCGGCCATAAAGCTGAGATTGCCCTGCGTCCGCTGGAATCACAAGCCGAGGTACAAACAATCAACTGTAATATTGTGATTGTGTTTTGTAAGCAAG\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:1\tms:i:190\tAS:i:190\tnn:i:0\ttp:A:P\tcm:i:9\ts1:i:168\ts2:i:0\tde:f:0.0100\trl:i:0\npair2\t147\tchr1\t951\t60\t100M\t=\t701\t-350\tCCGTTTGCTTAAAGCTCAAAAAAGGTGCCTAACAGAATTGCGACACTATTCTAGCTCACGTCCAGGCCATGTCTTGCTCGGGCTTCGGACAGGCGTATGC\tIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\tNM:i:0\tms:i:200\tAS:i:200\tnn:i:0\ttp:A:P\tcm:i:11\ts1:i:168\ts2:i:0\tde:f:0\trl:i:0`, `transcript1\t0\tchr1\t101\t60\t150M200N150M200N150M\t*\t0\t0\tAGTGCTTTCACCAGCCAAGTATAGTTGGACGTTCGAAGTTGAGTTTCCTGAAATACCTAGCCCATGTAGCCGGACATAGTCTAGTAGTGTATCCCACCCCTCCCCATTTTATTGCTTGTCAGGGAGGGACCGACTAGTGAGGCTCCCACTGCTCTCAGGACTCTCAGATGACCCAGGCGTTTTGGACCTGAGCCGCTCTCAAATCAACCGAGGAACACGACGGGGACCAGTTTGCCGCTTACATCTACTCAACAGGGTCCAGGCCCATTACTTGCAGACAGGGTCTCGTCTCGGAGTGATTAGGGGGCACGCAACAGAAGGCCGAACGATTTTCGGCCAACTCCGGCGGGACACGGGCGTCGGGACTGGGAAGCCCCCAGAGATCACCTGTCGCCCAGAAGGTCTGAACGGCGCGTGCTAGAGAACGCCCACAGCCCTGGTTCGTGTCCA\t*\tNM:i:0\tms:i:450\tAS:i:380\tnn:i:0\tts:A:+\ttp:A:P\tcm:i:144\ts1:i:428\ts2:i:0\tde:f:0\trl:i:0`],
+ 	"tools/diamond/examples/v2.2.8.html": [`d4at5a1\td3f66a_\t37.1\t286\t2.25e-62\t189\nd4at5a1\td4i4ea_\t38.0\t279\t1.73e-61\t186\nd4at5a1\td1ad5a3\t35.5\t282\t1.62e-55\t171\nd4at5a1\td3poza_\t32.6\t282\t2.98e-46\t148\nd4nima_\td1geea_\t28.9\t242\t1.03e-28\t99.8\nd4nima_\td3o38a_\t29.6\t250\t7.42e-24\t86.7\nd4nima_\td3uxya_\t29.5\t254\t1.91e-22\t82.4\nd4nima_\td3un1a1\t28.5\t249\t5.68e-19\t72.8`],

@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/sequana__sequana-920"
+description = "Fix blank Venn diagrams for 4–6 set comparisons"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "sequana",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "sequana/sequana"
+ref = "225321fc9bd73d33cd3f821ed2a4a35bc1f5a173"
+reference = "https://github.com/sequana/sequana/pull/920"
+source_access = "auto"
+built_at = "2026-11-13T16:17:29.341165+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:31724eea7adac3938954082ffc8501a3e6576e472315525897d0e712044a61ff"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-01T13:12:14Z"
+diff_format = "unified"
+context_files = [
+    "sequana/viz/venn.py",
+    "test/test_venn_js.py",
+    "test/viz/test_venn.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 72
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

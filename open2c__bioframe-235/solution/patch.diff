@@ -1,0 +1,26 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 9f90bbd..9f924b6 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -19,7 +19,7 @@ jobs:
+       matrix:
+         python-version: [ "3.9", "3.10", "3.11", "3.12" ]
+     steps:
+-      - uses: actions/checkout@v5
++      - uses: actions/checkout@v6
+       - name: Set up Python ${{ matrix.python-version }}
+         uses: actions/setup-python@v6
+         with:
+diff --git a/.github/workflows/publish.yml b/.github/workflows/publish.yml
+index fb656d2..01f067f 100644
+--- a/.github/workflows/publish.yml
++++ b/.github/workflows/publish.yml
+@@ -16,7 +16,7 @@ jobs:
+ 
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v5
++        uses: actions/checkout@v6
+ 
+       - name: Setup Python
+         uses: actions/setup-python@v6

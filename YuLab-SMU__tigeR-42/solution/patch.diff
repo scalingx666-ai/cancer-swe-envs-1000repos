@@ -1,0 +1,656 @@
+diff --git a/R/browse_biomk.R b/R/browse_biomk.R
+index 2ac3a69..fbf3692 100644
+--- a/R/browse_biomk.R
++++ b/R/browse_biomk.R
+@@ -1,129 +1,129 @@
+-#' @title Browse which TME cell type(s) contribute(s) most to the predictive performance.
+-#' @description Generate a single layout comprised of a bar plot representing AUC and a dot plot denoting Hazard Ratio and P-value.
+-#' @param SE a SummarizedExperiment(SE) object or a list consists of multiple SE objects. The colData of the SE object(s) must contain immunotherapy response information (R or NR).
+-#' @param feature the cell types or other features selected for analysis.
+-#' @param colors the color selected for barplot and dotplot.
+-#' @param PT_drop if TRUE, only untreated patient will be used for model training.
+-#' @param lg.pos the position of legend. When lg.pos=c(0,0), the legend will be placed in the bottom left corner of the plot.
+-#' @examples
+-#' library(SummarizedExperiment)
+-#' TM <- deconv_TME(MEL_GSE78220,method = "TIMER")
+-#' TM_SE <- SummarizedExperiment(assays=SimpleList(TM),
+-#'                               colData=colData(MEL_GSE78220))
+-#' browse_biomk(SE=TM_SE)
+-#' @export
+-
+-browse_biomk <- function(SE, feature,colors=NULL,PT_drop=FALSE,lg.pos=c(0.7,0.14)){
+-  isList <- is.list(SE)
+-  exp_mtr <- bind_mtr(SE, isList)
+-  meta <- bind_meta(SE, isList)
+-
+-  idx <- rownames(meta[meta$response_NR!="UNK",])
+-  exp_mtr_auc <- exp_mtr[,idx]
+-  meta_auc <- meta[idx,]
+-  auc <-
+-    apply(exp_mtr_auc,1,function(x){
+-      ROC <- pROC::roc(meta_auc$response_NR, x)
+-      ROC$auc
+-    })
+-
+-  df <- data.frame(Cell_type=names(auc),AUC=auc)
+-  df1 <- dplyr::arrange(df,.data$AUC)
+-  if(nrow(df1)>10)
+-    df1 <- df1[(nrow(df1)-9):nrow(df1),]
+-  df1$Cell_type <- factor(df1$Cell_type,levels = df1$Cell_type)
+-
+-  if(is.null(colors))
+-    colors <- c("#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c",
+-                "#98df8a", "#d62728", "#ff9896", "#9467bd", "#c5b0d5",
+-                "#8c564b", "#c49c94", "#e377c2", "#f7b6d2", "#7f7f7f",
+-                "#c7c7c7", "#bcbd22","#dbdb8d", "#17becf", "#9edae5",
+-                "#393b79", "#5254a3")
+-  bar <-
+-    ggplot(df1, aes(x = .data$Cell_type, y = .data$AUC,fill=.data$Cell_type)) +
+-    geom_col(fill = colors[seq_along(df1$Cell_type)]) +
+-    geom_text(aes(label = round(.data$AUC, 2)), hjust=1.1,vjust = 0.4,color="white",
+-              fontface="bold") +
+-    coord_flip() +
+-    theme(plot.background = element_rect(fill = "transparent",color = "transparent"),
+-          panel.grid.major = element_blank(),
+-          panel.grid.minor = element_blank(),
+-          panel.background = element_rect(fill = "transparent"),
+-          panel.border = element_rect(fill = "transparent",linewidth = 1.5),
+-          axis.title.x = element_text(face = "bold", size = "12", color = "black"),
+-          axis.title.y = element_blank(),
+-          axis.text.x = element_text(face = "bold", size = "10", color = "black"),
+-          axis.text.y = element_text(face = "bold", size = "12", color = "black"),
+-          aspect.ratio = 2)
+-
+-  idx_UT <- seq_along(meta[,1])
+-  if(PT_drop)
+-    idx_UT <- which(meta$Treatment == 'PRE')
+-
+-  if(length(idx_UT) == 0)
+-    stop("Only Untreated patients can be use to perform survival analysis!")
+-
+-  exp_mtr <- exp_mtr[,idx_UT,drop=FALSE]
+-  meta <- meta[idx_UT,,drop=FALSE]
+-
+-  Score <- t(
+-    apply(exp_mtr, 1, function(x){
+-      thres <- ifelse(median(x)==0,mean(x),median(x))
+-      ifelse(x>=thres,1,0)
+-    }))
+-
+-  time <- as.numeric(meta$overall.survival..days.)
+-  status <- sub('Dead','1', meta$vital.status) %>% sub('Alive','0',.)
+-
+-  dt <-
+-    apply(Score, 1, function(x){
+-      df <- data.frame(time,status,Score=x) %>%
+-        stats::na.omit() %>%
+-        lapply(as.numeric) %>%
+-        as.data.frame()
+-      fit <- survfit(Surv(time, status) ~ Score, data = df)
+-      cox_md <- coxph(Surv(time, status) ~ Score, data = df)
+-      summary_cox <- summary(cox_md)
+-      c(summary_cox$conf.int[,1],summary_cox$coefficients[,5])
+-    })
+-  rownames(dt) <- c("HR","P")
+-  dt <- dt[,as.vector(df1$Cell_type)]
+-
+-  final <- data.frame(
+-    x = unlist(dt[1,]),
+-    y = -log10(unlist(dt[2,])),
+-    cell = factor(colnames(dt),levels=rev(colnames(dt))))
+-
+-  if(nrow(final)>10)
+-    final <- final[final$cell%in%df1$Cell_type,]
+-
+-  dot <-
+-    ggplot(final, aes(x = .data$x, y = .data$y, color=.data$cell)) +
+-    geom_point(size=2) +
+-    scale_color_manual(values = rev(colors[1:nrow(final)])) +
+-    scale_y_continuous(position = "right") +
+-    xlab("Hazard ratio") +
+-    ylab("-Log10 P value") +
+-    theme(plot.background = element_rect(fill = "transparent",color = "transparent"),
+-          panel.grid.major = element_blank(),
+-          panel.grid.minor = element_blank(),
+-          panel.background = element_rect(fill="transparent"),
+-          panel.border = element_rect(fill = "transparent",linewidth = 1.5),
+-          legend.title = element_blank(),
+-          legend.text = element_text(size = 7,face = "bold"),
+-          legend.position = lg.pos,
+-          legend.background = element_rect(fill = "transparent",color = "transparent"),
+-          legend.key = element_rect(color = "transparent"),
+-          legend.key.size = unit(0.3,"cm"),
+-          legend.spacing.x = unit(0,"cm"),
+-          legend.spacing.y = unit(0,"cm"),
+-          axis.text = element_text(face = "bold", size = "10", color = "black"),
+-          axis.title = element_text(face = "bold", size = "12", color = "black"),
+-          aspect.ratio = 2)
+-
+-  bar + dot
+-}
+-
+-
+-
+-
++#' @title Browse which TME cell type(s) contribute(s) most to the predictive performance.
++#' @description Generate a single layout comprised of a bar plot representing AUC and a dot plot denoting Hazard Ratio and P-value.
++#' @param SE a SummarizedExperiment(SE) object or a list consists of multiple SE objects. The colData of the SE object(s) must contain immunotherapy response information (R or NR).
++#' @param feature the cell types or other features selected for analysis.
++#' @param colors the color selected for barplot and dotplot.
++#' @param PT_drop if TRUE, only untreated patient will be used for model training.
++#' @param lg.pos the position of legend. When lg.pos=c(0,0), the legend will be placed in the bottom left corner of the plot.
++#' @examples
++#' library(SummarizedExperiment)
++#' TM <- deconv_TME(MEL_GSE78220,method = "TIMER")
++#' TM_SE <- SummarizedExperiment(assays=SimpleList(TM),
++#'                               colData=colData(MEL_GSE78220))
++#' browse_biomk(SE=TM_SE)
++#' @export
++
++browse_biomk <- function(SE, feature,colors=NULL,PT_drop=FALSE,lg.pos=c(0.7,0.14)){
++  isList <- is.list(SE)
++  exp_mtr <- bind_mtr(SE, isList)
++  meta <- bind_meta(SE, isList)
++
++  idx <- rownames(meta[meta$response_NR!="UNK",])
++  exp_mtr_auc <- exp_mtr[,idx]
++  meta_auc <- meta[idx,]
++  auc <-
++    apply(exp_mtr_auc,1,function(x){
++      ROC <- pROC::roc(meta_auc$response_NR, x)
++      ROC$auc
++    })
++
++  df <- data.frame(Cell_type=names(auc),AUC=auc)
++  df1 <- dplyr::arrange(df,.data$AUC)
++  if(nrow(df1)>10)
++    df1 <- df1[(nrow(df1)-9):nrow(df1),]
++  df1$Cell_type <- factor(df1$Cell_type,levels = df1$Cell_type)
++
++  if(is.null(colors))
++    colors <- c("#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c",
++                "#98df8a", "#d62728", "#ff9896", "#9467bd", "#c5b0d5",
++                "#8c564b", "#c49c94", "#e377c2", "#f7b6d2", "#7f7f7f",
++                "#c7c7c7", "#bcbd22","#dbdb8d", "#17becf", "#9edae5",
++                "#393b79", "#5254a3")
++  bar <-
++    ggplot(df1, aes(x = .data$Cell_type, y = .data$AUC,fill=.data$Cell_type)) +
++    geom_col(fill = colors[seq_along(df1$Cell_type)]) +
++    geom_text(aes(label = round(.data$AUC, 2)), hjust=1.1,vjust = 0.4,color="white",
++              fontface="bold") +
++    coord_flip() +
++    theme(plot.background = element_rect(fill = "transparent",color = "transparent"),
++          panel.grid.major = element_blank(),
++          panel.grid.minor = element_blank(),
++          panel.background = element_rect(fill = "transparent"),
++          panel.border = element_rect(fill = "transparent",linewidth = 1.5),
++          axis.title.x = element_text(face = "bold", size = 12, color = "black"),
++          axis.title.y = element_blank(),
++          axis.text.x = element_text(face = "bold", size = 10, color = "black"),
++          axis.text.y = element_text(face = "bold", size = 12, color = "black"),
++          aspect.ratio = 2)
++
++  idx_UT <- seq_along(meta[,1])
++  if(PT_drop)
++    idx_UT <- which(meta$Treatment == 'PRE')
++
++  if(length(idx_UT) == 0)
++    stop("Only Untreated patients can be use to perform survival analysis!")
++
++  exp_mtr <- exp_mtr[,idx_UT,drop=FALSE]
++  meta <- meta[idx_UT,,drop=FALSE]
++
++  Score <- t(
++    apply(exp_mtr, 1, function(x){
++      thres <- ifelse(median(x)==0,mean(x),median(x))
++      ifelse(x>=thres,1,0)
++    }))
++
++  time <- as.numeric(meta$overall.survival..days.)
++  status <- sub('Dead','1', meta$vital.status) %>% sub('Alive','0',.)
++
++  dt <-
++    apply(Score, 1, function(x){
++      df <- data.frame(time,status,Score=x) %>%
++        stats::na.omit() %>%
++        lapply(as.numeric) %>%
++        as.data.frame()
++      fit <- survfit(Surv(time, status) ~ Score, data = df)
++      cox_md <- coxph(Surv(time, status) ~ Score, data = df)
++      summary_cox <- summary(cox_md)
++      c(summary_cox$conf.int[,1],summary_cox$coefficients[,5])
++    })
++  rownames(dt) <- c("HR","P")
++  dt <- dt[,as.vector(df1$Cell_type)]
++
++  final <- data.frame(
++    x = unlist(dt[1,]),
++    y = -log10(unlist(dt[2,])),
++    cell = factor(colnames(dt),levels=rev(colnames(dt))))
++
++  if(nrow(final)>10)
++    final <- final[final$cell%in%df1$Cell_type,]
++
++  dot <-
++    ggplot(final, aes(x = .data$x, y = .data$y, color=.data$cell)) +
++    geom_point(size=2) +
++    scale_color_manual(values = rev(colors[1:nrow(final)])) +
++    scale_y_continuous(position = "right") +
++    xlab("Hazard ratio") +
++    ylab("-Log10 P value") +
++    theme(plot.background = element_rect(fill = "transparent",color = "transparent"),
++          panel.grid.major = element_blank(),
++          panel.grid.minor = element_blank(),
++          panel.background = element_rect(fill="transparent"),
++          panel.border = element_rect(fill = "transparent",linewidth = 1.5),
++          legend.title = element_blank(),
++          legend.text = element_text(size = 7,face = "bold"),
++          legend.position = lg.pos,
++          legend.background = element_rect(fill = "transparent",color = "transparent"),
++          legend.key = element_rect(color = "transparent"),
++          legend.key.size = unit(0.3,"cm"),
++          legend.spacing.x = unit(0,"cm"),
++          legend.spacing.y = unit(0,"cm"),
++          axis.text = element_text(face = "bold", size = 10, color = "black"),
++          axis.title = element_text(face = "bold", size = 12, color = "black"),
++          aspect.ratio = 2)
++
++  bar + dot
++}
++
++
++
++
+diff --git a/R/surv_biomk.R b/R/surv_biomk.R
+index 608d6ea..68e9e67 100644
+--- a/R/surv_biomk.R
++++ b/R/surv_biomk.R
+@@ -1,194 +1,194 @@
+-#' @title Visualize survival analysis result for a specified gene or gene sets
+-#' @description Visualize survival analysis result for a specified gene or gene set, and show hazard ratio, 95\% confidence interval and P value of Cox regression analysis.
+-#' @param SE an SummarizedExperiment(SE) object or a list consists of SE objects. The colData of SE objects must contain response information.
+-#' @param gene is the Gene or Gene set you are interested in.
+-#' @param method the method for calculating gene set scores which has several options: "Average_mean", "Weighted_mean", or "GSVA". The method can be set to NULL if the length of the parameter geneSet is 1. This means that if you are working with only one gene, the specific calculation method may not be applicable or necessary.
+-#' @param style the ploting style, c("raw,"elegant","brief").
+-#' @param conf.int logical value. If TRUE, plot the 95\% confidence interval.
+-#' @param val.pos the position of the result for Cox regression analysis (hazard ratio, 95\% confidence interval and P value).
+-#' @param lg the specific content in legend.
+-#' @param lg.pos the position of legend. When lg.pos=c(0,0), the legend will be placed in the bottom left corner of the plot.
+-#' @param lg.text c("precise","all"). If all, show the 95\% confidence interval of median survival.
+-#' @param p.round the decimal places you want to keep for p value
+-#' @param PT_drop if TRUE, only untreated patient will be use for model training.
+-#' @param drop_zero if TRUE, 0 will not be considered when calculating median survival.
+-#' @import ggplot2
+-#' @importFrom SummarizedExperiment assay
+-#' @importFrom magrittr %>%
+-#' @importFrom survival survfit
+-#' @importFrom survival Surv
+-#' @importFrom survminer ggsurvplot
+-#' @importFrom ggplot2 theme_bw
+-#' @importFrom stats median
+-#' @returns
+-#'   \describe{
+-#'   Return a chart contains hazard ratios, 95% confidence intervals and P value
+-#'   of cox-ph analysis as well as plot Kaplan-Meier curves.}
+-#' @examples
+-#' surv_biomk(SE=MEL_GSE78220,gene='CD274')
+-#' @export
+-
+-surv_biomk <- function(SE, gene, method='Average_mean', style='elegant', conf.int=FALSE, val.pos=c(0.03,0.2), lg=NULL,lg.pos=c(0.6,0.9), lg.text="precise",p.round=4,PT_drop=TRUE,drop_zero=FALSE){
+-  isList <- is.list(SE)
+-  exp_mtr <- bind_mtr(SE, isList)
+-  meta <- bind_meta(SE, isList)
+-
+-  idx_UT <- seq_along(meta[,1])
+-  if(PT_drop)
+-    idx_UT <- which(meta$Treatment == 'PRE')
+-
+-  if(length(idx_UT) == 0)
+-    stop("Only Untreated patients can be use to perform survival analysis!")
+-
+-  exp_mtr <- exp_mtr[,idx_UT,drop=FALSE]
+-  meta <- meta[idx_UT,,drop=FALSE]
+-
+-  Sc <- Core(exp_mtr, gene, method)
+-  if(drop_zero)
+-    Score <- as.numeric(ifelse(Sc>=median(Sc[Sc!=0]),1,0))
+-  else{
+-    Score <- as.numeric(ifelse(Sc>=median(Sc),1,0))
+-  }
+-
+-  time <- as.numeric(meta$overall.survival..days.)
+-  status <- sub('Dead','1', meta$vital.status) %>% sub('Alive','0',.)
+-
+-  df <- data.frame(time,status,Score) %>%
+-    stats::na.omit() %>%
+-    lapply(as.numeric) %>%
+-    as.data.frame()
+-
+-  return(surv_styling(df, style, conf.int, gene, method, val.pos,lg, lg.pos, lg.text,p.round))
+-}
+-
+-
+-#' @title the style of survival plot
+-#' @description the style of survival plot
+-#' @param df the data source
+-#' @param style plotting style
+-#' @param conf.int logical value. If TRUE, plots confidence interval.
+-#' @param gene the gene you interested in.
+-#' @param method the method for calculating gene set scores which has several options: "Average_mean", "Weighted_mean", or "GSVA". The method can be set to NULL if the length of the parameter geneSet is 1. This means that if you are working with only one gene, the specific calculation method may not be applicable or necessary.
+-#' @param val.pos the position of annotation value.
+-#' @param lg dd
+-#' @param lg.pos the position of legend.
+-#' @param lg.text c("precise","all"). If all, show the 0.95 CI of median.
+-#' @param p.round the decimal places you want to keep for p value
+-#' @import ggplot2
+-#' @export
+-
+-surv_styling <- function(df, style, conf.int, gene, method, val.pos, lg,lg.pos, lg.text, p.round){
+-  fit <- survfit(Surv(time, status) ~ Score, data = df)
+-
+-  val.pos <- c(val.pos[1]*1000, val.pos[2]-0.1)
+-  cox_md <- coxph(Surv(time, status) ~ Score, data = df)
+-  summary_cox <- summary(cox_md)
+-  HR <- sprintf("%.2f",summary_cox$conf.int[,1])
+-  P_val_cox <- sprintf(paste0("%.",p.round,"f"),summary_cox$coefficients[,5])
+-  LCI <- round(summary_cox$conf.int[,3],2)
+-  UCI <- round(summary_cox$conf.int[,4],2)
+-
+-  summary_KM <- summary(fit)
+-  idx_0 <- which(summary_KM$strata == 'Score=0')
+-  idx_1 <- which(summary_KM$strata == 'Score=1')
+-  median_0 <- round(summary_KM$time[which.min(summary_KM$surv[idx_0] - 0.5)],1)
+-  median_1 <- round(summary_KM$time[which.min(summary_KM$surv[idx_1] - 0.5) + length(idx_0)],1)
+-  LCI_0 <- round(summary_KM$time[which(summary_KM$lower[idx_0]<=0.5)[1]],1)
+-  LCI_1 <- round(summary_KM$time[which(summary_KM$lower[idx_1]<=0.5)[1] + length(idx_0)],1)
+-  UCI_0 <- round(summary_KM$time[which(summary_KM$upper[idx_0]<=0.5)[1]],1)
+-  UCI_1 <- round(summary_KM$time[which(summary_KM$upper[idx_1]<=0.5)[1]],1)
+-
+-  P_val_KM <- round(survival::survdiff(Surv(time, status) ~ Score, data = df)$pvalue,p.round)
+-  if(P_val_cox < 0.001)
+-    P_val_cox <- "< 0.001"
+-  else{
+-    P_val_cox <- paste0("= ",P_val_cox)
+-  }
+-
+-  if(lg.text == "precise")
+-    lg.title <- c(paste0("Low median: ",median_0," days"),
+-                  paste0("High median: ",median_1," days"))
+-  if(lg.text == "all")
+-    lg.title <- c(paste0("Low median: ",median_0,
+-                         " days (95% CI ",LCI_0,"-",UCI_0,")"),
+-                  paste0("High median: ",median_1,
+-                         " days (95% CI ",LCI_1,"-",UCI_1,")"))
+-  if(lg.text == "specific")
+-    lg.title <- c(paste0(ifelse(length(gene)==1,gene,lg)," Low"),
+-                  paste0(ifelse(length(gene)==1,gene,lg)," High"))
+-
+-  lg.labs <- switch (style,
+-                     raw = c('Low','High'),
+-                     elegant = lg.title,
+-                     brief = NULL)
+-
+-  P <- ggsurvplot(fit, data = df, pval = FALSE, conf.int = conf.int,
+-                  palette = c('#15C4C8','#F28A72'),
+-                  legend.title = ifelse(length(gene) == 1,gene,"Score"),
+-                  legend.labs = lg.labs,
+-                  risk.table = TRUE,
+-                  risk.table.title = "Number at risk",
+-                  risk.table.col = "strata", linetype = "solid",
+-                  surv.median.line = "hv",
+-                  size = 1.2)
+-
+-  if(style == 'raw'){
+-    P$plot <- P$plot +
+-      ggtitle("Survival analysis") +
+-      theme(plot.title = element_text(hjust = 0.5))
+-
+-    if(length(gene) > 1)
+-      P$table$labels$y <- method
+-  } else{
+-    P$plot <-
+-      P$plot +
+-      theme(plot.title = element_text(face = "bold", size = "14",
+-                                      color = "black", hjust = 0.5),
+-            panel.grid.major = element_blank(),
+-            panel.grid.minor = element_blank(),
+-            legend.title = element_blank(),
+-            legend.position = switch(style,
+-                                     elegant = lg.pos,
+-                                     brief='none'),
+-            legend.background = element_rect(fill = "transparent"),
+-            axis.title.x = element_text(size = 12,face="bold"),
+-            axis.title.y = element_text(size = 12,face="bold"),
+-            axis.line = element_line(linewidth = 1)) +
+-      labs(x="Overall survival (days)")
+-
+-    P$table <-
+-      P$table +
+-      ggtitle("Numer at risk")+
+-      theme(plot.title = element_text(hjust = -0.1,vjust = 0.5,size = 12,face="bold"),
+-            text = element_text(colour = "black"),
+-            panel.grid.major = element_blank(),
+-            panel.grid.minor = element_blank(),
+-            axis.title.x = element_blank(),
+-            axis.title.y = element_blank()) +
+-      scale_y_discrete(labels=c("Low","High"))
+-    P$table$theme$axis.text.y$hjust <- 0
+-  }
+-
+-  if(style == 'elegant'){
+-    P$plot <-
+-      P$plot +
+-      annotate("text", x=val.pos[1], y=val.pos[2]+0.2, label = paste0("HR ",HR),size = 3.5,hjust=0) +
+-      annotate("text", x=val.pos[1], y=val.pos[2]+0.1, label = paste0("95% CI ",LCI,"-",UCI),size = 3.5,hjust=0) +
+-      annotate("text", x=val.pos[1], y=val.pos[2], label = paste0("P ",P_val_cox),size = 3.5,hjust=0)
+-
+-    P$table <-
+-      P$table +
+-      theme(axis.line = element_line(linewidth = 1))
+-  }
+-
+-  if(style == 'brief'){
+-    P$table <-
+-      P$table +
+-      theme(axis.line = element_blank(),
+-            axis.ticks = element_blank(),
+-            axis.text.x = element_blank())
+-  }
+-
+-  return(P)
+-}
+-
++#' @title Visualize survival analysis result for a specified gene or gene sets
++#' @description Visualize survival analysis result for a specified gene or gene set, and show hazard ratio, 95\% confidence interval and P value of Cox regression analysis.
++#' @param SE an SummarizedExperiment(SE) object or a list consists of SE objects. The colData of SE objects must contain response information.
++#' @param gene is the Gene or Gene set you are interested in.
++#' @param method the method for calculating gene set scores which has several options: "Average_mean", "Weighted_mean", or "GSVA". The method can be set to NULL if the length of the parameter geneSet is 1. This means that if you are working with only one gene, the specific calculation method may not be applicable or necessary.
++#' @param style the ploting style, c("raw,"elegant","brief").
++#' @param conf.int logical value. If TRUE, plot the 95\% confidence interval.
++#' @param val.pos the position of the result for Cox regression analysis (hazard ratio, 95\% confidence interval and P value).
++#' @param lg the specific content in legend.
++#' @param lg.pos the position of legend. When lg.pos=c(0,0), the legend will be placed in the bottom left corner of the plot.
++#' @param lg.text c("precise","all"). If all, show the 95\% confidence interval of median survival.
++#' @param p.round the decimal places you want to keep for p value
++#' @param PT_drop if TRUE, only untreated patient will be use for model training.
++#' @param drop_zero if TRUE, 0 will not be considered when calculating median survival.
++#' @import ggplot2
++#' @importFrom SummarizedExperiment assay
++#' @importFrom magrittr %>%
++#' @importFrom survival survfit
++#' @importFrom survival Surv
++#' @importFrom survminer ggsurvplot
++#' @importFrom ggplot2 theme_bw
++#' @importFrom stats median
++#' @returns
++#'   \describe{
++#'   Return a chart contains hazard ratios, 95% confidence intervals and P value
++#'   of cox-ph analysis as well as plot Kaplan-Meier curves.}
++#' @examples
++#' surv_biomk(SE=MEL_GSE78220,gene='CD274')
++#' @export
++
++surv_biomk <- function(SE, gene, method='Average_mean', style='elegant', conf.int=FALSE, val.pos=c(0.03,0.2), lg=NULL,lg.pos=c(0.6,0.9), lg.text="precise",p.round=4,PT_drop=TRUE,drop_zero=FALSE){
++  isList <- is.list(SE)
++  exp_mtr <- bind_mtr(SE, isList)
++  meta <- bind_meta(SE, isList)
++
++  idx_UT <- seq_along(meta[,1])
++  if(PT_drop)
++    idx_UT <- which(meta$Treatment == 'PRE')
++
++  if(length(idx_UT) == 0)
++    stop("Only Untreated patients can be use to perform survival analysis!")
++
++  exp_mtr <- exp_mtr[,idx_UT,drop=FALSE]
++  meta <- meta[idx_UT,,drop=FALSE]
++
++  Sc <- Core(exp_mtr, gene, method)
++  if(drop_zero)
++    Score <- as.numeric(ifelse(Sc>=median(Sc[Sc!=0]),1,0))
++  else{
++    Score <- as.numeric(ifelse(Sc>=median(Sc),1,0))
++  }
++
++  time <- as.numeric(meta$overall.survival..days.)
++  status <- sub('Dead','1', meta$vital.status) %>% sub('Alive','0',.)
++
++  df <- data.frame(time,status,Score) %>%
++    stats::na.omit() %>%
++    lapply(as.numeric) %>%
++    as.data.frame()
++
++  return(surv_styling(df, style, conf.int, gene, method, val.pos,lg, lg.pos, lg.text,p.round))
++}
++
++
++#' @title the style of survival plot
++#' @description the style of survival plot
++#' @param df the data source
++#' @param style plotting style
++#' @param conf.int logical value. If TRUE, plots confidence interval.
++#' @param gene the gene you interested in.
++#' @param method the method for calculating gene set scores which has several options: "Average_mean", "Weighted_mean", or "GSVA". The method can be set to NULL if the length of the parameter geneSet is 1. This means that if you are working with only one gene, the specific calculation method may not be applicable or necessary.
++#' @param val.pos the position of annotation value.
++#' @param lg dd
++#' @param lg.pos the position of legend.
++#' @param lg.text c("precise","all"). If all, show the 0.95 CI of median.
++#' @param p.round the decimal places you want to keep for p value
++#' @import ggplot2
++#' @export
++
++surv_styling <- function(df, style, conf.int, gene, method, val.pos, lg,lg.pos, lg.text, p.round){
++  fit <- survfit(Surv(time, status) ~ Score, data = df)
++
++  val.pos <- c(val.pos[1]*1000, val.pos[2]-0.1)
++  cox_md <- coxph(Surv(time, status) ~ Score, data = df)
++  summary_cox <- summary(cox_md)
++  HR <- sprintf("%.2f",summary_cox$conf.int[,1])
++  P_val_cox <- sprintf(paste0("%.",p.round,"f"),summary_cox$coefficients[,5])
++  LCI <- round(summary_cox$conf.int[,3],2)
++  UCI <- round(summary_cox$conf.int[,4],2)
++
++  summary_KM <- summary(fit)
++  idx_0 <- which(summary_KM$strata == 'Score=0')
++  idx_1 <- which(summary_KM$strata == 'Score=1')
++  median_0 <- round(summary_KM$time[which.min(summary_KM$surv[idx_0] - 0.5)],1)
++  median_1 <- round(summary_KM$time[which.min(summary_KM$surv[idx_1] - 0.5) + length(idx_0)],1)
++  LCI_0 <- round(summary_KM$time[which(summary_KM$lower[idx_0]<=0.5)[1]],1)
++  LCI_1 <- round(summary_KM$time[which(summary_KM$lower[idx_1]<=0.5)[1] + length(idx_0)],1)
++  UCI_0 <- round(summary_KM$time[which(summary_KM$upper[idx_0]<=0.5)[1]],1)
++  UCI_1 <- round(summary_KM$time[which(summary_KM$upper[idx_1]<=0.5)[1]],1)
++
++  P_val_KM <- round(survival::survdiff(Surv(time, status) ~ Score, data = df)$pvalue,p.round)
++  if(P_val_cox < 0.001)
++    P_val_cox <- "< 0.001"
++  else{
++    P_val_cox <- paste0("= ",P_val_cox)
++  }
++
++  if(lg.text == "precise")
++    lg.title <- c(paste0("Low median: ",median_0," days"),
++                  paste0("High median: ",median_1," days"))
++  if(lg.text == "all")
++    lg.title <- c(paste0("Low median: ",median_0,
++                         " days (95% CI ",LCI_0,"-",UCI_0,")"),
++                  paste0("High median: ",median_1,
++                         " days (95% CI ",LCI_1,"-",UCI_1,")"))
++  if(lg.text == "specific")
++    lg.title <- c(paste0(ifelse(length(gene)==1,gene,lg)," Low"),
++                  paste0(ifelse(length(gene)==1,gene,lg)," High"))
++
++  lg.labs <- switch (style,
++                     raw = c('Low','High'),
++                     elegant = lg.title,
++                     brief = NULL)
++
++  P <- ggsurvplot(fit, data = df, pval = FALSE, conf.int = conf.int,
++                  palette = c('#15C4C8','#F28A72'),
++                  legend.title = ifelse(length(gene) == 1,gene,"Score"),
++                  legend.labs = lg.labs,
++                  risk.table = TRUE,
++                  risk.table.title = "Number at risk",
++                  risk.table.col = "strata", linetype = "solid",
++                  surv.median.line = "hv",
++                  size = 1.2)
++
++  if(style == 'raw'){
++    P$plot <- P$plot +
++      ggtitle("Survival analysis") +
++      theme(plot.title = element_text(hjust = 0.5))
++
++    if(length(gene) > 1)
++      P$table$labels$y <- method
++  } else{
++    P$plot <-
++      P$plot +
++      theme(plot.title = element_text(face = "bold", size = 14,
++                                      color = "black", hjust = 0.5),
++            panel.grid.major = element_blank(),
++            panel.grid.minor = element_blank(),
++            legend.title = element_blank(),
++            legend.position = switch(style,
++                                     elegant = lg.pos,
++                                     brief='none'),
++            legend.background = element_rect(fill = "transparent"),
++            axis.title.x = element_text(size = 12,face="bold"),
++            axis.title.y = element_text(size = 12,face="bold"),
++            axis.line = element_line(linewidth = 1)) +
++      labs(x="Overall survival (days)")
++
++    P$table <-
++      P$table +
++      ggtitle("Numer at risk")+
++      theme(plot.title = element_text(hjust = -0.1,vjust = 0.5,size = 12,face="bold"),
++            text = element_text(colour = "black"),
++            panel.grid.major = element_blank(),
++            panel.grid.minor = element_blank(),
++            axis.title.x = element_blank(),
++            axis.title.y = element_blank()) +
++      scale_y_discrete(labels=c("Low","High"))
++    P$table$theme$axis.text.y$hjust <- 0
++  }
++
++  if(style == 'elegant'){
++    P$plot <-
++      P$plot +
++      annotate("text", x=val.pos[1], y=val.pos[2]+0.2, label = paste0("HR ",HR),size = 3.5,hjust=0) +
++      annotate("text", x=val.pos[1], y=val.pos[2]+0.1, label = paste0("95% CI ",LCI,"-",UCI),size = 3.5,hjust=0) +
++      annotate("text", x=val.pos[1], y=val.pos[2], label = paste0("P ",P_val_cox),size = 3.5,hjust=0)
++
++    P$table <-
++      P$table +
++      theme(axis.line = element_line(linewidth = 1))
++  }
++
++  if(style == 'brief'){
++    P$table <-
++      P$table +
++      theme(axis.line = element_blank(),
++            axis.ticks = element_blank(),
++            axis.text.x = element_blank())
++  }
++
++  return(P)
++}
++

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/Azure-Samples__healthcare-agent-orchestrator-81"
+description = "Bump follow-redirects, @nx/vite and nx in /democlient"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "healthcare-agent-orchestrator",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Azure-Samples/healthcare-agent-orchestrator"
+ref = "c17de436adf3aa081b0c7cb5a2c4b6a7dccaded2"
+reference = "https://github.com/Azure-Samples/healthcare-agent-orchestrator/pull/81"
+source_access = "auto"
+built_at = "2026-11-13T15:32:40.563626+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:66a76abda93210f14ef030d48277f93d76ba28ae7d3f9a512ed015cd5f51570e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-27T20:23:10Z"
+diff_format = "unified"
+context_files = [
+    "democlient/package-lock.json",
+    "democlient/package.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1212
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

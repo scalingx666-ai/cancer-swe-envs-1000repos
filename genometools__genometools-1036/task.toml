@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/genometools__genometools-1036"
+description = "remove web apps from repo"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "genometools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "genometools/genometools"
+ref = "332a47e900ed25b61360fbbb18985f05ebdd42e4"
+reference = "https://github.com/genometools/genometools/pull/1036"
+source_access = "auto"
+built_at = "2026-11-13T15:59:01.391996+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e6eaa7bdab4095e12cd503f81f8793cfbfbd76d71ee74edfe23f0b0400007e2d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-11-04T18:41:48Z"
+diff_format = "unified"
+context_files = [
+    "Makefile",
+    "www/genometools.org/htdocs/annotationsketch.html",
+    "www/genometools.org/htdocs/cgi-bin/annotationsketch_demo.cgi",
+    "www/genometools.org/htdocs/cgi-bin/gff3validator.cgi",
+    "www/genometools.org/htdocs/contribute.html",
+    "www/genometools.org/htdocs/customtracks.html",
+    "www/genometools.org/htdocs/examples_tmpl.html",
+    "www/genometools.org/htdocs/style_options.html",
+    "www/genometools.org/htdocs/trackselectors.html",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 502
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

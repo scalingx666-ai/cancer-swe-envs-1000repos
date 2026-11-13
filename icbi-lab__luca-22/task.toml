@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/icbi-lab__luca-22"
+description = "Fix EGFR mutation in exported atlas"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "luca",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "icbi-lab/luca"
+ref = "4c1d8992644cdb93baba571c10cdf590b7bff050"
+reference = "https://github.com/icbi-lab/luca/pull/22"
+source_access = "auto"
+built_at = "2026-11-13T15:37:26.682176+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c7ffec57f6983f124fb0abfe8a4d024d141cd12543788832ca8409d4a2d33957"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-01-19T10:41:58Z"
+diff_format = "unified"
+context_files = [
+    "analyses/80_export_atlas/81_export_atlas.py",
+    "modules/local/jupyternotebook/parametrize.nf",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 48
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

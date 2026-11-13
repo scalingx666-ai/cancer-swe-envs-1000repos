@@ -1,0 +1,29 @@
+diff --git a/pom.xml b/pom.xml
+index 88aa9ada..33b904f5 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -478,7 +478,7 @@
+           <forkCount>${surefire.num.forks}</forkCount>
+           <reuseForks>false</reuseForks>
+           <testFailureIgnore>${ignore.test.failures}</testFailureIgnore>
+-          <argLine>@{surefireArgLine} -Dlog4j.configuration=file:${project.build.testOutputDirectory}/log4j.properties</argLine>
++          <argLine>@{surefireArgLine} -Dlog4j.configurationFile=file:${project.build.testOutputDirectory}/log4j.properties</argLine>
+           <excludes>
+             <!--  Exclude manual adhoc tests -->
+             <exclude>**/RunBlastAtNCBITest.*</exclude>
+diff --git a/src/test/resources/log4j.properties b/src/test/resources/log4j.properties
+index 7ebb0695..fa2a13a5 100644
+--- a/src/test/resources/log4j.properties
++++ b/src/test/resources/log4j.properties
+@@ -4,5 +4,9 @@
+ 
+ log4j1.compatibility=true
+ 
+-rootLogger=OFF
+-
++appender.console.type=Console
++appender.console.name=LogToConsole
++appender.console.layout.type=PatternLayout
++appender.console.layout.pattern=[%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{1} - %msg%n
++rootLogger.level=fatal
++rootLogger.appenderRef.console.ref=LogToConsole

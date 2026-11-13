@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/PF2-pasteur-fr__SARTools-91"
+description = "Development"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "SARTools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "PF2-pasteur-fr/SARTools"
+ref = "1e17b31180f4d5a1e7420d8cba3ffaf7d98e9a6d"
+reference = "https://github.com/PF2-pasteur-fr/SARTools/pull/91"
+source_access = "auto"
+built_at = "2026-11-13T16:25:19.230482+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4d01c0166edd7b1fd1360d9ccdb5982dac49dfd2a32a79d123bc2e5203e1a168"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-02-17T14:15:44Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "NAMESPACE",
+    "NEWS",
+    "R/NAMESPACE.R",
+    "R/run.DESeq2.r",
+    "README.md",
+    "inst/bibliography.bib",
+    "inst/report_DESeq2.rmd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 45
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

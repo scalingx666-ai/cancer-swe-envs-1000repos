@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/bwa-mem2__bwa-mem2-205"
+description = "GCC 11 now defines __rdtsc so make definition test conditional on GCC version"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "bwa-mem2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bwa-mem2/bwa-mem2"
+ref = "edc703f883e8aaed83067100d8e54e0e9e810ef5"
+reference = "https://github.com/bwa-mem2/bwa-mem2/pull/205"
+source_access = "auto"
+built_at = "2026-11-13T15:49:34.495046+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:45e8ec8f5e6275d244f602db03cdf19760f272a173d0df9439f09cd8f5e0363f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-03-19T06:03:15Z"
+diff_format = "unified"
+context_files = [
+    "src/utils.h",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

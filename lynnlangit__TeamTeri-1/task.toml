@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/lynnlangit__TeamTeri-1"
+description = "Update setup scripts for Galaxy"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "TeamTeri",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lynnlangit/TeamTeri"
+ref = "d35179bed3827d7543dc1d104086b5d6c4b2adae"
+reference = "https://github.com/lynnlangit/TeamTeri/pull/1"
+source_access = "auto"
+built_at = "2026-11-13T16:38:25.274655+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d6f20d6ff05d7ceac9b66a0eea47c88432168c4fd0c0e4c380c0d547e0f1db1c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-01-26T19:08:49Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    ".idea/TeamTeri.iml",
+    ".idea/encodings.xml",
+    ".idea/modules.xml",
+    ".idea/vcs.xml",
+    "Galaxy/setupScriptsForGalaxy/GCE-cli-cleanup.sh",
+    "Galaxy/setupScriptsForGalaxy/GCE-cli-steps.sh",
+    "Galaxy/setupScriptsForGalaxy/add-galaxy-tools.sh",
+    "Galaxy/setupScriptsForGalaxy/cli.rc",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 185
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

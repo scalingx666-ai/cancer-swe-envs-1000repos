@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/cogent3__cogent3-2815"
+description = "DEV: bump version to 2026.11.13"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "cogent3",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "cogent3/cogent3"
+ref = "6359f2eca133b28fb6454cb9730e5da187051ad2"
+reference = "https://github.com/cogent3/cogent3/pull/2815"
+source_access = "auto"
+built_at = "2026-11-13T16:19:12.192694+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f28dc7a3636ccb294ca5efaae9aa9caf9ed986ec0c01695c5552d7f85598f9d8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T22:13:49Z"
+diff_format = "unified"
+context_files = [
+    "changelog.md",
+    "pyproject.toml",
+    "uv.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 165
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

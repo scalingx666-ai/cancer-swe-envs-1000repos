@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/harrisongzhang__TheVirtualBiotech-7"
+description = "Add clinical trial mappings and reconciled labels"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "TheVirtualBiotech",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "harrisongzhang/TheVirtualBiotech"
+ref = "c583f32b65453d9e03c28aa170ba27977454363b"
+reference = "https://github.com/harrisongzhang/TheVirtualBiotech/pull/7"
+source_access = "auto"
+built_at = "2026-11-13T15:35:04.385930+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:eefef9ad3defa7410b383cd5e56ca40b6e598bc4dee721220e1fade16844408d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-17T02:57:25Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "README.md",
+    "datasets/clinical_trials/chembl_clinical_nct_data.parquet",
+    "datasets/clinical_trials/clinical_trial_labels_reconciled.csv",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 56729
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

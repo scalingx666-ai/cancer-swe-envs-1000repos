@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/OpenMS__OpenMS-10884"
+description = "[FIX] Percolator spline: keep every entry of g after the general IRLS step (SIGTRAP on macOS)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "OpenMS",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "OpenMS/OpenMS"
+ref = "82f99f83c892cc9e5e720527fee03475dff96d07"
+reference = "https://github.com/OpenMS/OpenMS/pull/10884"
+source_access = "auto"
+built_at = "2026-11-13T15:51:36.679070+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f77d5e50af9d334eee9912f9a70d427e1c04f2a261aeb967e222dcf5af8f85a6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T16:34:09Z"
+diff_format = "unified"
+context_files = [
+    "src/openms/thirdparty/percolator/BaseSpline.cpp",
+    "src/openms/thirdparty/percolator/UPSTREAM.md",
+    "src/openms/thirdparty/percolator/patches/35-spline-fill-g.patch",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 88
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

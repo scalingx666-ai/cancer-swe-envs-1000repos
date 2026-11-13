@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/lgatto__MSnbase-602"
+description = "fix: disable nested parallel processing for chromatograms"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MSnbase",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lgatto/MSnbase"
+ref = "6284cc657038ab7efe9824dbdc2ad381aad42351"
+reference = "https://github.com/lgatto/MSnbase/pull/602"
+source_access = "auto"
+built_at = "2026-11-13T16:19:11.170179+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:835f8a983d9220bf6e2cf6af9ffd98a9be7a6b8097344255d86a0044981cdb81"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-04-30T14:42:27Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "NEWS.md",
+    "R/functions-OnDiskMSnExp.R",
+    "R/methods-pSet.R",
+    "man/MSnSet-class.Rd",
+    "man/ReporterIons-class.Rd",
+    "man/TMT6.Rd",
+    "man/listOf.Rd",
+    "man/pSet-class.Rd",
+    "man/plotNA-methods.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 139
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

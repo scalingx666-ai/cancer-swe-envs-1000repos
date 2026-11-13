@@ -1,0 +1,152 @@
+diff --git a/.github/workflows/publish.yml b/.github/workflows/publish.yml
+new file mode 100644
+index 0000000..96154f6
+--- /dev/null
++++ b/.github/workflows/publish.yml
+@@ -0,0 +1,26 @@
++name: Publish Python Package
++
++on:
++  release:
++    types: [published]
++
++jobs:
++  deploy:
++    runs-on: ubuntu-latest
++    environment:
++      name: pypi
++      url: https://pypi.org/p/xvreg
++    permissions:
++      id-token: write
++
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Install uv
++        uses: astral-sh/setup-uv@v6
++
++      - name: Build package
++        run: uv build
++
++      - name: Publish to PyPI
++        uses: pypa/gh-action-pypi-publish@release/v1
+diff --git a/README.md b/README.md
+index de736f5..5401535 100644
+--- a/README.md
++++ b/README.md
+@@ -28,9 +28,16 @@ A PyTorch package for training patient-specific 2D/3D registration models **in 5
+ 
+ ## Installation
+ 
+-Install the Python API and CLI (should take ~5 min if installing PyTorch with CUDA):
++`xvr` is distributed on PyPI under the package name [`xvreg`](https://pypi.org/project/xvreg/).
++
++Install the Python API and CLI:
++```bash
++pip install xvreg  # or `uv add xvreg`
++```
++
++If you just want the CLI, use [`uv`](https://docs.astral.sh/uv/):
+ ```bash
+-pip install git+https://github.com/eigenvivek/xvr.git
++uv tool install xvreg
+ ```
+ 
+ Verify the installation version (should match the latest release on GitHub):
+diff --git a/docs/index.md b/docs/index.md
+index 5c0153a..1b3e75b 100644
+--- a/docs/index.md
++++ b/docs/index.md
+@@ -14,4 +14,33 @@ icon: lucide/rocket
+ - 💾 Supports macOS, Linux, and Windows
+ 
+ !!! abstract "Paper"
+-        Vivek Gopalakrishnan, David-Dimitris Chlorogiannis, Andrew Abumoussa, Anna M. Larson, Nazim Haouchine, Darren B. Orbach, Sarah Frisken, Neel Dey, and Polina Golland. [*Rapid patient-specific neural networks for X-ray to volume registration.*](https://doi.org/10.1038/s41586-026-11045-x) _Nature_ (2026): 1-9.
++     Vivek Gopalakrishnan, David-Dimitris Chlorogiannis, Andrew Abumoussa, Anna M. Larson, Nazim Haouchine, Darren B. Orbach, Sarah Frisken, Neel Dey, and Polina Golland. [*Rapid patient-specific neural networks for X-ray to volume registration.*](https://doi.org/10.1038/s41586-026-11045-x) _Nature_ (2026): 1-9.
++
++## Installation
++
++`xvr` is distributed on PyPI under the package name [`xvreg`](https://pypi.org/project/xvreg/).
++
++### Full install
++
++If you want the API and CLI, install `xvr` with your favorite package manager:
++```bash
++pip install xvreg  # or `uv add xvreg`
++```
++
++### Just the CLI
++
++If you just want the CLI, you can run:
++```bash
++uv tool install xvreg
++```
++after which, the CLI will be available globally:
++```bash
++xvr --help
++```
++
++### A quick test
++
++If you just want to test the CLI without a permanent install, try:
++```bash
++uvx --from xvreg xvr --help
++```
+\ No newline at end of file
+diff --git a/pyproject.toml b/pyproject.toml
+index 73c7a5c..4c4b8da 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+-name = "xvr"
+-version = "0.0.0rc2"
++name = "xvreg"
++version = "0.1.0"
+ description = "Differentiable 2D/3D X-ray to volume registration"
+ readme = "README.md"
+ license = { file = "LICENSE" }
+@@ -52,6 +52,9 @@ filterwarnings = [
+ [tool.ty.src]
+ include = ["src"]
+ 
++[tool.hatch.build.targets.wheel]
++packages = ["src/xvr"]
++
+ [build-system]
+ requires = ["hatchling"]
+ build-backend = "hatchling.build"
+diff --git a/src/xvr/cli/__init__.py b/src/xvr/cli/__init__.py
+index 4992442..0d82119 100644
+--- a/src/xvr/cli/__init__.py
++++ b/src/xvr/cli/__init__.py
+@@ -1,3 +1,5 @@
++from importlib.metadata import version
++
+ from cyclopts import App
+ 
+ from ._help import formatter
+@@ -5,7 +7,7 @@
+ from .restart import restart
+ from .train import train
+ 
+-xvr = App(name="xvr", help_formatter=formatter)
++xvr = App(name="xvr", version=version("xvreg"), help_formatter=formatter)
+ 
+ 
+ xvr.command(train)
+diff --git a/uv.lock b/uv.lock
+index d42dcc6..91f4c9e 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -5084,8 +5084,8 @@ wheels = [
+ ]
+ 
+ [[package]]
+-name = "xvr"
+-version = "0.0.0rc2"
++name = "xvreg"
++version = "0.1.0"
+ source = { editable = "." }
+ dependencies = [
+     { name = "attrs" },

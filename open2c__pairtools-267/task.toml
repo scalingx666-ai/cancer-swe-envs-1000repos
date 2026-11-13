@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/open2c__pairtools-267"
+description = "Refactoring of lib.fileio.auto_open function to work with subprocess (#266)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pairtools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "open2c/pairtools"
+ref = "737a236399977351f769adb559830f1fb0c0e48a"
+reference = "https://github.com/open2c/pairtools/pull/267"
+source_access = "auto"
+built_at = "2026-11-13T16:20:17.477689+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8c4625f2f1945f159ebfc835157d48055151368baf6e7f88a7a2082a87aa8edc"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-06-19T16:04:28Z"
+diff_format = "unified"
+context_files = [
+    "doc/examples/duplicate_distance.ipynb",
+    "doc/examples/pairtools_restrict_walkthrough.ipynb",
+    "doc/examples/pairtools_walkthrough.ipynb",
+    "doc/examples/scalings_example.ipynb",
+    "pairtools/_logging.py",
+    "pairtools/lib/fileio.py",
+    "pairtools/lib/scaling.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1225
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,22 @@
+diff --git a/app/src/main/java/com/fankes/tsbattery/hook/HookEntry.kt b/app/src/main/java/com/fankes/tsbattery/hook/HookEntry.kt
+index eb0e824a..8fae913e 100644
+--- a/app/src/main/java/com/fankes/tsbattery/hook/HookEntry.kt
++++ b/app/src/main/java/com/fankes/tsbattery/hook/HookEntry.kt
+@@ -145,6 +145,10 @@ class HookEntry : IYukiHookXposedInit {
+                 interceptBaseChatPie(methodName = "M3")
+                 interceptBaseChatPie(methodName = "S")
+             }
++            "8.9.0" -> {
++                interceptBaseChatPie(methodName = "N3")
++                interceptBaseChatPie(methodName = "S")
++            }    
+             else -> {
+                 isHookClientSupport = false
+                 loggerD(msg = "$version not supported!")
+@@ -659,4 +663,4 @@ class HookEntry : IYukiHookXposedInit {
+             loggerD(msg = "ウイチャット：それが機能するかどうかはわかりませんでした")
+         }
+     }
+-}
+\ No newline at end of file
++}

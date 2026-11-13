@@ -1,0 +1,98 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 1a87a2d..b1929db 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -54,5 +54,5 @@ biocViews: RNASeq, ATACSeq, GeneExpression, Transcription, SingleCell, Principal
+ VignetteBuilder:
+   knitr
+ SystemRequirements: C++17
+-RoxygenNote: 7.2.3
++RoxygenNote: 7.3.3
+ Encoding: UTF-8
+diff --git a/R/biplot.R b/R/biplot.R
+index 361ee03..86edb54 100644
+--- a/R/biplot.R
++++ b/R/biplot.R
+@@ -150,6 +150,7 @@
+ #' @param borderColour Colour of the border on the x and y axes.
+ #' @param returnPlot Logical, indicating whether or not to return the plot
+ #'   object.
++#' @param flip_axes Logical, indicating whether to swap the x- and y-axes.
+ #'
+ #' @details Draw a bi-plot, comparing 2 selected principal components / eigenvectors.
+ #'
+@@ -293,7 +294,8 @@ biplot <- function(
+   gridlines.minor = TRUE,
+   borderWidth = 0.8,
+   borderColour = 'black',
+-  returnPlot = TRUE)
++  returnPlot = TRUE,
++  flip_axes = FALSE)
+ {
+ 
+   labFun <- xidx <- yidx <- NULL
+@@ -367,8 +369,8 @@ biplot <- function(
+   }
+ 
+   # create the plot object
+-  plot <- ggplot(plotobj, aes(x = x, y = y)) + th +
+-
++  xy_aes <- if (flip_axes) aes(x = y, y = x) else aes(x = x, y = y)
++  plot <- ggplot(plotobj, xy_aes) + th +
+     guides(fill = guide_legend(),
+       shape = guide_legend(),
+       colour = guide_legend(override.aes = list(size = legendIconSize)))
+@@ -500,7 +502,7 @@ biplot <- function(
+   # add elements to the plot for title, subtitle, caption, and legend titles
+   plot <- plot + labs(title = title, 
+     subtitle = subtitle, caption = caption,
+-    fill = '', colour = colLegendTitle, shape = shapeLegendTitle)
++    fill = NULL, colour = colLegendTitle, shape = shapeLegendTitle)
+ 
+   # add elements to the plot for vlines and hlines
+   if (!is.null(vline)) {
+diff --git a/R/pairsplot.R b/R/pairsplot.R
+index 7877f01..f99120a 100644
+--- a/R/pairsplot.R
++++ b/R/pairsplot.R
+@@ -259,7 +259,8 @@ pairsplot <- function(
+           gridlines.minor = gridlines.minor,
+           borderWidth = borderWidth,
+           borderColour = borderColour,
+-          returnPlot = returnPlot)
++          returnPlot = returnPlot,
++          flip_axes = TRUE)
+ 
+        # assign list name to plot, e.g. 'PC1 Vs PC3'
+        names(biplots)[nplots] <- paste(components[i], 'Vs', components[j])
+@@ -332,7 +333,6 @@ pairsplot <- function(
+ 
+     # apply titles / axis changes
+     biplots.final <- lapply(biplots.final, '+', margin)
+-    biplots.final <- lapply(biplots.final, '+', coord_flip())
+ 
+     # return plot?
+     if (returnPlot) {
+diff --git a/man/biplot.Rd b/man/biplot.Rd
+index 356a8fc..5b2b4ed 100644
+--- a/man/biplot.Rd
++++ b/man/biplot.Rd
+@@ -97,7 +97,8 @@ biplot(
+   gridlines.minor = TRUE,
+   borderWidth = 0.8,
+   borderColour = "black",
+-  returnPlot = TRUE
++  returnPlot = TRUE,
++  flip_axes = FALSE
+ )
+ }
+ \arguments{
+@@ -334,6 +335,8 @@ gridlines.}
+ 
+ \item{returnPlot}{Logical, indicating whether or not to return the plot
+ object.}
++
++\item{flip_axes}{Logical, indicating whether to swap the x- and y-axes.}
+ }
+ \value{
+ A \code{\link{ggplot2}} object.

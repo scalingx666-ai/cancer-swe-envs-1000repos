@@ -1,0 +1,84 @@
+version = "1.0"
+
+[task]
+name = "default/logannye__rosalind-105"
+description = "Account for complete CRAM decoder state and validate index coverage"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "rosalind",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "logannye/rosalind"
+ref = "87fa81ecf050ca7b6bf41e970251eaa35bca0f33"
+reference = "https://github.com/logannye/rosalind/pull/105"
+source_access = "auto"
+built_at = "2026-11-13T16:41:31.567175+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:56d549ae6563bb2a3bb341e06a71a3cf45eceea2c35521ecf059e1b249e45acd"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-18T17:31:16Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "README.md",
+    "benchmarks/evidence/README.md",
+    "benchmarks/evidence/audit_representative.py",
+    "benchmarks/evidence/cgroup-probe.md",
+    "benchmarks/evidence/cgroup_probe.py",
+    "benchmarks/evidence/representative.py",
+    "benchmarks/evidence/test_audit_representative.py",
+    "benchmarks/evidence/test_cgroup_probe.py",
+    "benchmarks/evidence/test_representative.py",
+    "docs/SEMANTICS.md",
+    "docs/analyzer-sdk.md",
+    "docs/reusable-evidence.md",
+    "python/README.md",
+    "src/evidence/artifact.rs",
+    "src/evidence/cram.rs",
+    "src/evidence/engine.rs",
+    "src/evidence/indexed_reader.rs",
+    "src/evidence/mod.rs",
+    "src/evidence_cli.rs",
+    "src/evidence_cli/output.rs",
+    "src/main.rs",
+    "tests/evidence_cram_envelope.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2298
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

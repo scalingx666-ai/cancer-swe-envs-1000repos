@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/abelson-lab__scATOMIC-28"
+description = "Fixing imports"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "scATOMIC",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "abelson-lab/scATOMIC"
+ref = "bc7adc8486d70b980af149283e85c84e5f7c9abd"
+reference = "https://github.com/abelson-lab/scATOMIC/pull/28"
+source_access = "auto"
+built_at = "2026-11-13T15:38:02.818494+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:45f61b8c3bd481f294cba920edf578b52b030fb0c2ba13e0104e2da9759ce696"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-02-23T19:53:54Z"
+diff_format = "unified"
+context_files = [
+    ".DS_Store",
+    ".Rhistory",
+    "DESCRIPTION",
+    "NAMESPACE",
+    "R/copykat_no_heatmap.R",
+    "R/create_summary_matrix.R",
+    "R/scATOMIC-package.R",
+    "README.Rmd",
+    "README.md",
+    "README_files/figure-gfm/unnamed-chunk-25-1.png",
+    "man/scATOMIC-package.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 461
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

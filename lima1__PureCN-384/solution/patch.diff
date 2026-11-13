@@ -1,0 +1,83 @@
+diff --git a/R/filterIntervals.R b/R/filterIntervals.R
+index 09fe560..1043f10 100644
+--- a/R/filterIntervals.R
++++ b/R/filterIntervals.R
+@@ -197,6 +197,25 @@ normalDB.min.coverage, normalDB.max.missing) {
+     intervalsUsed
+ }
+ 
++.filterIntervalsAllosome <- function(intervalsUsed, tumor, sex) {
++    if (is.null(sex)) return(intervalsUsed)
++    sex.chr <- .getSexChr(seqlevels(tumor))
++    remove.chrs <- c()
++    if (sex == "M" || sex == "?") {
++        remove.chrs <- sex.chr
++    } else if (sex == "F") {
++        remove.chrs <- sex.chr[2]
++    }
++    nBefore <- sum(intervalsUsed)
++    intervalsUsed <- intervalsUsed & !seqnames(tumor) %in% remove.chrs
++    nAfter <- sum(intervalsUsed)
++    if (nAfter < nBefore) {
++        flog.info("Removing %i non-diploid allosome intervals.", nBefore - nAfter)
++    }
++    intervalsUsed
++}
++
++
+ .filterIntervalsTotalNormalCoverage <- function(intervalsUsed, normal,
+     min.targeted.base, min.coverage) {
+     if (is.null(min.targeted.base) || is.null(min.coverage)) {
+diff --git a/R/runAbsoluteCN.R b/R/runAbsoluteCN.R
+index 847dc6e..23197f4 100644
+--- a/R/runAbsoluteCN.R
++++ b/R/runAbsoluteCN.R
+@@ -416,11 +416,10 @@ runAbsoluteCN <- function(normal.coverage.file = NULL,
+     }
+ 
+     sex <- .getSex(match.arg(sex), normal, tumor)
+-    tumor <- .fixAllosomeCoverage(sex, tumor)
+-
+     if (!is.null(interval.file)) {
+         tumor <- .addGCData(tumor, interval.file)
+     }
++
+     if (is.null(centromeres) && !missing(genome)) {
+         centromeres <- .getCentromerePositions(centromeres, genome,
+             if (is.null(tumor)) NULL else .getSeqlevelsStyle(tumor))
+@@ -442,6 +441,16 @@ runAbsoluteCN <- function(normal.coverage.file = NULL,
+     # chr.hash is an internal data structure, so we need to do this separately.
+     intervalsUsed <- .filterIntervalsChrHash(intervalsUsed, tumor, chr.hash)
+     intervalsUsed <- .filterIntervalsCentromeres(intervalsUsed, tumor, centromeres)
++    intervalsUsedAllosome <- intervalsUsed
++    intervalsUsed <- .filterIntervalsAllosome(intervalsUsed, tumor, sex)
++
++    if (!is.null(normalDB$sd$weights)) {
++        tumor$weights <- subsetByOverlaps(normalDB$sd$weights, tumor)$weights
++    }
++    tumorAllosome <- tumor
++    tumorAllosome$log.ratio <- log.ratio
++    tumorAllosome <- tumorAllosome[!intervalsUsed & intervalsUsedAllosome, ]
++    
+     intervalsUsed <- which(intervalsUsed)
+     if (length(tumor) != length(normal) ||
+         length(tumor) != length(log.ratio)) {
+@@ -468,9 +477,6 @@ runAbsoluteCN <- function(normal.coverage.file = NULL,
+          flog.info("Mean off-target bin size: %.0f",
+             mean(width(tumor[!tumor$on.target]), na.rm = TRUE))
+     }
+-    if (!is.null(normalDB$sd$weights)) {
+-        tumor$weights <- subsetByOverlaps(normalDB$sd$weights, tumor)$weights
+-    }
+     # not needed anymore
+     normalDB <- NULL
+ 
+@@ -1145,7 +1151,7 @@ runAbsoluteCN <- function(normal.coverage.file = NULL,
+     list(
+         candidates = candidate.solutions,
+         results = results,
+-        input = list(tumor = tumor.coverage.file, normal = normal.coverage.file,
++        input = list(tumor = tumor.coverage.file, normal = normal.coverage.file, allosome = tumorAllosome,
+             log.ratio = GRanges(normal[, 1], on.target = normal$on.target, log.ratio = log.ratio),
+             log.ratio.sdev = sd.seg, mapd = mapd, vcf = vcf, sampleid = sampleid,
+             test.num.copy = test.num.copy,

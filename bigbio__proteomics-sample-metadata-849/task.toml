@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/bigbio__proteomics-sample-metadata-849"
+description = "Load the full annotated-dataset catalog in the SDRF explorer"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "proteomics-sample-metadata",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bigbio/proteomics-sample-metadata"
+ref = "03df7bc728dc740a7e9aa2a56262cf32848545f6"
+reference = "https://github.com/bigbio/proteomics-sample-metadata/pull/849"
+source_access = "auto"
+built_at = "2026-11-13T16:24:36.246301+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f43bd3f32bec5eb2692c46039a569addd5229abffc1e5689d7b07d966a5450f4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-23T10:28:49Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/build-docs.yml",
+    ".github/workflows/refresh-explorer-catalog.yml",
+    "scripts/build-docs.sh",
+    "scripts/publish-explorer-catalog.sh",
+    "scripts/refresh-explorer-catalog.sh",
+    "scripts/test_build_sdrf_index.py",
+    "site/build-sdrf-index.py",
+    "site/index.html",
+    "site/sdrf-data.json",
+    "site/sdrf-explorer.html",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 19366
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,32 @@
+diff --git a/R/BLOBFISH.R b/R/BLOBFISH.R
+index 13816c17..82ea8ba0 100755
+--- a/R/BLOBFISH.R
++++ b/R/BLOBFISH.R
+@@ -481,7 +481,9 @@ SignificantBreadthFirstSearch <- function(networks, pValues, startingNodes,
+     stop("ERROR: List of nodes to exclude does not overlap with network nodes")
+   }
+   if(length(intersect(startingNodes, nodesToExclude)) > 0){
+-    stop("ERROR: Starting nodes cannot overlap with nodes to exclude")
++    nodesShared <- intersect(startingNodes, nodesToExclude)
++    warning(paste("Path exists from the following edges back to themselves (ignoring):", paste(nodesShared, collapse = ",")))
++    startingNodes <- setdiff(startingNodes, nodesToExclude)
+   }
+   
+   # Identify genes and transcription factors to test, based on which of these we are
+diff --git a/tests/testthat/test-blobfish.R b/tests/testthat/test-blobfish.R
+index 2a5828d7..692f64d7 100755
+--- a/tests/testthat/test-blobfish.R
++++ b/tests/testthat/test-blobfish.R
+@@ -62,10 +62,10 @@ test_that("[BLOBFISH] SignificantBreadthFirstSearch() function yields expected r
+                                              startingNodes = c("geneA", "geneB", "geneC"),
+                                              nodesToExclude = c("blob", "fish"), startFromTF = FALSE),
+                "ERROR: List of nodes to exclude does not overlap with network nodes")
+-  expect_error(SignificantBreadthFirstSearch(networks = subnetwork, pValues = pvalues,
++  expect_warning(SignificantBreadthFirstSearch(networks = subnetwork, pValues = pvalues,
+                                              startingNodes = c("geneA", "geneB", "geneC"),
+                                              nodesToExclude = c("geneA", "geneB"), startFromTF = FALSE),
+-               "ERROR: Starting nodes cannot overlap with nodes to exclude")
++                 "Path exists from the following edges back to themselves \\(ignoring\\): geneA,geneB")
+   
+   # Ensure that, when starting from genes A, B, and C, we obtain the correct values.
+   expect_true(length(setdiff(c("tf2__geneA", "tf2__geneB", "tf3__geneA", "tf4__geneC"),

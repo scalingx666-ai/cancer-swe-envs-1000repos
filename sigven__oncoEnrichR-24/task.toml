@@ -1,0 +1,81 @@
+version = "1.0"
+
+[task]
+name = "default/sigven__oncoEnrichR-24"
+description = "Exclude AS1 entries + MSigDB update"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "oncoEnrichR",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "sigven/oncoEnrichR"
+ref = "1e24ca0f773662fa87f8d35632c6b2c193e614af"
+reference = "https://github.com/sigven/oncoEnrichR/pull/24"
+source_access = "auto"
+built_at = "2026-11-13T16:39:04.433052+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e9f6de78fe8e9b4987780615c5e7d5268f7d45c806afc791845988b774dbef5b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-09-12T08:53:03Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "R/disease_drug.R",
+    "R/sysdata.rda",
+    "R/utils.R",
+    "README.md",
+    "data_processing_code/RELEASE_NOTES.txt",
+    "data_processing_code/data_raw.R",
+    "data_processing_code/data_utility_functions.R",
+    "docker/Dockerfile",
+    "docker/oncoenrichr_wrapper.xml",
+    "docker/renv.lock",
+    "pkgdown/index.md",
+    "renv.lock",
+    "tests/testthat/test_disease_drug.R",
+    "vignettes/CHANGELOG.Rmd",
+    "vignettes/annotation_resources.Rmd",
+    "vignettes/input.Rmd",
+    "vignettes/installation.Rmd",
+    "vignettes/output.Rmd",
+    "vignettes/running.Rmd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1031
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

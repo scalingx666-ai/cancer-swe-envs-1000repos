@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/lh3__miniasm-28"
+description = "check file handle from paf_open exists"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "miniasm",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lh3/miniasm"
+ref = "b6184e17c84c4e242ef8c64f675f442c78257242"
+reference = "https://github.com/lh3/miniasm/pull/28"
+source_access = "auto"
+built_at = "2026-11-13T15:58:19.742600+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:99fd44d048e73fa951fee58cfdc3a6035aaaed861718e664915b11bf7e77fe60"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-07-18T21:03:17Z"
+diff_format = "unified"
+context_files = [
+    "dotter.c",
+    "hit.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 12
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/cbg-ethz__V-pipe-174"
+description = "automation: adding `dependabot` for github actions"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "V-pipe",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "cbg-ethz/V-pipe"
+ref = "d90a774b00f16ae87c470f2c4664cbdd42622a65"
+reference = "https://github.com/cbg-ethz/V-pipe/pull/174"
+source_access = "auto"
+built_at = "2026-11-13T16:17:55.984052+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:22e771693b7aa1d61f2cc059cef84f2f917d56828982a92ac459578079064959"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-07-22T19:38:30Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/dependabot.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 13
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

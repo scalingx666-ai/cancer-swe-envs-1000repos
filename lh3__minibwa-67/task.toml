@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/lh3__minibwa-67"
+description = "exit code was always 0 even on error"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "minibwa",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lh3/minibwa"
+ref = "c42d875abd2f730592dccdb8e2f36891c9f1c831"
+reference = "https://github.com/lh3/minibwa/pull/67"
+source_access = "auto"
+built_at = "2026-11-13T15:58:17.513536+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1372a8aad11b7b5017b895c41546b7fd945e7cc394bad41c1e6fa2f0c2f3863f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-10T14:54:31Z"
+diff_format = "unified"
+context_files = [
+    "main.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

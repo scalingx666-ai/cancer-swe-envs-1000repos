@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/pachterlab__paperpush-9"
+description = "Guideline updates 2026-11-01: arxiv, biorxiv, bmc_bioinformatics, cell_systems, combinatorica, cvpr_2027, discrete_mathe"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "paperpush",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pachterlab/paperpush"
+ref = "2df710a3b401800f7f5e0b2876c49f069559111b"
+reference = "https://github.com/pachterlab/paperpush/pull/9"
+source_access = "auto"
+built_at = "2026-11-13T15:33:01.409287+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e7d127dd65a0fda1cf3ac5a230ead5f58608f9a0c640277187a471d48df4f106"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-04T20:30:03Z"
+diff_format = "unified"
+context_files = [
+    "paperpush/manuscript_requirements.json",
+    "scripts/guideline_fingerprints.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 134
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

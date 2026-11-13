@@ -1,0 +1,180 @@
+diff --git a/tcia_utils_v4/README.md b/tcia_utils_v4/README.md
+index fc6b63f..016ad9a 100644
+--- a/tcia_utils_v4/README.md
++++ b/tcia_utils_v4/README.md
+@@ -8,9 +8,9 @@ across CMB-LCA and NSCLC-Radiomics (with CMB-GEC as a site-filter comparison), p
+ candidate selection. It explains public versus controlled access and DICOM versus
+ other formats without requiring knowledge of the hosting infrastructure.
+ 
+-The workshop installs tcia_utils 4.0.0a14 for Python 3.11+. In Colab, run the setup
++The workshop installs tcia_utils 4.0.0a15 for Python 3.11+. In Colab, run the setup
+ cell and restart the runtime when prompted. The hosted REST service must include
+-query API 0.7.0+ with combined participant clinical filters, the shared participant
++query API 0.7.1+ with combined participant clinical filters, the shared participant
+ image-planning route, public slide descriptors and list-valued attributes.
+ This requires a source update and REST/MCP restart; no bundle rebuild is needed.
+ 
+@@ -67,9 +67,9 @@ The site is the clinical primary_site field, not the scanned body part. Full
+ clinical exploration enriches only the matches. Query settings, separate inference
+ flags and metadata snapshot remain with outputs.
+ 
+-The fixture contains actual public metadata responses from the deployed 0.7.0
++The fixture contains actual public metadata responses from the deployed 0.7.1
+ API, recorded on 2026-11-03. The complete notebook passed against that deployment
+-using the built 4.0.0a14 wheel with all imaging transfers blocked. The default
++using the built 4.0.0a15 wheel with all imaging transfers blocked. The default
+ combined search returned 322 records across CMB-LCA and NSCLC-Radiomics;
+ recorded-only diagnosis/site evidence returned 5 CMB-LCA records.
+ 
+@@ -83,3 +83,10 @@ and geometry before analysis.
+ Use a fresh destination when moving from earlier download backends. The default
+ workshop folder is now tcia-workshop-files. resume=True continues TDR-owned
+ downloads; it does not import or migrate an earlier IDC/HTTP output tree.
++
++Controlled CT/SEG downloads distinguish the reported DICOM-series size from exact
++ZIP payload bytes. Server 0.7.1 supplies the size basis and published archive-size
++label; only exact manifest byte counts are used as payload-size assertions. SDK
++a15 also avoids asserting ambiguous controlled-inventory sizes when exact payload
++metadata is absent. Available checksum and response-length checks remain enabled.
++The metadata CSV is written during preparation and does not prove transfer success.
+diff --git a/tcia_utils_v4/TCIA_Dataset_and_Participant_Queries.ipynb b/tcia_utils_v4/TCIA_Dataset_and_Participant_Queries.ipynb
+index 93d950b..bf8e3f8 100644
+--- a/tcia_utils_v4/TCIA_Dataset_and_Participant_Queries.ipynb
++++ b/tcia_utils_v4/TCIA_Dataset_and_Participant_Queries.ipynb
+@@ -52,7 +52,7 @@
+    "source": [
+     "import subprocess, sys\n",
+     "subprocess.check_call(\n",
+-    "    [sys.executable, \"-m\", \"pip\", \"install\", \"tcia_utils[tables,downloads]==4.0.0a14\", \"nibabel>=5,<6\"]\n",
++    "    [sys.executable, \"-m\", \"pip\", \"install\", \"tcia_utils[tables,downloads]==4.0.0a15\", \"nibabel>=5,<6\"]\n",
+     ")"
+    ]
+   },
+@@ -81,7 +81,7 @@
+     "assert hasattr(tcia_utils, \"format_table\") and all(\n",
+     "    hasattr(TCIAClient, method)\n",
+     "    for method in (\"download_manifest\", \"plan_participant_images\", \"download_images\")\n",
+-    ") and \"primary_site\" in inspect.signature(TCIAClient.search_participants).parameters and \"accept_data_policy\" in inspect.signature(TCIAClient.download_manifest).parameters, \"Run the installation cell for tcia_utils 4.0.0a14, restart your Python/Colab runtime, then run from the top.\"\n",
++    ") and \"primary_site\" in inspect.signature(TCIAClient.search_participants).parameters and \"accept_data_policy\" in inspect.signature(TCIAClient.download_manifest).parameters, \"Run the installation cell for tcia_utils 4.0.0a15, restart your Python/Colab runtime, then run from the top.\"\n",
+     "format_table = tcia_utils.format_table\n",
+     "pd.set_option(\"display.max_colwidth\", 85)\n",
+     "OUTPUT = Path(os.environ.get(\"TCIA_EXAMPLE_OUTPUT_DIR\", \"tcia-workshop-files\"))\n",
+@@ -1120,7 +1120,9 @@
+    "source": [
+     "CT and SEG appearing in the same study is stronger evidence than a collection-level “has segmentations” label. It still does not verify the exact referenced CT series or the segment names inside a SEG object. After an authorized download, check those DICOM references and labels before using the pair for training.\n",
+     "\n",
+-    "Let's prepare a **one-participant example** with one candidate CT file and one candidate SEG file from the same study. We choose one of each modality before applying the two-file limit, so two CT files cannot crowd out the segmentation. The exact image/label references still need checking after download. We'll write the CT and SEG file identifiers already provided by the official metadata. The manifest will contain just one `drs_uri` column, which `download_manifest()` accepts. We'll save the fuller metadata separately so we can trace every selected file."
++    "Let's prepare a **one-participant example** with one candidate CT file and one candidate SEG file from the same study. We choose one of each modality before applying the two-file limit, so two CT files cannot crowd out the segmentation. The exact image/label references still need checking after download. We'll write the CT and SEG file identifiers already provided by the official metadata. The manifest will contain just one `drs_uri` column, which `download_manifest()` accepts. We'll save the fuller metadata separately so we can trace every selected file.\n",
++    "\n",
++    "Size needs a little care here. A reported DICOM-series size can describe the **uncompressed images**, while the file we download is a **ZIP archive**. The two sizes can differ a lot. `download_size_label` shows the archive-size label from the published manifest; it can be rounded. `download_size_bytes` is filled only when an exact byte count is available. A blank is unknown, not zero. The package uses exact download sizes and available checksums for transfer checks; it does not treat a series size or rounded estimate as an exact ZIP size."
+    ]
+   },
+   {
+@@ -1151,17 +1153,19 @@
+     "        OUTPUT / \"controlled_ct_and_seg_evidence.json\", orient=\"records\", indent=2\n",
+     "    )\n",
+     "    display(\n",
+-    "        face_selection[\n",
+-    "            [\"participant_id\", \"modality\", \"series_instance_uid\", \"file_size_bytes\", \"file_name\"]\n",
+-    "        ]\n",
++    "        format_table(\n",
++    "            face_selection,\n",
++    "            columns=[\"participant_id\", \"modality\", \"series_instance_uid\", \"file_name\",\n",
++    "                     \"file_size_bytes\", \"file_size_basis\", \"download_size_label\", \"download_size_bytes\"],\n",
++    "        )\n",
+     "    )\n",
+     "    print(\"Manifest:\", face_manifest.name)\n",
+     "    print(\"Selected files:\", face_selection[\"drs_uri\"].nunique())\n",
+-    "    print(\n",
+-    "        \"Known download size (MB):\",\n",
+-    "        round(face_selection[\"file_size_bytes\"].fillna(0).sum() / 1_000_000, 2),\n",
++    "    exact_sizes = pd.to_numeric(\n",
++    "        face_selection.reindex(columns=[\"download_size_bytes\"])[\"download_size_bytes\"],\n",
++    "        errors=\"coerce\",\n",
+     "    )\n",
+-    "    print(\"Files without a size estimate:\", face_selection[\"file_size_bytes\"].isna().sum())\n",
++    "    print(\"Files with exact download byte counts:\", exact_sizes.notna().sum(), \"of\", len(face_selection))\n",
+     "else:\n",
+     "    print(\"No participant-study pair satisfied CT + SEG in this snapshot.\")"
+    ]
+@@ -1295,7 +1299,7 @@
+    "audience": "junior data scientists",
+    "controlled_downloads_default": false,
+    "default_mode": "live_public_samples",
+-   "package_version": "4.0.0a14",
++   "package_version": "4.0.0a15",
+    "payload_downloads_default": true,
+    "public_sample_max_items": 1
+   }
+diff --git a/tcia_utils_v4/_fixtures/workshop-public-metadata.json.gz b/tcia_utils_v4/_fixtures/workshop-public-metadata.json.gz
+index bdcb60d..91dd710 100644
+Binary files a/tcia_utils_v4/_fixtures/workshop-public-metadata.json.gz and b/tcia_utils_v4/_fixtures/workshop-public-metadata.json.gz differ
+diff --git a/tools/build_tcia_utils_v4_notebooks.py b/tools/build_tcia_utils_v4_notebooks.py
+index 57d0dd5..8c22478 100644
+--- a/tools/build_tcia_utils_v4_notebooks.py
++++ b/tools/build_tcia_utils_v4_notebooks.py
+@@ -36,7 +36,7 @@ def code(source, **metadata): cells.append(nbf.v4.new_code_cell(source.strip(),
+ 
+ code(r'''import subprocess, sys
+ subprocess.check_call(
+-    [sys.executable, "-m", "pip", "install", "tcia_utils[tables,downloads]==4.0.0a14", "nibabel>=5,<6"]
++    [sys.executable, "-m", "pip", "install", "tcia_utils[tables,downloads]==4.0.0a15", "nibabel>=5,<6"]
+ )''', tags=['installation'])
+ 
+ code(r'''from pathlib import Path
+@@ -57,7 +57,7 @@ def code(source, **metadata): cells.append(nbf.v4.new_code_cell(source.strip(),
+ assert hasattr(tcia_utils, "format_table") and all(
+     hasattr(TCIAClient, method)
+     for method in ("download_manifest", "plan_participant_images", "download_images")
+-) and "primary_site" in inspect.signature(TCIAClient.search_participants).parameters and "accept_data_policy" in inspect.signature(TCIAClient.download_manifest).parameters, "Run the installation cell for tcia_utils 4.0.0a14, restart your Python/Colab runtime, then run from the top."
++) and "primary_site" in inspect.signature(TCIAClient.search_participants).parameters and "accept_data_policy" in inspect.signature(TCIAClient.download_manifest).parameters, "Run the installation cell for tcia_utils 4.0.0a15, restart your Python/Colab runtime, then run from the top."
+ format_table = tcia_utils.format_table
+ pd.set_option("display.max_colwidth", 85)
+ OUTPUT = Path(os.environ.get("TCIA_EXAMPLE_OUTPUT_DIR", "tcia-workshop-files"))
+@@ -784,7 +784,9 @@ def code(source, **metadata): cells.append(nbf.v4.new_code_cell(source.strip(),
+ 
+ md(r'''CT and SEG appearing in the same study is stronger evidence than a collection-level “has segmentations” label. It still does not verify the exact referenced CT series or the segment names inside a SEG object. After an authorized download, check those DICOM references and labels before using the pair for training.
+ 
+-Let's prepare a **one-participant example** with one candidate CT file and one candidate SEG file from the same study. We choose one of each modality before applying the two-file limit, so two CT files cannot crowd out the segmentation. The exact image/label references still need checking after download. We'll write the CT and SEG file identifiers already provided by the official metadata. The manifest will contain just one `drs_uri` column, which `download_manifest()` accepts. We'll save the fuller metadata separately so we can trace every selected file.''')
++Let's prepare a **one-participant example** with one candidate CT file and one candidate SEG file from the same study. We choose one of each modality before applying the two-file limit, so two CT files cannot crowd out the segmentation. The exact image/label references still need checking after download. We'll write the CT and SEG file identifiers already provided by the official metadata. The manifest will contain just one `drs_uri` column, which `download_manifest()` accepts. We'll save the fuller metadata separately so we can trace every selected file.
++
++Size needs a little care here. A reported DICOM-series size can describe the **uncompressed images**, while the file we download is a **ZIP archive**. The two sizes can differ a lot. `download_size_label` shows the archive-size label from the published manifest; it can be rounded. `download_size_bytes` is filled only when an exact byte count is available. A blank is unknown, not zero. The package uses exact download sizes and available checksums for transfer checks; it does not treat a series size or rounded estimate as an exact ZIP size.''')
+ 
+ code(r'''face_selection = pd.DataFrame()
+ face_manifest = None
+@@ -807,17 +809,19 @@ def code(source, **metadata): cells.append(nbf.v4.new_code_cell(source.strip(),
+         OUTPUT / "controlled_ct_and_seg_evidence.json", orient="records", indent=2
+     )
+     display(
+-        face_selection[
+-            ["participant_id", "modality", "series_instance_uid", "file_size_bytes", "file_name"]
+-        ]
++        format_table(
++            face_selection,
++            columns=["participant_id", "modality", "series_instance_uid", "file_name",
++                     "file_size_bytes", "file_size_basis", "download_size_label", "download_size_bytes"],
++        )
+     )
+     print("Manifest:", face_manifest.name)
+     print("Selected files:", face_selection["drs_uri"].nunique())
+-    print(
+-        "Known download size (MB):",
+-        round(face_selection["file_size_bytes"].fillna(0).sum() / 1_000_000, 2),
++    exact_sizes = pd.to_numeric(
++        face_selection.reindex(columns=["download_size_bytes"])["download_size_bytes"],
++        errors="coerce",
+     )
+-    print("Files without a size estimate:", face_selection["file_size_bytes"].isna().sum())
++    print("Files with exact download byte counts:", exact_sizes.notna().sum(), "of", len(face_selection))
+ else:
+     print("No participant-study pair satisfied CT + SEG in this snapshot.")''')
+ 
+@@ -900,7 +904,7 @@ def code(source, **metadata): cells.append(nbf.v4.new_code_cell(source.strip(),
+ notebook = nbf.v4.new_notebook(cells=cells, metadata={
+     "kernelspec": {"display_name":"Python 3", "language":"python", "name":"python3"},
+     "language_info": {"name":"python", "version":"3.11"},
+-    "tcia_workshop": {"package_version":"4.0.0a14", "default_mode":"live_public_samples",
++    "tcia_workshop": {"package_version":"4.0.0a15", "default_mode":"live_public_samples",
+         "payload_downloads_default":True, "public_sample_max_items":1,
+         "controlled_downloads_default":False, "audience":"junior data scientists"}})
+ for i, cell in enumerate(notebook.cells): cell.id = f"tcia-workshop-{i:02d}"

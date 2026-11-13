@@ -1,0 +1,26 @@
+diff --git a/unet/decoding.py b/unet/decoding.py
+index fce3327..3680c2c 100644
+--- a/unet/decoding.py
++++ b/unet/decoding.py
+@@ -133,7 +133,7 @@ def forward(self, skip_connection, x):
+             connection = self.conv_residual(x)
+             x = self.conv1(x)
+             x = self.conv2(x)
+-            x += connection
++            x = x + connection
+         else:
+             x = self.conv1(x)
+             x = self.conv2(x)
+diff --git a/unet/encoding.py b/unet/encoding.py
+index f91a221..0d187e9 100644
+--- a/unet/encoding.py
++++ b/unet/encoding.py
+@@ -143,7 +143,7 @@ def forward(self, x):
+             connection = self.conv_residual(x)
+             x = self.conv1(x)
+             x = self.conv2(x)
+-            x += connection
++            x = x + connection
+         else:
+             x = self.conv1(x)
+             x = self.conv2(x)

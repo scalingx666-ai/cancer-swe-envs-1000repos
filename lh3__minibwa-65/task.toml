@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/lh3__minibwa-65"
+description = "perf(bwt): prefetch the first backward-extension occ blocks after a k-mer lookup"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "minibwa",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lh3/minibwa"
+ref = "d6d9f87d300908622306382cbe17d5ffd2879d2f"
+reference = "https://github.com/lh3/minibwa/pull/65"
+source_access = "auto"
+built_at = "2026-11-13T15:58:20.109451+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:41e2d02d911ab2e35e81521b54bdc60e79b264faa71ea44dbcf48584dcbdd5af"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-08T00:43:10Z"
+diff_format = "unified"
+context_files = [
+    "bwt.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

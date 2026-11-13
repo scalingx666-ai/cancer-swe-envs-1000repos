@@ -1,0 +1,318 @@
+diff --git a/.github/workflows/compare-annotation.yml b/.github/workflows/compare-annotation.yml
+index 37de86c..2b4d515 100644
+--- a/.github/workflows/compare-annotation.yml
++++ b/.github/workflows/compare-annotation.yml
+@@ -46,7 +46,7 @@ jobs:
+           INDIVIDUAL_CNA_DATA_NAME=data_individual_CNA.txt
+ 
+           cd data || exit
+-          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/data?ref=germline-annotator-data | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
++          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/data?ref=master | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
+             if [[ "$name" == "$FIEL_NAME_PREFIX"* ]]; then
+               curl -s "$downloadurl" -o $name
+             fi
+@@ -90,7 +90,7 @@ jobs:
+           rm -f compare/*.txt
+ 
+           cd compare || exit
+-          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/annotation?ref=germline-annotator-data | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
++          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/annotation?ref=master | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
+             if [[ "$name" == "$FIEL_NAME_PREFIX"* ]]; then
+               curl -s "$downloadurl" -o $name
+             fi
+diff --git a/.github/workflows/compare-genomic-change-annotation.yml b/.github/workflows/compare-genomic-change-annotation.yml
+index 0f6f8cb..4a42011 100644
+--- a/.github/workflows/compare-genomic-change-annotation.yml
++++ b/.github/workflows/compare-genomic-change-annotation.yml
+@@ -44,7 +44,7 @@ jobs:
+           CLINICAL_DATA_NAME=data_clinical_sample.txt
+ 
+           cd data
+-          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/data?ref=germline-annotator-data | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
++          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/data?ref=master | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
+             if [[ "$name" == "$MUTATION_DATA_NAME" || "$name" == "$CLINICAL_DATA_NAME" ]]; then
+               curl -s "$downloadurl" -o $name
+             fi
+@@ -76,7 +76,7 @@ jobs:
+           rm -f compare/*.txt
+ 
+           cd compare
+-          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/annotation?ref=germline-annotator-data | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
++          curl -s -H "Authorization: token ${ONCOKB_OAUTH_TOKEN}" https://api.github.com/repos/knowledgesystems/oncokb-data/contents/annotation/annotator-test/annotation?ref=master | jq -r '.[] | .download_url + " " + .name' | while IFS=' ' read -r downloadurl name; do
+             if [[ "$name" == "$FILE_NAME" ]]; then
+               curl -s "$downloadurl" -o $name
+             fi
+diff --git a/.version-level b/.version-level
+index 5559ab6..acb503f 100644
+--- a/.version-level
++++ b/.version-level
+@@ -1 +1 @@
+-major
++minor
+diff --git a/AnnotatorCore.py b/AnnotatorCore.py
+index 36123a4..2cf33d5 100755
+--- a/AnnotatorCore.py
++++ b/AnnotatorCore.py
+@@ -1550,6 +1550,7 @@ def process_clinical_data(annotatedmutfiles, clinicalfile, outfile):
+     samplepxlevels = {}
+     sampleleveltreatments = {}
+     sampledrivers = {}
++    sample_germline_pathogenic = {}
+     sample_resistance = {}
+     samplemutationswithdiagnosis = {}
+     samplemutationswithprognosis = {}
+@@ -1573,7 +1574,10 @@ def process_clinical_data(annotatedmutfiles, clinicalfile, outfile):
+             ihugo = geIndexOfHeader(headers, HUGO_HEADERS)
+             ihgvs = geIndexOfHeader(headers, HGVS_HEADERS)
+             isample = geIndexOfHeader(headers, SAMPLE_HEADERS)
+-            ioncogenic = headers['ONCOGENIC']
++            # ONCOGENIC is absent from germline-only annotated files, and
++            # PATHOGENIC (Germline) is absent from somatic-only ones
++            ioncogenic = geIndexOfHeader(headers, ['ONCOGENIC'])
++            ipathogenic = geIndexOfHeader(headers, [PATHOGENIC_HEADER])
+ 
+             isfusion = (igeneA != -1 and igeneB != -1) or ifusion != -1
+             ismutorcna = ihugo != -1 and ihgvs != -1
+@@ -1589,14 +1593,20 @@ def process_clinical_data(annotatedmutfiles, clinicalfile, outfile):
+                 sample = row[isample]
+ 
+                 oncogenic = ""
+-                if ioncogenic < len(row):
++                if ioncogenic != -1 and ioncogenic < len(row):
+                     oncogenic = row[ioncogenic].lower()
++
++                pathogenic = ""
++                if ipathogenic != -1 and ipathogenic < len(row):
++                    pathogenic = row[ipathogenic].lower()
++
+                 if sample not in samplelevels:
+                     samplelevels[sample] = {}
+                     sampledxlevels[sample] = []
+                     samplepxlevels[sample] = []
+                     sampleleveltreatments[sample] = {}
+                     sampledrivers[sample] = []
++                    sample_germline_pathogenic[sample] = []
+                     sample_resistance[sample] = []
+                     sample_tx_sensitive_count[sample] = {}
+                     sample_tx_resistance_count[sample] = {}
+@@ -1633,6 +1643,8 @@ def process_clinical_data(annotatedmutfiles, clinicalfile, outfile):
+                     sampledrivers[sample].append(variant)
+                 if oncogenic == "resistance":
+                     sample_resistance[sample].append(variant)
++                if pathogenic == "pathogenic" or pathogenic == "likely pathogenic":
++                    sample_germline_pathogenic[sample].append(variant)
+ 
+                 for level in levels:
+                     il = geIndexOfHeader(headers, [level])
+@@ -1693,7 +1705,7 @@ def process_clinical_data(annotatedmutfiles, clinicalfile, outfile):
+             outf.write('\t' + px_level)
+         outf.write('\tHIGHEST_PX_LEVEL')
+         outf.write(
+-            '\tONCOGENIC_MUTATIONS\t#ONCOGENIC_MUTATIONS\tRESISTANCE_MUTATIONS\t#RESISTANCE_MUTATIONS\t#MUTATIONS_WITH_SENSITIVE_THERAPEUTIC_IMPLICATIONS\t#MUTATIONS_WITH_RESISTANCE_THERAPEUTIC_IMPLICATIONS\t#MUTATIONS_WITH_DIAGNOSTIC_IMPLICATIONS\t#MUTATIONS_WITH_PROGNOSTIC_IMPLICATIONS\t#MUTATIONS\n')
++            '\tSOMATIC_ONCOGENIC_MUTATIONS\t#SOMATIC_ONCOGENIC_MUTATIONS\tGERMLINE_PATHOGENIC_MUTATIONS\t#GERMLINE_PATHOGENIC_MUTATIONS\tRESISTANCE_MUTATIONS\t#RESISTANCE_MUTATIONS\t#MUTATIONS_WITH_SENSITIVE_THERAPEUTIC_IMPLICATIONS\t#MUTATIONS_WITH_RESISTANCE_THERAPEUTIC_IMPLICATIONS\t#MUTATIONS_WITH_DIAGNOSTIC_IMPLICATIONS\t#MUTATIONS_WITH_PROGNOSTIC_IMPLICATIONS\t#MUTATIONS\n')
+         isample = geIndexOfHeader(headers, SAMPLE_HEADERS)
+ 
+         for row in reader:
+@@ -1756,14 +1768,19 @@ def process_clinical_data(annotatedmutfiles, clinicalfile, outfile):
+                 alterationcount = samplealterationcount[sample]
+ 
+             drivercount = 0
++            germline_pathogenic_count = 0
+             resistance_count = 0
+             diagnosiscount = 0
+             prognosiscount = 0
+             drivermutations = ""
++            germline_pathogenic_mutations = ""
+             resistance_mutations = ""
+             if sample in sampledrivers:
+                 drivercount = len(sampledrivers[sample])
+                 drivermutations = ";".join(sampledrivers[sample])
++            if sample in sample_germline_pathogenic:
++                germline_pathogenic_count = len(sample_germline_pathogenic[sample])
++                germline_pathogenic_mutations = ";".join(sample_germline_pathogenic[sample])
+             if sample in sample_resistance:
+                 resistance_count = len(sample_resistance[sample])
+                 resistance_mutations = ";".join(sample_resistance[sample])
+@@ -1774,6 +1791,8 @@ def process_clinical_data(annotatedmutfiles, clinicalfile, outfile):
+ 
+             outf.write('\t' + drivermutations)
+             outf.write('\t' + str(drivercount))
++            outf.write('\t' + germline_pathogenic_mutations)
++            outf.write('\t' + str(germline_pathogenic_count))
+             outf.write('\t' + str(resistance_mutations))
+             outf.write('\t' + str(resistance_count))
+             outf.write('\t' + str(tx_sensitive_count))
+diff --git a/OncoKBPlots.py b/OncoKBPlots.py
+index f1f924a..0cac52b 100755
+--- a/OncoKBPlots.py
++++ b/OncoKBPlots.py
+@@ -35,7 +35,11 @@ def plotclinicalactionability(ax, annotatedclinicalfile, outfile, parameters):
+         headers = readheaders(reader)
+         isample = geIndexOfHeader(headers, SAMPLE_HEADERS)
+         ilevel = headers['HIGHEST_LEVEL']
+-        ioncogenic = headers['ONCOGENIC_MUTATIONS']
++        # ONCOGENIC_MUTATIONS is the pre-germline-support name, kept for
++        # clinical files annotated with an older version of the annotator
++        ioncogenic = geIndexOfHeader(headers, ['SOMATIC_ONCOGENIC_MUTATIONS', 'ONCOGENIC_MUTATIONS'])
++        if ioncogenic == -1:
++            raise KeyError('SOMATIC_ONCOGENIC_MUTATIONS')
+         icat = headers[parameters["catogerycolumn"].upper()]  # e.g. "CANCER_TYPE"
+ 
+         catsamplecount = {}
+diff --git a/README.md b/README.md
+index 5a12c0a..8bc8859 100644
+--- a/README.md
++++ b/README.md
+@@ -1,11 +1,19 @@
+ 
+ ## Changelog
+ 
++### v4.1
++- **`ClinicalDataAnnotator` germline roll-up (backfill of a missed v4.0 change)**: the column renames and new germline columns below were documented as part of v4.0, but the change was never made to `ClinicalDataAnnotator.py` and v4.0 still emitted the old columns. It ships here.
++  - `ONCOGENIC_MUTATIONS` and `#ONCOGENIC_MUTATIONS` are renamed to `SOMATIC_ONCOGENIC_MUTATIONS` and `#SOMATIC_ONCOGENIC_MUTATIONS`.
++  - New `GERMLINE_PATHOGENIC_MUTATIONS` and `#GERMLINE_PATHOGENIC_MUTATIONS` columns list the variants annotated `Pathogenic` or `Likely Pathogenic`. See the [ClinicalDataAnnotator columns](#clinicaldataannotator) table for details.
++  - Annotated files containing only germline rows no longer fail, and `OncoKBPlots.py` still reads clinical files produced by v4.0 or earlier that carry the old `ONCOGENIC_MUTATIONS` column.
++- ⚠️ If you consume the `ClinicalDataAnnotator` output downstream, this is the release in which the column names actually change — update against v4.1, not v4.0.
++
+ ### v4.0
+ - **Germline annotation support**: `MafAnnotator.py` now routes rows with `Mutation_Status = germline` to dedicated germline API endpoints. See the [OncoKB™ API](#oncokb-api) section and the [`-q` query type table](#annotate-with-hgvsp_short-hgvsp-hgvsg-hgvsc-or-genomic-change) for supported formats.
+ - **New `Mutation_Status` column routing**: for mixed somatic/germline MAF files, set `Mutation_Status` to `germline` per row to trigger germline annotation; all other values default to somatic.
+ - **New germline columns**: germline rows now receive `PATHOGENIC`, `PENETRANCE`, and `GENOMIC_INDICATOR` columns. See the [Columns added](#columns-added) table for details.
+-- ⚠️ **Breaking change** — **`ClinicalDataAnnotator` column renames**: `ONCOGENIC_MUTATIONS` and `#ONCOGENIC_MUTATIONS` have been renamed to `SOMATIC_ONCOGENIC_MUTATIONS` and `#SOMATIC_ONCOGENIC_MUTATIONS`. Two new columns are added: `GERMLINE_PATHOGENIC_MUTATIONS` and `#GERMLINE_PATHOGENIC_MUTATIONS`. See the [ClinicalDataAnnotator columns](#clinicaldataannotator) table for details. **Note:** if you were previously using the somatic annotation path for germline variants, the counts in `SOMATIC_ONCOGENIC_MUTATIONS` may be lower than in prior versions, as germline rows are now routed to the dedicated germline endpoints.
++- ⚠️ **`ClinicalDataAnnotator` column renames — documented here but not actually released until [v4.1](#v41)**. v4.0 still emits `ONCOGENIC_MUTATIONS` and `#ONCOGENIC_MUTATIONS`.
++- **Note:** if you were previously using the somatic annotation path for germline variants, the counts in the oncogenic mutation columns may be lower than in prior versions, as germline rows are now routed to the dedicated germline endpoints.
+ 
+ <details>
+ <summary>Older versions</summary>
+diff --git a/test_Annotation.py b/test_Annotation.py
+index 7d179e3..df012a0 100755
+--- a/test_Annotation.py
++++ b/test_Annotation.py
+@@ -16,11 +16,10 @@
+ from AnnotatorCore import HGVSgQuery
+ from AnnotatorCore import ReferenceGenome
+ 
+-ONCOKB_API_TOKEN = os.environ["ONCOKB_API_TOKEN"]
++ONCOKB_API_TOKEN = os.environ.get("ONCOKB_API_TOKEN", "")
+ setoncokbapitoken(ONCOKB_API_TOKEN)
+ 
+ log = logging.getLogger('test_Annotation')
+-log.info('test-----------', os.environ["ONCOKB_API_TOKEN"], '------')
+ 
+ VARIANT_EXISTS_INDEX = 2
+ MUTATION_EFFECT_INDEX = VARIANT_EXISTS_INDEX + 1
+@@ -71,7 +70,7 @@ def test_check_protein_change():
+     assert len(annotation) == NUMBER_OF_ANNOTATION_COLUMNS
+     assert annotation[MUTATION_EFFECT_INDEX] == 'Gain-of-function'
+     assert annotation[ONCOGENIC_INDEX] == 'Oncogenic'
+-    assert annotation[HIGHEST_LEVEL_INDEX] == ''
++    assert annotation[HIGHEST_LEVEL_INDEX] == 'LEVEL_3B'
+     assert annotation[HIGHEST_DX_LEVEL_INDEX] == 'LEVEL_Dx1'
+     assert annotation[HIGHEST_PX_LEVEL_INDEX] == 'LEVEL_Px1'
+ 
+@@ -244,7 +243,7 @@ def test_check_structural_variants():
+     assert len(annotation) == NUMBER_OF_ANNOTATION_COLUMNS
+     assert annotation[MUTATION_EFFECT_INDEX] == 'Gain-of-function'
+     assert annotation[ONCOGENIC_INDEX] == 'Oncogenic'
+-    assert annotation[HIGHEST_LEVEL_INDEX] == ''
++    assert annotation[HIGHEST_LEVEL_INDEX] == 'LEVEL_3B'
+     assert annotation[HIGHEST_DX_LEVEL_INDEX] == 'LEVEL_Dx1'
+     assert annotation[HIGHEST_PX_LEVEL_INDEX] == 'LEVEL_Px1'
+ 
+diff --git a/test_AnnotatorCore.py b/test_AnnotatorCore.py
+index 4ceb152..b79af22 100755
+--- a/test_AnnotatorCore.py
++++ b/test_AnnotatorCore.py
+@@ -291,3 +291,92 @@ def test_cna():
+     assert get_cna('-1.5', True) == CNA_DELETION_TXT
+     assert get_cna('-1', True) == CNA_LOSS_TXT
+     assert get_cna('0', True) is None
++
++
++def _read_clinical_output(output_file):
++    with output_file.open() as handle:
++        reader = csv.reader(handle, delimiter='\t')
++        header = next(reader)
++        rows = list(reader)
++    return header, rows
++
++
++def test_process_clinical_data_somatic_and_germline(tmp_path):
++    somatic_file = tmp_path / "somatic.maf"
++    somatic_file.write_text(
++        "\t".join(["Hugo_Symbol", "Tumor_Sample_Barcode", "HGVSp_Short", "ONCOGENIC"]) + "\n"
++        + "\t".join(["BRAF", "S1", "p.V600E", "Oncogenic"]) + "\n"
++        + "\t".join(["TP53", "S1", "p.R273H", "Likely Oncogenic"]) + "\n"
++        + "\t".join(["EGFR", "S2", "p.T790M", "Resistance"]) + "\n"
++    )
++
++    germline_file = tmp_path / "germline.maf"
++    germline_file.write_text(
++        "\t".join(["Hugo_Symbol", "Tumor_Sample_Barcode", "HGVSp_Short", "PATHOGENIC (Germline)"]) + "\n"
++        + "\t".join(["BRCA2", "S1", "p.S1982fs", "Pathogenic"]) + "\n"
++        + "\t".join(["ATM", "S2", "p.R337H", "Likely Pathogenic"]) + "\n"
++        + "\t".join(["PALB2", "S2", "p.L35P", "Benign"]) + "\n"
++    )
++
++    clinical_file = tmp_path / "clinical.txt"
++    clinical_file.write_text("SAMPLE_ID\nS1\nS2\n")
++
++    output_file = tmp_path / "clinical.out.txt"
++    AnnotatorCore.process_clinical_data(
++        [str(somatic_file), str(germline_file)], str(clinical_file), str(output_file)
++    )
++
++    header, rows = _read_clinical_output(output_file)
++
++    # renamed columns, and the old names are gone
++    assert 'SOMATIC_ONCOGENIC_MUTATIONS' in header
++    assert '#SOMATIC_ONCOGENIC_MUTATIONS' in header
++    assert 'ONCOGENIC_MUTATIONS' not in header
++    assert '#ONCOGENIC_MUTATIONS' not in header
++
++    somatic_index = header.index('SOMATIC_ONCOGENIC_MUTATIONS')
++    somatic_count_index = header.index('#SOMATIC_ONCOGENIC_MUTATIONS')
++    germline_index = header.index('GERMLINE_PATHOGENIC_MUTATIONS')
++    germline_count_index = header.index('#GERMLINE_PATHOGENIC_MUTATIONS')
++    resistance_index = header.index('RESISTANCE_MUTATIONS')
++    mutation_count_index = header.index('#MUTATIONS')
++
++    # germline columns sit between the somatic and resistance columns
++    assert somatic_count_index < germline_index < germline_count_index < resistance_index
++
++    s1, s2 = rows
++    assert s1[somatic_index] == 'BRAF p.V600E;TP53 p.R273H'
++    assert s1[somatic_count_index] == '2'
++    assert s1[germline_index] == 'BRCA2 p.S1982fs'
++    assert s1[germline_count_index] == '1'
++    assert s1[mutation_count_index] == '3'
++
++    assert s2[somatic_index] == ''
++    assert s2[somatic_count_index] == '0'
++    assert s2[resistance_index] == 'EGFR p.T790M'
++    # Benign germline variants are not rolled up
++    assert s2[germline_index] == 'ATM p.R337H'
++    assert s2[germline_count_index] == '1'
++    assert s2[mutation_count_index] == '3'
++
++
++def test_process_clinical_data_germline_only_file(tmp_path):
++    # a germline-only annotated file has no ONCOGENIC column at all
++    germline_file = tmp_path / "germline.maf"
++    germline_file.write_text(
++        "\t".join(["Hugo_Symbol", "Tumor_Sample_Barcode", "HGVSp_Short", "PATHOGENIC (Germline)"]) + "\n"
++        + "\t".join(["BRCA1", "S1", "p.C61G", "Pathogenic"]) + "\n"
++    )
++
++    clinical_file = tmp_path / "clinical.txt"
++    clinical_file.write_text("SAMPLE_ID\nS1\n")
++
++    output_file = tmp_path / "clinical.out.txt"
++    AnnotatorCore.process_clinical_data(
++        [str(germline_file)], str(clinical_file), str(output_file)
++    )
++
++    header, rows = _read_clinical_output(output_file)
++    assert rows[0][header.index('GERMLINE_PATHOGENIC_MUTATIONS')] == 'BRCA1 p.C61G'
++    assert rows[0][header.index('#GERMLINE_PATHOGENIC_MUTATIONS')] == '1'
++    assert rows[0][header.index('#SOMATIC_ONCOGENIC_MUTATIONS')] == '0'

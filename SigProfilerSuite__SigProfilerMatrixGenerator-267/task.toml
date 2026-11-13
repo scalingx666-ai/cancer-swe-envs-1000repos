@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/SigProfilerSuite__SigProfilerMatrixGenerator-267"
+description = "Install the Workbench with uv, and prepare the 1.6.0 changelog"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "SigProfilerMatrixGenerator",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "SigProfilerSuite/SigProfilerMatrixGenerator"
+ref = "73f9e8375dcd3fcbbfff735c2acc65a2238ba951"
+reference = "https://github.com/SigProfilerSuite/SigProfilerMatrixGenerator/pull/267"
+source_access = "auto"
+built_at = "2026-11-13T15:36:19.439258+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:00b836cdf3ae655366356ace5977c47f0546f77e86cae3f099d8458942a174e6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T04:52:35Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "README.md",
+    "SigProfilerMatrixGenerator/web/launcher.py",
+    "docs/Web-App.md",
+    "tests/web/test_launcher.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 237
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

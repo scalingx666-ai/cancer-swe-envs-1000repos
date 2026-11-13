@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/bioinform__varsim-265"
+description = "Better handling of insertion validation"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "varsim",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bioinform/varsim"
+ref = "2f4169a5444916e5d19f47990d61bf5f94df4c45"
+reference = "https://github.com/bioinform/varsim/pull/265"
+source_access = "auto"
+built_at = "2026-11-13T15:37:30.324095+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0b73cda0aa156d15299f8fd5fac746368e2e4ab7d15fe5d5b43ab660e1133020"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-10-20T16:59:15Z"
+diff_format = "unified"
+context_files = [
+    "compare_vcf.py",
+    "src/main/java/com/bina/varsim/tools/VCFstats.java",
+    "src/main/java/com/bina/varsim/tools/evaluation/VCFCompareResultsParser.java",
+    "src/main/java/com/bina/varsim/tools/evaluation/VCFcompare.java",
+    "src/main/java/com/bina/varsim/types/variant/Variant.java",
+    "src/main/java/com/bina/varsim/util/VCFparser.java",
+    "src/test/java/com/bina/varsim/util/VCFparserTest.java",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 124
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

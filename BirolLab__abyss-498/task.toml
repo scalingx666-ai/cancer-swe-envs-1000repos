@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/BirolLab__abyss-498"
+description = "fix build failure with Gcc 16"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "abyss",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "BirolLab/abyss"
+ref = "a03412ac0fe85be5ebab9390ef881beafb333e4a"
+reference = "https://github.com/BirolLab/abyss/pull/498"
+source_access = "auto"
+built_at = "2026-11-13T15:32:01.416736+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0a1458922402fa068a7fc7447cb2f3392c7c7479ee083a1fa80080a187a6fb0a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-30T18:25:11Z"
+diff_format = "unified"
+context_files = [
+    "Consensus/Consensus.cpp",
+    "RResolver/BloomFilters.cpp",
+    "SimpleGraph/SimpleGraph.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 13
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

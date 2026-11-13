@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/ClawBio__ClawBio-784"
+description = "fix(omics-target-evidence-mapper): write the reproducibility bundle with the shared helpers"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ClawBio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ClawBio/ClawBio"
+ref = "a4a8c7281c8ddd8a0b84c5cffae5d9a0760f40fe"
+reference = "https://github.com/ClawBio/ClawBio/pull/784"
+source_access = "auto"
+built_at = "2026-11-13T15:47:55.990183+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c86961299186fb4166875d2af14f2ac1c82b8e11b3c797964d04bbf43beae880"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T08:48:12Z"
+diff_format = "unified"
+context_files = [
+    "skills/contract_known_gaps.json",
+    "skills/omics-target-evidence-mapper/SKILL.md",
+    "skills/omics-target-evidence-mapper/commands.sh",
+    "skills/omics-target-evidence-mapper/environment.yml",
+    "skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py",
+    "skills/omics-target-evidence-mapper/tests/test_omics_target_evidence_mapper.py",
+    "skills/omics-target-evidence-mapper/tests/test_repro_bundle.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 115
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

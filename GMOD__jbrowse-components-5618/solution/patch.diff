@@ -1,0 +1,809 @@
+diff --git a/products/jbrowse-web/src/SessionLoader.ts b/products/jbrowse-web/src/SessionLoader.ts
+index 23f31a8a814..a8c7b9751b9 100644
+--- a/products/jbrowse-web/src/SessionLoader.ts
++++ b/products/jbrowse-web/src/SessionLoader.ts
+@@ -1,7 +1,7 @@
+ import { DEFAULT_SHARE_URL } from '@jbrowse/app-core'
+ import { dropVendoredPlugins } from '@jbrowse/core/pluginDefinitions'
+ import { createElementId } from '@jbrowse/core/util/types/mst'
+-import { destroy, getSnapshot, isAlive, types } from '@jbrowse/mobx-state-tree'
++import { getSnapshot, isAlive, types } from '@jbrowse/mobx-state-tree'
+ import { autorun } from 'mobx'
+ 
+ import { createPluginManager } from './createPluginManager.ts'
+@@ -31,13 +31,21 @@ import type {
+ } from '@jbrowse/core/PluginLoader'
+ import type PluginManager from '@jbrowse/core/PluginManager'
+ import type { PluginDefinition } from '@jbrowse/core/pluginDefinitions'
+-import type { Instance } from '@jbrowse/mobx-state-tree'
++import type { Instance, IStateTreeNode } from '@jbrowse/mobx-state-tree'
+ 
+ type ReloadPluginManagerCallback = (
+   configSnapshot: Snap,
+   sessionSnapshot: Snap,
+ ) => void
+ 
++// PluginManager types rootModel as AbstractRootModel, which is the shape every
++// product shares; `detach` belongs to jbrowse-web's, and this file only ever
++// runs against that one. Duck-typed rather than imported because rootModel.ts
++// is downstream of here, through createPluginManager.
++interface DetachableRootModel extends IStateTreeNode {
++  detach: () => void
++}
++
+ /**
+  * #stateModel SessionLoader
+  * #internal app-shell boot wiring, not a user-facing API — kept out of the
+@@ -183,10 +191,11 @@ const SessionLoader = types
+     initializeStarted: false,
+     /**
+      * #volatile
+-     * set when a plugin reload has already built the replacement loader, so
+-     * this one will never be re-activated and can be freed on detach. A plain
+-     * unmount (StrictMode's double-invoked effect, a Fast Refresh remount)
+-     * leaves it false, and that loader is reused as-is.
++     * set when a plugin reload has already built the replacement loader, so a
++     * second reload request arriving off the same rootModel is declined rather
++     * than building a third. A plain unmount (StrictMode's double-invoked
++     * effect, a Fast Refresh remount) leaves it false, and that loader is
++     * reused as-is.
+      */
+     superseded: false,
+   }))
+@@ -400,7 +409,27 @@ const SessionLoader = types
+           // already-loaded records restore the snapshot as-is.
+           self.sessionPlugins ??= []
+         }
+-        destroy(rootModel)
++        // Detached, not destroyed — the same answer disposeLoader reached for
++        // superseded loaders, for the same reason.
++        //
++        // This runs from a React effect cleanup, i.e. the unmount half of a
++        // passive-effect flush; React's dev-mode logComponentRender then diffs
++        // the outgoing props in the mount half of that flush and in flushes
++        // after it, recursing four levels into any plain object it finds. That
++        // reaches this rootModel through `{pluginManager}` and the session
++        // below it, so destroying here made each property it walked a
++        // liveliness warning — 16 on an ordinary volvox session — and would
++        // make any landing on an unmaterialized array child a hard throw
++        // instead, which is the crash this fixed for the loader.
++        //
++        // Deferring the destroy a microtask was tried and rejected: it takes
++        // that 16 to 4, not to 0, because a later flush still diffs a widget
++        // React is holding. There is no delay that is provably long enough,
++        // which is what makes "stop the effects, keep the node" the fix rather
++        // than a workaround. detach() stops everything of this root's that
++        // reaches outside the tree; see it for what
++        // that does and does not claim about the tree being collected.
++        ;(rootModel as unknown as DetachableRootModel).detach()
+       }
+       self.pluginManager = undefined
+     },
+diff --git a/products/jbrowse-web/src/components/disposeLoader.test.ts b/products/jbrowse-web/src/components/disposeLoader.test.ts
+index 222a032d108..bbc85fa679f 100644
+--- a/products/jbrowse-web/src/components/disposeLoader.test.ts
++++ b/products/jbrowse-web/src/components/disposeLoader.test.ts
+@@ -28,9 +28,12 @@ test('a plain detach keeps the loader alive for re-activation', async () => {
+   expect(loader.buildAutorunDisposer).toBeUndefined()
+ })
+ 
+-test('a superseded loader is destroyed on detach', async () => {
++// left alive like any other detach: a late reloadPluginManagerCallback still
++// has to be able to read it to decline (see useLoaderLifecycle)
++test('a superseded loader is also left alive on detach', async () => {
+   const loader = await makeActivatedLoader()
+   loader.setSuperseded()
+   disposeLoader(loader)
+-  expect(isAlive(loader)).toBe(false)
++  expect(isAlive(loader)).toBe(true)
++  expect(loader.buildAutorunDisposer).toBeUndefined()
+ })
+diff --git a/products/jbrowse-web/src/components/disposeLoader.ts b/products/jbrowse-web/src/components/disposeLoader.ts
+index e7de97bfbb0..537b4632e0d 100644
+--- a/products/jbrowse-web/src/components/disposeLoader.ts
++++ b/products/jbrowse-web/src/components/disposeLoader.ts
+@@ -1,21 +1,18 @@
+-import { destroy } from '@jbrowse/mobx-state-tree'
+-
+ import type { SessionLoaderModel } from '../SessionLoader.ts'
+ 
+-// Tears down both the build autorun and the rootModel on host unmount.
+-// Lives in its own module so jest tests can mock it — destroying the
+-// rootModel during test teardown races with pending async work and surfaces
+-// noisy errors.
++// Tears down the build autorun and the rootModel on host unmount. Lives in its
++// own module so jest tests can mock it — destroying the rootModel during test
++// teardown races with pending async work and surfaces noisy errors.
+ //
+-// A superseded loader (a plugin reload already built its replacement) is also
+-// destroyed: it can never be re-activated, and each one otherwise leaks a full
+-// frozen config + session snapshot for the life of the tab. Every other
+-// detach — StrictMode's double-invoked effect, a Fast Refresh remount — leaves
+-// the loader alive so the same instance can be re-activated with the session
+-// deactivate() just saved into sessionSource.
++// The loader itself is left alive, superseded or not. deactivate() releases
++// everything that holds it open (the build autorun, the rootModel) and React
++// drops its state reference on a swap, so it is ordinary garbage. Destroying it
++// bought nothing and cost a use-after-free: a plugin can legitimately issue
++// reloadPluginManagerCallback more than once off one rootModel, and the late
++// call then rebuilt a replacement out of a freed node — getSnapshot() and
++// setSuperseded() on a dead SessionLoader, which MST reports only as a
++// liveliness warning, so it went ahead and swapped in a loader built from a
++// corpse. Declining that second request is useLoaderLifecycle's job.
+ export function disposeLoader(loader: SessionLoaderModel) {
+   loader.deactivate()
+-  if (loader.superseded) {
+-    destroy(loader)
+-  }
+ }
+diff --git a/products/jbrowse-web/src/components/enableReactRenderLogging.ts b/products/jbrowse-web/src/components/enableReactRenderLogging.ts
+new file mode 100644
+index 00000000000..35a53fe60ea
+--- /dev/null
++++ b/products/jbrowse-web/src/components/enableReactRenderLogging.ts
+@@ -0,0 +1,48 @@
++import { recordMeasure } from './renderLogRecord.ts'
++
++// React 19's dev-mode component-render logging (logComponentRender ->
++// addObjectDiffToProperties, which walks into each component's props and reads
++// every property of every object it finds, four levels deep) is gated at
++// react-dom module scope on
++//
++//   typeof console.timeStamp === 'function' &&
++//   typeof performance.measure === 'function'
++//
++// jsdom supplies neither, so that logging never runs under jest. It is the
++// first thing a developer sees in a browser and is structurally invisible to
++// the whole suite — which is why a crash it caused reached a user with every
++// test green. Supplying both halves of the gate makes it run.
++//
++// Import this BEFORE anything that pulls in react-dom — the gate is a module
++// scope constant, read once when react-dom is first evaluated — and import it
++// for its side effect only, so the sorter leaves it where you put it. Read
++// what it recorded from renderLogRecord.ts, and assert on that: a test that
++// silently stops satisfying the gate is a test that silently stops testing.
++
++// wrap rather than replace, so this keeps working if jsdom ever grows real
++// implementations and the gate stops needing help
++const realMeasure = globalThis.performance.measure as unknown
++// eslint-disable-next-line no-console
++const realTimeStamp = console.timeStamp as unknown
++
++// eslint-disable-next-line no-console
++console.timeStamp =
++  typeof realTimeStamp === 'function'
++    ? (realTimeStamp.bind(console) as typeof console.timeStamp)
++    : () => {}
++
++globalThis.performance.measure = ((name: string, ...rest: unknown[]) => {
++  recordMeasure(name)
++  return typeof realMeasure === 'function'
++    ? (realMeasure as (...a: unknown[]) => unknown).call(
++        globalThis.performance,
++        name,
++        ...rest,
++      )
++    : undefined
++}) as typeof performance.measure
++
++if (typeof globalThis.performance.mark !== 'function') {
++  // @ts-expect-error stubbing the jsdom gap
++  globalThis.performance.mark = () => {}
++}
+diff --git a/products/jbrowse-web/src/components/renderLogRecord.ts b/products/jbrowse-web/src/components/renderLogRecord.ts
+new file mode 100644
+index 00000000000..6051dfd342e
+--- /dev/null
++++ b/products/jbrowse-web/src/components/renderLogRecord.ts
+@@ -0,0 +1,38 @@
++// What React's dev-mode render-logging actually did, recorded by
++// enableReactRenderLogging's performance.measure wrapper.
++//
++// Separate from that module on purpose. Its import has to be the FIRST one in
++// a test file — it supplies a gate react-dom reads once at module scope — and
++// the only import form the sorter is guaranteed to leave in place is a
++// side-effect import, which cannot also bind a name. So the installer stays
++// side-effect-only and the reader lives here, where its position is nobody's
++// problem.
++
++const measured: string[] = []
++
++// React prefixes each render-logging measure with a zero-width space, so the
++// entry renders unprefixed in the performance panel.
++const RENDER_LOG_PREFIX = '\u200B'
++
++export function recordMeasure(name: string) {
++  measured.push(name)
++}
++
++/**
++ * The names of the components React ran its render-logging on, in order.
++ *
++ * performance.measure is reached from one branch of logComponentRender only —
++ * the one that runs addObjectDiffToProperties over a component whose props
++ * changed — so a non-empty result is proof that the props walk happened.
++ *
++ * Assert on this in any test that relies on that walk. Without it, anything
++ * that stops the gate being satisfied (React adding a condition, the import
++ * sorter moving the installer below react-dom — which has happened) turns the
++ * test back into the no-op the whole suite was before: still green, still
++ * passing, no longer testing anything.
++ */
++export function renderLoggedComponents() {
++  return measured
++    .filter(name => name.startsWith(RENDER_LOG_PREFIX))
++    .map(name => name.slice(RENDER_LOG_PREFIX.length))
++}
+diff --git a/products/jbrowse-web/src/components/renderLoggingReadsLoader.test.tsx b/products/jbrowse-web/src/components/renderLoggingReadsLoader.test.tsx
+new file mode 100644
+index 00000000000..37a989d9bc9
+--- /dev/null
++++ b/products/jbrowse-web/src/components/renderLoggingReadsLoader.test.tsx
+@@ -0,0 +1,121 @@
++// MUST be first, and MUST stay a side-effect import: it supplies React's
++// render-logging gate, which react-dom reads once at module scope, and the
++// import sorter is free to move a named import below the react-dom ones (it
++// did, and the test went green having exercised nothing — which is what the
++// renderLoggedComponents() assertion at the bottom now catches).
++import './enableReactRenderLogging.ts'
++
++// the /pure entry point: no auto-cleanup on afterEach. The failure under test
++// throws out of React's commit and leaves the renderer wedged, and RTL's
++// teardown unmount then throws "Should not already be working" over the top of
++// it, turning a clean assertion failure into an unreadable suite crash.
++import { act, renderHook } from '@testing-library/react/pure'
++import { when } from 'mobx'
++
++import SessionLoader from '../SessionLoader.ts'
++import Renderer from './Renderer.tsx'
++import { renderLoggedComponents } from './renderLogRecord.ts'
++import { useLoaderLifecycle } from './useLoaderLifecycle.ts'
++
++import type { SessionLoaderModel } from '../SessionLoader.ts'
++import type { WebRootModel } from '../rootModel/rootModel.ts'
++
++jest.mock('../makeWorkerInstance', () => () => {})
++
++function makeLoader() {
++  return SessionLoader.create({
++    initialTimestamp: 1,
++    configSnapshot: {},
++    // hubURL is the model's only array property, and a preset sessionSource
++    // means loadSessionByType never consults isHubSession — so nothing reads it
++    // and its child node stays UNINITIALIZED, which is what turns the read
++    // below from a warning into a throw.
++    //
++    // Empty, because that is what the app itself always produces and so this
++    // is not a hub-only bug: readHubUrlParam returns [] for an absent &hubURL=,
++    // createSessionLoaderFromUrl passes that unconditionally, and
++    // reloadSessionLoader spreads it into every replacement. An empty array
++    // node is an uninitialized child like any other.
++    hubURL: [],
++    sessionSource: { type: 'snapshot', snapshot: { id: 'a', name: 'a' } },
++  })
++}
++
++// The reported failure, in one flush.
++//
++// React's passive-effect flush runs unmount effects and then mount effects. The
++// lifecycle effect's cleanup used to destroy the superseded loader in the
++// unmount half; a few frames later, in the mount half, React's dev-mode
++// logComponentRender diffs each component's props with
++// addObjectDiffToProperties, which recurses into the props object and reads
++// every property — including the loader it was just handed:
++//
++//   Object.get [as configPath]
++//   addObjectDiffToProperties (react-dom-client.development.js:3967)
++//   logComponentRender        (react-dom-client.development.js:4129)
++//   commitPassiveMountOnFiber (react-dom-client.development.js:15468)
++//
++// One liveliness warning per attribute. On an array-typed attribute whose child
++// node is still UNINITIALIZED it is not a warning at all but a throw, because
++// createObservableInstance asserts the node is INITIALIZING and a dead one is
++// not: "the creation of the observable instance must be done on the
++// initializing phase".
++test('React dev render-logging does not read a destroyed loader', async () => {
++  const loader = makeLoader()
++  let current: SessionLoaderModel = loader
++  const { rerender } = renderHook(
++    ({ l }: { l: SessionLoaderModel }) => {
++      useLoaderLifecycle(l, next => {
++        current = next
++      })
++      return <Renderer loader={l} />
++    },
++    { initialProps: { l: loader } },
++  )
++  await act(async () => {
++    await when(() => !!loader.pluginManager)
++  })
++  const rootModel = loader.pluginManager!.rootModel as WebRootModel
++
++  const warnings: string[] = []
++  const origWarn = console.warn
++  console.warn = (...args: unknown[]) => {
++    const msg = args.map(a => `${a}`).join(' ')
++    if (msg.includes("Object type: 'SessionLoader'")) {
++      warnings.push(msg)
++    } else {
++      origWarn(...(args as []))
++    }
++  }
++  let thrown: unknown
++  try {
++    act(() => {
++      rootModel.reloadPluginManagerCallback({}, { id: 'b', name: 'b' })
++    })
++    // The app renders the replacement. React's own dep-change cleanup detaches
++    // the superseded loader in the unmount half of that flush, and its
++    // render-logging reads the old props in the mount half of the same one.
++    act(() => {
++      rerender({ l: current })
++    })
++    act(() => {
++      rerender({ l: current })
++    })
++  } catch (e) {
++    thrown = e
++  } finally {
++    console.warn = origWarn
++  }
++
++  expect(thrown).toBeUndefined()
++  expect(warnings).toEqual([])
++  // and the mechanism under test actually ran, so the two assertions above
++  // cannot pass for the wrong reason (see renderLogRecord).
++  //
++  // What it logs is renderHook's own wrapper rather than Renderer: its props
++  // are the `{l: loader}` this test passes, so it is the component whose diff
++  // recurses into the loader. In the browser it was Renderer's own props. The
++  // mechanism is the same either way, so this asserts that a props walk
++  // happened rather than naming a component RTL owns.
++  expect(renderLoggedComponents().length).toBeGreaterThan(0)
++})
+diff --git a/products/jbrowse-web/src/components/repeatReload.test.tsx b/products/jbrowse-web/src/components/repeatReload.test.tsx
+new file mode 100644
+index 00000000000..6dd4403fe6e
+--- /dev/null
++++ b/products/jbrowse-web/src/components/repeatReload.test.tsx
+@@ -0,0 +1,88 @@
++import { act, renderHook } from '@testing-library/react'
++import { when } from 'mobx'
++
++import SessionLoader from '../SessionLoader.ts'
++import { disposeLoader } from './disposeLoader.ts'
++import { useLoaderLifecycle } from './useLoaderLifecycle.ts'
++
++import type { SessionLoaderModel } from '../SessionLoader.ts'
++import type { WebRootModel } from '../rootModel/rootModel.ts'
++
++jest.mock('../makeWorkerInstance', () => () => {})
++
++// preset config + session so activate() resolves without any network
++function makeLoader() {
++  return SessionLoader.create({
++    initialTimestamp: 1,
++    configSnapshot: {},
++    sessionSource: { type: 'snapshot', snapshot: { id: 'a', name: 'a' } },
++  })
++}
++
++// reloadPluginManagerCallback is reachable the way a plugin reaches it: off the
++// rootModel this loader built.
++async function mountAndGetReloadCallback(
++  loader: SessionLoaderModel,
++  setLoader: (l: SessionLoaderModel) => void,
++) {
++  renderHook(() => {
++    useLoaderLifecycle(loader, setLoader)
++  })
++  await act(async () => {
++    await when(() => !!loader.pluginManager)
++  })
++  const rootModel = loader.pluginManager!.rootModel as WebRootModel
++  return rootModel.reloadPluginManagerCallback
++}
++
++// A plugin can ask for a reload more than once off one rootModel. Apollo does:
++// its per-internet-account loop calls reloadPluginManagerCallback without
++// breaking, from an async autorun whose synchronous prefix can re-fire and
++// leave several continuations in flight, and reaction.dispose() only runs after
++// the first one gets through.
++//
++// The second call lands after the app has already detached the loader the first
++// one superseded. Destroying that loader on detach made the late call rebuild a
++// replacement out of a freed node — getSnapshot() and setSuperseded() on a dead
++// SessionLoader — which MST reports only as a liveliness warning, so it does
++// its work and swaps in a third loader built from a corpse.
++test('a repeat reload is ignored rather than rebuilt off a freed loader', async () => {
++  const loader = makeLoader()
++  const built: SessionLoaderModel[] = []
++  const reload = await mountAndGetReloadCallback(loader, l => {
++    built.push(l)
++  })
++
++  const warnings: string[] = []
++  const origWarn = console.warn
++  console.warn = (...args: unknown[]) => {
++    const msg = args.map(a => `${a}`).join(' ')
++    if (msg.includes('no longer part of a state tree')) {
++      warnings.push(msg)
++    } else {
++      origWarn(...(args as []))
++    }
++  }
++  try {
++    act(() => {
++      reload({}, { id: 'b', name: 'b' })
++    })
++    expect(built).toHaveLength(1)
++    expect(loader.superseded).toBe(true)
++
++    // the app detaches the loader its replacement superseded
++    act(() => {
++      disposeLoader(loader)
++    })
++
++    // a second in-flight caller arrives afterwards
++    act(() => {
++      reload({}, { id: 'c', name: 'c' })
++    })
++  } finally {
++    console.warn = origWarn
++  }
++
++  expect(built).toHaveLength(1)
++  expect(warnings).toEqual([])
++})
+diff --git a/products/jbrowse-web/src/components/useLoaderLifecycle.ts b/products/jbrowse-web/src/components/useLoaderLifecycle.ts
+index 4f35c34d960..ebfcb386c65 100644
+--- a/products/jbrowse-web/src/components/useLoaderLifecycle.ts
++++ b/products/jbrowse-web/src/components/useLoaderLifecycle.ts
+@@ -32,6 +32,23 @@ export function useLoaderLifecycle(
+   useEffect(() => {
+     stripConsumedSessionParams()
+     loader.activate((configSnapshot, sessionSnapshot) => {
++      // A plugin can issue this more than once off the rootModel this loader
++      // built, and legitimately: Apollo's per-internet-account loop calls it
++      // and then disposes its reaction without breaking, so a second account
++      // whose config grants a role calls it again; the loop body is async, so
++      // the autorun's synchronous prefix can also re-fire and leave several
++      // continuations in flight.
++      //
++      // First call wins. A later one must not build a second replacement from
++      // a loader that has already been swapped out and detached — that was the
++      // use-after-free. Note this is first-wins, not a no-op: a repeat caller
++      // can carry a *different* config (Apollo's second server), and that
++      // config is dropped. Deliberately, because the alternative is a rebuild
++      // that discards the session the first replacement is already showing.
++      // A caller that needs both merged has to merge them itself.
++      if (loader.superseded) {
++        return
++      }
+       const next = reloadSessionLoader(loader, configSnapshot, sessionSnapshot)
+       loader.setSuperseded()
+       setLoader(next)
+diff --git a/products/jbrowse-web/src/rootModel/persistence.ts b/products/jbrowse-web/src/rootModel/persistence.ts
+index 8f38657bc33..a4f7db0ce58 100644
+--- a/products/jbrowse-web/src/rootModel/persistence.ts
++++ b/products/jbrowse-web/src/rootModel/persistence.ts
+@@ -119,7 +119,10 @@ export async function setupSessionDB(self: WebRootModel) {
+     // the first, then stay quiet until it works again, exactly as
+     // setupSessionStorageAutosave does below.
+     let savingFailed = false
+-    addDisposer(
++    // registerTeardown rather than addDisposer: this writes to IndexedDB, so
++    // it has to stop when the React host detaches, and this root is no longer
++    // destroyed at that point (rootModel's `detach`).
++    registerTeardown(
+       self,
+       autorun(
+         async () => {
+@@ -194,6 +197,16 @@ function writeSessionSnapshot(sessionSnap: unknown) {
+ // can be tuned for cost alone.
+ //
+ // Safe to do synchronously here, which is why this is worth doing at all:
++// Stop this when the React host detaches the root, AND if anything destroys it
++// outright (tests do). Both, because the two teardowns are now different
++// events: `detach` is the one the app performs and the one that has to stop
++// anything reaching outside the tree, while `destroy` no longer happens on
++// that path at all. Running a disposer twice is harmless.
++function registerTeardown(self: WebRootModel, disposer: () => void) {
++  self.addDetachDisposer(disposer)
++  addDisposer(self, disposer)
++}
++
+ // sessionStorage.setItem is synchronous, so unlike an async save there is nothing
+ // to await and no way to wedge the unload. Errors are swallowed rather than
+ // reported — the page is going away, and a quota failure has already been
+@@ -216,9 +229,15 @@ function setupUnloadFlush(self: WebRootModel) {
+   // behind accumulates one per reload for the life of the tab. It is the leak this
+   // prevents, not a bad write — the isAlive check above already covers that, and
+   // the two are deliberately redundant.
+-  addDisposer(self, () => {
++  //
++  // On detach rather than on destroy, because this root is no longer destroyed
++  // (rootModel's `detach`). addDisposer as well, for the tests that destroy a
++  // root directly; both are idempotent.
++  const remove = () => {
+     window.removeEventListener('beforeunload', flush)
+-  })
++  }
++  self.addDetachDisposer(remove)
++  addDisposer(self, remove)
+ }
+ 
+ // The config the replacement app boots from when a plugin is installed.
+@@ -256,7 +275,10 @@ export function setupSessionStorageAutosave(self: WebRootModel) {
+   // torn down. Kept local rather than clearing pluginsUpdated, which the
+   // autorun observes and would re-trigger itself by writing.
+   let reloadRequested = false
+-  addDisposer(
++  // registerTeardown rather than addDisposer: this writes sessionStorage, and
++  // a detached root that kept writing would overwrite the session its
++  // replacement is restoring.
++  registerTeardown(
+     self,
+     autorun(
+       () => {
+diff --git a/products/jbrowse-web/src/rootModel/rootModel.ts b/products/jbrowse-web/src/rootModel/rootModel.ts
+index f75a6eb25b8..470e0152782 100644
+--- a/products/jbrowse-web/src/rootModel/rootModel.ts
++++ b/products/jbrowse-web/src/rootModel/rootModel.ts
+@@ -197,6 +197,19 @@ export default function RootModel({
+        * #volatile
+        */
+       savedSessionMetadata: undefined as SessionMetadata[] | undefined,
++      /**
++       * #volatile
++       * What has to stop the moment the React host lets go of this root — the
++       * `beforeunload` listener and the autoruns that write to sessionStorage
++       * and IndexedDB, i.e. everything reaching outside the tree.
++       *
++       * Deliberately not `addDisposer`, which fires only on destroy, because
++       * destroy is what this root cannot do at detach time: React is still
++       * holding its views and widgets in the outgoing props of the same
++       * passive-effect flush. See `detach` and SessionLoader's
++       * disposePluginManager.
++       */
++      detachDisposers: [] as (() => void)[],
+       /**
+        * #volatile
+        */
+@@ -295,6 +308,51 @@ export default function RootModel({
+           setupSessionDB(model)
+         }
+       },
++      /**
++       * #action
++       * Register something that must stop when the React host detaches this
++       * root. See the `detachDisposers` volatile for why this is not
++       * `addDisposer`.
++       */
++      addDetachDisposer(disposer: () => void) {
++        self.detachDisposers.push(disposer)
++      },
++      /**
++       * #action
++       * The React host has let go of this root: stop everything of ours that
++       * reaches outside the tree, and leave the tree itself alone.
++       *
++       * This is the whole teardown — there is no `destroy` after it, for the
++       * same reason disposeLoader stopped destroying superseded loaders.
++       * Destroying from a React effect cleanup is unsound: React reads the
++       * outgoing props later in that same passive-effect flush, and in flushes
++       * after it, so every property it walks on a destroyed node is a
++       * liveliness warning and any it finds on an unmaterialized array child
++       * is a hard throw. Deferring the destroy a microtask was tried and is
++       * not enough — it takes the count from 16 to 4 rather than to 0, because
++       * a later flush still diffs a widget it is holding.
++       *
++       * In-flight async work (an assembly still loading) then lands on live
++       * nodes and is discarded with them, instead of writing to a corpse —
++       * which is the "races with pending async work" that tests/loaderUtil.tsx
++       * used to mock this path out to avoid.
++       *
++       * What this does NOT claim is that the tree is promptly collected. Its
++       * own autoruns keep observing it, and any of them subscribed to a
++       * module-level observable is reachable from outside. Measured with a
++       * WeakRef after a forced gc, a superseded root is still reachable — and
++       * so is one that has been `destroy`ed, which is what says the retention
++       * is not something this change introduced, and that jsdom is not where
++       * the question gets settled. A browser heap snapshot across two plugin
++       * installs is.
++       */
++      detach() {
++        const disposers = self.detachDisposers
++        self.detachDisposers = []
++        for (const disposer of disposers) {
++          disposer()
++        }
++      },
+       /**
+        * #action
+        */
+diff --git a/products/jbrowse-web/src/tests/Loader.test.tsx b/products/jbrowse-web/src/tests/Loader.test.tsx
+index a6e17deab65..2eead47dc16 100644
+--- a/products/jbrowse-web/src/tests/Loader.test.tsx
++++ b/products/jbrowse-web/src/tests/Loader.test.tsx
+@@ -81,20 +81,25 @@ test('can use config from a url with shared session ', async () => {
+ }, 20000)
+ 
+ // minimal session with plugin in our plugins.json
++//
++// Asserts the absence of the triage dialog its evil-plugin sibling below
++// asserts the presence of, which is what "approves" means here.
++//
++// It used to wait for sessionStorage to be written instead, and that was a
++// false green: this session never gets far enough to write anything, because
++// approving the plugin goes on to import it from jbrowse.org and jsdom does
++// not fetch that, so the load parks there. The wait passed on the PREVIOUS
++// test's rootModel, which was still alive with its autosave autorun attached —
++// disposeLoader was mocked to a no-op for every suite in this directory — and
++// wrote sessionStorage from under it after afterEach had cleared it. Run this
++// test on its own and it failed even then. With the real teardown the zombie
++// is gone, and so is the false green.
+ test('approves sessionPlugins from plugin list', async () => {
+-  expect(sessionStorage.length).toBe(0)
+-  render(
++  const { findByText } = render(
+     <App search='?config=test_data/volvox/config_main_thread.json&session=json-{"session":{"id":"xSHu7qGJN","name":"test","sessionPlugins":[{"url":"https://jbrowse.org/plugins/jbrowse-plugin-msaview/dist/jbrowse-plugin-msaview.umd.production.min.js","name":"MsaView"}]}}' />,
+   )
+-  await waitFor(
+-    () => {
+-      expect(sessionStorage.length).toBeGreaterThan(0)
+-    },
+-    {
+-      timeout: 50000,
+-    },
+-  )
+-}, 50000)
++  await expect(findByText(/Warning/, {}, { timeout: 2000 })).rejects.toThrow()
++}, 20000)
+ 
+ // minimal session,
+ // {"session":{"id":"xSHu7qGJN","name":"test","sessionPlugins":[{"url":"https://unpkg.com/jbrowse-plugin-msaview/dist/jbrowse-plugin-msaview.umd.production.min.js"}]}}
+diff --git a/products/jbrowse-web/src/tests/loaderUtil.tsx b/products/jbrowse-web/src/tests/loaderUtil.tsx
+index faf24b28a2d..ce91afa7f1a 100644
+--- a/products/jbrowse-web/src/tests/loaderUtil.tsx
++++ b/products/jbrowse-web/src/tests/loaderUtil.tsx
+@@ -2,11 +2,16 @@ import { Loader } from '../components/Loader.tsx'
+ 
+ jest.mock('../makeWorkerInstance', () => () => {})
+ 
+-// Destroying the rootModel during React unmount races with pending async work
+-// in tests and surfaces noisy errors. Production behavior is preserved.
+-jest.mock('../components/disposeLoader', () => ({
+-  disposeLoader: () => {},
+-}))
++// disposeLoader used to be mocked to a no-op here, because destroying the
++// rootModel during React unmount raced with pending async work and surfaced
++// noisy errors. That mock is gone, and its removal is the point: it stubbed out
++// the one code path that had just crashed a user's app, in all ten suites that
++// mount JBrowse, so nothing in the suite could see the bug or its fix.
++//
++// The race it was avoiding is gone rather than tolerated — detach no longer
++// destroys the root, so an in-flight assembly load lands on a live node (see
++// rootModel's `detach`). Don't reintroduce it; `tests/rootModelTeardown.test.tsx`
++// is what holds this closed.
+ 
+ export function App({ search }: { search: string }) {
+   const currentSearch = window.location.search
+diff --git a/products/jbrowse-web/src/tests/rootModelTeardown.test.tsx b/products/jbrowse-web/src/tests/rootModelTeardown.test.tsx
+new file mode 100644
+index 00000000000..d8a2e0cc1a3
+--- /dev/null
++++ b/products/jbrowse-web/src/tests/rootModelTeardown.test.tsx
+@@ -0,0 +1,91 @@
++import '../components/enableReactRenderLogging.ts'
++
++import { getSnapshot, isAlive } from '@jbrowse/mobx-state-tree'
++import { act, render, waitFor } from '@testing-library/react'
++import { Image, createCanvas } from 'canvas'
++
++// deliberately NOT ./loaderUtil.tsx: this test is about the real disposeLoader
++import { Loader } from '../components/Loader.tsx'
++import { renderLoggedComponents } from '../components/renderLogRecord.ts'
++import { handleRequest, volvoxGetFile } from './generateReadBuffer.ts'
++
++import type { WebRootModel } from '../rootModel/rootModel.ts'
++
++jest.mock('../makeWorkerInstance', () => () => {})
++
++// @ts-expect-error
++global.nodeImage = Image
++// @ts-expect-error
++global.nodeCreateCanvas = createCanvas
++
++jest.spyOn(global, 'fetch').mockImplementation(async (url, args) => {
++  if (`${url}`.includes('plugin-store')) {
++    return new Response(JSON.stringify({ plugins: [] }))
++  }
++  if (`${url}`.includes('jb2=true')) {
++    return new Response('{}')
++  }
++  return handleRequest(() => volvoxGetFile(`${url}`), args)
++})
++
++const delay = { timeout: 20000 }
++
++// The rootModel half of the superseded-loader crash (#5618 fixed the loader
++// half). disposePluginManager runs from a React effect cleanup, in the unmount
++// side of a passive-effect flush; React's dev-mode render-logging then diffs
++// the outgoing props in the mount side of that same flush and walks four
++// levels into them, which reaches the rootModel through {pluginManager} and
++// the session below it. Destroying synchronously there produced 16 liveliness
++// warnings on an ordinary volvox session — and a warning and a crash are the
++// same event, decided only by whether the property it lands on happens to be a
++// materialized array child.
++//
++// This asserts on the real teardown, so it needs the real disposeLoader.
++// Everything else that mounts the app goes through loaderUtil.tsx.
++test('a plugin reload does not read the rootModel it just destroyed', async () => {
++  const search = '?config=test_data/volvox/config_main_thread.json'
++  window.history.replaceState(null, '', `${window.location.pathname}${search}`)
++
++  const { findByText } = render(<Loader />)
++  await findByText('Help', {}, delay)
++  const oldRoot = window.JBrowseRootModel as WebRootModel
++
++  const deadReads: string[] = []
++  const origWarn = console.warn
++  const origError = console.error
++  const capture = (...args: unknown[]) => {
++    const msg = args.map(a => `${a}`).join(' ')
++    if (msg.includes('no longer part of a state tree')) {
++      deadReads.push(msg.split('\n')[0]!)
++    } else {
++      origWarn(...(args as []))
++    }
++  }
++  console.warn = capture
++  console.error = capture
++  try {
++    await act(async () => {
++      oldRoot.reloadPluginManagerCallback(
++        getSnapshot(oldRoot.jbrowse) as Record<string, unknown>,
++        getSnapshot(oldRoot.session),
++      )
++    })
++    await waitFor(() => {
++      expect(window.JBrowseRootModel).not.toBe(oldRoot)
++    }, delay)
++  } finally {
++    console.warn = origWarn
++    console.error = origError
++  }
++
++  expect(deadReads).toEqual([])
++  // and React's render-logging really ran, so the assertion above means
++  // something (see renderLogRecord)
++  expect(renderLoggedComponents().length).toBeGreaterThan(0)
++
++  // The superseded root is deliberately left alive — that is the fix, not an
++  // oversight, so pin it. What was torn down is everything of its own that
++  // reached outside the tree; the tree itself is left for the GC.
++  expect(isAlive(oldRoot)).toBe(true)
++  expect(oldRoot.detachDisposers).toHaveLength(0)
++}, 60000)
+diff --git a/website/docs/models/JBrowseWebRootModel.md b/website/docs/models/JBrowseWebRootModel.md
+index 4d6ee63f4e9..a863ff7c45f 100644
+--- a/website/docs/models/JBrowseWebRootModel.md
++++ b/website/docs/models/JBrowseWebRootModel.md
+@@ -39,6 +39,7 @@ the whole surface.
+ | <span id="volatile-gitcommit">**gitCommit**</span><br><code>gitCommit</code> |  | JBrowseWebRootModel |
+ | <span id="volatile-pluginsupdated">**pluginsUpdated**</span><br><code>pluginsUpdated: false</code> |  | JBrowseWebRootModel |
+ | <span id="volatile-savedsessionmetadata">**savedSessionMetadata**</span><br><code>savedSessionMetadata: undefined as SessionMetadata[] &#124; undefined</code> |  | JBrowseWebRootModel |
++| <span id="volatile-detachdisposers">**detachDisposers**</span><br><code>detachDisposers: [] as (() =&gt; void)[]</code> | What has to stop the moment the React host lets go of this root — the `beforeunload` listener and the autoruns that write to sessionStorage and IndexedDB, i.e. everything reaching outside the tree.<br><br>Deliberately not `addDisposer`, which fires only on destroy, because destroy is what this root cannot do at detach time: React is still holding its views and widgets in the outgoing props of the same passive-effect flush. See `detach` and SessionLoader's disposePluginManager. | JBrowseWebRootModel |
+ | <span id="volatile-reloadpluginmanagercallback">**reloadPluginManagerCallback**</span><br><span class="cell-more"><button type="button" class="cell-more-trigger"><code>reloadPluginManagerCallback: ( _configSnapshot: Record&lt;string,…</code></button><dialog class="cell-dialog"><form method="dialog"><button class="cell-dialog-close" aria-label="Close">✕</button></form><pre><code>reloadPluginManagerCallback: (&#10;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;_configSnapshot: Record&lt;string, unknown&gt;,&#10;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;_sessionSnapshot: Record&lt;string, unknown&gt;,&#10;&#160;&#160;&#160;&#160;&#160;&#160;) =&gt; {&#10;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;console.error('reloadPluginManagerCallback unimplemented')&#10;&#160;&#160;&#160;&#160;&#160;&#160;}</code></pre></dialog></span> |  | JBrowseWebRootModel |
+ | <span id="volatile-rpcmanager">**rpcManager**</span><br><span class="cell-more"><button type="button" class="cell-more-trigger"><code>rpcManager: new RpcManager( pluginManager, self.jbrowse.configu…</code></button><dialog class="cell-dialog"><form method="dialog"><button class="cell-dialog-close" aria-label="Close">✕</button></form><pre><code>rpcManager: new RpcManager(&#10;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;pluginManager,&#10;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;self.jbrowse.configuration.rpc,&#10;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;rpcManagerOptions,&#10;&#160;&#160;&#160;&#160;&#160;&#160;)</code></pre></dialog></span> |  | [BaseRootModel](../baserootmodel#volatile-rpcmanager) |
+ | <span id="volatile-error">**error**</span><br><code>error: undefined as unknown</code> |  | [BaseRootModel](../baserootmodel#volatile-error) |
+@@ -62,6 +63,8 @@ the whole surface.
+ | <span id="action-fetchsessionmetadata">**fetchSessionMetadata**</span><br><code>() =&gt; Promise&lt;void&gt;</code> | Re-reads the whole `metadata` store. For anything that changes rows this model didn't just write itself (first load, pruning, favorite, rename, delete) — the autosave path uses `upsertSessionMetadata` instead. | JBrowseWebRootModel |
+ | <span id="action-upsertsessionmetadata">**upsertSessionMetadata**</span><br><code>(meta: SessionMetadata) =&gt; void</code> | Merges a row this model has just written into the in-memory list. The autosave autorun writes exactly one row on every debounced session edit — every 400ms for as long as you keep panning — and already holds its contents, so re-reading every session's metadata to learn what it just stored is the expensive way to move one row to the top. | JBrowseWebRootModel |
+ | <span id="action-setsessiondb">**setSessionDB**</span><br><code>(sessionDB: SessionDBHandle &#124; undefined) =&gt; void</code> |  | JBrowseWebRootModel |
++| <span id="action-adddetachdisposer">**addDetachDisposer**</span><br><code>(disposer: () =&gt; void) =&gt; void</code> | Register something that must stop when the React host detaches this root. See the `detachDisposers` volatile for why this is not `addDisposer`. | JBrowseWebRootModel |
++| <span id="action-detach">**detach**</span><br><code>() =&gt; void</code> | The React host has let go of this root: stop everything of ours that reaches outside the tree, and leave the tree itself alone.<br><br>This is the whole teardown — there is no `destroy` after it, for the same reason disposeLoader stopped destroying superseded loaders. Destroying from a React effect cleanup is unsound: React reads the outgoing props later in that same passive-effect flush, and in flushes after it, so every property it walks on a destroyed node is a liveliness warning and any it finds on an unmaterialized array child is a hard throw. Deferring the destroy a microtask was tried and is not enough — it takes the count from 16 to 4 rather than to 0, because a later flush still diffs a widget it is holding.<br><br>In-flight async work (an assembly still loading) then lands on live nodes and is discarded with them, instead of writing to a corpse — which is the "races with pending async work" that tests/loaderUtil.tsx used to mock this path out to avoid.<br><br>What this does NOT claim is that the tree is promptly collected. Its own autoruns keep observing it, and any of them subscribed to a module-level observable is reachable from outside. Measured with a WeakRef after a forced gc, a superseded root is still reachable — and so is one that has been `destroy`ed, which is what says the retention is not something this change introduced, and that jsdom is not where the question gets settled. A browser heap snapshot across two plugin installs is. | JBrowseWebRootModel |
+ | <span id="action-setpluginsupdated">**setPluginsUpdated**</span><br><code>() =&gt; void</code> |  | JBrowseWebRootModel |
+ | <span id="action-setreloadpluginmanagercallback">**setReloadPluginManagerCallback**</span><br><span class="cell-more"><button type="button" class="cell-more-trigger"><code>(callback: (configSnapshot: Record&lt;string, unknown&gt;, sessionSna…</code></button><dialog class="cell-dialog"><form method="dialog"><button class="cell-dialog-close" aria-label="Close">✕</button></form><pre><code>(callback: (configSnapshot: Record&lt;string, unknown&gt;, sessionSnapshot: Record&lt;string, unknown&gt;) =&gt; void) =&gt; void</code></pre></dialog></span> |  | JBrowseWebRootModel |
+ | <span id="action-activatesession">**activateSession**</span><br><code>(id: string) =&gt; Promise&lt;void&gt;</code> |  | JBrowseWebRootModel |

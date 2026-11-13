@@ -1,0 +1,51 @@
+diff --git a/doc/normalisation.md b/doc/normalisation.md
+index 2846f9da..ae3bd84a 100644
+--- a/doc/normalisation.md
++++ b/doc/normalisation.md
+@@ -17,7 +17,7 @@ usage: VCF preprocessor [-h] [--location LOCATIONS] [--pass-only]
+                         [--fixchr] [--no-fixchr] [--bcf] [-v] [-r REF]
+                         [-w WINDOW] [--threads THREADS] [--force-interactive]
+                         [--logfile LOGFILE] [--verbose | --quiet] [--filter-nonref]
+-                        [--convert-gvcf-truth] [--convert-gvcf-query]
++                        [--convert-gvcf-to-vcf]
+                         input output
+ ```
+ 
+@@ -148,8 +148,7 @@ be used on genome VCFs since attempting to convert a standard VCF will
+ cause all biallelic variants to be filtered out (most of them).
+ 
+ ```
+-  --convert-gvcf-truth Convert the truth genome VCF to a standard VCF.
+-  --convert-gvcf-query Convert the query genome VCF to a standard VCF.          
++  --convert-gvcf-to-vcf Convert the input genome VCF to a standard VCF.
+ ```
+ 
+ Runtime behaviour can also be controlled as follows:
+diff --git a/src/python/pre.py b/src/python/pre.py
+index fe380aaa..5ca1644d 100755
+--- a/src/python/pre.py
++++ b/src/python/pre.py
+@@ -242,7 +242,7 @@ def preprocessWrapper(args):
+                args.threads,
+                args.gender,
+                args.somatic_allele_conversion,
+-               convert_gvcf_to_vcf=args.convert_gvcf)
++               convert_gvcf_to_vcf=args.convert_gvcf_to_vcf)
+ 
+     elapsed = time.time() - starttime
+     logging.info("preprocess for %s -- time taken %.2f" % (args.input, elapsed))
+@@ -316,12 +316,9 @@ def updateArgs(parser):
+     parser.add_argument('--filter-nonref', dest='filter_nonref', action="store_true", default=False,
+                         help='Remove any variants genotyped as <NON_REF>.')  
+                         
+-    parser.add_argument('--convert-gvcf-truth', dest='convert_gvcf_truth', action="store_true", default=False,
+-                        help='Convert the truth set from genome VCF format to a VCF before processing.')  
++    parser.add_argument('--convert-gvcf-to-vcf', dest='convert_gvcf_to_vcf', action="store_true", default=False,
++                        help='Convert the input set from genome VCF format to a VCF before processing.')
+                         
+-    parser.add_argument('--convert-gvcf-query', dest='convert_gvcf_query', action="store_true", default=False,
+-                        help='Convert the query set from genome VCF format to a VCF before processing.')                          
+-
+     # genotype handling on chrX.
+     parser.add_argument("--gender", dest="gender", choices=["male", "female", "auto", "none"], default="auto",
+                         help="Specify sex. This determines how haploid calls on chrX get treated: for male samples,"

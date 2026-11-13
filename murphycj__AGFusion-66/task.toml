@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/murphycj__AGFusion-66"
+description = "Switch build_dbs.py to boto3, add Pfam-A.clans.tsv auto-download, replace MySQLdb with mysql-connector-python"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "AGFusion",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "murphycj/AGFusion"
+ref = "a1ac6152f5f5d86e565bf804f7cf06bed02af42b"
+reference = "https://github.com/murphycj/AGFusion/pull/66"
+source_access = "auto"
+built_at = "2026-11-13T15:39:17.887149+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d27d6c92538bd16a376353975dfebe7778ad14d396be227d3b76b3fda89b7441"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-09T01:17:33Z"
+diff_format = "unified"
+context_files = [
+    ".github/copilot-instructions.md",
+    ".github/instructions/python.instructions.md",
+    "README.md",
+    "agfusion/database.py",
+    "agfusion/utils.py",
+    "bin/build_dbs.py",
+    "pylintrc",
+    "requirements-dev.txt",
+    "requirements.txt",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 568
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

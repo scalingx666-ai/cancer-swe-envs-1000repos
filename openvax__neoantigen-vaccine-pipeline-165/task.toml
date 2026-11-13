@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/openvax__neoantigen-vaccine-pipeline-165"
+description = "Fix strelka"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "neoantigen-vaccine-pipeline",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "openvax/neoantigen-vaccine-pipeline"
+ref = "95e36af421d2c40f20a105809e49d0e5d0f5c185"
+reference = "https://github.com/openvax/neoantigen-vaccine-pipeline/pull/165"
+source_access = "auto"
+built_at = "2026-11-13T15:37:17.790440+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:23f963fd7774c78bbcca75668c2acf63d6a353c65e0763d727ea4c8284a55007"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-01-29T03:26:34Z"
+diff_format = "unified"
+context_files = [
+    "docker/Dockerfile",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 17
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/kblin__ncbi-genome-download-127"
+description = "Minor updates to gimme_taxa.py"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "ncbi-genome-download",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kblin/ncbi-genome-download"
+ref = "d55c667c91c70a64df3944d3580dabca9988cfcd"
+reference = "https://github.com/kblin/ncbi-genome-download/pull/127"
+source_access = "auto"
+built_at = "2026-11-13T15:48:21.795825+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:2cd01e714b5b8d5de7b043ec37c62944409f233ff06d5a1bf37de6506592c878"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-07-29T08:37:14Z"
+diff_format = "unified"
+context_files = [
+    "contrib/gimme_taxa.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 26
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

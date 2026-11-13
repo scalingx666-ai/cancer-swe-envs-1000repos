@@ -1,0 +1,225 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 000000000..5647b9a39
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,107 @@
++# Created by .ignore support plugin (hsz.mobi)
++### Python template
++# Byte-compiled / optimized / DLL files
++__pycache__/
++*.py[cod]
++*$py.class
++
++# C extensions
++*.so
++
++# Distribution / packaging
++.Python
++build/
++develop-eggs/
++dist/
++downloads/
++eggs/
++.eggs/
++lib/
++lib64/
++parts/
++sdist/
++var/
++wheels/
++*.egg-info/
++.installed.cfg
++*.egg
++MANIFEST
++
++# PyInstaller
++#  Usually these files are written by a python script from a template
++#  before PyInstaller builds the exe, so as to inject date/other infos into it.
++*.manifest
++*.spec
++
++# Installer logs
++pip-log.txt
++pip-delete-this-directory.txt
++
++# Unit test / coverage reports
++htmlcov/
++.tox/
++.coverage
++.coverage.*
++.cache
++nosetests.xml
++coverage.xml
++*.cover
++.hypothesis/
++.pytest_cache/
++
++# Translations
++*.mo
++*.pot
++
++# Django stuff:
++*.log
++local_settings.py
++db.sqlite3
++
++# Flask stuff:
++instance/
++.webassets-cache
++
++# Scrapy stuff:
++.scrapy
++
++# Sphinx documentation
++docs/_build/
++
++# PyBuilder
++target/
++
++# Jupyter Notebook
++.ipynb_checkpoints
++
++# pyenv
++.python-version
++
++# celery beat schedule file
++celerybeat-schedule
++
++# SageMath parsed files
++*.sage.py
++
++# Environments
++.env
++.venv
++env/
++venv/
++ENV/
++env.bak/
++venv.bak/
++
++# Spyder project settings
++.spyderproject
++.spyproject
++
++# Rope project settings
++.ropeproject
++
++# mkdocs documentation
++/site
++
++# mypy
++.mypy_cache/
++
+diff --git a/.travis.yml b/.travis.yml
+index 56d7c7063..d58a95846 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -17,6 +17,8 @@ install:
+   - conda create -y -n wf
+   - source activate wf
+   - conda install -y snakemake xenon-cli
++  - conda install -y pytest pytest-cov
+ script:
+   - snakemake -C echo_run=1 enable_callers="['manta','delly','lumpy','gridss']"
+   - find data -name *.vcf
++  - pytest --cov=helper_functions
+diff --git a/snakemake/test_helper_functions.py b/snakemake/test_helper_functions.py
+new file mode 100644
+index 000000000..32855c2f3
+--- /dev/null
++++ b/snakemake/test_helper_functions.py
+@@ -0,0 +1,93 @@
++import pytest
++
++import helper_functions as hf
++
++
++def test_get_callers():
++    result = hf.get_callers()
++
++    expected = ['manta', 'delly', 'lumpy', 'gridss']
++    assert result == expected
++
++
++@pytest.mark.parametrize("test_input,expected", [
++    ('fasta', '.fasta'),
++    ('fasta_idx', ['.fasta.fai', '.fasta.bwt', '.fasta.amb', '.fasta.ann', '.fasta.pac', '.fasta.sa']),
++    ('bam', '.bam'),
++    ('bam_idx', '.bam.bai'),
++    ('vcf', '.vcf'),
++])
++def test_get_filext(test_input, expected):
++    result = hf.get_filext(test_input)
++
++    assert result == expected
++
++
++def test_get_filext__unknownextension_exception():
++    with pytest.raises(Exception) as exc_info:
++        hf.get_filext('nobodyknows')
++        assert str(exc_info) == "Unknown input file format 'nobodyknows'."
++
++
++def test_get_fasta():
++    result = hf.get_fasta()
++    expected = 'data/fasta/Homo_sapiens.GRCh37.GATK.illumina.fasta'
++    assert result == expected
++
++
++def test_get_faidx():
++    result = hf.get_faidx()
++    expected = [
++        'data/fasta/Homo_sapiens.GRCh37.GATK.illumina.fasta.fai',
++        'data/fasta/Homo_sapiens.GRCh37.GATK.illumina.fasta.bwt',
++        'data/fasta/Homo_sapiens.GRCh37.GATK.illumina.fasta.amb',
++        'data/fasta/Homo_sapiens.GRCh37.GATK.illumina.fasta.ann',
++        'data/fasta/Homo_sapiens.GRCh37.GATK.illumina.fasta.pac',
++        'data/fasta/Homo_sapiens.GRCh37.GATK.illumina.fasta.sa',
++    ]
++    assert result == expected
++
++
++test_callers = [
++    ('manta', 'manta_out', 24, 16384, 0),
++    ('delly', 'delly_out', 2, 8192, 0),
++    ('lumpy', 'lumpy_out', 1, 32768, 0),
++    ('gridss', 'gridss_out', 24, 63488, 0),
++]
++
++
++@pytest.mark.parametrize("caller,outdir,nthreads,memory,tmpspace", test_callers)
++def test_get_outdir(caller, outdir, nthreads, memory, tmpspace):
++    result = hf.get_outdir(caller)
++    assert result == outdir
++
++
++@pytest.mark.parametrize("caller,outdir,nthreads,memory,tmpspace", test_callers)
++def test_get_nthreads(caller, outdir, nthreads, memory, tmpspace):
++    result = hf.get_nthreads(caller)
++    assert result == nthreads
++
++
++@pytest.mark.parametrize("caller,outdir,nthreads,memory,tmpspace", test_callers)
++def test_get_memory(caller, outdir, nthreads, memory, tmpspace):
++    result = hf.get_memory(caller)
++    assert result == memory
++
++
++@pytest.mark.parametrize("caller,outdir,nthreads,memory,tmpspace", test_callers)
++def test_get_tmpspace(caller, outdir, nthreads, memory, tmpspace):
++    result = hf.get_tmpspace(caller)
++    assert result == tmpspace
++
++
++def test_make_output():
++    result = hf.make_output()
++    expected = [
++        'data/bam/1/T1--N1/manta_out/manta.vcf', 'data/bam/1/T1--N1/delly_out/delly.vcf',
++        'data/bam/1/T1--N1/lumpy_out/lumpy.vcf', 'data/bam/1/T1--N1/gridss_out/gridss.vcf',
++        'data/bam/2/T2.1--N2/manta_out/manta.vcf', 'data/bam/2/T2.1--N2/delly_out/delly.vcf',
++        'data/bam/2/T2.1--N2/lumpy_out/lumpy.vcf', 'data/bam/2/T2.1--N2/gridss_out/gridss.vcf',
++        'data/bam/2/T2.2--N2/manta_out/manta.vcf', 'data/bam/2/T2.2--N2/delly_out/delly.vcf',
++        'data/bam/2/T2.2--N2/lumpy_out/lumpy.vcf', 'data/bam/2/T2.2--N2/gridss_out/gridss.vcf'
++    ]
++    assert result == expected

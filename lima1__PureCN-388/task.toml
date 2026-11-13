@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/lima1__PureCN-388"
+description = "If log ratios are provided, subset also the normals if available"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "PureCN",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lima1/PureCN"
+ref = "dfaa2319a3c21b121091001fa1114fd590d3900f"
+reference = "https://github.com/lima1/PureCN/pull/388"
+source_access = "auto"
+built_at = "2026-11-13T15:35:18.320207+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0a479134b2194e4db92fa251142c4a18d19087eb7bb62aafb4a0ba504943ae5f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-04-22T20:56:33Z"
+diff_format = "unified"
+context_files = [
+    "inst/extdata/PureCN.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

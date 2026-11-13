@@ -1,0 +1,64 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 6c6bf6fba..c497e7c4c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,9 @@
+ # Release notes
+ 
++## 2.3.4
++
++- Externalize JSX runtime to ensure compatibility with React 19
++
+ ## 2.3.3
+ 
+ - Fix value-scale zoom (`zoomedY`) not firing with a mouse wheel by checking the shift key on the current source event and falling back to `deltaX` when `deltaY` is zero
+diff --git a/package.json b/package.json
+index 41ec092d1..9cd1dec7f 100644
+--- a/package.json
++++ b/package.json
+@@ -15,16 +15,8 @@
+     },
+     "./dist/*": "./dist/*"
+   },
+-  "files": [
+-    "app",
+-    "dist"
+-  ],
+-  "keywords": [
+-    "hi-c",
+-    "genomics",
+-    "matrix",
+-    "tracks"
+-  ],
++  "files": ["app", "dist"],
++  "keywords": ["hi-c", "genomics", "matrix", "tracks"],
+   "scripts": {
+     "start": "vite",
+     "build": "tsc -p tsconfig.emit.json && node ./scripts/build.mjs",
+diff --git a/scripts/build.mjs b/scripts/build.mjs
+index 4166bcde9..46c68cbcd 100644
+--- a/scripts/build.mjs
++++ b/scripts/build.mjs
+@@ -79,12 +79,21 @@ async function build() {
+         formats: ['umd', 'es'],
+       },
+       rollupOptions: {
+-        external: ['react', 'react-dom', 'react-dom/client', 'pixi.js'],
++        external: [
++          'react',
++          'react-dom',
++          'react-dom/client',
++          'react/jsx-runtime',
++          'react/jsx-dev-runtime',
++          'pixi.js',
++        ],
+         output: {
+           globals: {
+             react: 'React',
+             'react-dom': 'ReactDOM',
+             'react-dom/client': 'ReactDOM',
++            'react/jsx-runtime': 'ReactJSXRuntime',
++            'react/jsx-dev-runtime': 'ReactJSXDevRuntime',
+             'pixi.js': 'PIXI',
+           },
+         },

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/pyranges__pyranges0-410"
+description = "Make doctest table formatting independent of terminal width"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "pyranges0",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pyranges/pyranges0"
+ref = "2ee368b38649b30690187d38b32c446357e45deb"
+reference = "https://github.com/pyranges/pyranges0/pull/410"
+source_access = "auto"
+built_at = "2026-11-13T15:54:20.836300+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:dc9c974c1fb9e477e9e4bd2a0d5e17ab287ac3dc949cd540c0e3d883f989e992"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-22T10:57:45Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/install_doctest_lint_typecheck.yml",
+    "conftest.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 12
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,791 @@
+diff --git a/lib/galaxy/celery/tasks.py b/lib/galaxy/celery/tasks.py
+index ebf316df60e0..c01adf90c67c 100644
+--- a/lib/galaxy/celery/tasks.py
++++ b/lib/galaxy/celery/tasks.py
+@@ -429,6 +429,7 @@ def setup_fetch_data(
+     mini_job_wrapper._pause_job_if_over_quota(job)
+     if job.state == model.Job.states.PAUSED:
+         sa_session.commit()
++        mini_job_wrapper.run_after_commit_actions()
+         return None
+     request_json = Path(mini_job_wrapper.working_directory) / "request.json"
+     request_json_value = next(iter(p.value for p in job.parameters if p.name == "request_json"))
+diff --git a/lib/galaxy/job_execution/actions/post.py b/lib/galaxy/job_execution/actions/post.py
+index 79112ae538e7..740f3fbcc7dd 100644
+--- a/lib/galaxy/job_execution/actions/post.py
++++ b/lib/galaxy/job_execution/actions/post.py
+@@ -4,15 +4,22 @@
+ """
+ 
+ import datetime
++from typing import Optional
+ 
+ from markupsafe import escape
+ 
+-from galaxy.model import PostJobActionAssociation
++from galaxy.model import (
++    Job,
++    PostJobActionAssociation,
++)
+ from galaxy.util import send_mail
+ from galaxy.util.custom_logging import get_logger
+ 
+ log = get_logger(__name__)
+ 
++# A deleting job becomes deleted without running its post job actions, so it counts as settled too.
++MAPPED_OVER_SETTLED_STATES = (*Job.settled_states, Job.states.DELETING)
++
+ 
+ class DefaultJobAction:
+     """
+@@ -50,31 +57,75 @@ class EmailAction(DefaultJobAction):
+ 
+     @classmethod
+     def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
++        """Runs after the commit that settles ``job`` (see ``ActionBox.after_commit_actions``)."""
+         try:
+-            history_id_encoded = app.security.encode_id(job.history_id)
+-            link_invocation = None
+-            if job.workflow_invocation_step:
+-                invocation_id_encoded = app.security.encode_id(job.workflow_invocation_step.workflow_invocation_id)
+-                link_invocation = (
+-                    f"{app.config.galaxy_infrastructure_url}/workflows/invocations/report?id={invocation_id_encoded}"
+-                )
+-            link = f"{app.config.galaxy_infrastructure_url}/histories/view?id={history_id_encoded}"
+-            to = job.get_user_email()
+-            subject = f"Galaxy job completion notification from history '{job.history.name}'"
+-            outdata = ",\n".join(ds.dataset.display_name() for ds in job.output_datasets)
+-            body = (
+-                f"Your Galaxy job generating dataset(s):\n\n{outdata}\n\nis complete as of {datetime.datetime.now().strftime('%H:%M')}. "
+-                f"Click the link below to access your data: \n{link}\n\n"
+-                "Please remember to cite Galaxy using our primary publication "
+-                '(<a href="https://gxy.io/p/latest-nar">https://gxy.io/p/latest-nar</a>) '
+-                "in any publication based on your analysis."
+-            )
+-            if link_invocation:
+-                body += f"\n\nWorkflow Invocation Report:\n{link_invocation}"
+-            send_mail(app.config.email_from, to, subject, body, app.config)
++            implicit_collection_jobs_association = job.implicit_collection_jobs_association
++            if implicit_collection_jobs_association is None:
++                completed = cls._job_completed(job)
++            else:
++                # A job mapped over a collection: send one email for the whole map-over, not one per job.
++                completed = cls._map_over_completed(job, implicit_collection_jobs_association.implicit_collection_jobs)
++            if completed:
++                cls._send(app, job, completed)
+         except Exception:
+             log.exception("EmailAction PJA Failed")
+ 
++    @staticmethod
++    def _job_completed(job) -> Optional[str]:
++        """What completed, for a job not mapped over; None while it waits for the user to resume it."""
++        if job.state == job.states.PAUSED:
++            return None
++        outdata = ",\n".join(ds.dataset.display_name() for ds in job.output_datasets)
++        return f"Your Galaxy job generating dataset(s):\n\n{outdata}\n\nis complete"
++
++    @staticmethod
++    def _map_over_completed(job, implicit_collection_jobs) -> Optional[str]:
++        """What completed, for the map-over of ``job``; None while some of its jobs still have to run.
++
++        Every job checks after its own settled state is committed, so the last one to commit
++        sees all jobs settled. Jobs that commit within moments of each other may both see
++        that, and the user gets the summary twice.
++        """
++        if job.state in (job.states.DELETING, job.states.DELETED):
++            # Cancelled by the user; cancelling a running map-over would otherwise report once per job.
++            return None
++        if implicit_collection_jobs.populated_state == implicit_collection_jobs.populated_states.NEW:
++            # More jobs are still to be created.
++            return None
++        if implicit_collection_jobs.has_job_not_in_states(MAPPED_OVER_SETTLED_STATES):
++            return None
++        state_counts = implicit_collection_jobs.job_state_counts()
++        job_count = sum(state_counts.values())
++        jobs, are = ("job", "is") if job_count == 1 else ("jobs", "are")
++        collections = ",\n".join(
++            assoc.dataset_collection_instance.name
++            for assoc in job.output_dataset_collection_instances
++            if assoc.dataset_collection_instance.name
++        )
++        states = ", ".join(f"{count} {state}" for state, count in sorted(state_counts.items()))
++        return f"Your {job_count} Galaxy {jobs} generating collection(s):\n\n{collections}\n\n{are} complete ({states})"
++
++    @staticmethod
++    def _send(app, job, completed):
++        history_id_encoded = app.security.encode_id(job.history_id)
++        link = f"{app.config.galaxy_infrastructure_url}/histories/view?id={history_id_encoded}"
++        subject = f"Galaxy job completion notification from history '{job.history.name}'"
++        body = (
++            f"{completed} as of {datetime.datetime.now().strftime('%H:%M')}. "
++            f"Click the link below to access your data: \n{link}\n\n"
++            "Please remember to cite Galaxy using our primary publication "
++            '(<a href="https://gxy.io/p/latest-nar">https://gxy.io/p/latest-nar</a>) '
++            "in any publication based on your analysis."
++        )
++        # Mapped over jobs reach their invocation step through their implicit collection jobs.
++        if invocation_step := job.effective_workflow_invocation_step:
++            invocation_id_encoded = app.security.encode_id(invocation_step.workflow_invocation_id)
++            link_invocation = (
++                f"{app.config.galaxy_infrastructure_url}/workflows/invocations/report?id={invocation_id_encoded}"
++            )
++            body += f"\n\nWorkflow Invocation Report:\n{link_invocation}"
++        send_mail(app.config.email_from, job.get_user_email(), subject, body, app.config)
++
+     @classmethod
+     def get_short_str(cls, pja):
+         if pja.action_arguments and "host" in pja.action_arguments:
+@@ -557,6 +608,11 @@ class ActionBox:
+     # Actions that can be applied ahead of the job execution while workflow is still
+     # being scheduled and jobs created.
+     immediate_actions = ["ChangeDatatypeAction", "RenameDatasetAction", "TagDatasetAction", "RemoveTagDatasetAction"]
++    # Actions that read the committed state of other jobs, so they run after the commit that
++    # settles the job (finished, failed, copied from a cached job or paused) rather than in it.
++    after_commit_actions = ["EmailAction"]
++    # Actions not run with the other post job actions in the commit that settles the job.
++    deferred_actions = immediate_actions + after_commit_actions
+     # Actions that will be applied to implicit mapped over collection outputs and not
+     # just individual outputs when steps include mapped over tools and implicit collection outputs.
+     mapped_over_output_actions = [
+@@ -602,6 +658,38 @@ def execute_on_mapped_over(
+                 trans, sa_session, pja, step_inputs, step_outputs, replacement_dict, final_job_state=final_job_state
+             )
+ 
++    @classmethod
++    def has_after_commit_actions(cls, job) -> bool:
++        """Whether ``job`` has ``after_commit_actions``; check before the commit, while they are loaded."""
++        return any(pjaa.post_job_action.action_type in cls.after_commit_actions for pjaa in job.post_job_actions)
++
++    @classmethod
++    def execute_after_commit(cls, app, sa_session, jobs):
++        """Run the ``after_commit_actions`` of ``jobs``, whose settled states must be committed.
++
++        For mapped over jobs they report on the whole map-over, so they run for one job of each map-over.
++        Failures are logged, not raised: the jobs are already settled and committed.
++        """
++        reported_map_over_ids = set()
++        for job in jobs:
++            try:
++                actions = [
++                    pjaa.post_job_action
++                    for pjaa in job.post_job_actions
++                    if pjaa.post_job_action.action_type in cls.after_commit_actions
++                ]
++                if not actions:
++                    continue
++                if implicit_collection_jobs_association := job.implicit_collection_jobs_association:
++                    map_over_id = implicit_collection_jobs_association.implicit_collection_jobs_id
++                    if map_over_id in reported_map_over_ids:
++                        continue
++                    reported_map_over_ids.add(map_over_id)
++                for action in actions:
++                    cls.execute(app, sa_session, action, job)
++            except Exception:
++                log.exception("Running after-commit post job actions failed for job %s", job.id)
++
+     @classmethod
+     def execute(cls, app, sa_session, pja, job, replacement_dict=None, final_job_state=None):
+         if pja.action_type in cls.actions:
+diff --git a/lib/galaxy/jobs/__init__.py b/lib/galaxy/jobs/__init__.py
+index a285ff0e61d0..91a1c3ebc091 100644
+--- a/lib/galaxy/jobs/__init__.py
++++ b/lib/galaxy/jobs/__init__.py
+@@ -1043,6 +1043,8 @@ def __init__(
+         self.tool_provided_job_metadata = None
+         self.params = None  # unused
+         self.runner_command_line = None
++        # Settled jobs whose after-commit post job actions run once their state is committed.
++        self._after_commit_jobs: list[Job] = []
+ 
+         # Wrapper holding the info required to restore and clean up from files used for setting metadata externally
+         self.__external_output_metadata = None
+@@ -1336,11 +1338,13 @@ def get_special():
+                 job.copy_from_job(job_to_copy, copy_outputs=True)
+                 # The copied job never reaches finish(), so run its post job actions here.
+                 for pjaa in job.post_job_actions:
+-                    if pjaa.post_job_action.action_type not in ActionBox.immediate_actions:
++                    if pjaa.post_job_action.action_type not in ActionBox.deferred_actions:
+                         ActionBox.execute(
+                             self.app, self.sa_session, pjaa.post_job_action, job, final_job_state=job.state
+                         )
++                self.queue_after_commit_actions(job)
+                 self.sa_session.commit()
++                self.run_after_commit_actions()
+                 return False
+         job.command_line = self.command_line
+ 
+@@ -1510,6 +1514,7 @@ def fail(
+             # If job was composed of tasks, don't attempt to recollect statistics
+             self._collect_metrics(job, job_metrics_directory)
+ 
++        self.queue_after_commit_actions(job)
+         # if the job was deleted, don't fail it
+         if not job.state == job.states.DELETED:
+             # Check if the failure is due to an exception
+@@ -1578,10 +1583,7 @@ def fail(
+             self._fix_output_permissions()
+         self._report_error()
+         # Perform email action even on failure.
+-        for pja in [
+-            pjaa.post_job_action for pjaa in job.post_job_actions if pjaa.post_job_action.action_type == "EmailAction"
+-        ]:
+-            ActionBox.execute(self.app, self.sa_session, pja, job)
++        self.run_after_commit_actions()
+ 
+         # If the job was deleted, call tool specific fail actions (used for e.g. external metadata) and clean up
+         if self.tool:
+@@ -1606,6 +1608,21 @@ def pause(self, job=None, message=None):
+             log.debug("Pausing Job '%d', %s", job.id, message)
+             job.set_state(job.states.PAUSED)
+             self.sa_session.add(job)
++            self.queue_after_commit_actions(job)
++            return True
++        return False
++
++    def queue_after_commit_actions(self, job: Job) -> None:
++        """Queue the after-commit post job actions of ``job``; call it before the commit that settles it."""
++        # A job may be queued twice, e.g. by finish() and then by fail() when finishing raises.
++        if job not in self._after_commit_jobs and ActionBox.has_after_commit_actions(job):
++            self._after_commit_jobs.append(job)
++
++    def run_after_commit_actions(self) -> None:
++        """Run the queued after-commit post job actions; call it after the commit that settles their jobs."""
++        jobs, self._after_commit_jobs = self._after_commit_jobs, []
++        if jobs:
++            ActionBox.execute_after_commit(self.app, self.sa_session, jobs)
+ 
+     def is_ready_for_resubmission(self, job=None):
+         if job is None:
+@@ -1866,6 +1883,7 @@ def enqueue(self):
+         self._pause_job_if_over_quota(job)
+         self.sa_session.commit()
+         if job.state == model.Job.states.PAUSED:
++            self.run_after_commit_actions()
+             return False
+         return True
+ 
+@@ -2337,8 +2355,9 @@ def fail(message=job.info, exception=None):
+                     )
+ 
+         for pja in job.post_job_actions:
+-            if pja.post_job_action.action_type not in ActionBox.immediate_actions:
++            if pja.post_job_action.action_type not in ActionBox.deferred_actions:
+                 ActionBox.execute(self.app, self.sa_session, pja.post_job_action, job, final_job_state=final_job_state)
++        self.queue_after_commit_actions(job)
+ 
+         # The exit code will be null if there is no exit code to be set.
+         # This is so that we don't assign an exit code, such as 0, that
+@@ -2422,6 +2441,7 @@ def fail(message=job.info, exception=None):
+         job.touch_collections_update_time()
+         job.set_state(final_job_state)
+         self.sa_session.commit()
++        self.run_after_commit_actions()
+ 
+         # The hash tasks load the datasets, which may have been created in the commit above.
+         if hash_requests:
+diff --git a/lib/galaxy/jobs/handler.py b/lib/galaxy/jobs/handler.py
+index ab94abf094c4..39f205e303a0 100644
+--- a/lib/galaxy/jobs/handler.py
++++ b/lib/galaxy/jobs/handler.py
+@@ -450,6 +450,8 @@ def __handle_waiting_jobs(self) -> None:
+         # Pull all new jobs from the queue at once
+         jobs_to_check: list[model.Job] = []
+         resubmit_jobs = []
++        # Jobs settled in this pass whose after-commit post job actions run once it is committed.
++        settled_jobs: list[model.Job] = []
+         if self.track_jobs_in_database:
+             # Clear the session so we get fresh states for job and all datasets
+             self.sa_session.expunge_all()
+@@ -515,7 +517,7 @@ def __handle_waiting_jobs(self) -> None:
+                     .all()
+                 )
+             # Filter jobs with invalid input states
+-            jobs_to_check = self.__filter_jobs_with_invalid_input_states(jobs_to_check)
++            jobs_to_check = self.__filter_jobs_with_invalid_input_states(jobs_to_check, settled_jobs)
+             # Fetch all "resubmit" jobs
+             resubmit_jobs = (
+                 self.sa_session.query(model.Job)
+@@ -578,8 +580,10 @@ def __handle_waiting_jobs(self) -> None:
+                     # that were registered during workflow step execution but are
+                     # normally only run at job completion via the runner finish path.
+                     for pjaa in job.post_job_actions:
+-                        if pjaa.post_job_action.action_type not in ActionBox.immediate_actions:
++                        if pjaa.post_job_action.action_type not in ActionBox.deferred_actions:
+                             ActionBox.execute(self.app, self.sa_session, pjaa.post_job_action, job)
++                    if ActionBox.has_after_commit_actions(job):
++                        settled_jobs.append(job)
+                     continue
+                 job_state = self.__check_job_state(job)
+                 if job_state == JOB_WAIT:
+@@ -606,6 +610,8 @@ def __handle_waiting_jobs(self) -> None:
+                         dataset_assoc.dataset.info = "Execution of this dataset's job is paused because you were over your total job runtime at the time it was ready to run"
+                         self.sa_session.add(dataset_assoc.dataset.dataset)
+                     self.sa_session.add(job)
++                    if ActionBox.has_after_commit_actions(job):
++                        settled_jobs.append(job)
+                 elif job_state == JOB_ERROR:
+                     # A more informative message is shown wherever the job state is set to error
+                     pass
+@@ -622,11 +628,16 @@ def __handle_waiting_jobs(self) -> None:
+             del self.job_wrappers[id]
+         # Commit updated state
+         self.sa_session.commit()
++        if settled_jobs:
++            ActionBox.execute_after_commit(self.app, self.sa_session, settled_jobs)
++            # Ends the read transaction the actions started.
++            self.sa_session.commit()
+ 
+-    def __filter_jobs_with_invalid_input_states(self, jobs):
++    def __filter_jobs_with_invalid_input_states(self, jobs, paused_jobs):
+         """
+         Takes  list of jobs and filters out jobs whose input datasets are in invalid state and
+-        set these jobs and their dependent jobs to paused.
++        set these jobs and their dependent jobs to paused. Paused jobs with after-commit post job
++        actions are added to ``paused_jobs``.
+         """
+         job_ids_to_check = [j.id for j in jobs]
+         queries = []
+@@ -689,7 +700,8 @@ def __filter_jobs_with_invalid_input_states(self, jobs):
+             pause_message = f"{pause_message}. To resume this job fix the input dataset(s)."
+             job, job_wrapper = self.job_pair_for_id(job_id)
+             try:
+-                job_wrapper.pause(job=job, message=pause_message)
++                if job_wrapper.pause(job=job, message=pause_message) and ActionBox.has_after_commit_actions(job):
++                    paused_jobs.append(job)
+             except Exception:
+                 log.exception("(%s) Caught exception while attempting to pause job.", job_id)
+         for job_id in sorted(jobs_to_fail):
+diff --git a/lib/galaxy/model/__init__.py b/lib/galaxy/model/__init__.py
+index 1eb70c647c9f..4f280714b03c 100644
+--- a/lib/galaxy/model/__init__.py
++++ b/lib/galaxy/model/__init__.py
+@@ -1816,6 +1816,8 @@ def effective_workflow_invocation_step(self) -> Optional["WorkflowInvocationStep
+     terminal_states = [states.OK, states.ERROR, states.DELETED]
+     # deleting state should not turn back into any of the non-ready states
+     finished_states = terminal_states + [states.DELETING]
++    # States a job won't leave without outside action, such as the user resuming a paused job.
++    settled_states = (states.OK, states.ERROR, states.DELETED, states.SKIPPED, states.PAUSED, states.STOPPED)
+     #: job states where the job hasn't finished and the model may still change
+     non_ready_states = [
+         states.NEW,
+@@ -1849,14 +1851,7 @@ def is_terminal(self) -> bool:
+         Terminal states are those where the job will not change further without
+         external intervention. This includes ok, error, deleted, skipped, paused, and stopped.
+         """
+-        return self.state in (
+-            self.states.OK,
+-            self.states.ERROR,
+-            self.states.DELETED,
+-            self.states.SKIPPED,
+-            self.states.PAUSED,
+-            self.states.STOPPED,
+-        )
++        return self.state in self.settled_states
+ 
+     def copy_from_job(self, job: "Job", copy_outputs: bool = False):
+         self.copied_from_job_id = job.id
+@@ -3049,6 +3044,24 @@ class populated_states(str, Enum):
+     def __init__(self, populated_state=None):
+         self.populated_state = populated_state or ImplicitCollectionJobs.populated_states.NEW
+ 
++    def _job_states_stmt(self):
++        return (
++            select(Job.state)
++            .select_from(Job)
++            .join(ImplicitCollectionJobsJobAssociation, Job.id == ImplicitCollectionJobsJobAssociation.job_id)
++            .where(ImplicitCollectionJobsJobAssociation.implicit_collection_jobs_id == self.id)
++        )
++
++    def has_job_not_in_states(self, states: Iterable[str]) -> bool:
++        """Whether any of these jobs is in a state not in ``states``."""
++        stmt = select(self._job_states_stmt().where(Job.state.not_in(states)).exists())
++        return bool(required_object_session(self).scalar(stmt))
++
++    def job_state_counts(self) -> dict[str, int]:
++        """Number of these jobs in each state."""
++        stmt = self._job_states_stmt().add_columns(func.count()).group_by(Job.state)
++        return dict(required_object_session(self).execute(stmt).tuples().all())
++
+     @property
+     def job_list(self):
+         return (
+diff --git a/lib/galaxy/util/__init__.py b/lib/galaxy/util/__init__.py
+index e30e1aac227a..22e17af64a21 100644
+--- a/lib/galaxy/util/__init__.py
++++ b/lib/galaxy/util/__init__.py
+@@ -1814,6 +1814,10 @@ def send_mail(frm, to, subject, body, config, html=None, reply_to=None):
+             "reply_to": reply_to,
+         }
+         email_json = json.to_json_string(email_dict)
++        if os.path.isdir(path):
++            # One file per email, named in sending order, so tests can tell how many were sent.
++            fd, path = tempfile.mkstemp(prefix=f"{time.time_ns()}-", suffix=".json", dir=path)
++            os.close(fd)
+         with open(path, "w") as f:
+             f.write(email_json)
+         return
+diff --git a/lib/galaxy/util/unittest_utils/__init__.py b/lib/galaxy/util/unittest_utils/__init__.py
+index 9536e1ba1d40..7dc5fb7be0b9 100644
+--- a/lib/galaxy/util/unittest_utils/__init__.py
++++ b/lib/galaxy/util/unittest_utils/__init__.py
+@@ -1,9 +1,13 @@
++import json
+ import os
+ import re
+ from datetime import datetime
+ from functools import wraps
++from pathlib import Path
+ from typing import (
++    Any,
+     Callable,
++    Dict,
+     List,
+     Optional,
+     TypeVar,
+@@ -36,6 +40,11 @@ def is_site_up(url: str) -> bool:
+     return site_down_reason(url) is None
+ 
+ 
++def read_mock_emails(directory: Union[str, Path]) -> List[Dict[str, Any]]:
++    """Emails sent with ``smtp_server`` set to ``mock_emails_to_path://<directory>``, oldest first."""
++    return [json.loads(path.read_text()) for path in sorted(Path(directory).iterdir())]
++
++
+ P = ParamSpec("P")
+ T = TypeVar("T")
+ 
+diff --git a/test/integration/test_job_completion_emails.py b/test/integration/test_job_completion_emails.py
+new file mode 100644
+index 000000000000..c79b5ec797f4
+--- /dev/null
++++ b/test/integration/test_job_completion_emails.py
+@@ -0,0 +1,77 @@
++"""Job completion emails requested with the tool form's email notification option."""
++
++from pathlib import Path
++from typing import ClassVar
++
++from galaxy.util.unittest_utils import read_mock_emails
++from galaxy_test.base.populators import (
++    DatasetCollectionPopulator,
++    DatasetPopulator,
++    wait_on,
++)
++from galaxy_test.driver import integration_util
++
++# One worker finishes the jobs of a map-over one after the other, so the last job always sees the
++# others settled and no two jobs can both send the summary.
++SINGLE_WORKER_JOB_CONFIG = {
++    "runners": {"local": {"load": "galaxy.jobs.runners.local:LocalJobRunner", "workers": 1}},
++    "execution": {"default": "local", "environments": {"local": {"runner": "local"}}},
++}
++
++
++class TestJobCompletionEmails(integration_util.IntegrationTestCase):
++    email_dir: ClassVar[str]
++    dataset_populator: DatasetPopulator
++    dataset_collection_populator: DatasetCollectionPopulator
++
++    @classmethod
++    def handle_galaxy_config_kwds(cls, config):
++        super().handle_galaxy_config_kwds(config)
++        cls.email_dir = cls._test_driver.mkdtemp()
++        config["email_from"] = "galaxy-noreply@example.com"
++        config["smtp_server"] = f"mock_emails_to_path://{cls.email_dir}"
++        config["job_config"] = SINGLE_WORKER_JOB_CONFIG
++
++    def setUp(self):
++        super().setUp()
++        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
++        self.dataset_collection_populator = DatasetCollectionPopulator(self.galaxy_interactor)
++        for email in Path(self.email_dir).iterdir():
++            email.unlink()
++
++    def test_job_sends_its_own_email(self):
++        with self.dataset_populator.test_history() as history_id:
++            hda = self.dataset_populator.new_dataset(history_id, content="a\n", wait=True)
++
++            self._run_cat1_with_email(history_id, {"src": "hda", "id": hda["id"]})
++
++            [email] = self._wait_for_emails()
++            assert email["to"] == self._current_user_email()
++            assert email["body"].startswith("Your Galaxy job generating dataset(s):")
++
++    def test_map_over_sends_one_summary_email(self):
++        with self.dataset_populator.test_history() as history_id:
++            hdca = self.dataset_collection_populator.create_list_in_history(
++                history_id, contents=["a\n", "b\n", "c\n"], wait=True
++            ).json()["outputs"][0]
++
++            self._run_cat1_with_email(history_id, {"batch": True, "values": [{"src": "hdca", "id": hdca["id"]}]})
++
++            [email] = self._wait_for_emails()
++            assert email["to"] == self._current_user_email()
++            assert email["body"].startswith("Your 3 Galaxy jobs generating collection(s):")
++            assert "are complete (3 ok) as of " in email["body"]
++
++    def _run_cat1_with_email(self, history_id: str, input1: dict) -> None:
++        response = self.dataset_populator.run_tool(
++            "cat1", {"input1": input1, "send_email_notification": True}, history_id
++        )
++        for job in response["jobs"]:
++            self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
++
++    def _wait_for_emails(self) -> list[dict]:
++        # Emails are sent right after the commit that finishes a job, so they may lag its state.
++        return wait_on(lambda: read_mock_emails(self.email_dir) or None, "job completion email")
++
++    def _current_user_email(self) -> str:
++        return self._get("users/current").json()["email"]
+diff --git a/test/unit/app/jobs/test_job_wrapper_finish.py b/test/unit/app/jobs/test_job_wrapper_finish.py
+index 46be91f14b3d..29edc3d41c45 100644
+--- a/test/unit/app/jobs/test_job_wrapper_finish.py
++++ b/test/unit/app/jobs/test_job_wrapper_finish.py
+@@ -17,10 +17,12 @@
+     model,
+ )
+ from galaxy.app_unittest_utils.tools_support import UsesTools
++from galaxy.job_execution.actions import post
+ from galaxy.jobs import MinimalJobWrapper
+ from galaxy.model import store
+ from galaxy.util.hash_util import HashFunctionNameEnum
+ from galaxy.util.unittest import TestCase
++from galaxy.util.unittest_utils import read_mock_emails
+ 
+ OLD_UPDATE_TIME = datetime(2020, 1, 1)
+ 
+@@ -55,6 +57,7 @@ def setUp(self):
+         self.config = cast(Any, self.app.config)
+         self.config.retry_job_output_collection = 0
+         self.config.calculate_dataset_hash = "never"
++        self.config.galaxy_infrastructure_url = "https://galaxy.example.org"
+         self.app.job_metrics = job_metrics.JobMetrics()
+         self.job = job
+         self.dataset = dataset
+@@ -159,6 +162,60 @@ def test_extended_metadata_outputs_and_final_job_state_are_committed_together(se
+         for job_state, dataset_state, _ in committed:
+             assert (job_state == model.Job.states.OK) == (dataset_state == model.Dataset.states.OK)
+ 
++    def test_email_is_sent_after_final_job_state_is_committed(self):
++        self.job.add_post_job_action(model.PostJobAction("EmailAction"))
++        self.app.model.context.commit()
++        committed_when_sent = []
++        with patch.object(post, "send_mail") as send_mail:
++            send_mail.side_effect = lambda *args, **kwargs: committed_when_sent.append(list(self.committed))
++            self._finish_and_record_commits()
++
++        assert len(committed_when_sent) == 1
++        assert committed_when_sent[0][-1][:2] == (model.Job.states.OK, model.Dataset.states.OK)
++
++    def test_failed_job_completes_map_over_of_the_dependent_job_it_pauses(self):
++        session = self.app.model.context
++        map_over = model.ImplicitCollectionJobs(populated_state="ok")
++        hdca = model.HistoryDatasetCollectionAssociation(name="trimmed reads", hid=1, history=self.job.history)
++        hdca.implicit_collection_jobs = map_over
++        finished_job, dependent_job = (
++            self._add_mapped_over_job(map_over, hdca, order_index, state)
++            for order_index, state in enumerate([model.Job.states.OK, model.Job.states.NEW])
++        )
++        dependent_job.add_input_dataset("input1", self.job.output_datasets[0].dataset)
++        session.commit()
++
++        email_dir = self._mock_emails_dir()
++        # Error reports need a real toolbox and are unrelated to the email.
++        with patch.object(MinimalJobWrapper, "_report_error"):
++            MinimalJobWrapper(self.job, self.app, tool=self.tool).fail("tool error")
++
++        assert dependent_job.state == model.Job.states.PAUSED
++        [email] = read_mock_emails(email_dir)
++        assert email["body"].startswith(
++            "Your 2 Galaxy jobs generating collection(s):\n\ntrimmed reads\n\nare complete (1 ok, 1 paused) as of "
++        )
++
++    def _mock_emails_dir(self):
++        email_dir = os.path.join(self.test_directory, "emails")
++        os.makedirs(email_dir)
++        self.config.smtp_server = f"mock_emails_to_path://{email_dir}"
++        return email_dir
++
++    def _add_mapped_over_job(self, map_over, hdca, order_index, state):
++        job = model.Job()
++        job.user = self.job.user
++        job.history = self.job.history
++        job.state = state
++        job.add_post_job_action(model.PostJobAction("EmailAction"))
++        job.add_output_dataset_collection("output", hdca)
++        job_assoc = model.ImplicitCollectionJobsJobAssociation()
++        job_assoc.order_index = order_index
++        job_assoc.implicit_collection_jobs = map_over
++        job_assoc.job = job
++        self.app.model.context.add(job_assoc)
++        return job
++
+     def _add_output_collection(self):
+         session = self.app.model.context
+         hdca = model.HistoryDatasetCollectionAssociation(
+diff --git a/test/unit/job_execution/test_email_action.py b/test/unit/job_execution/test_email_action.py
+new file mode 100644
+index 000000000000..1f45b1b126dd
+--- /dev/null
++++ b/test/unit/job_execution/test_email_action.py
+@@ -0,0 +1,160 @@
++"""EmailAction sends one email for a whole map-over, once all its jobs have settled.
++
++The end-to-end emails are covered by ``test/integration/test_job_completion_emails.py``.
++"""
++
++import pytest
++
++from galaxy import model
++from galaxy.job_execution.actions.post import ActionBox
++from galaxy.model.unittest_utils import GalaxyDataTestApp
++from galaxy.util.unittest_utils import read_mock_emails
++
++
++@pytest.fixture
++def email_dir(tmp_path):
++    return tmp_path
++
++
++@pytest.fixture
++def app(email_dir) -> GalaxyDataTestApp:
++    return GalaxyDataTestApp(
++        email_from="galaxy@example.org",
++        galaxy_infrastructure_url="https://galaxy.example.org",
++        smtp_server=f"mock_emails_to_path://{email_dir}",
++    )
++
++
++@pytest.fixture
++def history(app) -> model.History:
++    user = model.User(email="user@example.org", password="password")
++    history = model.History(name="Analysis", user=user)
++    app.model.session.add(history)
++    return history
++
++
++def make_job(app, history, state) -> model.Job:
++    job = model.Job()
++    job.user = history.user
++    job.history = history
++    job.state = state
++    job.add_post_job_action(model.PostJobAction("EmailAction"))
++    app.model.session.add(job)
++    return job
++
++
++def make_map_over(app, history, job_states, populated_state="ok") -> list[model.Job]:
++    """Jobs of one map-over that populates the collection 'trimmed reads'."""
++    implicit_collection_jobs = model.ImplicitCollectionJobs(populated_state=populated_state)
++    hdca = model.HistoryDatasetCollectionAssociation(name="trimmed reads", hid=1, history=history)
++    hdca.implicit_collection_jobs = implicit_collection_jobs
++    app.model.session.add(hdca)
++    jobs = []
++    for order_index, state in enumerate(job_states):
++        job = make_job(app, history, state)
++        job.add_output_dataset_collection("output", hdca)
++        job_assoc = model.ImplicitCollectionJobsJobAssociation()
++        job_assoc.order_index = order_index
++        job_assoc.implicit_collection_jobs = implicit_collection_jobs
++        job_assoc.job = job
++        app.model.session.add(job_assoc)
++        jobs.append(job)
++    app.model.session.commit()
++    return jobs
++
++
++def run_email_actions(app, *jobs):
++    ActionBox.execute_after_commit(app, app.model.session, jobs)
++
++
++def test_paused_job_not_mapped_over_sends_nothing(app, history, email_dir):
++    job = make_job(app, history, model.Job.states.PAUSED)
++    app.model.session.commit()
++
++    run_email_actions(app, job)
++    sent_emails = read_mock_emails(email_dir)
++
++    assert sent_emails == []
++
++
++@pytest.mark.parametrize(
++    "populated_state, job_states, expected_completion",
++    [
++        pytest.param(
++            "ok",
++            [model.Job.states.OK, model.Job.states.ERROR, model.Job.states.OK],
++            "Your 3 Galaxy jobs generating collection(s):\n\ntrimmed reads\n\nare complete (1 error, 2 ok)",
++            id="all_jobs_finished",
++        ),
++        pytest.param(
++            "ok",
++            [model.Job.states.OK, model.Job.states.PAUSED, model.Job.states.OK],
++            "Your 3 Galaxy jobs generating collection(s):\n\ntrimmed reads\n\nare complete (2 ok, 1 paused)",
++            id="a_job_paused",
++        ),
++        pytest.param(
++            "failed",
++            [model.Job.states.OK, model.Job.states.OK],
++            "Your 2 Galaxy jobs generating collection(s):\n\ntrimmed reads\n\nare complete (2 ok)",
++            id="some_jobs_could_not_be_created",
++        ),
++        pytest.param(
++            "ok",
++            [model.Job.states.OK],
++            "Your 1 Galaxy job generating collection(s):\n\ntrimmed reads\n\nis complete (1 ok)",
++            id="single_job",
++        ),
++    ],
++)
++def test_settled_map_over_sends_one_summary_email(
++    app, history, email_dir, populated_state, job_states, expected_completion
++):
++    *_, last_job = make_map_over(app, history, job_states, populated_state)
++
++    run_email_actions(app, last_job)
++    sent_emails = read_mock_emails(email_dir)
++
++    assert len(sent_emails) == 1
++    assert sent_emails[0]["body"].startswith(f"{expected_completion} as of ")
++
++
++@pytest.mark.parametrize(
++    "populated_state, job_states",
++    [
++        pytest.param(
++            "ok", [model.Job.states.OK, model.Job.states.RUNNING, model.Job.states.OK], id="a_job_still_running"
++        ),
++        pytest.param(
++            "ok", [model.Job.states.OK, model.Job.states.QUEUED, model.Job.states.OK], id="a_job_still_queued"
++        ),
++        pytest.param("new", [model.Job.states.OK, model.Job.states.OK], id="more_jobs_still_to_be_created"),
++        pytest.param("ok", [model.Job.states.OK, model.Job.states.DELETED], id="last_job_cancelled"),
++    ],
++)
++def test_mapped_over_job_sends_no_summary(app, history, email_dir, populated_state, job_states):
++    *_, last_job = make_map_over(app, history, job_states, populated_state)
++
++    run_email_actions(app, last_job)
++    sent_emails = read_mock_emails(email_dir)
++
++    assert sent_emails == []
++
++
++def test_map_over_settled_by_several_jobs_at_once_sends_one_email(app, history, email_dir):
++    jobs = make_map_over(app, history, [model.Job.states.PAUSED, model.Job.states.PAUSED])
++
++    run_email_actions(app, *jobs)
++    sent_emails = read_mock_emails(email_dir)
++
++    assert len(sent_emails) == 1
++
++
++def test_map_over_job_without_email_action_does_not_hide_the_summary(app, history, email_dir):
++    job_without_email, job_with_email = make_map_over(app, history, [model.Job.states.OK, model.Job.states.OK])
++    app.model.session.delete(job_without_email.post_job_actions[0])
++    app.model.session.commit()
++
++    run_email_actions(app, job_without_email, job_with_email)
++    sent_emails = read_mock_emails(email_dir)
++
++    assert len(sent_emails) == 1

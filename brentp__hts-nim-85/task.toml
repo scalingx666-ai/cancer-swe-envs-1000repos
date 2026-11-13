@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/brentp__hts-nim-85"
+description = "slimmer image from Dockerfile"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "hts-nim",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "brentp/hts-nim"
+ref = "a2013db8b61906b3953991d9f25289fc447ba5ee"
+reference = "https://github.com/brentp/hts-nim/pull/85"
+source_access = "auto"
+built_at = "2026-11-13T16:16:05.857274+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:905fab3d7a9b103ac8c658469e88e09894130efef9958c6cfde36f464803437c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-09-11T09:46:14Z"
+diff_format = "unified"
+context_files = [
+    "Dockerfile",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 42
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

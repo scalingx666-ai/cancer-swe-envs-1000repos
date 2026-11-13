@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/raphael-group__THetA-26"
+description = "⚡ Vectorize array operations in L2, L3"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "THetA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "raphael-group/THetA"
+ref = "b11019e095bd3641b8aaf73ebd05604de760563c"
+reference = "https://github.com/raphael-group/THetA/pull/26"
+source_access = "auto"
+built_at = "2026-11-13T15:44:17.196442+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:2b740856931650bcbaaef2a7df9511d71b5826148159b1b1765b6f2a1edbfc16"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-08-20T15:39:24Z"
+diff_format = "unified"
+context_files = [
+    "README.txt",
+    "python/CalcAllC.py",
+    "python/L2args.pkl",
+    "python/L2outputs_branch.pkl",
+    "python/L2outputs_master.pkl",
+    "python/L3args.pkl",
+    "python/L3outputs_branch.pkl",
+    "python/L3outputs_master.pkl",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1728
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,504 @@
+diff --git a/.github/workflows/build.yaml b/.github/workflows/build.yaml
+new file mode 100644
+index 0000000..3859eed
+--- /dev/null
++++ b/.github/workflows/build.yaml
+@@ -0,0 +1,116 @@
++name: Build ariba images
++
++on:
++  push:
++    tags:
++      - 'v*.*.*'
++    branches:
++      - master
++  pull_request:
++    branches:
++      - master
++
++env:
++  REGISTRY: ghcr.io
++  IMAGE_NAME: ${{ github.repository }}
++
++jobs:
++  build:
++    name: Build
++    runs-on: ubuntu-20.04
++    steps:
++
++    - name: Set up Go 1.16
++      uses: actions/setup-go@v1
++      with:
++        go-version: 1.16
++      id: go
++
++    - name: Install Dependencies
++      run: |
++        sudo apt-get update && sudo apt-get install -y \
++          build-essential \
++          libssl-dev \
++          uuid-dev \
++          libgpgme11-dev \
++          squashfs-tools \
++          libseccomp-dev \
++          pkg-config \
++          debootstrap \
++          debian-keyring \
++          debian-archive-keyring \
++          rsync
++
++    - name: Install Singularity
++      env:
++        SINGULARITY_VERSION: 3.5.3
++        GOPATH: /tmp/go
++      run: |
++        mkdir -p $GOPATH
++        sudo mkdir -p /usr/local/var/singularity/mnt
++        mkdir -p $GOPATH/src/github.com/sylabs
++        cd $GOPATH/src/github.com/sylabs
++        wget https://github.com/hpcng/singularity/releases/download/v${SINGULARITY_VERSION}/singularity-${SINGULARITY_VERSION}.tar.gz
++        tar -xzf singularity-${SINGULARITY_VERSION}.tar.gz
++        cd singularity
++        ./mconfig -v -p /usr/local
++        make -j `nproc 2>/dev/null || echo 1` -C ./builddir all
++        sudo make -C ./builddir install
++
++
++    - name: Check out code for the container build
++      uses: actions/checkout@v2
++
++    - name: Set release version if is a release
++      if: startsWith(github.event.ref, 'refs/tags/v')
++      run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
++
++    - name: Set release version if not a release
++      if: false == startsWith(github.event.ref, 'refs/tags/v')
++      run: echo "RELEASE_VERSION=test" >> $GITHUB_ENV
++
++    - name: Build Singularity container
++      env:
++        SINGULARITY_RECIPE: Singularity.def
++        OUTPUT_CONTAINER: ariba_${{env.RELEASE_VERSION}}.img
++      run: |
++        ls
++        if [ -f "${SINGULARITY_RECIPE}" ]; then
++            sudo -E singularity build ${OUTPUT_CONTAINER} ${SINGULARITY_RECIPE}
++        else
++            echo "${SINGULARITY_RECIPE} is not found."
++            echo "Present working directory: $PWD"
++            ls
++        fi
++
++    - name: Release
++      if: startsWith(github.event.ref, 'refs/tags/v')
++      uses: softprops/action-gh-release@v1
++      with:
++        files: ariba*.img
++      env:
++        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++
++    - name: Log in to github container registry
++      if: startsWith(github.event.ref, 'refs/tags/v')
++      uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
++      with:
++        registry: ${{ env.REGISTRY }}
++        username: ${{ github.actor }}
++        password: ${{ secrets.GITHUB_TOKEN }}
++
++    - name: Extract metadata (tags, labels) for Docker
++      if: startsWith(github.event.ref, 'refs/tags/v')
++      id: meta
++      uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
++      with:
++        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
++
++    - name: Build and push Docker image
++      if: startsWith(github.event.ref, 'refs/tags/v')
++      uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
++      with:
++        context: .
++        push: true
++        tags: ${{ steps.meta.outputs.tags }}
++        labels: ${{ steps.meta.outputs.labels }}
+diff --git a/.travis.yml b/.travis.yml
+deleted file mode 100644
+index b13b232..0000000
+--- a/.travis.yml
++++ /dev/null
+@@ -1,21 +0,0 @@
+-language: python
+-addons:
+-  apt:
+-    packages:
+-    - zlib1g-dev
+-    - libblas-dev
+-    - liblapack-dev
+-    - libgfortran3
+-    - libncurses5-dev
+-python:
+-- '3.6'
+-sudo: false
+-install:
+-- pip install pysam
+-- source ./install_dependencies.sh
+-before_script:
+-- pip install codecov
+-script:
+-- coverage run setup.py test
+-after_success:
+-- codecov
+diff --git a/Dockerfile b/Dockerfile
+index e81661c..7149cb2 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,60 +1,31 @@
+-FROM ubuntu:18.04
++FROM ubuntu:20.04
+ 
+ ENV DEBIAN_FRONTEND=noninteractive
+ 
+-# Software version numbers
+-ARG BOWTIE2_VERSION=2.2.9
+-ARG SPADES_VERSION=3.13.1
+-ARG ARIBA_TAG=master
+ ARG ARIBA_BUILD_DIR=/ariba
+-
++ARG DEPS_DIR=/bioinf-tools
+ ARG LOCALE_COUNTRY=en_GB
+ 
+-RUN apt-get -qq update && \
+-    apt-get install --no-install-recommends -y \
+-  build-essential \
+-  cd-hit \
+-  curl \
+-  git \
+-  libbz2-dev \
+-  liblzma-dev \
+-  mummer \
+-  python3-dev \
+-  python3-setuptools \
+-  python3-pip \
+-  python3-tk \
+-  python3-matplotlib \
+-  unzip \
+-  wget \
+-  zlib1g-dev
+-
+ # Install locales
+-RUN apt-get update && apt-get install -y locales-all && rm -rf /var/lib/apt/lists/* 
++RUN apt-get update && apt-get install -y locales-all && rm -rf /var/lib/apt/lists/*
+ # Set a default locale.
+ ENV LANG=${LOCALE_COUNTRY}.UTF-8 \
+-    LANGUAGE=${LOCALE_COUNTRY}:en 
++    LANGUAGE=${LOCALE_COUNTRY}:en
+ 
+-# Install bowtie
+-RUN wget -q http://downloads.sourceforge.net/project/bowtie-bio/bowtie2/${BOWTIE2_VERSION}/bowtie2-${BOWTIE2_VERSION}-linux-x86_64.zip \
+-  && unzip bowtie2-${BOWTIE2_VERSION}-linux-x86_64.zip \
+-  && rm -f bowtie2-${BOWTIE2_VERSION}-linux-x86_64.zip
+-
+-# Install SPAdes
+-RUN wget -q https://github.com/ablab/spades/releases/download/v${SPADES_VERSION}/SPAdes-${SPADES_VERSION}-Linux.tar.gz \
+-  && tar -zxf SPAdes-${SPADES_VERSION}-Linux.tar.gz \
+-  && rm -f SPAdes-${SPADES_VERSION}-Linux.tar.gz
++RUN mkdir -p $ARIBA_BUILD_DIR
++COPY . $ARIBA_BUILD_DIR
++RUN $ARIBA_BUILD_DIR/install_dependencies.sh $DEPS_DIR
+ 
+ # Need MPLBACKEND="agg" to make matplotlib work without X11, otherwise get the error
+ # _tkinter.TclError: no display name and no $DISPLAY environment variable
+-ENV ARIBA_BOWTIE2=$PWD/bowtie2-${BOWTIE2_VERSION}/bowtie2 ARIBA_CDHIT=cdhit-est MPLBACKEND="agg"
+-ENV PATH=$PATH:$PWD/SPAdes-${SPADES_VERSION}-Linux/bin
+-
+-RUN ln -s -f /usr/bin/python3 /usr/local/bin/python
++ENV ARIBA_BOWTIE2=$DEPS_DIR/bowtie2/bowtie2 \
++    ARIBA_CDHIT=cdhit-est \
++    MPLBACKEND="agg" \
++    PATH=$PATH:$DEPS_DIR/SPAdes/bin
+ 
+ # Install Ariba
+-RUN mkdir -p $ARIBA_BUILD_DIR
+-COPY . $ARIBA_BUILD_DIR
+ RUN cd $ARIBA_BUILD_DIR \
++  && python3 -m pip install -r requirements.txt \
+   && python3 setup.py clean --all \
+   && python3 setup.py test \
+   && python3 setup.py install \
+diff --git a/README.md b/README.md
+index 95f6e7b..09a3bee 100644
+--- a/README.md
++++ b/README.md
+@@ -6,15 +6,12 @@ For how to use ARIBA, please see the [ARIBA wiki page][ARIBA wiki].
+ 
+ PLEASE NOTE: we currently do not have the resources to provide support for Ariba - see the [Feedback/Issues](#feedbackissues) section.
+ 
+-[![Unmaintained](http://unmaintained.tech/badge.svg)](http://unmaintained.tech/)  
+-[![Build Status](https://travis-ci.com/sanger-pathogens/ariba.svg?branch=master)](https://travis-ci.com/sanger-pathogens/ariba)   
+-[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-brightgreen.svg)](https://github.com/sanger-pathogens/ariba/blob/master/LICENSE)   
+-[![status](https://img.shields.io/badge/MGEN-10.1099%2Fmgen.0.000131-brightgreen.svg)](http://mgen.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000131)   
+-[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg)](http://bioconda.github.io/recipes/ariba/README.html)  
+-[![Container ready](https://img.shields.io/badge/container-ready-brightgreen.svg)](https://quay.io/repository/biocontainers/ariba)  
+-[![Docker Build Status](https://img.shields.io/docker/build/sangerpathogens/ariba.svg)](https://hub.docker.com/r/sangerpathogens/ariba)  
+-[![Docker Pulls](https://img.shields.io/docker/pulls/sangerpathogens/ariba.svg)](https://hub.docker.com/r/sangerpathogens/ariba)  
+-[![codecov](https://codecov.io/gh/sanger-pathogens/ariba/branch/master/graph/badge.svg)](https://codecov.io/gh/sanger-pathogens/ariba)
++[![Unmaintained](http://unmaintained.tech/badge.svg)](http://unmaintained.tech/)
++[![Build Status](https://github.com/sanger-pathogens/ariba/actions/workflows/build.yaml/badge.svg?branch=master)](https://github.com/sanger-pathogens/ariba/actions/workflows/build.yaml)
++[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-brightgreen.svg)](https://github.com/sanger-pathogens/ariba/blob/master/LICENSE)
++[![status](https://img.shields.io/badge/MGEN-10.1099%2Fmgen.0.000131-brightgreen.svg)](http://mgen.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000131)
++[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg)](http://bioconda.github.io/recipes/ariba/README.html)
++[![Container ready](https://img.shields.io/badge/container-ready-brightgreen.svg)](https://quay.io/repository/biocontainers/ariba)
+ 
+ ## Contents
+ * [Introduction](#introduction)
+@@ -24,6 +21,7 @@ PLEASE NOTE: we currently do not have the resources to provide support for Ariba
+   * [Using pip3](#using-pip3)
+   * [From Source](#from-source)
+   * [Docker](#docker)
++  * [Singularity](#singularity)
+   * [Debian (testing)](#debian-testing)
+   * [Ubuntu](#ubuntu)
+   * [Dependencies and environment variables](#dependencies-and-environment-variables)
+@@ -102,9 +100,13 @@ Alternatively, install directly from github using:
+     pip3 install git+https://github.com/sanger-pathogens/ariba.git #--user
+ 
+ ### Docker
+-ARIBA can be run in a Docker container. First install Docker, then install ARIBA:
++ARIBA can be run in a Docker container. First install Docker, then install the latest
++version of ARIBA:
+ 
+-    docker pull sangerpathogens/ariba
++    docker pull gchr.io/sanger-pathogens/ariba:latest
++
++All Docker images are listed in the
++[packages page](https://github.com/sanger-pathogens/ariba/pkgs/container/ariba).
+ 
+ To use ARIBA use a command like this (substituting in your directories), where your files are assumed to be stored in /home/ubuntu/data:
+ 
+@@ -113,6 +115,19 @@ To use ARIBA use a command like this (substituting in your directories), where y
+ When calling Ariba via Docker (as above) you'll also need to add **/data/** in front of all the passed in file or directory names (e.g. /data/my_output_folder).
+ 
+ 
++### Singularity
++
++ARIBA can be run in a Singularity container. First install Singularity.
++[Releases](https://github.com/sanger-pathogens/ariba/releases) include
++a Singularity image to download.
++
++Alternatively, build your own Singularity image:
++
++```
++singularity build ariba.simg Singularity.def
++```
++
++
+ ### Debian (Ariba version may not be the latest)
+ ARIBA is available in the latest version of Debian, and over time will progressively filter through to Ubuntu and other distributions which use Debian. To install it as root:
+ 
+diff --git a/Singularity.def b/Singularity.def
+new file mode 100644
+index 0000000..bbf8df5
+--- /dev/null
++++ b/Singularity.def
+@@ -0,0 +1,31 @@
++BootStrap: library
++From: ubuntu:20.04
++
++%environment
++    export PATH=/bioinf-tools/SPAdes/bin/:$PATH
++    export LANG=C.UTF-8
++    export ARIBA_BOWTIE2=/bioinf-tools/bowtie2/bowtie2
++    export ARIBA_CDHIT=cdhit-est
++    export MPLBACKEND="agg"
++
++
++%setup
++    mkdir $SINGULARITY_ROOTFS/ariba
++    rsync -a install_dependencies.sh MANIFEST.in LICENSE scripts ariba requirements.txt setup.py third_party $SINGULARITY_ROOTFS/ariba/
++
++
++%post
++    export PATH=/bioinf-tools/SPAdes/bin/:$PATH
++    export ARIBA_BOWTIE2=/bioinf-tools/bowtie2/bowtie2
++    export ARIBA_CDHIT=cdhit-est
++
++    /ariba/install_dependencies.sh /bioinf-tools
++    cd /ariba
++    python3 -m pip install -r requirements.txt
++    python3 setup.py clean --all
++	python3 setup.py test
++	python3 setup.py install
++
++
++%runscript
++    ariba "$@"
+diff --git a/install_dependencies.sh b/install_dependencies.sh
+index f8180c3..e6517da 100755
+--- a/install_dependencies.sh
++++ b/install_dependencies.sh
+@@ -1,73 +1,55 @@
+-#!/bin/bash
+-set -e
+-set -x
++#!/usr/bin/env bash
++set -vexu
+ 
+-start_dir=$(pwd)
++install_root=$1
+ 
+ BOWTIE2_VERSION=2.3.1
+-CDHIT_VERSION=4.6.5
+-MUMMER_VERSION=3.23
+-
+-BOWTIE2_DOWNLOAD_URL="http://downloads.sourceforge.net/project/bowtie-bio/bowtie2/${BOWTIE2_VERSION}/bowtie2-${BOWTIE2_VERSION}-legacy-linux-x86_64.zip"
+-CDHIT_DOWNLOAD_URL="https://github.com/weizhongli/cdhit/archive/V${CDHIT_VERSION}.tar.gz"
+-MUMMER_DOWNLOAD_URL="http://downloads.sourceforge.net/project/mummer/mummer/${MUMMER_VERSION}/MUMmer${MUMMER_VERSION}.tar.gz"
+-
+-
+-# Make an install location
+-if [ ! -d 'build' ]; then
+-  mkdir build
++SPADES_VERSION=3.13.1
++
++apt-get update -qq
++apt-get install -y software-properties-common
++apt-add-repository universe
++apt-get update -qq
++
++apt-get install --no-install-recommends -y \
++  build-essential \
++  cd-hit \
++  curl \
++  git \
++  libcurl4-gnutls-dev \
++  libssl-dev \
++  libbz2-dev \
++  liblzma-dev \
++  mummer \
++  python3-dev \
++  python3-setuptools \
++  python3-pip \
++  python3-pysam \
++  python3-tk \
++  python3-matplotlib \
++  unzip \
++  wget \
++  zlib1g-dev
++
++ln -s -f /usr/bin/python3 /usr/local/bin/python
++
++if [ ! -d $install_root ]; then
++  mkdir $install_root
+ fi
+-cd build
+-build_dir=$(pwd)
+-
+-# DOWNLOAD ALL THE THINGS
+-download () {
+-  url=$1
+-  download_location=$2
+-
+-  if [ -e $download_location ]; then
+-    echo "Skipping download of $url, $download_location already exists"
+-  else
+-    echo "Downloading $url to $download_location"
+-    wget $url -O $download_location
+-  fi
+-}
++cd $install_root
+ 
+ 
+ # --------------- bowtie2 ------------------
+-cd $build_dir
+-download $BOWTIE2_DOWNLOAD_URL "bowtie2-${BOWTIE2_VERSION}-legacy.zip"
+-bowtie2_dir="$build_dir/bowtie2-${BOWTIE2_VERSION}-legacy"
+-unzip -n bowtie2-${BOWTIE2_VERSION}-legacy.zip
+-
+-
+-# --------------- cdhit --------------------
+-cd $build_dir
+-download $CDHIT_DOWNLOAD_URL "cdhit-${CDHIT_VERSION}.tar.gz"
+-tar -zxf cdhit-${CDHIT_VERSION}.tar.gz
+-cdhit_dir="$build_dir/cdhit-${CDHIT_VERSION}"
+-cd $cdhit_dir
+-make
+-
+-
+-# --------------- mummer ------------------
+-cd $build_dir
+-download $MUMMER_DOWNLOAD_URL "MUMmer${MUMMER_VERSION}.tar.gz"
+-mummer_dir="$build_dir/MUMmer${MUMMER_VERSION}"
+-tar -zxf MUMmer${MUMMER_VERSION}.tar.gz
+-cd $mummer_dir
+-make
+-
+-
+-cd $start_dir
+-
+-update_path () {
+-  new_dir=$1
+-  if [[ ! "$PATH" =~ (^|:)"${new_dir}"(:|$) ]]; then
+-    export PATH=${new_dir}:${PATH}
+-  fi
+-}
+-
+-update_path ${bowtie2_dir}
+-update_path ${cdhit_dir}
+-update_path ${mummer_dir}
++cd $install_root
++wget -q http://downloads.sourceforge.net/project/bowtie-bio/bowtie2/${BOWTIE2_VERSION}/bowtie2-${BOWTIE2_VERSION}-legacy-linux-x86_64.zip
++unzip -n bowtie2-${BOWTIE2_VERSION}-legacy-linux-x86_64.zip
++rm bowtie2-${BOWTIE2_VERSION}-legacy-linux-x86_64.zip
++mv bowtie2-${BOWTIE2_VERSION}-legacy bowtie2
++
++
++# --------------- spades -------------------
++cd $install_root
++wget -q https://github.com/ablab/spades/releases/download/v${SPADES_VERSION}/SPAdes-${SPADES_VERSION}-Linux.tar.gz
++tar xf SPAdes-${SPADES_VERSION}-Linux.tar.gz
++rm SPAdes-${SPADES_VERSION}-Linux.tar.gz
++mv SPAdes-${SPADES_VERSION}-Linux SPAdes
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000..8cdc86f
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1,7 @@
++BeautifulSoup4 >= 4.1.0
++biopython < 1.78
++dendropy >= 4.2.0
++pyfastaq >= 3.12.0
++pysam >= 0.9.1
++pymummer <= 0.10.3
++matplotlib >= 3.1.0
+diff --git a/setup.py b/setup.py
+index 5067498..8d986ef 100644
+--- a/setup.py
++++ b/setup.py
+@@ -52,6 +52,10 @@
+     [os.path.join('ariba', 'ext', 'vcfcall_ariba.cpp')],
+ )
+ 
++
++with open("requirements.txt") as f:
++    install_requires = [x.rstrip() for x in f]
++
+ setup(
+     ext_modules=[minimap_mod, fermilite_mod, vcfcall_mod],
+     name='ariba',
+@@ -64,15 +68,7 @@
+     scripts=glob.glob('scripts/*'),
+     test_suite='nose.collector',
+     tests_require=['nose >= 1.3'],
+-    install_requires=[
+-        'BeautifulSoup4 >= 4.1.0',
+-        'biopython < 1.78',
+-        'dendropy >= 4.2.0',
+-        'pyfastaq >= 3.12.0',
+-        'pysam >= 0.9.1',
+-        'pymummer<=0.10.3',
+-        'matplotlib >= 3.1.0',
+-    ],
++    install_requires=install_requires,
+     license='GPLv3',
+     classifiers=[
+         'Development Status :: 4 - Beta',

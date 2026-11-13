@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/guma44__GEOparse-77"
+description = "Declare total_size outside of try block so it can't be undeclared."
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "GEOparse",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "guma44/GEOparse"
+ref = "10abe10cbb2c5d36ba3cf7467bd55da5d6e0e493"
+reference = "https://github.com/guma44/GEOparse/pull/77"
+source_access = "auto"
+built_at = "2026-11-13T16:15:08.066199+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e76c219345ec7b62b00739e3ef208f094420fc1ccaedcb4bedf13eefe23410af"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-04-23T18:37:20Z"
+diff_format = "unified"
+context_files = [
+    "src/GEOparse/downloader.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 7
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

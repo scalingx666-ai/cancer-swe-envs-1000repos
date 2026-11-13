@@ -1,0 +1,200 @@
+diff --git a/skills/contract_known_gaps.json b/skills/contract_known_gaps.json
+index 212993cb3..0b7b6da44 100644
+--- a/skills/contract_known_gaps.json
++++ b/skills/contract_known_gaps.json
+@@ -20,9 +20,6 @@
+   "locuscompare-region-render": [
+     "repro_files"
+   ],
+-  "omics-target-evidence-mapper": [
+-    "repro_files"
+-  ],
+   "prs-abstain": [
+     "repro_files"
+   ],
+diff --git a/skills/omics-target-evidence-mapper/SKILL.md b/skills/omics-target-evidence-mapper/SKILL.md
+index 9a9481149..7c0075473 100644
+--- a/skills/omics-target-evidence-mapper/SKILL.md
++++ b/skills/omics-target-evidence-mapper/SKILL.md
+@@ -62,9 +62,26 @@ This skill is for research triage only. It does not infer causality, rank therap
+ 4. Normalise results into a structured evidence object.
+ 5. Write JSON and Markdown outputs.
+ 6. Write reproducibility bundle:
+-   - `reproducibility/checksums.sha256` — SHA-256 hashes of all output files
++   - `reproducibility/commands.sh` — the command that re-runs this query (portable `$CLAWBIO_ROOT` / `$OUTPUT_DIR` paths)
+    - `reproducibility/environment.yml` — pinned Conda/pip environment
+    - `ro-crate-metadata.json` — RO-Crate 1.1 provenance record (run params, outputs, script)
++   - `reproducibility/checksums.sha256` — written last; SHA-256 of every output above, relative to the output dir
++
++## Output Structure
++
++```
++<output_dir>/
++├── report.md
++├── evidence.json
++├── metadata.json
++├── ro-crate-metadata.json
++└── reproducibility/
++    ├── commands.sh
++    ├── environment.yml
++    └── checksums.sha256
++```
++
++Verify with `cd <output_dir> && sha256sum -c reproducibility/checksums.sha256`.
+ 
+ # CLI Reference
+ 
+diff --git a/skills/omics-target-evidence-mapper/commands.sh b/skills/omics-target-evidence-mapper/commands.sh
+deleted file mode 100644
+index 49c3e897a..000000000
+--- a/skills/omics-target-evidence-mapper/commands.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-python skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py --demo --output demo_out
+-python skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py --gene IL6R --disease "coronary artery disease" --output out
+diff --git a/skills/omics-target-evidence-mapper/environment.yml b/skills/omics-target-evidence-mapper/environment.yml
+deleted file mode 100644
+index 9c7d8458b..000000000
+--- a/skills/omics-target-evidence-mapper/environment.yml
++++ /dev/null
+@@ -1,9 +0,0 @@
+-name: omics-target-evidence-mapper
+-channels:
+-  - conda-forge
+-  - nodefaults
+-dependencies:
+-  - python=3.11
+-  - pip
+-  - pip:
+-      - requests
+diff --git a/skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py b/skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py
+index 6afd31f09..5483bf987 100755
+--- a/skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py
++++ b/skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py
+@@ -4,6 +4,7 @@
+ 
+ import argparse
+ import json
++import shlex
+ import sys
+ from datetime import UTC, datetime
+ from pathlib import Path
+@@ -11,7 +12,14 @@
+ 
+ import requests
+ 
+-from clawbio.common.reproducibility import write_checksums, write_environment_yml, write_ro_crate
++from clawbio.common.reproducibility import (
++    ReproCommand,
++    ReproPath,
++    write_checksums,
++    write_environment_yml,
++    write_portable_commands_sh,
++    write_ro_crate,
++)
+ 
+ 
+ DEMO_GENE = "IL6R"
+@@ -406,6 +414,23 @@ def main() -> None:
+     write_json(evidence_path, evidence)
+     write_text(report_path, report)
+     write_json(metadata_path, metadata)
++    query_args = ["--demo"] if args.demo else ["--gene", shlex.quote(args.gene)]
++    if not args.demo and args.disease:
++        query_args += ["--disease", shlex.quote(args.disease)]
++    commands_path = write_portable_commands_sh(
++        output_dir,
++        ReproCommand(
++            script_path=Path("skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py"),
++            args=[
++                *query_args,
++                "--max-papers", str(args.max_papers),
++                "--max-trials", str(args.max_trials),
++                "--output", ReproPath(output_dir, anchor="output_dir"),
++            ],
++            comment="Re-run omics-target-evidence-mapper (queries live public APIs; results may differ).",
++        ),
++        repo_root=Path(__file__).resolve().parents[2],
++    )
+     environment_path = write_environment_yml(
+         output_dir,
+         env_name="clawbio-omics-target-evidence-mapper",
+@@ -427,7 +452,7 @@ def main() -> None:
+         },
+     )
+     write_checksums(
+-        [evidence_path, report_path, metadata_path, environment_path, ro_crate_path],
++        [evidence_path, report_path, metadata_path, commands_path, environment_path, ro_crate_path],
+         output_dir,
+         anchor=output_dir,
+     )
+diff --git a/skills/omics-target-evidence-mapper/tests/test_omics_target_evidence_mapper.py b/skills/omics-target-evidence-mapper/tests/test_omics_target_evidence_mapper.py
+index 12d96a411..1925027b1 100644
+--- a/skills/omics-target-evidence-mapper/tests/test_omics_target_evidence_mapper.py
++++ b/skills/omics-target-evidence-mapper/tests/test_omics_target_evidence_mapper.py
+@@ -54,6 +54,7 @@ def write_ro_crate(output_dir, **_kwargs):
+         "evidence.json",
+         "report.md",
+         "metadata.json",
++        "reproducibility/commands.sh",
+         "reproducibility/environment.yml",
+         "ro-crate-metadata.json",
+     }
+diff --git a/skills/omics-target-evidence-mapper/tests/test_repro_bundle.py b/skills/omics-target-evidence-mapper/tests/test_repro_bundle.py
+new file mode 100644
+index 000000000..423e33535
+--- /dev/null
++++ b/skills/omics-target-evidence-mapper/tests/test_repro_bundle.py
+@@ -0,0 +1,52 @@
++"""Every run writes reproducibility/{commands.sh,environment.yml,checksums.sha256}
++and the manifest verifies from the output directory (`sha256sum -c` contract)."""
++from __future__ import annotations
++
++import importlib.util
++import sys
++from pathlib import Path
++
++from clawbio.common.checksums import sha256_file
++
++MODULE_PATH = Path(__file__).parents[1] / "omics_target_evidence_mapper.py"
++SPEC = importlib.util.spec_from_file_location("omics_target_evidence_mapper", MODULE_PATH)
++mapper = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(mapper)
++
++
++def run(monkeypatch, out: Path, *cli: str) -> Path:
++    # Offline: every source reports "unavailable"; the bundle must still be written.
++    monkeypatch.setattr(mapper, "safe_request_json", lambda *a, **k: None)
++    monkeypatch.setattr(sys, "argv", ["omics_target_evidence_mapper.py", *cli, "--output", str(out)])
++    mapper.main()
++    return out
++
++
++def test_demo_writes_bundle_that_verifies(tmp_path, monkeypatch) -> None:
++    out = run(monkeypatch, tmp_path / "out", "--demo")
++    repro = out / "reproducibility"
++    for name in ("commands.sh", "environment.yml", "checksums.sha256"):
++        assert (repro / name).is_file(), name
++
++    lines = (repro / "checksums.sha256").read_text().splitlines()
++    assert lines
++    labels = set()
++    for line in lines:
++        digest, label = line.split("  ", 1)
++        assert not Path(label).is_absolute()
++        assert digest == sha256_file(out / label), label
++        labels.add(label)
++    assert {"reproducibility/commands.sh", "reproducibility/environment.yml", "report.md"} <= labels
++
++
++def test_commands_sh_records_this_runs_arguments(tmp_path, monkeypatch) -> None:
++    out = run(monkeypatch, tmp_path / "out", "--gene", "PCSK9", "--disease", "familial hypercholesterolemia", "--max-papers", "3", "--max-trials", "7")
++    # The writer puts one argument per continuation line; join them back.
++    content = (out / "reproducibility" / "commands.sh").read_text().replace(" \\\n  ", " ")
++    assert '"$CLAWBIO_ROOT/skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py"' in content
++    assert "--gene PCSK9" in content
++    assert "--disease 'familial hypercholesterolemia'" in content
++    assert "--max-papers 3" in content and "--max-trials 7" in content
++    assert '--output "$OUTPUT_DIR"' in content
++    assert "--demo" not in content
++    assert str(tmp_path) not in content

@@ -1,0 +1,76 @@
+diff --git a/cravat/gui/README.md b/cravat/gui/README.md
+index 7bd1cd0d..e7a7c5e6 100644
+--- a/cravat/gui/README.md
++++ b/cravat/gui/README.md
+@@ -28,4 +28,14 @@ celery -A cravat.gui.celery worker
+ 
+ You can run `celery --help` for other options like restricting
+ queues.  Here `cravat.gui.celery` is the dotted Python path to our configured 
+-celery `App` instance.
+\ No newline at end of file
++celery `App` instance.
++
++On macOS, billiard (4.3+) starts pool processes with `spawn` rather than
++`fork`, which requires setting `FORKED_BY_MULTIPROCESSING` like this:
++
++```
++FORKED_BY_MULTIPROCESSING=1 celery -A cravat.gui.celery worker
++```
++
++Workers started through `python -m cravat.gui.workers` or by the GUI set this
++automatically.
+\ No newline at end of file
+diff --git a/cravat/gui/job_manager.py b/cravat/gui/job_manager.py
+index 262132af..64ddd90e 100644
+--- a/cravat/gui/job_manager.py
++++ b/cravat/gui/job_manager.py
+@@ -3,12 +3,17 @@
+ import celery
+ from celery import current_app, states
+ 
+-def celery_init_app(flask_app):
+-    class FlaskTask(celery.Task):
+-        def __call__(self, *args: object, **kwargs: object) -> object:
+-            with flask_app.app_context():
+-                return self.run(*args, **kwargs)
++# Defined at module level so the Celery app can be pickled
++class FlaskTask(celery.Task):
++    def __call__(self, *args: object, **kwargs: object) -> object:
++        # Since cravat.gui imports this module, a spawned
++        # worker child has to import the Flask app itself.
++        from cravat.gui import app as flask_app
++        with flask_app.app_context():
++            return self.run(*args, **kwargs)
++
+ 
++def celery_init_app(flask_app):
+     celery_config = flask_app.config["CELERY"]
+ 
+     os.makedirs(flask_app.config["CACHE_DIR"], exist_ok=True)
+diff --git a/cravat/gui/workers.py b/cravat/gui/workers.py
+index e6f37dd2..c09eb0b6 100644
+--- a/cravat/gui/workers.py
++++ b/cravat/gui/workers.py
+@@ -1,3 +1,4 @@
++import os
+ import sys
+ 
+ from cravat.gui.config import (
+@@ -9,6 +10,17 @@
+ 
+ 
+ def _start(queue):
++    # Pool children started with 'spawn' (billiard's default on macOS since
++    # 4.3) only set up Celery's task tracer when this is set; without it every
++    # task fails with "not enough values to unpack (expected 3, got 0)".
++    os.environ.setdefault('FORKED_BY_MULTIPROCESSING', '1')
++    # When started via multiprocessing.Process (as `oc gui` does), __main__ is
++    # '__mp_main__' with no __spec__. billiard then tells its spawned pool
++    # children to re-import a module named '__mp_main__', which fails. Point
++    # __main__ at this module so the children re-import something importable.
++    main = sys.modules['__main__']
++    if main.__name__ == '__mp_main__' and getattr(main, '__spec__', None) is None:
++        sys.modules['__main__'] = sys.modules[__name__]
+     from cravat.gui import celery
+     n = celery_settings()[queue]['concurrency']
+     celery.Worker(queues=[queue], concurrency=n).start()

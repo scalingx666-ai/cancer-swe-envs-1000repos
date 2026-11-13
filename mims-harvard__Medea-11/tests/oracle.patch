@@ -1,0 +1,30 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 619411d..8ca2f43 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -138,9 +138,9 @@ jupyter = [
+ ]
+ 
+ [project.urls]
+-Homepage = "https://github.com/mims-harvard/Medea-1.0"
+-Repository = "https://github.com/mims-harvard/Medea-1.0"
+-Documentation = "https://github.com/mims-harvard/Medea-1.0#readme"
++Homepage = "https://github.com/mims-harvard/Medea"
++Repository = "https://github.com/mims-harvard/Medea"
++Documentation = "https://github.com/mims-harvard/Medea#readme"
+ 
+ [project.scripts]
+ medea-eval = "medea.cli:main"
+diff --git a/setup.py b/setup.py
+index 28c3129..e93e61a 100644
+--- a/setup.py
++++ b/setup.py
+@@ -16,7 +16,7 @@
+     description="Multi-Agent Research Planning System for Single-Cell Analysis and Therapeutic Discovery",
+     long_description=long_description,
+     long_description_content_type="text/markdown",
+-    url="https://github.com/mims-harvard/Medea-1.0",
++    url="https://github.com/mims-harvard/Medea",
+     packages=find_packages(exclude=["evaluation", "evaluation.*", "results", "results.*", "plots", "plots.*"]),
+     classifiers=[
+         "Development Status :: 4 - Beta",

@@ -1,0 +1,395 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d4c30ea..4cd0881 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -60,6 +60,8 @@
+   * The obo reader no longer drops a `[Typedef]` at the end of a file without a trailing blank line.
+   * Blank GO IDs in an association are no longer reported as missing from the GO DAG, and that warning
+     now names the GO DAG, not the association [#145](https://github.com/tanghaibao/goatools/issues/145).
++  * `GoSubDag` and `GOEnrichmentStudy` raise `TypeError` on an unknown keyword, e.g. `relationship=`,
++    which they used to ignore silently [#304](https://github.com/tanghaibao/goatools/issues/304).
+ 
+ ## Release 2021-05-22 1.1.5
+ 
+diff --git a/goatools/cli/find_enrichment.py b/goatools/cli/find_enrichment.py
+index a14900f..b0517fa 100644
+--- a/goatools/cli/find_enrichment.py
++++ b/goatools/cli/find_enrichment.py
+@@ -518,8 +518,6 @@ def get_results(self):
+     def _init_objgoeans(self, pop):
+         """Run gene ontology enrichment analysis (GOEA)."""
+         ns2assoc = self.objanno.get_ns2assc(**self._get_anno_kws())
+-        ## BROAD rm_goids = self._get_remove_goids()
+-        rm_goids = False  # BROAD
+         kws = {}
+         # Only forward --alternative when the user actually set it, so the
+         # algorithm's own default (elim -> "greater") still applies.
+@@ -535,7 +533,6 @@ def _init_objgoeans(self, pop):
+             alpha=self.args.alpha,
+             pvalcalc=self.args.pvalcalc,
+             methods=self.methods,
+-            remove_goids=rm_goids,
+             algorithm=getattr(self.args, "algorithm", "classic"),
+             elim_cutoff=getattr(self.args, "elim_cutoff", 0.01),
+             elim_bonferroni=getattr(self.args, "elim_bonferroni", False),
+diff --git a/goatools/go_enrichment.py b/goatools/go_enrichment.py
+index 4b21267..5679ebe 100755
+--- a/goatools/go_enrichment.py
++++ b/goatools/go_enrichment.py
+@@ -16,12 +16,14 @@
+ import random
+ import collections as cx
+ from functools import lru_cache
++from typing import Set, Tuple
+ 
+ import goatools.wr_tbl as RPT
+ 
+ from .anno.update_association import remove_assc_goids, update_association
+ from .base import logger
+-from .goea.algorithms import GoeaContext, get_algorithm
++from .goea.algorithms import ALGORITHMS, GoeaContext, get_algorithm
++from .gosubdag.utils import chk_kwargs
+ from .godag.prtfncs import GoeaPrintFunctions
+ from .multiple_testing import Bonferroni, FDR, HolmBonferroni, Methods, Sidak
+ from .pvalcalc import FisherFactory
+@@ -295,6 +297,10 @@ class GOEnrichmentStudy(object):
+ 
+     objprtres = GoeaPrintFunctions()
+ 
++    # Keyword args read by GOEnrichmentStudy, FisherFactory and get_algorithm,
++    # which also takes args named after an algorithm, e.g. elim_cutoff
++    kws_ok: Set[str] = {"name", "log", "alternative", "relationships", "pvalcalc", "algorithm"}
++
+     def __init__(
+         self,
+         pop,
+@@ -305,6 +311,14 @@ def __init__(
+         methods=None,
+         **kws
+     ):
++        # get_algorithm also takes a GoeaAlgorithm class or instance with its own name
++        algo_names: Set[str] = set(ALGORITHMS) | {getattr(kws.get("algorithm"), "name", None)} - {None}
++        algo_prefixes: Tuple[str, ...] = tuple(name + "_" for name in algo_names)
++        chk_kwargs(
++            "GOEnrichmentStudy",
++            {k: v for k, v in kws.items() if not k.startswith(algo_prefixes)},
++            self.kws_ok | {"propagate_counts", "alpha", "methods"},
++        )
+         self.name = kws.get("name", "")
+         self.log = kws["log"] if "log" in kws else sys.stdout
+         if self.log:
+@@ -351,9 +365,6 @@ def __init__(
+             update_association(
+                 assoc, obo_dag, kws.get("relationships"), prt=self.log
+             )
+-        # BROAD broad_goids = get_goids_to_remove(kws.get('remove_goids'))
+-        # BROAD if broad_goids:
+-        # BROAD     assoc = self._remove_assc_goids(assoc, broad_goids)
+         self.go2popitems = get_terms("population", pop, assoc, obo_dag, self.log)
+ 
+     def _remove_assc_goids(self, assoc, broad_goids):
+diff --git a/goatools/gosubdag/gosubdag.py b/goatools/gosubdag/gosubdag.py
+index 2d16060..5762cc5 100644
+--- a/goatools/gosubdag/gosubdag.py
++++ b/goatools/gosubdag/gosubdag.py
+@@ -7,18 +7,23 @@
+ 
+ import sys
+ import collections as cx
++from typing import Set
+ # import timeit
+ # from goatools.godag.prttime import prt_hms
+ from goatools.gosubdag.gosubdag_init import InitGOs
+ from goatools.gosubdag.gosubdag_init import InitFields
+ from goatools.gosubdag.go_tasks import chk_goids
++from goatools.gosubdag.utils import chk_kwargs
+ 
+ 
+ class GoSubDag:
+     """Manages a user-specified subset of a GO DAG."""
+ 
++    # Keyword args read by GoSubDag, InitGOs and InitFields
++    kws_ok: Set[str] = {"prt", "go2color", "children", "rcntobj", "tcntobj", "go2nt", "go2letter"}
++
+     def __init__(self, go_sources, go2obj, relationships=None, **kws):
+-        # kws _Init: tcntobj, rcntobj
++        chk_kwargs("GoSubDag", kws, self.kws_ok | {"relationships"})
+         # tic = timeit.default_timer()
+         _ini = InitGOs(go_sources, go2obj, relationships, **kws)
+         self.go_sources = _ini.go_sources # set(go_sources)
+diff --git a/goatools/gosubdag/plot/plot.py b/goatools/gosubdag/plot/plot.py
+index dd65bfb..cf15823 100644
+--- a/goatools/gosubdag/plot/plot.py
++++ b/goatools/gosubdag/plot/plot.py
+@@ -54,7 +54,8 @@
+ 
+ def plt_goids(gosubdag, fout_img, goids, **kws_plt):
+     """Plot GO IDs in a DAG (Directed Acyclic Graph)."""
+-    gosubdag_plt = GoSubDag(goids, gosubdag.go2obj, rcntobj=gosubdag.rcntobj, **kws_plt)
++    kws_dag = {k: v for k, v in kws_plt.items() if k in GoSubDag.kws_ok | {"relationships"}}
++    gosubdag_plt = GoSubDag(goids, gosubdag.go2obj, rcntobj=gosubdag.rcntobj, **kws_dag)
+     godagplot = GoSubDagPlot(gosubdag_plt, **kws_plt)
+     godagplot.plt_dag(fout_img)
+     return godagplot
+diff --git a/goatools/gosubdag/utils.py b/goatools/gosubdag/utils.py
+index 3ea1402..b7cac4a 100644
+--- a/goatools/gosubdag/utils.py
++++ b/goatools/gosubdag/utils.py
+@@ -3,6 +3,9 @@
+ __copyright__ = "Copyright (C) 2016-2018, DV Klopfenstein, H Tang, All rights reserved."
+ __author__ = "DV Klopfenstein"
+ 
++from difflib import get_close_matches
++from typing import Any, Dict, List, Set
++
+ 
+ def extract_kwargs(args, exp_keys, exp_elems):
+     """Return user-specified keyword args in a dictionary and a set (for True/False items)."""
+@@ -40,5 +43,13 @@ def get_kwargs(args, exp_keys, exp_elems):
+             arg_dict[key] = True
+     return arg_dict
+ 
++def chk_kwargs(name: str, kws: Dict[str, Any], expected: Set[str]) -> None:
++    """Raise TypeError on an unexpected keyword arg, as Python does, suggesting a close match."""
++    for key in sorted(set(kws) - expected):
++        close: List[str] = get_close_matches(key, expected, n=1)
++        hint: str = " Did you mean '{C}'?".format(C=close[0]) if close else ""
++        raise TypeError("{N}() got an unexpected keyword argument '{K}'.{H}".format(
++            N=name, K=key, H=hint))
++
+ 
+ # Copyright (C) 2016-2018, DV Klopfenstein, H Tang, All rights reserved.
+diff --git a/goatools/grouper/grprplt.py b/goatools/grouper/grprplt.py
+index 6705019..bc5cb6c 100644
+--- a/goatools/grouper/grprplt.py
++++ b/goatools/grouper/grprplt.py
+@@ -30,7 +30,7 @@ def __init__(self, grprobj):
+ 
+     def plot_sections(self, fout_dir=".", **kws_usr):
+         """Plot groups of GOs which have been placed in sections."""
+-        kws_plt, _ = self._get_kws_plt(None, **kws_usr)
++        kws_plt = self._get_kws_plt(None, **kws_usr)
+         PltGroupedGos(self).plot_sections(fout_dir, **kws_plt)
+ 
+     def plot_groups_all(self, fout_dir=".", **kws_pltargs): # Grouper
+@@ -59,14 +59,13 @@ def get_gosubdagplot(self, goids=None, **kws_usr):
+         """Plot GO IDs."""
+         if goids is None:
+             goids = self.grprobj.usrgos
+-        kws_plt, kws_dag = self._get_kws_plt(goids, **kws_usr)
++        kws_plt = self._get_kws_plt(goids, **kws_usr)
+         gosubdag = GoSubDag(
+             goids,
+             self.grprobj.gosubdag.get_go2obj(goids),
+             self.grprobj.gosubdag.relationships,
+             rcntobj=self.grprobj.gosubdag.rcntobj,
+-            go2nt=self.grprobj.gosubdag.go2nt,
+-            **kws_dag)
++            go2nt=self.grprobj.gosubdag.go2nt)
+         return GoSubDagPlot(gosubdag, **kws_plt)
+ 
+     def plot_gos(self, fout_img, goids=None, **kws_usr):
+@@ -77,7 +76,6 @@ def plot_gos(self, fout_img, goids=None, **kws_usr):
+     def _get_kws_plt(self, usrgos, **kws_usr):
+         """Add go2color and go2bordercolor relevant to this grouping into plot."""
+         kws_plt = kws_usr.copy()
+-        kws_dag = {}
+         hdrgo = kws_plt.get('hdrgo', None)
+         objcolor = GrouperColors(self.grprobj)
+         # GO term colors
+@@ -90,17 +88,12 @@ def _get_kws_plt(self, usrgos, **kws_usr):
+         # GO term border colors
+         if 'go2bordercolor' not in kws_usr:
+             kws_plt['go2bordercolor'] = objcolor.get_bordercolor()
+-        prune = kws_usr.get('prune', None)
+-        if prune is True and hdrgo is not None:
+-            kws_dag['dst_srcs_list'] = [(hdrgo, usrgos), (None, set([hdrgo]))]
+-            kws_plt['parentcnt'] = True
+-        elif prune:
+-            kws_dag['dst_srcs_list'] = prune
++        if kws_usr.get('prune'):
+             kws_plt['parentcnt'] = True
+         # Group text
+         kws_plt['go2txt'] = self.get_go2txt(self.grprobj,
+                                             kws_plt.get('go2color'), kws_plt.get('go2bordercolor'))
+-        return kws_plt, kws_dag
++        return kws_plt
+ 
+     @staticmethod
+     def get_go2txt(grprobj_cur, grp_go2color, grp_go2bordercolor):
+@@ -125,7 +118,7 @@ def get_go2txt(grprobj_cur, grp_go2color, grp_go2bordercolor):
+     def plot_grouped_gos(self, fout_img=None, exclude_hdrs=None, **kws_usr):
+         """One Plot containing all user GOs (yellow or green) and header GO IDs(green or purple)."""
+         # kws_plt -> go2color go2bordercolor
+-        kws_plt, kws_dag = self._get_kws_plt(self.grprobj.usrgos, **kws_usr)
++        kws_plt = self._get_kws_plt(self.grprobj.usrgos, **kws_usr)
+         pltgosusr = self.grprobj.usrgos
+         if exclude_hdrs is not None:
+             pltgosusr = pltgosusr.difference(self.grprobj.get_usrgos_g_hdrgos(exclude_hdrs))
+@@ -138,19 +131,18 @@ def plot_grouped_gos(self, fout_img=None, exclude_hdrs=None, **kws_usr):
+                 pltgos_ns = [go for go in pltgosusr if go2nt[go].NS == namespace]
+                 if pltgos_ns:
+                     png = fout_img.format(NS=namespace)
+-                    self._plot_grouped_gos(png, pltgos_ns, kws_plt, kws_dag)
++                    self._plot_grouped_gos(png, pltgos_ns, kws_plt)
+         # Plot all user GO IDs into a single plot, regardless of their namespace
+         else:
+-            self._plot_grouped_gos(fout_img, pltgosusr, kws_plt, kws_dag)
++            self._plot_grouped_gos(fout_img, pltgosusr, kws_plt)
+ 
+-    def _plot_grouped_gos(self, fout_img, pltgosusr, kws_plt, kws_dag):
++    def _plot_grouped_gos(self, fout_img, pltgosusr, kws_plt):
+         gosubdag_plt = GoSubDag(
+             pltgosusr,
+             self.grprobj.gosubdag.get_go2obj(pltgosusr),
+             self.grprobj.gosubdag.relationships,
+             rcntobj=self.grprobj.gosubdag.rcntobj,
+-            go2nt=self.grprobj.gosubdag.go2nt,
+-            **kws_dag)
++            go2nt=self.grprobj.gosubdag.go2nt)
+         godagplot = GoSubDagPlot(gosubdag_plt, **kws_plt)
+         godagplot.plt_dag(fout_img)
+ 
+diff --git a/goatools/grouper/plotobj.py b/goatools/grouper/plotobj.py
+index fbf1729..5d11c14 100644
+--- a/goatools/grouper/plotobj.py
++++ b/goatools/grouper/plotobj.py
+@@ -275,8 +275,7 @@ def _get_pltdag_path_hdr(self, hdrgo, usrgos, desc="pruned"):
+                             self.gosubdag.get_go2obj(go_sources),
+                             relationships=self.gosubdag.relationships,
+                             rcntobj=self.gosubdag.rcntobj,
+-                            go2nt=self.gosubdag.go2nt,
+-                            dst_srcs_list=[(hdrgo, usrgos), (None, set([hdrgo]))])
++                            go2nt=self.gosubdag.go2nt)
+         tot_usrgos = len(set(gosubdag.go2obj.keys()).intersection(self.usrgos))
+         return self.ntpltgo(
+             hdrgo=hdrgo,
+diff --git a/makefile b/makefile
+index afc71d8..ee32506 100755
+--- a/makefile
++++ b/makefile
+@@ -340,6 +340,7 @@ CI_TESTS = \
+     tests/test_i92_relationship_parentchild.py \
+     tests/test_i96_goea_ncbi.py \
+     tests/test_i145_blank_goids.py \
++    tests/test_i304_unknown_kwargs.py \
+     tests/test_i339_silent_init.py \
+     tests/test_mapslim.py \
+     tests/test_multiple_testing.py \
+diff --git a/tests/test_i304_unknown_kwargs.py b/tests/test_i304_unknown_kwargs.py
+new file mode 100644
+index 0000000..bc1d7f9
+--- /dev/null
++++ b/tests/test_i304_unknown_kwargs.py
+@@ -0,0 +1,111 @@
++"""Issue #304: a misspelled keyword such as relationship= raises instead of being ignored."""
++
++import os
++
++import pytest
++
++from goatools.go_enrichment import GOEnrichmentStudy
++from goatools.goea.algorithms import ClassicAlgorithm
++from goatools.gosubdag.gosubdag import GoSubDag
++from goatools.gosubdag.plot.gosubdag_plot import GoSubDagPlot
++from goatools.gosubdag.plot.plot import plt_goids
++from goatools.obo_parser import GODag
++
++MINI_OBO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "mini_obo.obo")
++
++
++@pytest.fixture(name="godag")
++def _godag():
++    return GODag(MINI_OBO, optional_attrs={"relationship"}, prt=None)
++
++
++def test_i304_gosubdag(godag):
++    """relationship= used to fall into **kws silently, dropping the relationships."""
++    with pytest.raises(TypeError, match="'relationship'. Did you mean 'relationships'"):
++        GoSubDag(["GO:0000004"], godag, relationship={"part_of"}, prt=None)
++    assert GoSubDag(["GO:0000004"], godag, relationships=True, children=True, prt=None)
++
++
++def test_i304_goea(godag):
++    """Same for GOEnrichmentStudy; algorithm-named args such as elim_cutoff still pass."""
++    args = (["g1"], {"g1": {"GO:0000004"}}, godag)
++    with pytest.raises(TypeError, match="'relationship'. Did you mean 'relationships'"):
++        GOEnrichmentStudy(*args, relationship={"part_of"}, log=None)
++    with pytest.raises(TypeError, match="'method'. Did you mean 'methods'"):
++        GOEnrichmentStudy(*args, method=["holm"], log=None)
++    goea = GOEnrichmentStudy(*args, relationships={"part_of"}, algorithm="elim", elim_cutoff=0.05, log=None)
++    assert (goea.relationships, goea.algorithm.cutoff) == ({"part_of"}, 0.05)
++
++
++def test_i304_custom_algorithm_kwargs(godag):
++    """Args named after a custom GoeaAlgorithm class still reach it."""
++
++    class Custom(ClassicAlgorithm):
++        """A user-supplied algorithm with its own option."""
++
++        name = "custom"
++
++        def __init__(self, threshold=0.5):
++            self.threshold = threshold
++
++    goea = GOEnrichmentStudy(["g1"], {"g1": {"GO:0000004"}}, godag,
++                             algorithm=Custom, custom_threshold=0.1, log=None)
++    assert goea.algorithm.threshold == 0.1
++
++
++@pytest.fixture(name="no_draw")
++def _no_draw(monkeypatch):
++    """Build plots without running graphviz."""
++    monkeypatch.setattr(GoSubDagPlot, "plt_dag", lambda self, fout_img, engine="pydot": None)
++
++
++PART_OF_OBO = """format-version: 1.2
++
++[Term]
++id: GO:0000001
++name: top
++namespace: biological_process
++
++[Term]
++id: GO:0000002
++name: whole
++namespace: biological_process
++is_a: GO:0000001
++
++[Term]
++id: GO:0000003
++name: part
++namespace: biological_process
++is_a: GO:0000001
++relationship: part_of GO:0000002
++
++[Typedef]
++id: part_of
++name: part of
++"""
++
++
++def test_i304_plt_goids(tmp_path, no_draw):
++    """plt_goids passes relationships to GoSubDag and plot-only options to the plot."""
++    fin = tmp_path / "part_of.obo"
++    fin.write_text(PART_OF_OBO)
++    dag = GODag(str(fin), optional_attrs={"relationship"}, prt=None)
++    plot = plt_goids(GoSubDag(None, dag, prt=None), str(tmp_path / "go.png"), ["GO:0000003"],
++                     relationships={"part_of"}, mark_alt_id=True)
++    assert "GO:0000002" in plot.gosubdag.go2obj  # reached only through part_of
++
++
++def test_i304_grouper_prune(tmp_path, monkeypatch, no_draw):
++    """Grouped plots with prune= used to forward dst_srcs_list to GoSubDag."""
++    from goatools.grouper.grprobj import Grouper
++    from goatools.grouper.grprplt import GrouperPlot
++    from goatools.grouper.hdrgos import HdrgosSections
++    from tests.test_grprobj import _get_gosubdag, _get_grprdflt, get_data0
++
++    monkeypatch.chdir(tmp_path)
++    grprdflt = _get_grprdflt()
++    hdrobj = HdrgosSections(grprdflt.gosubdag, grprdflt.hdrgos_dflt, sections=None, hdrgos=None)
++    grprobj = Grouper("prune", get_data0(), hdrobj, _get_gosubdag(), go2nt=None)
++    hdrgo = next(iter(grprobj.get_hdrgos()))
++    plot = GrouperPlot(grprobj).get_gosubdagplot(prune=True, hdrgo=hdrgo)
++    assert plot.gosubdag.go2obj

@@ -1,0 +1,32 @@
+diff --git a/Project.toml b/Project.toml
+index 3948f4d..dcccc64 100755
+--- a/Project.toml
++++ b/Project.toml
+@@ -1,7 +1,7 @@
+ name = "Whippet"
+ uuid = "0af2a87d-76f3-44e3-af6e-8f91dcdf7847"
+ authors = ["Tim Sterne-Weiler <tsternew@gmail.com>"]
+-version = "1.6"
++version = "1.6.1"
+ 
+ [deps]
+ ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+diff --git a/bin/VERSION b/bin/VERSION
+index 1d81d23..0236045 100755
+--- a/bin/VERSION
++++ b/bin/VERSION
+@@ -1 +1 @@
+-v1.6
++v1.6.1
+diff --git a/bin/whippet-index.jl b/bin/whippet-index.jl
+index 8deda79..20ae9b3 100755
+--- a/bin/whippet-index.jl
++++ b/bin/whippet-index.jl
+@@ -13,6 +13,7 @@ Pkg.activate(dir * "/..")
+ 
+ using Whippet
+ using BioAlignments
++using XAM
+ using Libz
+ using Serialization
+ using Nullables

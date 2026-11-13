@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/pachterlab__sleuth-289"
+description = "Only pass data.table objects to data.table::melt and data.table::recast"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "sleuth",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pachterlab/sleuth"
+ref = "20e493fb98cb1b65a508e6634db430d5d3848567"
+reference = "https://github.com/pachterlab/sleuth/pull/289"
+source_access = "auto"
+built_at = "2026-11-13T16:00:00.758700+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f4d580f18531eafc0ec985da43f417b50414c14327e87aad6cb1f2497244cbff"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-05-28T20:51:52Z"
+diff_format = "unified"
+context_files = [
+    "R/bootstrap.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

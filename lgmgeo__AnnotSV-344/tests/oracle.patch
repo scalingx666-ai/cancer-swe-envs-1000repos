@@ -1,0 +1,145 @@
+diff --git a/.github/workflows/shellcheck.yml b/.github/workflows/shellcheck.yml
+new file mode 100644
+index 0000000..2a631c4
+--- /dev/null
++++ b/.github/workflows/shellcheck.yml
+@@ -0,0 +1,32 @@
++name: ShellCheck
++
++on:
++  pull_request:
++    paths:
++      - '**/*.sh'
++      - '.github/workflows/shellcheck.yml'
++  push:
++    branches:
++      - master
++      - main
++    paths:
++      - '**/*.sh'
++      - '.github/workflows/shellcheck.yml'
++
++jobs:
++  shellcheck:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v5
++
++      - name: Install ShellCheck
++        run: sudo apt-get update && sudo apt-get install -y shellcheck
++
++      - name: Show all ShellCheck findings
++        run: |
++          find . -type f -name '*.sh' -not -path './.git/*' -print0 | xargs -0 -r shellcheck || true
++
++      - name: Fail only on ShellCheck errors
++        run: |
++          find . -type f -name '*.sh' -not -path './.git/*' -print0 | xargs -0 -r shellcheck --severity=error
+\ No newline at end of file
+diff --git a/.gitmodules b/.gitmodules
+new file mode 100644
+index 0000000..a7aee37
+--- /dev/null
++++ b/.gitmodules
+@@ -0,0 +1,4 @@
++[submodule "share/python3/variantconvert"]
++	path = share/python3/variantconvert
++	url = https://github.com/SamuelNicaise/variantconvert.git
++
+diff --git a/bin/INSTALL_annotations.sh b/bin/INSTALL_annotations.sh
+index b27b633..3c878bb 100644
+--- a/bin/INSTALL_annotations.sh
++++ b/bin/INSTALL_annotations.sh
+@@ -45,7 +45,7 @@
+ ANNOTATIONSDIR="./AnnotSV_annotations"
+ 
+ # MAKEFILE: used when HUMANVERSION and EXOMISERVERSION are not provided as arguments
+-if [ -z "$1" && -z "$2" ]; then
++if [[ -z "$1" && -z "$2" ]]; then
+ 	# ANNOTSV: AnnotSV installation directory (must be defined: export ANNOTSV=/path/to/AnnotSV)
+ 	if [ -z "$ANNOTSV" ]; then
+ 	  echo "ERROR: ANNOTSV is not defined"
+@@ -82,8 +82,8 @@ else
+ fi
+ 
+ 
+-mkdir $ANNOTATIONSDIR
+-cd $ANNOTATIONSDIR
++mkdir -p "$ANNOTATIONSDIR"
++cd "$ANNOTATIONSDIR" || exit 1
+ 
+ # ----------------------------------------
+ # Download AnnotSV human annotations files
+@@ -101,14 +101,13 @@ rm -f "Annotations_Human_${HUMANVERSION}.tar.gz"
+ echo ""
+ echo "Download Exomiser supporting data files:"
+ echo ""
+-curl -C - -LO "https://data.monarchinitiative.org/exomiser/data/${EXOMISER_VERSION}_phenotype.zip"
+-unzip "${EXOMISER_VERSION}_phenotype.zip" -d "Annotations_Exomiser/${EXOMISER_VERSION}/"
+-rm -f "${EXOMISER_VERSION}_phenotype.zip"
++curl -C - -LO "https://data.monarchinitiative.org/exomiser/data/${EXOMISERVERSION}_phenotype.zip"
++mkdir -p "Annotations_Exomiser/${EXOMISERVERSION}/"
++unzip "${EXOMISERVERSION}_phenotype.zip" -d "Annotations_Exomiser/${EXOMISERVERSION}/"
++rm -f "${EXOMISERVERSION}_phenotype.zip"
+ 
+ chmod -R 777 ./Annotations_*
+ 
+ 
+ 
+ echo "Installation completed. Annotation files have been generated in ${ANNOTATIONSDIR}."
+-
+-
+diff --git a/changeLog.txt b/changeLog.txt
+index 7b4e72b..d495e50 100644
+--- a/changeLog.txt
++++ b/changeLog.txt
+@@ -11,6 +11,9 @@
+ For more details, please see the README file.
+ 
+ 
++June, , 2026 AnnotSV version 3.5.11
++	- Add missing closing parenthesis in 2B (loss) explanation (issue 341)
++
+ May, 29, 2026 AnnotSV version 3.5.10
+ 	- Handle escaped double quotes in PhenoGenius annotation output to prevent AnnotSV parsing errors (issue 338)
+ 	- Refactor AnnotSV to fully decouple Exomiser and PhenoGenius modules
+diff --git a/share/tcl/AnnotSV/AnnotSV-ranking.tcl b/share/tcl/AnnotSV/AnnotSV-ranking.tcl
+index a36d226..e21f874 100644
+--- a/share/tcl/AnnotSV/AnnotSV-ranking.tcl
++++ b/share/tcl/AnnotSV/AnnotSV-ranking.tcl
+@@ -158,7 +158,7 @@ proc SVrankingLoss {L_annotations} {
+         } else {
+             if {$poPloss ne ""} {
+                 # 2B. Partial overlap of a known pathogenic Loss SV (default +0.00)
+-                set g_rankingExplanations($AnnotSV_ID,2B) "2B (cf po_P_loss_source, HI, OMIM_morbid, +$g_rankingCriteria(2B_Loss);"
++                set g_rankingExplanations($AnnotSV_ID,2B) "2B (cf po_P_loss_source, HI, OMIM_morbid, +$g_rankingCriteria(2B_Loss));"
+             }
+             if {$Bloss ne ""} {
+                 # 2F. Completely contained within an established benign CNV region (default -1.00)
+diff --git a/tests/AnnotSV/test_01_configfile/command_Tcl.sh b/tests/AnnotSV/test_01_configfile/command_Tcl.sh
+index db01b3e..2d7edfa 100755
+--- a/tests/AnnotSV/test_01_configfile/command_Tcl.sh
++++ b/tests/AnnotSV/test_01_configfile/command_Tcl.sh
+@@ -44,7 +44,7 @@ then
+ 	exit 1
+ fi
+ 
+-if [[ $minAnn > 74 ]]
++if [[ $minAnn -gt 74 ]]
+ then
+         echo "error 1: too much annotation columns ($minAnn)"
+         exit 1
+diff --git a/tests/AnnotSV/test_14_candidateGenesFile/command_Tcl.sh b/tests/AnnotSV/test_14_candidateGenesFile/command_Tcl.sh
+index 4091589..c611c03 100755
+--- a/tests/AnnotSV/test_14_candidateGenesFile/command_Tcl.sh
++++ b/tests/AnnotSV/test_14_candidateGenesFile/command_Tcl.sh
+@@ -38,7 +38,7 @@ nBadLines_With=`$cut "./output/test.with_tcl.annotated.tsv" "AnnotSV_ID;Gene_nam
+ 
+ # Check the line filtering
+ ##########################
+-if [ $nLines_Without > $nLines_With ]
++if [[ $nLines_Without > $nLines_With ]]
+ then
+         echo "Ok"
+ else

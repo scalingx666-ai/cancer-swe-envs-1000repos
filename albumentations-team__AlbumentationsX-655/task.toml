@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/albumentations-team__AlbumentationsX-655"
+description = "Use StringZilla byte lookup in Colorize"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "AlbumentationsX",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "albumentations-team/AlbumentationsX"
+ref = "4d994b01eb206a3e876465724ea3697c3d6741e4"
+reference = "https://github.com/albumentations-team/AlbumentationsX/pull/655"
+source_access = "auto"
+built_at = "2026-11-13T15:51:58.755362+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f9889f9ee93e816f0b94a856b74271c1961de00951234298bcb29946e60245d5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T11:02:48Z"
+diff_format = "unified"
+context_files = [
+    ".codex/skills/performance-optimization/SKILL.md",
+    ".codex/skills/performance-optimization/references/performance-optimization.md",
+    "albumentations/augmentations/pixel/_functional_color.py",
+    "tests/test_new_transforms.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 77
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

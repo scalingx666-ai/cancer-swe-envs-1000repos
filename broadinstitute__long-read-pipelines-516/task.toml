@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/broadinstitute__long-read-pipelines-516"
+description = "BroadOnPrem pipeline 1: make VQSR best-effort (non-fatal)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "long-read-pipelines",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "broadinstitute/long-read-pipelines"
+ref = "ae9a6f58b09e2b320fb0e6ac0f0015f3d4b21e1b"
+reference = "https://github.com/broadinstitute/long-read-pipelines/pull/516"
+source_access = "auto"
+built_at = "2026-11-13T16:17:13.713227+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f8924b1bc7b9fd92c1f03b2391092820207a704bf307867dd124b1f6e7573051"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-20T12:15:10Z"
+diff_format = "unified"
+context_files = [
+    ".dockstore.yml",
+    "wdl/pipelines/Z_One_Off_Analyses/BroadOnPremMalariaPipeline_1_Alignment_and_Variant_Calling.wdl",
+    "wdl/tasks/Z_One_Off_Analyses/BroadOnPremMalariaPipelineTasks.wdl",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 262
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

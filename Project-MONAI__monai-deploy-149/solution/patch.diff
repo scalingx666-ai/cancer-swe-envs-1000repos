@@ -1,0 +1,356 @@
+diff --git a/.github/workflows/test-monai-deploy-express.yml b/.github/workflows/test-monai-deploy-express.yml
+index 7eb553b..5bedfc5 100644
+--- a/.github/workflows/test-monai-deploy-express.yml
++++ b/.github/workflows/test-monai-deploy-express.yml
+@@ -24,7 +24,9 @@ jobs:
+       
+       - name: Start MONAI Deploy Express
+         working-directory: ./deploy/monai-deploy-express
+-        run: docker compose up --wait
++        run: |
++          ./init.sh
++          docker compose up --wait
+         
+       - name: Informatics Gateway Health Check
+         continue-on-error: true
+@@ -41,9 +43,17 @@ jobs:
+         run: |
+           curl http://localhost:5002/health
+ 
++      - name: Collect Logs
++        working-directory: ./deploy/monai-deploy-express
++        continue-on-error: true
++        run: docker compose logs > logs.txt
++
+       - name: Stop MONAI Deploy Express
+         working-directory: ./deploy/monai-deploy-express
++        continue-on-error: true
+         run: docker compose down
+         
+-
+-        
++      - uses: actions/upload-artifact@v3
++        with:
++          name: logs
++          path: ./deploy/monai-deploy-express/logs.txt
+diff --git a/deploy/monai-deploy-express/.env b/deploy/monai-deploy-express/.env
+index 7a93980..5b080ad 100644
+--- a/deploy/monai-deploy-express/.env
++++ b/deploy/monai-deploy-express/.env
+@@ -1,13 +1,13 @@
+ # Container Images
+ INFORMATICS_GATEWAY_IMAGE=ghcr.io/project-monai/monai-deploy-informatics-gateway:0.4.1
+ INFORMATICS_GATEWAY_CONFIG_IMAGE=dwdraju/alpine-curl-jq:latest
+-WORKFLOW_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-workflow-manager:2023.5.0-beta.185 
+-TASK_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-task-manager:2023.5.0-beta.185 
++WORKFLOW_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-workflow-manager:2023.5.0-beta.238
++TASK_MANAGER_IMAGE=ghcr.io/project-monai/monai-deploy-task-manager:2023.5.0-beta.238 
+ 
+-MINIO_IMAGE=minio/minio:latest
++MINIO_IMAGE=minio/minio:RELEASE.2023-10-16T04-13-43Z
+ MONGODB_IMAGE=mongo:5.0.12
+-ORTHANC_IMAGE=osimis/orthanc:23.3.4
+-RABBITMQ_IMAGE=rabbitmq:3.11-management
++ORTHANC_IMAGE=osimis/orthanc:23.9.2-full
++RABBITMQ_IMAGE=rabbitmq:3.12.7-management
+ 
+ ELK_VERSION=8.7.0
+ ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
+diff --git a/deploy/monai-deploy-express/README.md b/deploy/monai-deploy-express/README.md
+index 004d08d..b8bcb7c 100644
+--- a/deploy/monai-deploy-express/README.md
++++ b/deploy/monai-deploy-express/README.md
+@@ -99,7 +99,7 @@ The first time calling `docker compose up` may take longer as it needs to pull a
+ 
+ - The following error indicates that the `docker compose` version may not be up-to-date. If the problem persists, modify the `TASK_MANAGER_DATA` variable defined in the `.env` file and change `$PWD/.md/mdtm` to a fully qualified path. E.g. `/home/monai/some/path/to/.md/mdtm/`.
+     ```
+-    ERROR: Named volume "$PWD/.md/mdtm:/var/lib/monai:rw" is used in service "task-manager" but no declaration was found in the volumes section. 
++    ERROR: Named volume "$PWD/.md/mdtm:/var/lib/mde:rw" is used in service "task-manager" but no declaration was found in the volumes section. 
+     ```
+ 
+     *WHY? The value of `TASK_MANAGER_DATA` is exposed to the Task Manager container as an environment variable in order for Task Manager to map the volume from the host to the MAP container correctly.*
+@@ -112,7 +112,7 @@ The first time calling `docker compose up` may take longer as it needs to pull a
+   
+   - If you start Monai Deploy Express from within a container, you are likely to have problems when starting the system with 'docker compose up', such as:
+     ```
+-    ERROR: Named volume "$PWD/.md/mdtm:/var/lib/monai:rw" is used in service "task-manager" but no declaration was found in the volumes section. 
++    ERROR: Named volume "$PWD/.md/mdtm:/var/lib/mde:rw" is used in service "task-manager" but no declaration was found in the volumes section. 
+     ```
+    
+ - If you start Monai Deploy Express from within a container, you are likely to have problems when starting the system with 'docker compose up', such as:
+@@ -156,6 +156,7 @@ The **sample-workflows** directory includes the following four sample workflow d
+ - `lung-seg.json`: AI Lung Segmentation MAP
+ - `liver-seg.json`: AI Liver Segmentation MAP
+ - `liver-lung-seg.json`: AI Lung & AI Liver Combo
++- `liver-tumor.json`: AI Liver Tumor 2.0 MAP (MONAI Deploy 0.6)
+ 
+ *Note: in these examples, we will be using `curl` command to register MONAI Deploy workflow definitions with the Workflow Manager. To learn more about `curl`, visit the [curl Man Page](https://curl.se/docs/manpage.html).*
+ 
+@@ -193,7 +194,7 @@ This example uses the `alpine` container image instead of a MAP to print all fil
+ 
+ #### Description
+ 
+-In this section, we will download a DICOM dataset, upload it to Orthanc and then run the [Liver Segmentation MAP](https://github.com/Project-MONAI/monai-deploy-app-sdk/tree/main/examples/apps/ai_livertumor_seg_app) from the
++In this section, we will download a DICOM dataset, upload it to Orthanc and then run the [Liver Segmentation MAP](https://github.com/Project-MONAI/monai-deploy-app-sdk/tree/0.5.1/examples/apps/ai_livertumor_seg_app) from the
+ [MONAI Deploy App SDK](https://github.com/Project-MONAI/monai-deploy-app-sdk). Finally, we can expect the AI-generated segmentation result to appear in Orthanc.
+ 
+ 
+@@ -300,6 +301,45 @@ In the `liver-lung-seg.json` workflow definition, we combined the AI Lung MAP an
+ 
+ In this example, the [Chest CT dataset](https://drive.google.com/file/d/1IGXUgZ7NQCwsix57cdSgr-iYErevqETO/view?usp=sharing) should only launch the AI Lung MAP, while the [Abdomen CT dataset](https://drive.google.com/file/d/1d8Scm3q-kHTqr_-KfnXH0rPnCgKld2Iy/view?usp=sharing) would launch the AI Liver MAP.
+ 
++### AI Liver Tumor 2.0 MAP
++
++#### Description
++
++In this section, we will download a DICOM dataset, upload it to Orthanc and then run the [Liver Segmentation MAP](https://github.com/Project-MONAI/monai-deploy-app-sdk/tree/0.6.0/examples/apps/ai_livertumor_seg_app) from the
++[MONAI Deploy App SDK](https://github.com/Project-MONAI/monai-deploy-app-sdk). Finally, we can expect the AI-generated segmentation result to appear in Orthanc.
++
++
++#### Steps
++
++1. Download the [Abdomen CT dataset](#running-a-monai-deploy-workflow) dataset
++2. Download the AI Liver Tumor 2.0 MAP
++   ```bash
++   docker pull ghcr.io/mmelqin/monai_ai_livertumor_seg_app_stl-x64-workstation-dgpu-linux-amd64:2.0
++   ```
++3. Upload the dataset as described in [Uploading Data](#upload-dicom-datasets)
++4. Deploy the workflow definition to MONAI Deploy Workflow Manager:
++5. 
++   ```bash
++   curl --request POST --header 'Content-Type: application/json'  --data "@sample-workflows/liver-tumor.json"  http://localhost:5001/workflows
++   ```
++
++   If the `curl` command runs successfully, expect a `workflow_id` to be returned and printed to the terminal:
++
++   ```
++   {"workflow_id":"811620da-381f-4daa-854d-600948e67228"}
++   ```
++   
++6. Navigate to Orthanc, select any study and then click *Send to DICOM Modality* from the menu on the left.
++   In the popup dialog, select **MONAI-DEPLOY** to start a C-STORE request to the Informatics Gateway.
++7. Wait for the workflow to complete; the entire workflow takes roughly one minute and thirty seconds to complete. To see the AI-generated segmentation object, reload the Orthanc study page.
++8. To see the output of the container, run the following commands:
++   ```bash
++   > docker container list -a | grep monai_ai_livertumor_seg_app_stl
++   # locate the container ID and run the following
++   > docker logs {CONTAINER ID}
++   ```
++
++
+ ## Using Kibana
+ 
+ A default dataview is imported to Kibana at startup. To load the saved search, navigate to http://localhost:5601/, click on Analytics > Discover from the 🍔 menu. From the top right click *Open* and select *MONAI-Default*.
+@@ -416,7 +456,7 @@ A MONAI Deploy [workflow definition](https://github.com/Project-MONAI/monai-depl
+                 "entrypoint": "/bin/bash,-c", # entrypoint of your container image; separated by commas
+                 "command": "python3 -u /opt/monai/app/app.py", # commands to execute with the container image; separated by commas
+                 "task_timeout_minutes": "5", # how long this task is expected to execute; terminated after the configured value
+-                "temp_storage_container_path": "/var/lib/monai/", # how thd Docker plug-in maps your data from host to container - this is mapped to `$TASK_MANAGER_DATA` in the docker-compose file 
++                "temp_storage_container_path": "/var/lib/mde/", # how thd Docker plug-in maps your data from host to container - this is mapped to `$TASK_MANAGER_DATA` in the docker-compose file 
+                 "env_MONAI_INPUTPATH": "/var/monai/input/", # an environment varible provided to the container to read the input data
+                 "env_MONAI_OUTPUTPATH": "/var/monai/output/", # an environment variable provided to the container to write AI-genrated results
+                 "env_MONAI_MODELPATH": "/opt/monai/models/", # an environment variable provided to the container to located AI models
+diff --git a/deploy/monai-deploy-express/docker-compose.yml b/deploy/monai-deploy-express/docker-compose.yml
+index f99d2f7..fc88dff 100644
+--- a/deploy/monai-deploy-express/docker-compose.yml
++++ b/deploy/monai-deploy-express/docker-compose.yml
+@@ -209,7 +209,7 @@ services:
+     container_name: $TASK_MANAGER_CONTAINERNAME
+     volumes:
+       - ./configs/task-manager.json:/opt/monai/wm/appsettings.json
+-      - $TASK_MANAGER_DATA:/var/lib/monai/:rw
++      - $TASK_MANAGER_DATA:/var/lib/mde/:rw
+       - /var/run/docker.sock:/var/run/docker.sock
+       # - $MONAI_DEPLOY_PLUGINS:/opt/monai/wm/plug-ins/
+     environment:
+diff --git a/deploy/monai-deploy-express/init.sh b/deploy/monai-deploy-express/init.sh
+index e207796..afff762 100755
+--- a/deploy/monai-deploy-express/init.sh
++++ b/deploy/monai-deploy-express/init.sh
+@@ -18,6 +18,13 @@ RUNDIR=$PWD/.md
+ echo "Initializing directories..."
+ [ -d $RUNDIR ] && echo "Removing existin $RUNDIR" && sudo rm -r $RUNDIR
+ mkdir -p $RUNDIR/esdata/ && echo "Created $RUNDIR/"
+-sudo chown 1000:1000 -R $RUNDIR/esdata && echo "Permission updated"
++mkdir -p $RUNDIR/minio/ && echo "Created $RUNDIR/minio/"
++mkdir -p $RUNDIR/rabbitmq/ && echo "Created $RUNDIR/rabbitmq/"
++mkdir -p $RUNDIR/orthanc/ && echo "Created $RUNDIR/orthanc/"
++mkdir -p $RUNDIR/mongodb/ && echo "Created $RUNDIR/mongodb/"
++mkdir -p $RUNDIR/mdwm/ && echo "Created $RUNDIR/mdwm/"
++mkdir -p $RUNDIR/mdtm/ && echo "Created $RUNDIR/mdtm/"
++mkdir -p $RUNDIR/mdig/ && echo "Created $RUNDIR/mdig/"
++sudo chown $(id -u):$(id -g) -R $RUNDIR/esdata && echo "Permission updated"
+ echo "Directories setup"
+ echo "Ready to run docker compose up"
+diff --git a/deploy/monai-deploy-express/sample-workflows/hello-world.json b/deploy/monai-deploy-express/sample-workflows/hello-world.json
+index e70ff7b..97581f6 100644
+--- a/deploy/monai-deploy-express/sample-workflows/hello-world.json
++++ b/deploy/monai-deploy-express/sample-workflows/hello-world.json
+@@ -21,7 +21,7 @@
+ 				"server_url": "unix:///var/run/docker.sock",
+ 				"entrypoint": "/bin/sh,-c",
+ 				"command": "/usr/bin/find /var/monai/input -type f",
+-				"temp_storage_container_path": "/var/lib/monai/",
++				"temp_storage_container_path": "/var/lib/mde/",
+ 				"MYINPUT": "/var/monai/input/"
+ 			},
+ 			"artifacts": {
+@@ -34,4 +34,4 @@
+ 			}
+ 		}
+ 	]
+-}
+\ No newline at end of file
++}
+diff --git a/deploy/monai-deploy-express/sample-workflows/liver-lung-seg.json b/deploy/monai-deploy-express/sample-workflows/liver-lung-seg.json
+index 284f770..1e0acd5 100644
+--- a/deploy/monai-deploy-express/sample-workflows/liver-lung-seg.json
++++ b/deploy/monai-deploy-express/sample-workflows/liver-lung-seg.json
+@@ -37,7 +37,7 @@
+ 				"entrypoint": "/bin/bash,-c",
+ 				"command": "python3 -u /opt/monai/app/app.py",
+ 				"task_timeout_minutes": "5",
+-				"temp_storage_container_path": "/var/lib/monai/",
++				"temp_storage_container_path": "/var/lib/mde/",
+ 				"env_MONAI_INPUTPATH": "/var/monai/input/",
+ 				"env_MONAI_OUTPUTPATH": "/var/monai/output/",
+ 				"env_MONAI_MODELPATH": "/opt/monai/models/",
+@@ -93,7 +93,7 @@
+ 				"entrypoint": "/bin/bash,-c",
+ 				"command": "python3 -u /opt/monai/app/app.py",
+ 				"task_timeout_minutes": "5",
+-				"temp_storage_container_path": "/var/lib/monai/",
++				"temp_storage_container_path": "/var/lib/mde/",
+ 				"env_MONAI_INPUTPATH": "/var/monai/input/",
+ 				"env_MONAI_OUTPUTPATH": "/var/monai/output/",
+ 				"env_MONAI_MODELPATH": "/opt/monai/models/",
+diff --git a/deploy/monai-deploy-express/sample-workflows/liver-seg.json b/deploy/monai-deploy-express/sample-workflows/liver-seg.json
+index a11ea2d..465dc83 100644
+--- a/deploy/monai-deploy-express/sample-workflows/liver-seg.json
++++ b/deploy/monai-deploy-express/sample-workflows/liver-seg.json
+@@ -33,7 +33,7 @@
+ 				"entrypoint": "/bin/bash,-c",
+ 				"command": "python3 -u /opt/monai/app/app.py",
+ 				"task_timeout_minutes": "5",
+-				"temp_storage_container_path": "/var/lib/monai/",
++				"temp_storage_container_path": "/var/lib/mde/",
+ 				"env_MONAI_INPUTPATH": "/var/monai/input/",
+ 				"env_MONAI_OUTPUTPATH": "/var/monai/output/",
+ 				"env_MONAI_MODELPATH": "/opt/monai/models/",
+@@ -80,4 +80,4 @@
+ 			}
+ 		}
+ 	]
+-}
+\ No newline at end of file
++}
+diff --git a/deploy/monai-deploy-express/sample-workflows/liver-tumor.json b/deploy/monai-deploy-express/sample-workflows/liver-tumor.json
+new file mode 100644
+index 0000000..44ad97f
+--- /dev/null
++++ b/deploy/monai-deploy-express/sample-workflows/liver-tumor.json
+@@ -0,0 +1,84 @@
++{
++	"name": "ai-liver-seg",
++	"version": "1.0.0",
++	"description": "AI Liver Tumor 2.0",
++	"informatics_gateway": {
++		"ae_title": "MONAI-DEPLOY",
++		"data_origins": [
++			"ORTHANC"
++		],
++		"export_destinations": [
++			"ORTHANC"
++		]
++	},
++	"tasks": [
++		{
++			"id": "router",
++			"description": "Ensure series description contains liver",
++			"type": "router",
++			"task_destinations": [
++				{
++					"name": "liver",
++					"conditions": ["{{ context.dicom.series.any('0008','103E')}} == 'CT series for liver tumor from nii 014'"]
++				}
++			]
++		},
++		{
++			"id": "liver",
++			"description": "Execute Liver Segmentation MAP",
++			"type": "docker",
++			"args": {
++				"container_image": "ghcr.io/mmelqin/monai_ai_livertumor_seg_app_stl-x64-workstation-dgpu-linux-amd64:2.0",
++				"server_url": "unix:///var/run/docker.sock",
++				"user": "1000:1000",
++				"entrypoint": "/bin/bash,-c",
++				"command": "python3 -u /opt/holoscan/app/",
++				"task_timeout_minutes": "5",
++				"temp_storage_container_path": "/var/lib/mde/",
++				"env_HOLOSCAN_INPUT_PATH": "/var/holoscan/input/",
++				"env_HOLOSCAN_OUTPUT_PATH": "/var/holoscan/output/",
++				"env_HOLOSCAN_MODEL_PATH": "/opt/holoscan/models/",
++				"env_HOLOSCAN_WORKDIR": "/var/holoscan/"
++			},
++			"artifacts": {
++				"input": [
++					{
++						"name": "env_HOLOSCAN_INPUT_PATH",
++						"value": "{{ context.input.dicom }}"
++					}
++				],
++				"output": [
++					{
++						"name": "env_HOLOSCAN_OUTPUT_PATH",
++						"mandatory": true
++					}
++				]
++			},
++			"task_destinations": [
++				{
++					"name": "export-liver-seg"
++				}
++			]
++		},
++		{
++			"id": "export-liver-seg",
++			"description": "Export Segmentation Storage Object",
++			"type": "export",
++			"export_destinations": [
++				{
++					"Name": "ORTHANC"
++				}
++			],
++			"artifacts": {
++				"input": [
++					{
++						"name": "export-dicom",
++						"value": "{{ context.executions.liver.artifacts.env_HOLOSCAN_OUTPUT_PATH }}",
++						"mandatory": true
++					}
++				],
++				"output": []
++			}
++		}
++	]
++}
+diff --git a/deploy/monai-deploy-express/sample-workflows/lung-seg.json b/deploy/monai-deploy-express/sample-workflows/lung-seg.json
+index 1295eaa..3252466 100644
+--- a/deploy/monai-deploy-express/sample-workflows/lung-seg.json
++++ b/deploy/monai-deploy-express/sample-workflows/lung-seg.json
+@@ -33,7 +33,7 @@
+ 				"entrypoint": "/bin/bash,-c",
+ 				"command": "python3 -u /opt/monai/app/app.py",
+ 				"task_timeout_minutes": "5",
+-				"temp_storage_container_path": "/var/lib/monai/",
++				"temp_storage_container_path": "/var/lib/mde/",
+ 				"env_MONAI_INPUTPATH": "/var/monai/input/",
+ 				"env_MONAI_OUTPUTPATH": "/var/monai/output/",
+ 				"env_MONAI_MODELPATH": "/opt/monai/models/",
+@@ -80,4 +80,4 @@
+ 			}
+ 		}
+ 	]
+-}
+\ No newline at end of file
++}

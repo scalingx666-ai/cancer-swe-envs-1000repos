@@ -1,0 +1,75 @@
+version = "1.0"
+
+[task]
+name = "default/moshi4__pyMSAviz-15"
+description = "Bump to v0.5.0"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pyMSAviz",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "moshi4/pyMSAviz"
+ref = "b540ae7f4f5b090a2d36ad8147da471b6ab5d620"
+reference = "https://github.com/moshi4/pyMSAviz/pull/15"
+source_access = "auto"
+built_at = "2026-11-13T16:10:11.322390+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ec9a294d5d241ca0b4859f7cf824ec08c1ffae0c7500482707399e0cbe023be9"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-09-14T03:23:23Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/ci.yml",
+    ".github/workflows/publish_mkdocs.yml",
+    ".github/workflows/publish_to_pypi.yml",
+    ".pre-commit-config.yaml",
+    "README.md",
+    "docs/cli-docs/pymsaviz.md",
+    "docs/index.md",
+    "poetry.lock",
+    "pyproject.toml",
+    "requirements-dev.lock",
+    "requirements.lock",
+    "src/pymsaviz/__init__.py",
+    "src/pymsaviz/msaviz.py",
+    "src/pymsaviz/scripts/cli.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 3588
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

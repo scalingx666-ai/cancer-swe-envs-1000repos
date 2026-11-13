@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/eigenvivek__DiffDRR-413"
+description = "Bump version: 0.6.0 → 0.6.1"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "DiffDRR",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "eigenvivek/DiffDRR"
+ref = "a8018ea1394abb59af46f4b3b7ddd3e5eeb303db"
+reference = "https://github.com/eigenvivek/DiffDRR/pull/413"
+source_access = "auto"
+built_at = "2026-11-13T16:01:05.417698+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5a7e6ab102412c523f047b509cc5cb55cda5b205b4770c71f101eb213bbd7104"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-11T18:06:37Z"
+diff_format = "unified"
+context_files = [
+    "diffdrr/__init__.py",
+    "diffdrr/_modidx.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

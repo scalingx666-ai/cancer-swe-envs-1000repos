@@ -1,0 +1,449 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6a4d30d..98be2b1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -11,10 +11,50 @@ add_executable(runUnitTests fasta_unittest.cpp fastq_unittest.cpp filetype_unitt
+ target_link_libraries(runUnitTests gtest gtest_main fasta fastq filetype stats)
+ add_test(runUnitTests runUnitTests)
+ 
++## Download dependencies if not provided
++## bxzstr
++if (DEFINED CMAKE_BXZSTR_HEADERS)
++  message(STATUS "bxzstr headers provided in: ${CMAKE_BXZSTR_HEADERS}")
++else()
++  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-bxzstr.txt.in ${CMAKE_BINARY_DIR}/external/bxzstr-download/CMakeLists.txt)
++  execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
++    RESULT_VARIABLE result
++    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/bxzstr-download )
++  if(result)
++    message(FATAL_ERROR "CMake step for bxzstr failed: ${result}")
++  endif()
++  execute_process(COMMAND ${CMAKE_COMMAND} --build .
++    RESULT_VARIABLE result
++    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/bxzstr-download )
++  if(result)
++    message(FATAL_ERROR "Build step for bxzstr failed: ${result}")
++  endif()
++  set(CMAKE_BXZSTR_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/bxzstr/include)
++endif()
++include_directories(${CMAKE_BXZSTR_HEADERS})
++
+ add_library(fasta fasta.cpp)
+ add_library(fastq fastq.cpp)
+ add_library(filetype filetype.cpp)
+ add_library(stats stats.cpp)
++
++## Check supported compression types
++find_package(BZip2)
++if (BZIP2_FOUND)
++  include_directories(${BZIP2_INCLUDE_DIRS})
++  target_link_libraries(fasta fastq filetype stats ${BZIP2_LIBRARIES})
++endif()
++find_package(LibLZMA)
++if (LIBLZMA_FOUND)
++  include_directories(${LIBLZMA_INCLUDE_DIRS})
++  target_link_libraries(fasta fastq filetype stats ${LIBLZMA_LIBRARIES})
++endif()
++find_package(ZLIB REQUIRED)
++if (ZLIB_FOUND)
++  include_directories(${ZLIB_INCLUDE_DIRS})
++  target_link_libraries(fasta fastq filetype stats ${ZLIB_LIBRARIES})
++endif()
++
+ target_link_libraries(stats fasta fastq filetype)
+ add_executable(assembly-stats assembly-stats.cpp)
+ target_link_libraries(assembly-stats stats)
+diff --git a/README.md b/README.md
+index 0613064..e85cb77 100644
+--- a/README.md
++++ b/README.md
+@@ -15,6 +15,10 @@ Get assembly statistics from FASTA and FASTQ files.
+ ## Installation
+ If you encounter an issue when installing assembly-stats please contact your local system administrator. If you encounter a bug please log it [here](https://github.com/sanger-pathogens/assembly-stats/issues) or email us at path-help@sanger.ac.uk
+ 
++### Dependencies
++- zlib
++
++### Compiling from source
+ Run the following commands to install the program
+ `assembly-stats` to `/usr/local/bin/`.
+ 
+@@ -41,6 +45,11 @@ Get statistics from a list of files:
+ Detection of FASTA or FASTQ format of each file is automatic from the file
+ contents, so file names and extensions are irrelevant.
+ 
++The files can be supplied in compressed format (.gz, .bz2 or
++.xz). Compression support depends on what libraries are available when
++assembly-stats is compiled. Compression type is detected
++automatically and does not depend on the file name extensions.
++
+ The default output format is human readable.
+ You can change the output format and ignore sequences shorter than a
+ given length. Get the full usage by running with no files listed:
+diff --git a/config/CMakeLists-bxzstr.txt.in b/config/CMakeLists-bxzstr.txt.in
+new file mode 100644
+index 0000000..ce2f22e
+--- /dev/null
++++ b/config/CMakeLists-bxzstr.txt.in
+@@ -0,0 +1,15 @@
++cmake_minimum_required(VERSION 2.8.2)
++
++project(bxzstr-get NONE)
++include(ExternalProject)
++
++ExternalProject_Add(bxzstr-download
++  GIT_REPOSITORY    https://github.com/tmaklin/bxzstr.git
++  GIT_TAG           4c5864779802ad5460c9b63c958239bbe725f81a
++  SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/bxzstr"
++  BUILD_IN_SOURCE   0
++  BUILD_COMMAND	    ""
++  INSTALL_COMMAND   ""
++  TEST_COMMAND      ""
++  UPDATE_COMMAND    ""
++)
+diff --git a/fasta.cpp b/fasta.cpp
+index efe056f..03d34c1 100644
+--- a/fasta.cpp
++++ b/fasta.cpp
+@@ -95,7 +95,7 @@ vector< pair<unsigned long, unsigned long> > Fasta::gaps() const
+ }
+ 
+ 
+-bool Fasta::fillFromFile(istream& inStream)
++bool Fasta::fillFromFile(bxz::ifstream& inStream)
+ {
+     string line;
+     seq_ = "";
+diff --git a/fasta.h b/fasta.h
+index 5509339..e951444 100644
+--- a/fasta.h
++++ b/fasta.h
+@@ -8,6 +8,7 @@
+ #include <algorithm>
+ #include <vector>
+ 
++#include "bxzstr.hpp"
+ 
+ using namespace std;
+ 
+@@ -41,7 +42,7 @@ class Fasta
+ 
+     // reads next sequence from file, filling contents appropriately
+     // Returns true if worked ok, false if at end of file
+-    virtual bool fillFromFile(istream& inStream);
++    virtual bool fillFromFile(bxz::ifstream& inStream);
+ 
+ protected:
+     string id_;
+diff --git a/fasta_unittest.cpp b/fasta_unittest.cpp
+index 7cf8d59..df92a4d 100644
+--- a/fasta_unittest.cpp
++++ b/fasta_unittest.cpp
+@@ -1,7 +1,7 @@
+ #include <iostream>
+ #include "fasta.h"
+ #include "gtest/gtest.h"
+-
++#include "bxzstr.hpp"
+ 
+ TEST(Fasta, DefaultConstructor)
+ {
+@@ -83,7 +83,7 @@ TEST(Fasta, ReadFromFile)
+ {
+     Fasta fa;
+     int counter = 0;
+-    ifstream inStream("test_files/fasta_unittest.fasta");
++    bxz::ifstream inStream("test_files/fasta_unittest.fasta");
+ 
+     if (! inStream.is_open())
+     {
+@@ -94,7 +94,34 @@ TEST(Fasta, ReadFromFile)
+     while (fa.fillFromFile(inStream))
+     {
+         counter++;
+-        string expectedName = static_cast<ostringstream*>( &(ostringstream() << counter) )->str();
++	ostringstream stream;
++	stream << counter;
++	string expectedName = stream.str();
++        EXPECT_EQ(0, fa.name().compare(expectedName));
++        EXPECT_EQ(0, fa.seq().compare("ACGT"));
++    }
++
++    EXPECT_EQ(3, counter);
++}
++
++TEST(Fasta, ReadFromGzFile)
++{
++    Fasta fa;
++    int counter = 0;
++    bxz::ifstream inStream("test_files/fasta_unittest.fasta.gz");
++
++    if (! inStream.is_open())
++    {
++        cerr << "Error opening test file test_files/fasta_unittest.fasta.gz" << endl;
++        exit(1);
++    }
++
++    while (fa.fillFromFile(inStream))
++    {
++        counter++;
++	ostringstream stream;
++	stream << counter;
++	string expectedName = stream.str();
+         EXPECT_EQ(0, fa.name().compare(expectedName));
+         EXPECT_EQ(0, fa.seq().compare("ACGT"));
+     }
+diff --git a/fastq.cpp b/fastq.cpp
+index ccfc663..c56aacf 100644
+--- a/fastq.cpp
++++ b/fastq.cpp
+@@ -33,7 +33,7 @@ void Fastq::qual(string s)
+ }
+ 
+ 
+-bool Fastq::fillFromFile(istream& inStream)
++bool Fastq::fillFromFile(bxz::ifstream& inStream)
+ {
+     string line;
+     getline(inStream, line);
+diff --git a/fastq.h b/fastq.h
+index 955f46f..34472a2 100644
+--- a/fastq.h
++++ b/fastq.h
+@@ -4,6 +4,9 @@
+ #include <iostream>
+ #include <string>
+ #include <fstream>
++
++#include "bxzstr.hpp"
++
+ #include "fasta.h"
+ 
+ using namespace std;
+@@ -24,7 +27,7 @@ class Fastq : public Fasta
+ 
+     // reads next sequence from file, filling contents appropriately
+     // Returns true if worked ok, false if at end of file
+-    bool fillFromFile(istream& inStream);
++    bool fillFromFile(bxz::ifstream& inStream);
+ 
+ private:
+     string qual_;
+diff --git a/fastq_unittest.cpp b/fastq_unittest.cpp
+index 210faf3..9cc9d7c 100644
+--- a/fastq_unittest.cpp
++++ b/fastq_unittest.cpp
+@@ -3,7 +3,7 @@
+ #include <sstream>
+ #include "fastq.h"
+ #include "gtest/gtest.h"
+-
++#include "bxzstr.hpp"
+ 
+ TEST(Fastq, DefaultConstructor)
+ {
+@@ -39,7 +39,7 @@ TEST(Fastq, ReadFromFile)
+ {
+     Fastq fq;
+     unsigned int counter = 0;
+-    ifstream inStream("test_files/fastq_unittest.fastq");
++    bxz::ifstream inStream("test_files/fastq_unittest.fastq");
+ 
+     if (! inStream.is_open())
+     {
+@@ -50,7 +50,32 @@ TEST(Fastq, ReadFromFile)
+     while (fq.fillFromFile(inStream))
+     {
+         counter++;
+-        string expectedName = static_cast<ostringstream*>( &(ostringstream() << counter) )->str();
++	ostringstream stream;
++	stream << counter;
++	string expectedName = stream.str();
++	EXPECT_EQ(0, fq.name().compare(expectedName));
++        EXPECT_EQ(0, fq.seq().compare("ACGT"));
++    }
++}
++
++TEST(Fastq, ReadFromGzFile)
++{
++    Fastq fq;
++    unsigned int counter = 0;
++    bxz::ifstream inStream("test_files/fastq_unittest.fastq.gz");
++
++    if (! inStream.is_open())
++    {
++        cerr << "Error opening test file test_files/fastq_unittest.fastq.gz" << endl;
++        exit(1);
++    }
++
++    while (fq.fillFromFile(inStream))
++    {
++        counter++;
++	ostringstream stream;
++	stream << counter;
++	string expectedName = stream.str();
+         EXPECT_EQ(0, fq.name().compare(expectedName));
+         EXPECT_EQ(0, fq.seq().compare("ACGT"));
+     }
+diff --git a/filetype.cpp b/filetype.cpp
+index 883e75a..bd9dbac 100644
+--- a/filetype.cpp
++++ b/filetype.cpp
+@@ -1,6 +1,6 @@
+ #include "filetype.h"
+ 
+-short fastaOrFastq(istream &inStream)
++short fastaOrFastq(bxz::ifstream &inStream)
+ {
+     char firstChar = inStream.peek();
+     switch (firstChar)
+@@ -16,8 +16,8 @@ short fastaOrFastq(istream &inStream)
+ 
+ short fastaOrFastq(string filename)
+ {
+-    ifstream ifs;
+-    ifs.open(filename.c_str());
++    bxz::ifstream ifs;
++    ifs.open(filename);
+ 
+     if (! ifs.is_open())
+     {
+diff --git a/filetype.h b/filetype.h
+index 1531796..374f04b 100644
+--- a/filetype.h
++++ b/filetype.h
+@@ -5,13 +5,15 @@
+ #include <fstream>
+ #include <stdlib.h>
+ 
++#include "bxzstr.hpp"
++
+ using namespace std;
+ 
+ const short FASTA_FILE = 1;
+ const short FASTQ_FILE = 2;
+ const short UNKNOWN = 3;
+ 
+-short fastaOrFastq(istream &inputstream);
++short fastaOrFastq(bxz::ifstream &inputstream);
+ short fastaOrFastq(string filename);
+ 
+ #endif // FILETYPE
+diff --git a/filetype_unittest.cpp b/filetype_unittest.cpp
+index d3ff436..411bdfb 100644
+--- a/filetype_unittest.cpp
++++ b/filetype_unittest.cpp
+@@ -16,3 +16,18 @@ TEST(filetype, UnknownType)
+ {
+     EXPECT_EQ(UNKNOWN, fastaOrFastq("test_files/filetype_unittest.unknown"));
+ }
++
++TEST(filetype, FastaGzType)
++{
++    EXPECT_EQ(FASTA_FILE, fastaOrFastq("test_files/filetype_unittest.fasta.gz"));
++}
++
++TEST(filetype, FastqGzType)
++{
++    EXPECT_EQ(FASTQ_FILE, fastaOrFastq("test_files/filetype_unittest.fastq.gz"));
++}
++
++TEST(filetype, UnknownGzType)
++{
++    EXPECT_EQ(UNKNOWN, fastaOrFastq("test_files/filetype_unittest.unknown.gz"));
++}
+diff --git a/stats.cpp b/stats.cpp
+index e3fb0a4..1efc67d 100644
+--- a/stats.cpp
++++ b/stats.cpp
+@@ -1,5 +1,7 @@
+ #include "stats.h"
+ 
++#include "bxzstr.hpp"
++
+ void Stats::init()
+ {
+     mean_ = 0;
+@@ -29,7 +31,7 @@ Stats::Stats(string filename, unsigned long minimumLength)
+ {
+     init();
+     vector<int> seqLengths;
+-    ifstream inStream;
++    bxz::ifstream inStream;
+     unsigned long cumulativeLength = 0;
+ 
+     inStream.open(filename.c_str());
+diff --git a/stats_unittest.cpp b/stats_unittest.cpp
+index d3f29e8..3254e01 100644
+--- a/stats_unittest.cpp
++++ b/stats_unittest.cpp
+@@ -18,6 +18,11 @@ Gaps = 2\n\
+ 
+     string got = s.toString(FORMAT_HUMAN);
+     EXPECT_EQ(0, expected.compare(got));
++
++    // Test gzipped input
++    Stats s2("test_files/stats_unittest.fasta.gz");
++    got = s.toString(FORMAT_HUMAN);
++    EXPECT_EQ(0, expected.compare(got));
+ }
+ 
+ 
+@@ -53,6 +58,11 @@ test_files/stats_unittest.fasta\tn90n\t4\n\
+ 
+     string got = s.toString(FORMAT_GREPPY);
+     EXPECT_EQ(0, expected.compare(got));
++
++    // Test gzipped input
++    Stats s2("test_files/stats_unittest.fasta.gz");
++    got = s.toString(FORMAT_GREPPY);
++    EXPECT_EQ(0, expected.compare(got));
+ }
+ 
+ 
+@@ -65,6 +75,11 @@ test_files/stats_unittest.fasta\t21\t5\t4.20\t8\t1\t4\t2\t6\t2\t4\t3\t2\t4\n\
+ 
+     string got = s.toString(FORMAT_TAB);
+     EXPECT_EQ(0, expected.compare(got));
++
++    // Test gzipped input
++    Stats s2("test_files/stats_unittest.fasta.gz");
++    got = s.toString(FORMAT_TAB);
++    EXPECT_EQ(0, expected.compare(got));
+ }
+ 
+ 
+@@ -74,4 +89,9 @@ TEST(Stats, TabDelimitedNoHeader)
+     string expected = "test_files/stats_unittest.fasta\t21\t5\t4.20\t8\t1\t4\t2\t6\t2\t4\t3\t2\t4\n";
+     string got = s.toString(FORMAT_TAB_NO_HEAD);
+     EXPECT_EQ(0, expected.compare(got));
++
++    // Test gzipped input
++    Stats s2("test_files/stats_unittest.fasta.gz");
++    got = s.toString(FORMAT_TAB_NO_HEAD);
++    EXPECT_EQ(0, expected.compare(got));
+ }
+diff --git a/test_files/fasta_unittest.fasta.gz b/test_files/fasta_unittest.fasta.gz
+new file mode 100644
+index 0000000..2630c24
+Binary files /dev/null and b/test_files/fasta_unittest.fasta.gz differ
+diff --git a/test_files/fastq_unittest.fastq.gz b/test_files/fastq_unittest.fastq.gz
+new file mode 100644
+index 0000000..74101b3
+Binary files /dev/null and b/test_files/fastq_unittest.fastq.gz differ
+diff --git a/test_files/filetype_unittest.fasta.gz b/test_files/filetype_unittest.fasta.gz
+new file mode 100644
+index 0000000..364716a
+Binary files /dev/null and b/test_files/filetype_unittest.fasta.gz differ
+diff --git a/test_files/filetype_unittest.fastq.gz b/test_files/filetype_unittest.fastq.gz
+new file mode 100644
+index 0000000..3a79bd6
+Binary files /dev/null and b/test_files/filetype_unittest.fastq.gz differ
+diff --git a/test_files/filetype_unittest.unknown.gz b/test_files/filetype_unittest.unknown.gz
+new file mode 100644
+index 0000000..ee43b97
+Binary files /dev/null and b/test_files/filetype_unittest.unknown.gz differ
+diff --git a/test_files/stats_unittest.fasta.gz b/test_files/stats_unittest.fasta.gz
+new file mode 100644
+index 0000000..a35772e
+Binary files /dev/null and b/test_files/stats_unittest.fasta.gz differ

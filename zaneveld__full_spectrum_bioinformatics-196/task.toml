@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/zaneveld__full_spectrum_bioinformatics-196"
+description = "Added logos and text to data sources appendix"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "full_spectrum_bioinformatics",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zaneveld/full_spectrum_bioinformatics"
+ref = "34a88d0369cec391f82c631f83150bb4f21a1dd8"
+reference = "https://github.com/zaneveld/full_spectrum_bioinformatics/pull/196"
+source_access = "auto"
+built_at = "2026-11-13T16:20:10.206612+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1d611e2518e83f321d838e6e5ec19e65b668cd7bf0cc9df10f01cff03a398b8a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-16T23:50:14Z"
+diff_format = "unified"
+context_files = [
+    "content/14_appendix_data_sources/14_Appendix_Data_Sources.ipynb",
+    "content/14_appendix_data_sources/resources/ArrayExpress_logo.png",
+    "content/14_appendix_data_sources/resources/GDC_logo.png",
+    "content/14_appendix_data_sources/resources/STRING.png",
+    "content/14_appendix_data_sources/resources/ViPR_logo.png",
+    "content/14_appendix_data_sources/resources/circAtlas3_logo.png",
+    "content/14_appendix_data_sources/resources/circAtlas_logo.png",
+    "content/14_appendix_data_sources/resources/pgp_logo.png",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 144
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

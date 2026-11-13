@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/open2c__pairtools-278"
+description = "Add region_match to pairtools_select"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pairtools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "open2c/pairtools"
+ref = "7e69d6cfdb726e0be9b03a738d8333db5398ccf6"
+reference = "https://github.com/open2c/pairtools/pull/278"
+source_access = "auto"
+built_at = "2026-11-13T16:20:01.034142+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e17e63d786e4dab6de0eeb1c62140eda6fb8263a6134734acf6771a71842ec44"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-11-03T19:26:26Z"
+diff_format = "unified"
+context_files = [
+    "pairtools/cli/select.py",
+    "pairtools/lib/select.py",
+    "tests/test_select.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 112
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

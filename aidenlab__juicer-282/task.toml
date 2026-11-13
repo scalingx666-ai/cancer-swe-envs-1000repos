@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/aidenlab__juicer-282"
+description = "Update juicer_postprocessing.sh"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "juicer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "aidenlab/juicer"
+ref = "c88f0893e96e7ed156cebc5e231578054f132c6c"
+reference = "https://github.com/aidenlab/juicer/pull/282"
+source_access = "auto"
+built_at = "2026-11-13T15:54:16.911163+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d80ae627e6680efe559f7a6d843556d561f36778eeee66111cae796c4b361792"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-06-29T21:01:23Z"
+diff_format = "unified"
+context_files = [
+    "CPU/common/juicer_postprocessing.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

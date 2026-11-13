@@ -1,0 +1,86 @@
+diff --git a/bin.c b/bin.c
+index 7c3a9e63..176062a5 100644
+--- a/bin.c
++++ b/bin.c
+@@ -137,7 +137,7 @@ void hk_bmap_merge_beads(struct hk_bmap *m, int32_t n_pairs, const struct hk_pai
+ 	hk_bmap_set_offcnt(m);
+ }
+ 
+-struct hk_bmap *hk_bmap_gen(const struct hk_sdict *d, int32_t n_pairs, const struct hk_pair *pairs, int size)
++struct hk_bmap *hk_bmap_gen(const struct hk_sdict *d, int32_t n_pairs, const struct hk_pair *pairs, int size, int bmap_skip_merge_flag)
+ {
+ 	int32_t n_del, m_pairs = 0;
+ 	khash_t(bin_cnt) *h;
+@@ -150,8 +150,10 @@ struct hk_bmap *hk_bmap_gen(const struct hk_sdict *d, int32_t n_pairs, const str
+ 	hk_bmap_gen_beads_uniform(m, size);
+ 	if (hk_verbose >= 3)
+ 		fprintf(stderr, "[M::%s] generated %d beads\n", __func__, m->n_beads);
+-	hk_bmap_merge_beads(m, n_pairs, pairs);
+-	hk_bmap_merge_beads(m, n_pairs, pairs);
++	if (bmap_skip_merge_flag == 0) {
++		hk_bmap_merge_beads(m, n_pairs, pairs);
++		hk_bmap_merge_beads(m, n_pairs, pairs);
++	}
+ 
+ 	h = hash_count(m, n_pairs, pairs);
+ 	for (k = 0, n_del = 0; k < kh_end(h); ++k) {
+diff --git a/hickit.h b/hickit.h
+index 9942ebb3..db7535f3 100644
+--- a/hickit.h
++++ b/hickit.h
+@@ -135,7 +135,7 @@ void hk_validate_holdback(krng_t *r, float ratio, int32_t n_pairs, struct hk_pai
+ void hk_validate_roc(FILE *fp, int32_t n_pairs, struct hk_pair *pairs);
+ 
+ struct hk_bmap *hk_3dg_read(const char *fn);
+-struct hk_bmap *hk_bmap_gen(const struct hk_sdict *d, int32_t n_pairs, const struct hk_pair *pairs, int size);
++struct hk_bmap *hk_bmap_gen(const struct hk_sdict *d, int32_t n_pairs, const struct hk_pair *pairs, int size, int bmap_skip_merge_flag);
+ struct hk_bmap *hk_bmap_bead_dup(const struct hk_bmap *m0);
+ int32_t hk_pair_flt_3d(const struct hk_bmap *m, int32_t n_pairs, struct hk_pair *pairs, float max_factor);
+ void hk_bmap_destroy(struct hk_bmap *m);
+diff --git a/main.c b/main.c
+index 79d3640d..aaeb5786 100644
+--- a/main.c
++++ b/main.c
+@@ -84,6 +84,7 @@ int main(int argc, char *argv[])
+ 	int png_no_dim = 0;
+ 	// 3D modeling
+ 	struct hk_fdg_conf fdg_opt;
++	int bmap_skip_merge_flag = 0; // default: do not skip merging beads that have no contacts (hk_bmap_merge_beads)
+ 	// 3D viewing
+ 	struct hk_v3d_opt v3d_opt;
+ 	char *v3d_hl = 0;
+@@ -92,7 +93,7 @@ int main(int argc, char *argv[])
+ 	hk_fdg_conf_init(&fdg_opt);
+ 	hk_v3d_opt_init(&v3d_opt);
+ 
+-	while ((c = getopt_long(argc, argv, "i:o:r:c:T:P:n:w:p:b:e:k:R:a:s:I:O:D:Suz:L:E", long_options, &long_idx)) >= 0) {
++	while ((c = getopt_long(argc, argv, "i:o:r:c:T:P:n:w:p:b:e:k:R:a:s:I:O:D:Suz:L:EM", long_options, &long_idx)) >= 0) {
+ 		has_options = 1;
+ 		if (c == 'i') {
+ 			if (m) hk_map_destroy(m);
+@@ -193,7 +194,7 @@ int main(int argc, char *argv[])
+ 			bin_size = hk_parse_num(optarg, 0);
+ 			assert(bin_size > 0);
+ 			if (!(m->cols & 1<<6)) hk_pair_count_nei(m->n_pairs, m->pairs, radius, radius);
+-			b = hk_bmap_gen(m->d, m->n_pairs, m->pairs, bin_size);
++			b = hk_bmap_gen(m->d, m->n_pairs, m->pairs, bin_size, bmap_skip_merge_flag);
+ 			hk_fdg(&fdg_opt, b, d3, &rng);
+ 			if (d3) hk_bmap_destroy(d3);
+ 			d3 = hk_bmap_bead_dup(b);
+@@ -210,6 +211,8 @@ int main(int argc, char *argv[])
+ 		} else if (c == 's') {
+ 			seed = atol(optarg);
+ 			kr_srand_r(&rng, seed);
++		} else if (c == 'M') {
++			bmap_skip_merge_flag = 1;
+ 		} else if (c == 0) {
+ 			if (long_idx == 0) min_leg_dist = hk_parse_num(optarg, 0); // --min-leg-dist
+ 			else if (long_idx ==  1) max_seg = atoi(optarg); // --max-seg
+@@ -341,6 +344,7 @@ int main(int argc, char *argv[])
+ 		fprintf(fp, "    -e FLOAT            step size [%g]\n", fdg_opt.step);
+ 		fprintf(fp, "    -k FLOAT            relative repulsive stiffness [%g]\n", fdg_opt.k_rel_rep);
+ 		fprintf(fp, "    -R FLOAT            relative repulsive radius [%g]\n", fdg_opt.d_r);
++		fprintf(fp, "    -M                  do not merge beads that have no contacts\n");
+ #ifdef HAVE_GL
+ 		fprintf(fp, "  3D viewing:\n");
+ 		fprintf(fp, "    --line-width=FLOAT  line width [%g]\n", v3d_opt.line_width);

@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/MECLabTUDA__Lifelong-nnUNet-13"
+description = "Correcting flag documentation in run_inference.py, respectively chang…"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "Lifelong-nnUNet",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "MECLabTUDA/Lifelong-nnUNet"
+ref = "88b8e3e2079a98e17134ccf5125dbf80ea93cfcd"
+reference = "https://github.com/MECLabTUDA/Lifelong-nnUNet/pull/13"
+source_access = "auto"
+built_at = "2026-11-13T16:15:12.841467+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e2a32eb5e1adb8f5fd3b95f801a50f136c32e225c5bde4edf9b8571ad2929d86"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-04-16T15:47:56Z"
+diff_format = "unified"
+context_files = [
+    "extract_predictions.py",
+    "nnunet_ext/run/run_inference.py",
+    "predict.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

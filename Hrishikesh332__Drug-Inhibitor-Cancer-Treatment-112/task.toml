@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/Hrishikesh332__Drug-Inhibitor-Cancer-Treatment-112"
+description = "Nina/cleanup am notebooks"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Drug-Inhibitor-Cancer-Treatment",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Hrishikesh332/Drug-Inhibitor-Cancer-Treatment"
+ref = "f8beae8ab5450dcda3e89ca31b725138def87a55"
+reference = "https://github.com/Hrishikesh332/Drug-Inhibitor-Cancer-Treatment/pull/112"
+source_access = "auto"
+built_at = "2026-11-13T15:39:03.709539+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:17c08ed1538551bdb85a13369c63257961841863a3213e72c793d340ded53093"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-08-31T12:32:03Z"
+diff_format = "unified"
+context_files = [
+    "explainability/notebooks/explainability-am-analysis.ipynb",
+    "explainability/notebooks/explainability-am-by-cell-line.ipynb",
+    "explainability/notebooks/explainability-am.ipynb",
+    "explainability/notebooks/explainability-am.pdf",
+    "explainability/notebooks/explaination-lrp.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 373
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

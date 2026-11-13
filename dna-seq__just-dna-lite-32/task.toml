@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/dna-seq__just-dna-lite-32"
+description = "Fix false-empty module reports"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "just-dna-lite",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "dna-seq/just-dna-lite"
+ref = "44382bacf25a2887898bf109f6a88efcb7512270"
+reference = "https://github.com/dna-seq/just-dna-lite/pull/32"
+source_access = "auto"
+built_at = "2026-11-13T16:18:59.979907+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:444aac15c200697db6ba6d1f992076573cd64e7a3972807cdd2a254b2e7846a7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-21T14:01:57Z"
+diff_format = "unified"
+context_files = [
+    "just-dna-pipelines/src/just_dna_pipelines/annotation/hf_logic.py",
+    "just-dna-pipelines/src/just_dna_pipelines/annotation/report_logic.py",
+    "just-dna-pipelines/src/just_dna_pipelines/annotation/templates/longevity_report.html.j2",
+    "just-dna-pipelines/tests/test_hf_modules.py",
+    "just-dna-pipelines/tests/test_report_logic.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 228
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

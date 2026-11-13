@@ -1,0 +1,513 @@
+diff --git a/Dockerfile b/Dockerfile
+deleted file mode 100644
+index 5740396..0000000
+--- a/Dockerfile
++++ /dev/null
+@@ -1,27 +0,0 @@
+-FROM python:3.6.8-slim
+-LABEL maintainer="christopher.flerin@kuleuven.vib.be"
+-
+-ENV DEBIAN_FRONTEND=noninteractive
+-RUN BUILDPKGS="build-essential apt-utils \
+-        python3-dev libhdf5-dev libfreetype6-dev libtool \
+-        m4 autoconf automake patch bison flex libpng-dev libopenblas-dev \
+-        tcl-dev tk-dev libxml2-dev zlib1g-dev libffi-dev cmake" && \
+-    apt-get update && \
+-    apt-get install -y debconf locales && dpkg-reconfigure locales && \
+-    apt-get install -y $BUILDPKGS && \
+-    ### run time:
+-    apt-get install -y zlib1g hdf5-tools gfortran libgcc1 libstdc++ musl \
+-        libopenblas-base tcl tk libxml2 libffi6 less procps
+-
+-# install dependencies:
+-COPY requirements.txt /tmp/
+-RUN pip install --no-cache-dir --upgrade pip && \
+-    pip install --no-cache-dir -r /tmp/requirements.txt
+-
+-RUN pip install --no-cache-dir pyscenic==0.9.9 && \
+-    pip install --no-cache-dir scanpy==1.4.3
+-
+-RUN apt-get remove --purge -y $BUILDPKGS && \
+-    rm -rf /var/lib/apt/lists/*
+-
+-
+diff --git a/README.md b/README.md
+index f396f20..70f6111 100644
+--- a/README.md
++++ b/README.md
+@@ -58,25 +58,35 @@ The following container images will be pulled by nextflow as needed:
+ * Singularity: [aertslab/pySCENIC:latest](https://www.singularity-hub.org/collections/2033).
+ * [See also here.](https://github.com/aertslab/pySCENIC#docker-and-singularity-images)
+ 
++#### Using the test profile
++
++A quick test can be accomplished using the `test` profile, which automatically pulls the testing dataset (described in full below):
++
++    nextflow run aertslab/SCENICprotocol \
++        -profile docker,test
++
++This small test dataset takes approximately 70s to run using 6 threads on a standard desktop computer.
++
+ #### Download testing dataset
+ 
++Alternately, the same data can be run with a more verbose aproach (this is more illustrative for how to substitute other data into the pipeline).
+ Download a minimum set of SCENIC database files for a human dataset (approximately 78 MB).
+-This small test dataset takes approximately 30s to run using 6 threads on a standard desktop computer.
+ 
+     mkdir example && cd example/
+     # Transcription factors:
+-    wget https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/allTFs_hg38.txt 
++    wget https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/test_TFs.txt 
+     # Motif to TF annotation database:
+     wget https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/motifs.tbl
+     # Ranking databases:
+     wget https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/genome-ranking.feather
+-    # Finally, get a small sample expression matrix (loom format):
+-    wget https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/expr_mat.loom
++    # Finally, get a tiny sample expression matrix (loom format):
++    wget https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/expr_mat_tiny.loom
+ 
+ 
+ #### Running the example pipeline
+ 
+ Either Docker or Singularity images can be used by specifying the appropriate profile (`-profile docker` or `-profile singularity`).
++Please note that for the tiny test dataset to run successfully, the default thresholds need to be lowered.
+ 
+ ##### Using loom input
+ 
+@@ -86,7 +96,8 @@ Either Docker or Singularity images can be used by specifying the appropriate pr
+         --loom_output pyscenic_integrated-output.loom \
+         --TFs allTFs_hg38.txt \
+         --motifs motifs.tbl \
+-        --db *feather
++        --db *feather \
++        --thr_min_genes 1
+ 
+ By default, this pipeline uses the container tag specified by the `--pyscenic_tag` parameter.
+ This is currently set to `0.9.16`, which uses a container with both pySCENIC and Scanpy `1.4.4.post1` installed.
+diff --git a/bin/arboreto_with_multiprocessing.py b/bin/arboreto_with_multiprocessing.py
+new file mode 100755
+index 0000000..073a3c3
+--- /dev/null
++++ b/bin/arboreto_with_multiprocessing.py
+@@ -0,0 +1,136 @@
++#!/usr/bin/env python3
++
++import sys
++import time
++import loompy as lp
++import pandas as pd
++#import numpy as np
++from multiprocessing import Pool, cpu_count
++import argparse
++import tqdm
++
++from arboreto.utils import load_tf_names
++from arboreto.algo import genie3, grnboost2, _prepare_input
++from arboreto.core import SGBM_KWARGS, RF_KWARGS, EARLY_STOP_WINDOW_LENGTH
++from arboreto.core import to_tf_matrix, target_gene_indices, infer_partial_network
++
++
++
++################################################################################
++################################################################################
++
++parser_grn = argparse.ArgumentParser(description='Run Arboreto using a multiprocessing pool')
++
++parser_grn.add_argument('expression_mtx_fname',
++        type=argparse.FileType('r'),
++        help='The name of the file that contains the expression matrix for the single cell experiment.'
++        ' Two file formats are supported: csv (rows=cells x columns=genes) or loom (rows=genes x columns=cells).')
++parser_grn.add_argument('tfs_fname',
++        type=argparse.FileType('r'),
++        help='The name of the file that contains the list of transcription factors (TXT; one TF per line).')
++parser_grn.add_argument('-m', '--method', choices=['genie3', 'grnboost2'],
++        default='grnboost2',
++        help='The algorithm for gene regulatory network reconstruction (default: grnboost2).')
++parser_grn.add_argument('-o', '--output',
++        type=argparse.FileType('w'), default=sys.stdout,
++        help='Output file/stream, i.e. a table of TF-target genes (CSV).')
++parser_grn.add_argument('--num_workers',
++        type=int, default=cpu_count(),
++        help='The number of workers to use. (default: {}).'.format(cpu_count()))
++parser_grn.add_argument('--seed', type=int, required=False, default=None,
++        help='Seed value for regressor random state initialization (optional)')
++
++parser_grn.add_argument('--cell_id_attribute',
++        type=str, default='CellID',
++        help='The name of the column attribute that specifies the identifiers of the cells in the loom file.')
++parser_grn.add_argument('--gene_attribute',
++        type=str, default='Gene',
++        help='The name of the row attribute that specifies the gene symbols in the loom file.')
++parser_grn.add_argument('--sparse', action='store_const', const=True, default=False,
++        help='If set, load the expression data as a sparse (CSC) matrix.')
++
++args = parser_grn.parse_args()
++
++
++################################################################################
++################################################################################
++################################################################################
++
++if(args.method == 'grnboost2'):
++    method_params = [
++        'GBM',      # regressor_type
++        SGBM_KWARGS # regressor_kwargs
++        ]
++elif(args.method == 'genie3'):
++    method_params = [
++        'RF',       # regressor_type
++        RF_KWARGS   # regressor_kwargs
++        ]
++
++
++
++def run_infer_partial_network(target_gene_index):
++    target_gene_name = gene_names[target_gene_index]
++    target_gene_expression = ex_matrix[:, target_gene_index]
++
++    n = infer_partial_network(
++        regressor_type=method_params[0],
++        regressor_kwargs=method_params[1],
++        tf_matrix=tf_matrix,
++        tf_matrix_gene_names=tf_matrix_gene_names,
++        target_gene_name=target_gene_name,
++        target_gene_expression=target_gene_expression,
++        include_meta=False,
++        early_stop_window_length=EARLY_STOP_WINDOW_LENGTH,
++        seed=args.seed)
++    return( n )
++
++if __name__ == '__main__':
++
++    start_time = time.time()
++
++    # lf = lp.connect(args.expression_mtx_fname.name, mode='r', validate=False )
++    # if args.sparse:
++    #     ex_matrix = lf.layers[''].sparse().T.tocsc()
++    #     gene_names = pd.Series(lf.ra[args.gene_attribute])
++    # else:
++    #     ex_matrix = pd.DataFrame(lf[:,:], index=lf.ra[args.gene_attribute], columns=lf.ca[args.cell_id_attribute]).T
++    #     gene_names = ex_matrix.columns
++    # lf.close()
++
++    with lp.connect(args.expression_mtx_fname.name, mode='r', validate=False) as ds:
++        if args.sparse:
++            ex_matrix = ds.layers[''].sparse().T.tocsc()
++            gene_names = pd.Series(ds.ra[args.gene_attribute])
++            #cells = ds.ca[args.cell_id_attribute]
++        else:
++            ex_matrix = pd.DataFrame(data=ds[:, :],
++                         index=ds.ra[args.gene_attribute],
++                         columns=ds.ca[args.cell_id_attribute]).T
++            gene_names = pd.Series(ds.ra[args.gene_attribute])
++
++    end_time = time.time()
++    print(f'Loaded expression matrix of {ex_matrix.shape[0]} cells and {ex_matrix.shape[1]} genes in {end_time - start_time} seconds...', file=sys.stderr)
++
++    tf_names = load_tf_names(args.tfs_fname.name)
++    print(f'Loaded {len(tf_names)} TFs...', file=sys.stderr)
++
++    ex_matrix, gene_names, tf_names = _prepare_input(ex_matrix, gene_names, tf_names)
++    tf_matrix, tf_matrix_gene_names = to_tf_matrix(ex_matrix, gene_names, tf_names)
++
++    print(f'starting {args.method} using {args.num_workers} processes...', file=sys.stderr)
++    start_time = time.time()
++
++    with Pool(args.num_workers) as p:
++        adjs = list(tqdm.tqdm(p.imap(run_infer_partial_network,
++                                     target_gene_indices(gene_names, target_genes='all'),
++                                     chunksize=1
++                                     ),
++                              total=len(gene_names)))
++
++    adj = pd.concat(adjs).sort_values(by='importance', ascending=False)
++
++    end_time = time.time()
++    print(f'Done in {end_time - start_time} seconds.', file=sys.stderr)
++    adj.to_csv( args.output, index=False, sep="\t")
++
+diff --git a/conf/test.config b/conf/test.config
+new file mode 100644
+index 0000000..a36e961
+--- /dev/null
++++ b/conf/test.config
+@@ -0,0 +1,14 @@
++
++params {
++    loom_input = 'https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/expr_mat_tiny.loom'
++    TFs = 'https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/test_TFs.txt'
++
++    motifs = 'https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/motifs.tbl'
++    db = 'https://raw.githubusercontent.com/aertslab/SCENICprotocol/master/example/genome-ranking.feather'
++    seed = 777
++    thr_min_genes = 1
++    thr_min_cells = 1
++    thr_n_genes = 5000
++    thr_pct_mito = 0.25
++}
++
+diff --git a/main.nf b/main.nf
+index 460f9a5..f55044a 100644
+--- a/main.nf
++++ b/main.nf
+@@ -5,10 +5,6 @@ params.each { println "${it}" }
+ println( "***\n")
+ 
+ 
+-// process importData {
+-// 
+-// }
+-
+ file( "${params.outdir}" ).mkdirs()
+ 
+ 
+@@ -151,14 +147,16 @@ process GRNinference {
+     file 'adj.tsv' into GRN
+ 
+     """
+-    pyscenic grn \
++    arboreto_with_multiprocessing.py \
++        ${params.loom_filtered} \
++        ${TFs} \
++        --method ${params.grn} \
+         --num_workers ${params.threads} \
+         -o adj.tsv \
+-        --method ${params.grn} \
++        ${(params.containsKey('sparse')) ? '--sparse' : ''} \
++        ${(params.containsKey('seed')) ? "--seed  ${params.seed}" : ""} \
+         --cell_id_attribute ${params.cell_id_attribute} \
+         --gene_attribute ${params.gene_attribute} \
+-        ${params.loom_filtered} \
+-        ${TFs}
+     """
+ }
+ 
+@@ -211,8 +209,6 @@ process AUCell {
+     """
+ }
+ 
+-// AUCmat.last().collectFile(storeDir:params.outdir)
+-
+ process visualizeAUC {
+     cache 'deep'
+     container params.pyscenic_container
+diff --git a/nextflow.config b/nextflow.config
+index 8cfdfa0..81420d0 100644
+--- a/nextflow.config
++++ b/nextflow.config
+@@ -3,7 +3,6 @@ params {
+     loom_input = '' // unfiltered loom input
+     loom_filtered = 'filtered.loom'
+     loom_output = 'pyscenic_integrated-output.loom'
+-    // loom_SCpreprocessed = 'filtered-scanpy.loom' 
+     thr_min_genes = 200
+     thr_min_cells = 3
+     thr_n_genes = 5000
+@@ -12,7 +11,6 @@ params {
+     threads = 6
+ 
+     // SCENIC parameters
+-    // expr = "expr_mat.tsv"
+     TFs = "allTFs_hg38.txt"
+     motifs = "resources/motifs-v9-nr.hgnc-m0.001-o0.0.tbl"
+     db = "resources/hg19*mc9nr.feather"
+@@ -23,7 +21,7 @@ params {
+     gene_attribute = "Gene"
+ 
+     // pySCENIC container location
+-    pyscenic_container = 'aertslab/pyscenic:0.9.19-dev'
++    pyscenic_container = 'aertslab/pyscenic:0.9.19'
+ 
+ }
+ 
+@@ -39,5 +37,9 @@ profiles {
+         singularity.enabled = true
+         singularity.autoMounts = true
+     }
++    test {
++        includeConfig 'conf/test.config'
++    }
+ 
+ }
++
+diff --git a/requirements.txt b/requirements.txt
+index b62bfa4..dfd8ea5 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,71 +1,104 @@
+-anndata==0.6.20
+-arboreto==0.1.5
+-attrs==19.1.0
+-backcall==0.1.0
+-boltons==19.1.0
+-cffi==1.12.3
+-Click==7.0
+-cloudpickle==0.8.1
+-cycler==0.10.0
+-cytoolz==0.9.0.1
+-dask==1.0.0
+-decorator==4.4.0
+-dill==0.2.9
+-distributed==1.27.0
+-frozendict==1.2
+-h5py==2.9.0
+-HeapDict==1.0.0
+-interlap==0.2.6
+-ipykernel==5.1.1
+-ipython==7.4.0
+-ipython-genutils==0.2.0
+-jedi==0.13.3
+-joblib==0.13.2
+-jupyter-client==5.2.4
+-jupyter-core==4.4.0
+-kiwisolver==1.1.0
+-llvmlite==0.29.0
+-loompy==2.0.17
+-louvain==0.6.1
+-matplotlib==3.0.2
+-mock==3.0.5
+-msgpack==0.6.1
+-MulticoreTSNE==0.1
+-multiprocessing-on-dill==3.5.0a4
+-natsort==6.0.0
+-networkx==2.3
+-numba==0.43.0
+-numexpr==2.6.9
+-numpy==1.16.2
+-pandas==0.23.4
+-parso==0.4.0
+-patsy==0.5.1
+-pexpect==4.7.0
+-pickleshare==0.7.5
+-prompt-toolkit==2.0.9
+-psutil==5.6.1
+-ptyprocess==0.6.0
+-pyarrow==0.13.0
+-pycparser==2.19
+-Pygments==2.3.1
+-pyparsing==2.4.0
+-python-dateutil==2.8.0
+-python-igraph==0.7.1.post6
+-pytz==2019.1
+-PyYAML==5.1
+-pyzmq==18.0.1
+-scikit-learn==0.20.3
+-scipy==1.2.1
+-seaborn==0.9.0
+-six==1.12.0
+-sortedcontainers==2.1.0
+-statsmodels==0.9.0
+-tables==3.5.2
+-tblib==1.3.2
+-toolz==0.9.0
+-tornado==6.0.2
+-tqdm==4.32.1
+-traitlets==4.3.2
+-umap-learn==0.3.9
+-wcwidth==0.1.7
+-zict==0.1.4
++anndata==0.6.22.post1
++annoy==1.15.2
++ansiwrap==0.8.4
++arboreto==0.1.5
++attrs==19.3.0
++backcall==0.1.0
++bbknn==1.3.6
++bleach==3.1.0
++boltons==19.2.0
++certifi==2019.9.11
++cffi==1.12.3
++chardet==3.0.4
++Click==7.0
++cloudpickle==1.2.2
++cycler==0.10.0
++Cython==0.29.13
++cytoolz==0.10.0
++dask==1.0.0
++decorator==4.4.0
++defusedxml==0.6.0
++dill==0.3.1.1
++distributed==1.28.1
++entrypoints==0.3
++frozendict==1.2
++future==0.18.0
++h5py==2.9.0
++HeapDict==1.0.1
++idna==2.8
++importlib-metadata==0.23
++interlap==0.2.6
++ipykernel==5.1.2
++ipython==7.8.0
++ipython-genutils==0.2.0
++jedi==0.15.1
++Jinja2==2.10.3
++joblib==0.14.0
++jsonschema==3.1.1
++jupyter-client==5.3.4
++jupyter-core==4.6.0
++kiwisolver==1.1.0
++leidenalg==0.7.0
++llvmlite==0.30.0
++loompy==3.0.6
++louvain==0.6.1
++MarkupSafe==1.1.1
++matplotlib==3.0.3
++mistune==0.8.4
++mnnpy==0.1.9.5
++mock==3.0.5
++more-itertools==7.2.0
++msgpack==0.6.2
++MulticoreTSNE==0.1
++multiprocessing-on-dill==3.5.0a4
++natsort==6.0.0
++nbconvert==5.6.0
++nbformat==4.4.0
++nbmerge==0.0.4
++networkx==2.3
++numba==0.46.0
++numexpr==2.7.0
++numpy==1.17.2
++pandas==0.25.1
++pandocfilters==1.4.2
++papermill==1.2.0
++parso==0.5.1
++patsy==0.5.1
++pexpect==4.7.0
++pickleshare==0.7.5
++prompt-toolkit==2.0.10
++psutil==5.6.3
++ptyprocess==0.6.0
++pyarrow==0.15.0
++pycparser==2.19
++Pygments==2.4.2
++pyparsing==2.4.2
++pyrsistent==0.15.4
++python-dateutil==2.8.0
++python-igraph==0.7.1.post6
++pytz==2019.3
++PyYAML==5.1.2
++pyzmq==18.1.0
++requests==2.22.0
++scikit-learn==0.21.3
++scipy==1.3.1
++seaborn==0.9.0
++six==1.12.0
++sklearn==0.0
++sortedcontainers==2.1.0
++statsmodels==0.10.1
++tables==3.5.2
++tblib==1.4.0
++tenacity==5.1.1
++testpath==0.4.2
++textwrap3==0.9.2
++toolz==0.10.0
++tornado==6.0.3
++tqdm==4.36.1
++traitlets==4.3.3
++umap-learn==0.3.10
++urllib3==1.25.6
++wcwidth==0.1.7
++webencodings==0.5.1
++zict==1.0.0
++zipp==0.6.0

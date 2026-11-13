@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/broadinstitute__long-read-pipelines-517"
+description = "P. falciparum variant-calling: small-genome benchmarking + Pf7 reimplementation pipelines"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "long-read-pipelines",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "broadinstitute/long-read-pipelines"
+ref = "7e0fd150dbc48236decbbb2839111a6d8ba69ed3"
+reference = "https://github.com/broadinstitute/long-read-pipelines/pull/517"
+source_access = "auto"
+built_at = "2026-11-13T16:17:10.262211+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b1f9ce5551f3e9559526ecd1db012c0c6d6a808bab6ed891db6ede505a65b98f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-22T17:46:22Z"
+diff_format = "unified"
+context_files = [
+    ".dockstore.yml",
+    "wdl/pipelines/TechAgnostic/Utility/BenchmarkVCFsSmall.wdl",
+    "wdl/pipelines/Z_One_Off_Analyses/Pf7JointGenotyping.wdl",
+    "wdl/pipelines/Z_One_Off_Analyses/Pf7SingleSampleVariantCalling.wdl",
+    "wdl/pipelines/Z_One_Off_Analyses/SRJointCallGVCFsWithGenomicsDB_Pf_Niare_VQSR.wdl",
+    "wdl/pipelines/Z_One_Off_Analyses/SRWholeGenome_Pf_Niare_VQSR.wdl",
+    "wdl/tasks/Z_One_Off_Analyses/Pf_Niare_HaplotypeCaller.wdl",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2337
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

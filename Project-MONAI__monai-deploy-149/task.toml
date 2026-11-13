@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/Project-MONAI__monai-deploy-149"
+description = "Integrate TM Docker plug-in changes to enable passing UID:GID as argu…"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "monai-deploy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Project-MONAI/monai-deploy"
+ref = "2cbaefd0bfdb8f92cbb1e1e1601b8b3de02f78fb"
+reference = "https://github.com/Project-MONAI/monai-deploy/pull/149"
+source_access = "auto"
+built_at = "2026-11-13T16:22:53.824296+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f217103cec436bb0c6af587d083a46d667f393130421779b54d3e57a57eaac6c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-11-01T21:27:49Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/test-monai-deploy-express.yml",
+    "deploy/monai-deploy-express/.env",
+    "deploy/monai-deploy-express/README.md",
+    "deploy/monai-deploy-express/docker-compose.yml",
+    "deploy/monai-deploy-express/init.sh",
+    "deploy/monai-deploy-express/sample-workflows/hello-world.json",
+    "deploy/monai-deploy-express/sample-workflows/liver-lung-seg.json",
+    "deploy/monai-deploy-express/sample-workflows/liver-seg.json",
+    "deploy/monai-deploy-express/sample-workflows/liver-tumor.json",
+    "deploy/monai-deploy-express/sample-workflows/lung-seg.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 185
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

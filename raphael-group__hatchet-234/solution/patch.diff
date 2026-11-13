@@ -1,0 +1,35 @@
+diff --git a/script/hatchet.ini b/script/hatchet.ini
+index 1a3dcde3..0cead1f2 100644
+--- a/script/hatchet.ini
++++ b/script/hatchet.ini
+@@ -64,7 +64,7 @@ msr = 5000
+ # Minimum number of total reads per bin and sample
+ mtr = 5000
+ 
+-[cluster_bins_loc]
++[cluster_bins]
+ diploidbaf = 0.08
+ # Minimum and maximum number of clusters to infer
+ # (using silhouette score for model selection)
+diff --git a/src/hatchet/utils/count_alleles.py b/src/hatchet/utils/count_alleles.py
+index 25a4d97f..41ff6bef 100644
+--- a/src/hatchet/utils/count_alleles.py
++++ b/src/hatchet/utils/count_alleles.py
+@@ -264,7 +264,7 @@ def countAlleles(self, bamfile, samplename, chromosome):
+             self.dp,
+             self.snplist[chromosome],
+         )
+-        cmd_query = "{} query -f '%CHROM\\t%POS\\t%REF,%ALT\\t%AD\\n' -i 'SUM(AD)<={} & SUM(AD)>={}'".format(
++        cmd_query = "{} query -f '%CHROM\\t%POS\\t%REF,%ALT\\t%AD\\n' -i 'SUM(INFO/AD)<={} & SUM(INFO/AD)>={}'".format(
+             self.bcftools, self.dp, self.mincov
+         )
+         if self.E:
+@@ -287,6 +287,8 @@ def countAlleles(self, bamfile, samplename, chromosome):
+                 stderr=err,
+                 universal_newlines=True,
+             )
++            # Allow sp mpileup to receive a SIGPIPE if p2 exits. avoid deadlock
++            mpileup.stdout.close()
+             stdout, _ = query.communicate()
+             codes = map(lambda p: p.wait(), [mpileup, query])
+         if any(c != 0 for c in codes):

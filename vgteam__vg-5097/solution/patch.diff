@@ -1,0 +1,327 @@
+diff --git a/src/algorithms/chain_items.cpp b/src/algorithms/chain_items.cpp
+index b49ecebdb8..57fae83b51 100644
+--- a/src/algorithms/chain_items.cpp
++++ b/src/algorithms/chain_items.cpp
+@@ -122,8 +122,8 @@ transition_iterator zip_tree_transition_iterator(const std::vector<SnarlDistance
+         // We need a way to map from the seeds that zip tree thinks about to the anchors that we think about.
+         // So we need to index the anchors by leading/trailing seed.
+         // TODO: Should we make someone else do the indexing so we can make the Anchor not need to remember the seed?
+-        std::unordered_map<size_t, size_t> seed_to_starting;
+-        std::unordered_map<size_t, size_t> seed_to_ending;
++        std::vector<size_t> seed_to_starting(seeds.size(), numeric_limits<size_t>::max());
++        std::vector<size_t> seed_to_ending(seeds.size(), numeric_limits<size_t>::max());
+         for (size_t anchor_num = 0; anchor_num < to_chain.size(); anchor_num++) {
+             seed_to_starting[to_chain[anchor_num].seed_start()] = anchor_num;
+             seed_to_ending[to_chain[anchor_num].seed_end()] = anchor_num;
+@@ -160,25 +160,22 @@ std::vector<transition_info> generate_zip_tree_transitions(
+     size_t max_read_lookback_bases,
+     size_t max_indel_bases,
+     const VectorView<Anchor>& to_chain,
+-    const std::unordered_map<size_t, size_t>& seed_to_starting, 
+-    const std::unordered_map<size_t, size_t>& seed_to_ending) {
++    const std::vector<size_t>& seed_to_starting, 
++    const std::vector<size_t>& seed_to_ending) {
+ 
+     std::vector<transition_info> all_transitions;
+     // Save hopefully enough space for the transitions
+     all_transitions.reserve(zip_code_tree.get_tree_size());
+ 
+     for (auto seed_itr = zip_code_tree.begin(); seed_itr != zip_code_tree.end(); ++seed_itr) {
+-        // For each destination seed left to right
+-        vector<ZipCodeTree::oriented_seed_t> dest = *seed_itr;
+-
+         // Might be the start of an anchor if forward relative to the read,
+         // or the end of an anchor if reverse relative to the read
+-        unordered_map<ZipCodeTree::oriented_seed_t, size_t> dest_anchors;
+-        for (const auto& dest_seed : dest) {
+-            auto anchor = dest_seed.is_reversed ? seed_to_ending.find(dest_seed.seed)
+-                                                : seed_to_starting.find(dest_seed.seed);
+-            if (anchor != (dest_seed.is_reversed ? seed_to_ending.end() : seed_to_starting.end())) {
+-                dest_anchors[dest_seed] = anchor->second;
++        vector<pair<ZipCodeTree::oriented_seed_t, size_t>> dest_anchors;
++        for (const auto& dest_seed : *seed_itr) {
++            auto anchor = dest_seed.is_reversed ? seed_to_ending[dest_seed.seed]
++                                                : seed_to_starting[dest_seed.seed];
++            if (anchor != numeric_limits<size_t>::max()) {
++                dest_anchors.emplace_back(dest_seed, anchor);
+             }
+         }
+ 
+@@ -216,17 +213,17 @@ std::vector<transition_info> generate_zip_tree_transitions(
+                 if (!source_seed.is_reversed && !cur_dest_anchor.first.is_reversed) {
+                     // Both were traversed in the same orientation as the read.
+                     // They might not be at anchor borders though, so check.
+-                    auto found_source_anchor = seed_to_ending.find(source_seed.seed);
+-                    if (found_source_anchor != seed_to_ending.end()) {
++                    auto source_anchor = seed_to_ending[source_seed.seed];
++                    if (source_anchor != numeric_limits<size_t>::max()) {
+                         // We can transition between these seeds
+                         // without jumping to/from the middle of an anchor.
+ #ifdef debug_transition
+-                        std::cerr << " is anchor #" << found_source_anchor->second << std::endl;
+-                        std::cerr << "\t\tFound transition from #" << found_source_anchor->second 
++                        std::cerr << " is anchor #" << source_anchor << std::endl;
++                        std::cerr << "\t\tFound transition from #" << source_anchor
+                                   << " to #" << cur_dest_anchor.second << std::endl;
+ #endif
+                         add_transition_if_legal(all_transitions, to_chain, max_read_lookback_bases, 
+-                                                max_indel_bases, found_source_anchor->second,
++                                                max_indel_bases, source_anchor,
+                                                 cur_dest_anchor.second, source_seed.distance);
+                     } else {
+ #ifdef debug_transition
+@@ -236,20 +233,20 @@ std::vector<transition_info> generate_zip_tree_transitions(
+                 } else if (source_seed.is_reversed && cur_dest_anchor.first.is_reversed) {
+                     // Both were traversed in the opposite orientation as the read.
+                     // We need to save them flipped for later.
+-                    auto found_source_anchor = seed_to_starting.find(source_seed.seed);
+-                    if (found_source_anchor != seed_to_starting.end()) {
++                    auto source_anchor = seed_to_starting[source_seed.seed];
++                    if (source_anchor != numeric_limits<size_t>::max()) {
+                         // We can transition between these seeds
+                         // without jumping to/from the middle of an anchor.
+                         // Queue them up, flipped
+                             
+ #ifdef debug_transition
+-                        std::cerr << " is anchor #" << found_source_anchor->second << std::endl;
++                        std::cerr << " is anchor #" << source_anchor << std::endl;
+                         std::cerr << "\t\tFound backward transition from #" << cur_dest_anchor.second << " to #"
+-                                  << found_source_anchor->second << std::endl;
++                                  << source_anchor << std::endl;
+ #endif
+                         add_transition_if_legal(all_transitions, to_chain, max_read_lookback_bases,
+                                                 max_indel_bases, cur_dest_anchor.second,
+-                                                found_source_anchor->second, source_seed.distance);
++                                                source_anchor, source_seed.distance);
+                     } else {
+ #ifdef debug_transition
+                         std::cerr << " does not represent an anchor." << std::endl;
+diff --git a/src/algorithms/chain_items.hpp b/src/algorithms/chain_items.hpp
+index 209ab0f6c9..70990b402f 100644
+--- a/src/algorithms/chain_items.hpp
++++ b/src/algorithms/chain_items.hpp
+@@ -499,8 +499,8 @@ std::vector<transition_info> generate_zip_tree_transitions(
+     size_t max_read_lookback_bases,
+     size_t max_indel_bases,
+     const VectorView<Anchor>& to_chain,
+-    const std::unordered_map<size_t, size_t>& seed_to_starting, 
+-    const std::unordered_map<size_t, size_t>& seed_to_ending);
++    const std::vector<size_t>& seed_to_starting, 
++    const std::vector<size_t>& seed_to_ending);
+ /**
+  * Add a new transition_info to the end of "transitions"
+  * if said transition is legal (i.e. reachable in the read).
+diff --git a/src/minimizer_mapper.hpp b/src/minimizer_mapper.hpp
+index b9ff36610c..74bd096d35 100644
+--- a/src/minimizer_mapper.hpp
++++ b/src/minimizer_mapper.hpp
+@@ -918,7 +918,8 @@ class MinimizerMapper : public AlignerClient {
+     void do_alignment_on_chains(const Alignment& aln, const std::vector<Seed>& seeds, 
+                                const VectorView<MinimizerMapper::Minimizer>& minimizers, 
+                                const vector<algorithms::Anchor>& seed_anchors,
+-                               const std::vector<std::vector<size_t>>& chains, 
++                               const std::vector<std::vector<size_t>>& chains,
++                               const std::vector<size_t>& chain_rec_counts,
+                                const std::vector<size_t>& chain_source_tree,
+                                const std::vector<double>& multiplicity_by_chain,
+                                const std::vector<int>& chain_score_estimates,
+@@ -952,7 +953,7 @@ class MinimizerMapper : public AlignerClient {
+      *
+      * If given base processing stats for bases and for time, adds aligned bases and consumed time to them.
+      */
+-    Alignment find_chain_alignment(const Alignment& aln, const VectorView<algorithms::Anchor>& to_chain, const std::vector<size_t>& chain, aligner_stats_t* stats = nullptr) const;
++    Alignment find_chain_alignment(const Alignment& aln, const VectorView<algorithms::Anchor>& to_chain, const std::vector<size_t>& chain, size_t rec_count, aligner_stats_t* stats = nullptr) const;
+      
+      /**
+      * Operating on the given input alignment, align the tails dangling off the
+diff --git a/src/minimizer_mapper_from_chains.cpp b/src/minimizer_mapper_from_chains.cpp
+index 24747920ab..e2bb2d364f 100644
+--- a/src/minimizer_mapper_from_chains.cpp
++++ b/src/minimizer_mapper_from_chains.cpp
+@@ -869,53 +869,12 @@ vector<Alignment> MinimizerMapper::map_from_chains(Alignment& aln) {
+     alignments_to_source.reserve(chain_score_estimates.size());
+ 
+     if (alignments.size() == 0) {
+-        do_alignment_on_chains(aln, seeds, minimizers, seed_anchors, chains, chain_source_tree, multiplicity_by_chain, chain_score_estimates, 
++        do_alignment_on_chains(aln, seeds, minimizers, seed_anchors, chains, chain_rec_counts,
++                               chain_source_tree, multiplicity_by_chain, chain_score_estimates, 
+                                minimizer_kept_chain_count, alignments, multiplicity_by_alignment, 
+                                alignments_to_source, minimizer_explored, stats, rng, funnel);
+     }
+     
+-    for (size_t alignment_index = 0; alignment_index < alignments.size(); ++alignment_index) {
+-        // Rescore each alignment under its own minimap2 logged-gap scheme.
+-
+-        Alignment& aln = alignments[alignment_index];
+-        if (aln.path().mapping_size() == 0 || aln.sequence().size() == 0) {
+-            // This alignment is unmapped or somehow empty.
+-            continue;
+-        }
+-        // Otherwise it must have at least one edit
+-
+-        // Make a scoring scheme based on it, and count its operations.
+-        LoggedGapAlignmentScorer scheme(aln);
+-        // Score the alignment
+-        int32_t logged_gaps_score = scheme.score_alignment(aln);
+-        aln.set_score(logged_gaps_score);
+-
+-        if (show_work) {
+-            #pragma omp critical (cerr)
+-            {
+-                cerr << log_name() << "Matches: " << scheme.matches << " Mismatches: " << scheme.mismatches
+-                     << " Gap opens: " << scheme.gap_lengths.size() << " New score: " << logged_gaps_score << endl;
+-            }
+-        }
+-    }
+-    if (!chain_rec_counts.empty() && !alignments_to_source.empty()) {
+-        for (size_t alignment_index = 0; alignment_index < alignments_to_source.size(); ++alignment_index) {
+-            size_t chain_index = alignments_to_source[alignment_index];
+-            if (chain_index != std::numeric_limits<size_t>::max() && chain_index < chain_rec_counts.size()) {
+-                set_annotation(alignments[alignment_index], "chain.rec_count", (double) chain_rec_counts[chain_index]);
+-                if (rec_penalty != 0) {
+-                    // Penalize the score of alignment candidates according to the number of recombinations their chains required.
+-                    // This allows alignments that required fewer recombinations in their chains to win.
+-                    // TODO: We'd also eventaully like to count recombinations that we don't know are needed until base-level DP.
+-                    int64_t penalty = static_cast<int64_t>(rec_penalty_aln == -1 ? rec_penalty : rec_penalty_aln) * static_cast<int64_t>(chain_rec_counts[chain_index]);
+-                    int64_t penalized_score = static_cast<int64_t>(alignments[alignment_index].score()) - penalty;
+-                    alignments[alignment_index].set_score(static_cast<int>(penalized_score));
+-                }
+-            }
+-        }
+-    }
+-    
+-    
+     if (track_provenance) {
+         // Now say we are finding the winner(s)
+         funnel.stage("winner");
+@@ -1932,6 +1891,7 @@ void MinimizerMapper::do_alignment_on_chains(const Alignment& aln, const std::ve
+                                             const VectorView<MinimizerMapper::Minimizer>& minimizers,
+                                             const vector<algorithms::Anchor>& seed_anchors,
+                                             const std::vector<std::vector<size_t>>& chains, 
++                                            const std::vector<size_t>& chain_rec_counts,
+                                             const std::vector<size_t>& chain_source_tree,
+                                             const std::vector<double>& multiplicity_by_chain,
+                                             const std::vector<int>& chain_score_estimates, 
+@@ -1947,6 +1907,9 @@ void MinimizerMapper::do_alignment_on_chains(const Alignment& aln, const std::ve
+     //For finding the multiplicity of each alignment, first get the count
+     // of equal scoring chains
+     vector<size_t> chain_count_by_alignment (alignments.size(), 0);
++    // Also track how many alignments we tried to make
++    // even if we didn't save them because their scores were terrible
++    size_t alignment_attempts = 0;
+ 
+ #ifdef print_minimizer_table
+     //How many of each minimizer ends up in a chain that actually gets turned into an alignment?
+@@ -2095,6 +2058,7 @@ void MinimizerMapper::do_alignment_on_chains(const Alignment& aln, const std::ve
+ 
+             // Collect the top alignments. Make sure we have at least one always, starting with unaligned.
+             vector<Alignment> best_alignments(1, aln);
++            alignment_attempts++;
+ 
+             // Align from the chained-up seeds
+             if (do_dp) {
+@@ -2112,7 +2076,8 @@ void MinimizerMapper::do_alignment_on_chains(const Alignment& aln, const std::ve
+ 
+                     // Collect stats into here
+                     aligner_stats_t alignment_stats;
+-                    best_alignments[0] = find_chain_alignment(aln, seed_anchors, chain, &alignment_stats);
++                    best_alignments[0] = find_chain_alignment(
++                        aln, seed_anchors, chain, chain_rec_counts[processed_num], &alignment_stats);
+                     alignment_stats.add_annotations(best_alignments[0], "alignment");
+ 
+                     // Remember the stats' usages
+@@ -2189,12 +2154,10 @@ void MinimizerMapper::do_alignment_on_chains(const Alignment& aln, const std::ve
+                 }
+             };
+             
+-            for(auto aln_it = best_alignments.begin() ; 
+-                aln_it != best_alignments.end() && aln_it->score() != 0 
+-                    && (aln_it->score() >= best_alignments[0].score() * 0.8 || aln_it->score() == best_alignments[0].score()) ;
++            for(auto aln_it = best_alignments.begin(); aln_it != best_alignments.end() && aln_it->score() != 0 
++                && aln_it->score() >= best_alignments[0].score() * 0.8;
+                 ++aln_it) {
+-                //For each additional alignment with score at least 0.8 of the best score
+-                //Guarantee that all alignments with top score (even if negative) are used
++                // For each additional alignment with score at least 0.8 of the best score
+                 observe_alignment(*aln_it);
+             }
+            
+@@ -2261,8 +2224,8 @@ void MinimizerMapper::do_alignment_on_chains(const Alignment& aln, const std::ve
+         }
+     }
+     for (size_t i = 0 ; i < multiplicity_by_alignment.size() ; ++i) {
+-        multiplicity_by_alignment[i] += (chain_count_by_alignment[i] >= alignments.size()
+-                                      ? ((double)chain_count_by_alignment[i] - (double) alignments.size())
++        multiplicity_by_alignment[i] += (chain_count_by_alignment[i] >= alignment_attempts
++                                      ? ((double)chain_count_by_alignment[i] - (double) alignment_attempts)
+                                       : 0.0);
+     }
+ }
+@@ -2538,6 +2501,7 @@ Alignment MinimizerMapper::find_chain_alignment(
+     const Alignment& aln,
+     const VectorView<algorithms::Anchor>& to_chain,
+     const std::vector<size_t>& chain,
++    size_t rec_count,
+     aligner_stats_t* stats
+ ) const {
+     
+@@ -3324,7 +3288,30 @@ Alignment MinimizerMapper::find_chain_alignment(
+     // read deleted relative to some graph, and avoid jumps along nonexistent
+     // edges.
+     *result.mutable_path() = std::move(simplify(composed_path, false));
+-    result.set_score(composed_score);
++    // Rescore with log-gap penalties
++    LoggedGapAlignmentScorer scheme(result);
++    // Score the alignment
++    int32_t logged_gaps_score = scheme.score_alignment(result);
++
++    // Penalize score according to the number of recombinations their chains required.
++    // This allows alignments that required fewer recombinations in their chains to win.
++    // TODO: We'd also eventaully like to count recombinations that we don't know are needed until base-level DP.
++    if (rec_penalty != 0) {
++        logged_gaps_score -= (rec_penalty_aln == -1 ? rec_penalty : rec_penalty_aln) * rec_count;
++    }
++
++    if (show_work) {
++        #pragma omp critical (cerr)
++        {
++            cerr << log_name() << "Original score: " << composed_score
++                               << " Matches: " << scheme.matches
++                               << " Mismatches: " << scheme.mismatches
++                               << " Gap opens: " << scheme.gap_lengths.size()
++                               << " Recombinations: " << rec_count
++                               << " New score: " << logged_gaps_score << endl;
++        }
++    }
++    result.set_score(logged_gaps_score);
+     if (!result.sequence().empty()) {
+         result.set_identity(identity(result.path()));
+     }
+@@ -3332,6 +3319,7 @@ Alignment MinimizerMapper::find_chain_alignment(
+     set_annotation(result, "left_tail_length", (double) left_tail_length);
+     set_annotation(result, "longest_attempted_connection", (double) longest_attempted_connection); 
+     set_annotation(result, "right_tail_length", (double) right_tail_length);
++    set_annotation(result, "chain.rec_count", rec_count);
+     
+     return result;
+ }
+diff --git a/src/subcommand/giraffe_main.cpp b/src/subcommand/giraffe_main.cpp
+index e70c708b7d..5c464ec492 100644
+--- a/src/subcommand/giraffe_main.cpp
++++ b/src/subcommand/giraffe_main.cpp
+@@ -1001,6 +1001,7 @@ int main_giraffe(int argc, char** argv) {
+         .add_entry<int>("rec-consistency-bonus", 12)
+         .add_entry<double>("chain-score-threshold", 234.0)
+         .add_entry<int>("target-alignment-attempts", 2)
++        .add_entry<double>("min-unique-node-fraction", 0.2)
+         .add_entry<double>("min-chain-score-per-base", 0.24)
+         .add_entry<size_t>("max-chains-per-tree", 3)
+         .add_entry<int>("max-min-chain-score", 46)
+@@ -1060,6 +1061,7 @@ int main_giraffe(int argc, char** argv) {
+         .add_entry<int>("rec-consistency-bonus", 13)
+         .add_entry<double>("chain-score-threshold", 160.0)
+         .add_entry<int>("target-alignment-attempts", 2)
++        .add_entry<double>("min-unique-node-fraction", 0.2)
+         .add_entry<size_t>("max-chains-per-tree", 3)
+         // Lowering this can reduce wrong reads in mapping experiments, but
+         // seems to *increase* miscalls; see

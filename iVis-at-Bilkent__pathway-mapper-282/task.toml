@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/iVis-at-Bilkent__pathway-mapper-282"
+description = "Release 2.3.0"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "pathway-mapper",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "iVis-at-Bilkent/pathway-mapper"
+ref = "ab09c91b64075e1a1c6940fb7c39ae9771e3d342"
+reference = "https://github.com/iVis-at-Bilkent/pathway-mapper/pull/282"
+source_access = "auto"
+built_at = "2026-11-13T15:40:20.685160+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9255d8780dea3a3227cfc63382bbd0fcc35e42fa50d6006535a494bc527cf1c5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-05-23T17:56:25Z"
+diff_format = "unified"
+context_files = [
+    "app.json",
+    "package.json",
+    "packages/pathway-mapper-standalone/package.json",
+    "packages/pathway-mapper/package.json",
+    "yarn.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 16
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

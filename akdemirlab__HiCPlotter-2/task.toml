@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/akdemirlab__HiCPlotter-2"
+description = "Updated readme"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "HiCPlotter",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "akdemirlab/HiCPlotter"
+ref = "be5862ea1520f3e82bc2d0f04a90a2380e371181"
+reference = "https://github.com/akdemirlab/HiCPlotter/pull/2"
+source_access = "auto"
+built_at = "2026-11-13T15:42:57.723206+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:486ebd71164e53e884df8f471d1e10ecefaa44b90f07d4113d121dcdc72a71c6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2015-02-22T20:17:32Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "testRun.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 77
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

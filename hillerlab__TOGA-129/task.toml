@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/hillerlab__TOGA-129"
+description = "Add --quiet option"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "TOGA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "hillerlab/TOGA"
+ref = "ac0578ecaa09052104787dde4f2e3cddbe453f8b"
+reference = "https://github.com/hillerlab/TOGA/pull/129"
+source_access = "auto"
+built_at = "2026-11-13T16:09:50.703245+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7a5e41598ffbcfb63a5d0d6e0d6250599d847e07f978a9ace590e9a4a800f632"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-12-08T15:34:07Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "split_chain_jobs.py",
+    "split_exon_realign_jobs.py",
+    "toga.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 38
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

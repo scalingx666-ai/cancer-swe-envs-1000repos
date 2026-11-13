@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/kirbyju__TCIA_Notebooks-56"
+description = "Explain sample reuse and controlled-file summary counters"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "TCIA_Notebooks",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kirbyju/TCIA_Notebooks"
+ref = "d654af8e3266ed850ff6872bcc46fbf357fe78d9"
+reference = "https://github.com/kirbyju/TCIA_Notebooks/pull/56"
+source_access = "auto"
+built_at = "2026-11-13T15:35:49.744841+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b556d682e67d584fdded7e8d6294c3ec4ad53b9f42a6a9fb780f1e28b214b266"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-03T19:49:53Z"
+diff_format = "unified"
+context_files = [
+    "tcia_utils_v4/README.md",
+    "tcia_utils_v4/TCIA_Dataset_and_Participant_Queries.ipynb",
+    "tools/build_tcia_utils_v4_notebooks.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 36
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

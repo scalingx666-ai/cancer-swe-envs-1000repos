@@ -1,0 +1,41 @@
+diff --git a/bin/fusioncatcher.py b/bin/fusioncatcher.py
+index f396b5d..c58fea3 100755
+--- a/bin/fusioncatcher.py
++++ b/bin/fusioncatcher.py
+@@ -5846,7 +5846,7 @@ def is_known_extension(something):
+ #        job.clean(outdir('reads_filtered_transcriptome_sorted-read.map'),temp_path=temp_flag)
+         job.clean(outdir('original.fq.gz'),temp_path=temp_flag)
+         job.clean(outdir('originala.fq.gz'),temp_path=temp_flag if options.skip_spotlight else 'no')
+-        job.clean(outdir('candidate_fusion-genes_missing_mates.txt'),temp_path=temp_flag)
++        #job.clean(outdir('candidate_fusion-genes_missing_mates.txt'),temp_path=temp_flag)
+         job.clean(outdir('candidate_fusion-genes_supporting_paired-reads.txt'),temp_path=temp_flag if options.skip_spotlight else 'no')
+         #job.clean(outdir('candidate_fusion-genes_exon-exon.txt'))
+ 
+diff --git a/bin/generate_exon-exon_junctions.py b/bin/generate_exon-exon_junctions.py
+index 00944b0..062b098 100755
+--- a/bin/generate_exon-exon_junctions.py
++++ b/bin/generate_exon-exon_junctions.py
+@@ -399,10 +399,10 @@ def todict(a_list):
+                             s1=sb[aa:ebe].upper()
+                             s2=sa[eas-1:bb].upper()
+                             seq=s1+s2
+-                            
++
+                             if ispoly(s1) or ispoly(s2):
+                                 doit = False
+-                                
++
+                             idx=None # the sequence that are the same have the same index
+ 
+                             doit=True
+@@ -453,7 +453,10 @@ def todict(a_list):
+     if options.output_cut_filename:
+         if sequences_cut:
+             Bio.SeqIO.write(sequences_cut,handle_cut,"fasta")
++        handle_cut.flush()
+         handle_cut.close()
++        if os.path.getsize(options.output_cut_filename) == 0:
++            file(options.output_cut_filename,"w").write(">empty\nACGTACGTACGTACGTA")
+ 
+     if options.output_count_seq_filename:
+         file(options.output_count_seq_filename,"w").write("%d" % (count_seq,))

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/tanghaibao__jcvi-871"
+description = "perf(synteny): stream BLAST in liftover to cut memory"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "jcvi",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tanghaibao/jcvi"
+ref = "37b9752bbed5bf2a3d51d83437d68bd88cf75bdd"
+reference = "https://github.com/tanghaibao/jcvi/pull/871"
+source_access = "auto"
+built_at = "2026-11-13T15:49:03.166105+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c355e0737a86f74c8c104c09cd57c4b4c9c4fa7fd3b1b25700c4d7179b14d25b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T01:24:15Z"
+diff_format = "unified"
+context_files = [
+    "src/jcvi/compara/synteny.py",
+    "tests/compara/test_synteny.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 139
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

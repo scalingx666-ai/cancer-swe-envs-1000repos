@@ -1,0 +1,246 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index 617607f6..16b965d4 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -32,8 +32,8 @@ jobs:
+     - name: rust lint
+       run: |
+         cd bindings/rust
+-        ./cargo check --no-default-features --locked
+-        ./cargo fmt -- --check
++        cargo check --no-default-features --locked
++        cargo fmt -- --check
+ 
+   test:
+     runs-on: ubuntu-24.04
+@@ -109,7 +109,7 @@ jobs:
+         mkdir -p bindings/rust/lib/x86_64-linux-gnu
+         cp build/libgenomicsqlite.so bindings/rust/lib/x86_64-linux-gnu/
+         ln -sf libsqlite3.so.0 build/libsqlite3.so
+-        env LD_LIBRARY_PATH="$(pwd)/build" LIBRARY_PATH="$(pwd)/build" SQLITE_WEB_LOG=99 bindings/rust/cargo test --release --locked
++        env LD_LIBRARY_PATH="$(pwd)/build" LIBRARY_PATH="$(pwd)/build" SQLITE_WEB_LOG=99 cargo test --release --locked --manifest-path bindings/rust/Cargo.toml
+     - name: test
+       run: |
+         export PATH="$FLOOR_PATH"
+@@ -198,8 +198,12 @@ jobs:
+         mkdir -p bindings/rust/lib/${{ matrix.target }}
+         cp build/libgenomicsqlite.so bindings/rust/lib/${{ matrix.target }}/
+         ln -sf libsqlite3.so.0 build/libsqlite3.so  # linker name, scoped to build/ like the Dockerfile rust stage
+-        env LD_LIBRARY_PATH="$(pwd)/build" LIBRARY_PATH="$(pwd)/build" SQLITE_WEB_LOG=99 bindings/rust/cargo test --release --locked
+-        bindings/rust/cargo package --list | grep lib/${{ matrix.target }}/libgenomicsqlite.so
++        env LD_LIBRARY_PATH="$(pwd)/build" LIBRARY_PATH="$(pwd)/build" SQLITE_WEB_LOG=99 cargo test --release --locked --manifest-path bindings/rust/Cargo.toml
++        # --allow-dirty: this crate is packaged from deliberately dirty trees — releases
++        # stamp the version in at publish time rather than committing it, and the library
++        # staged above is git-ignored but manifest-included, so cargo's version-control
++        # check would otherwise refuse.
++        cargo package --list --allow-dirty --manifest-path bindings/rust/Cargo.toml | grep lib/${{ matrix.target }}/libgenomicsqlite.so
+     - name: test rust crate (rusqlite ceiling)
+       if: matrix.target == 'x86_64-linux-gnu'
+       run: |
+@@ -209,8 +213,8 @@ jobs:
+         mkdir build/rust-ceiling
+         tar -C bindings/rust --exclude=target -cf - . | tar -C build/rust-ceiling -xf -
+         cd build/rust-ceiling
+-        env LD_LIBRARY_PATH="$(pwd)/.." LIBRARY_PATH="$(pwd)/.." ./cargo update -p rusqlite
+-        env LD_LIBRARY_PATH="$(pwd)/.." LIBRARY_PATH="$(pwd)/.." SQLITE_WEB_LOG=99 ./cargo test --release --locked
++        env LD_LIBRARY_PATH="$(pwd)/.." LIBRARY_PATH="$(pwd)/.." cargo update -p rusqlite
++        env LD_LIBRARY_PATH="$(pwd)/.." LIBRARY_PATH="$(pwd)/.." SQLITE_WEB_LOG=99 cargo test --release --locked
+     - name: installed-package smoke test
+       run: |
+         python3 -m pip install -q setuptools wheel
+@@ -296,8 +300,12 @@ jobs:
+         set -e
+         mkdir -p bindings/rust/lib/aarch64-darwin
+         cp build/libgenomicsqlite.dylib bindings/rust/lib/aarch64-darwin/
+-        SQLITE_WEB_LOG=99 bindings/rust/cargo test --release --locked
+-        bindings/rust/cargo package --list | grep lib/aarch64-darwin/libgenomicsqlite.dylib
++        SQLITE_WEB_LOG=99 cargo test --release --locked --manifest-path bindings/rust/Cargo.toml
++        # --allow-dirty: this crate is packaged from deliberately dirty trees — releases
++        # stamp the version in at publish time rather than committing it, and the library
++        # staged above is git-ignored but manifest-included, so cargo's version-control
++        # check would otherwise refuse.
++        cargo package --list --allow-dirty --manifest-path bindings/rust/Cargo.toml | grep lib/aarch64-darwin/libgenomicsqlite.dylib
+     - name: installed-package smoke test
+       run: |
+         python3 -m pip install -q setuptools wheel
+diff --git a/.github/workflows/release-smoke.yml b/.github/workflows/release-smoke.yml
+index 37527291..b68e0d15 100644
+--- a/.github/workflows/release-smoke.yml
++++ b/.github/workflows/release-smoke.yml
+@@ -122,11 +122,11 @@ jobs:
+           brew install sqlite
+           echo "SQLITE3_LIB_DIR=$(brew --prefix sqlite)/lib" >> "$GITHUB_ENV"
+           echo "SQLITE3_INCLUDE_DIR=$(brew --prefix sqlite)/include" >> "$GITHUB_ENV"
+-      - name: Generate the smoke crate manifest for the release version
++      - name: Pin the smoke crate to the release version
+         run: |
+-          sed 's/{{GENOMICSQLITE_VERSION}}/=${{ steps.v.outputs.semver }}/' \
+-            test/cargo_smoke_test/Cargo.toml.in > test/cargo_smoke_test/Cargo.toml
+-          grep '^genomicsqlite' test/cargo_smoke_test/Cargo.toml
++          sed -i -E 's/^genomicsqlite = .*/genomicsqlite = "=${{ steps.v.outputs.semver }}"/' \
++            test/cargo_smoke_test/Cargo.toml
++          grep -Fx 'genomicsqlite = "=${{ steps.v.outputs.semver }}"' test/cargo_smoke_test/Cargo.toml
+       - name: Build & run the smoke crate against crates.io
+         working-directory: test/cargo_smoke_test
+         run: |
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4df53c2e..45eb832c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -74,6 +74,6 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+     add_test(NAME extension_loading COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/extension_loading.py $<TARGET_FILE:genomicsqlite>)
+     add_test(NAME capi_smoke_test COMMAND ${GENOMICSQLITE_TEST_ENV} ${CMAKE_BINARY_DIR}/test/capi_smoke_test)
+     add_test(NAME JdbcTests COMMAND ${GENOMICSQLITE_TEST_ENV} mvn test -B -f ${CMAKE_CURRENT_SOURCE_DIR}/bindings/jdbc/genomicsqlite-jdbc/pom.xml)
+-    add_test(NAME cargo_test COMMAND ${GENOMICSQLITE_TEST_ENV} ${CMAKE_CURRENT_SOURCE_DIR}/bindings/rust/cargo test --no-default-features)
++    add_test(NAME cargo_test COMMAND ${GENOMICSQLITE_TEST_ENV} cargo test --no-default-features --manifest-path ${CMAKE_CURRENT_SOURCE_DIR}/bindings/rust/Cargo.toml)
+     add_test(NAME pytest COMMAND ${GENOMICSQLITE_TEST_ENV} python3 -m pytest -xv -n 4 --tb=short ${CMAKE_CURRENT_SOURCE_DIR}/test)
+ endif()
+diff --git a/Dockerfile b/Dockerfile
+index 853e3463..1f15c5c1 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -124,15 +124,11 @@ RUN mkdir -p /work/lib
+ WORKDIR /work
+ COPY --from=builder /usr/local/lib/libsqlite3.so.0 ./lib/
+ RUN ln -s libsqlite3.so.0 lib/libsqlite3.so
+-ADD ./.git ./.git
+ ADD ./bindings/rust ./rust
+ COPY --from=builder /work/GenomicSQLite/build/libgenomicsqlite.so ./libgenomicsqlite.so
+ # plant the library in the crate's per-target directory for this build's CPU
+ RUN mkdir -p ./rust/lib/$(uname -m)-linux-gnu && cp ./libgenomicsqlite.so ./rust/lib/$(uname -m)-linux-gnu/
+-# git in the cargo wrapper must accept the context's .git even if the build
+-# host checked it out under a different uid than root
+-RUN git config --global --add safe.directory /work
+-RUN SQLITE_WEB_LOG=99 LD_LIBRARY_PATH=$(pwd)/lib LIBRARY_PATH=$(pwd)/lib rust/cargo test --release
++RUN SQLITE_WEB_LOG=99 LD_LIBRARY_PATH=$(pwd)/lib LIBRARY_PATH=$(pwd)/lib cargo test --release --manifest-path ./rust/Cargo.toml
+ 
+ ###################################################################################################
+ # Run-up in ubuntu 20.04 (final stage: the default docker build target, and the
+diff --git a/bindings/rust/.gitignore b/bindings/rust/.gitignore
+index 5041fd10..6e24483b 100644
+--- a/bindings/rust/.gitignore
++++ b/bindings/rust/.gitignore
+@@ -3,14 +3,12 @@
+ debug/
+ target/
+ 
+-# Cargo.lock is committed (2026-10-22): reproducible CI/dev builds for this
+-# repo; cargo ignores it downstream. Refresh it as an early release step.
++# Cargo.lock pins dependencies for reproducible CI and development builds.
++# Downstream consumers resolve their own dependencies.
+ 
+ # These are backup files generated by rustfmt
+ **/*.rs.bk
+ 
+-# Cargo.toml is generated from Cargo.toml.in by ./cargo
+-Cargo.toml
+ # planted prebuilt libraries, in per-target directories (release pipeline)
+ lib/*/libgenomicsqlite.so
+ lib/*/libgenomicsqlite.dylib
+diff --git a/bindings/rust/Cargo.lock b/bindings/rust/Cargo.lock
+index 3f380035..2d734a92 100644
+--- a/bindings/rust/Cargo.lock
++++ b/bindings/rust/Cargo.lock
+@@ -62,7 +62,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
+ 
+ [[package]]
+ name = "genomicsqlite"
+-version = "0.10.0"
++version = "0.0.0"
+ dependencies = [
+  "json",
+  "rusqlite",
+diff --git a/bindings/rust/Cargo.toml.in b/bindings/rust/Cargo.toml
+similarity index 75%
+rename from bindings/rust/Cargo.toml.in
+rename to bindings/rust/Cargo.toml
+index 15bc1670..956658c6 100644
+--- a/bindings/rust/Cargo.toml.in
++++ b/bindings/rust/Cargo.toml
+@@ -1,6 +1,10 @@
+ [package]
+ name = "genomicsqlite"
+-version = "{{GENOMICSQLITE_VERSION}}"
++# Release versioning: the git tag is the version source of truth; this
++# 0.0.0 is a dummy. At publish time the tag's version is stamped into the
++# publish checkout (cargo set-version), never committed. Cargo.lock pins
++# dependency versions; its root entry follows the stamp there only.
++version = "0.0.0"
+ description = "Genomics Extension for SQLite"
+ authors = ["Mike Lin <dna@mlin.net>"]
+ edition = "2018"
+diff --git a/bindings/rust/cargo b/bindings/rust/cargo
+deleted file mode 100755
+index e3227b60..00000000
+--- a/bindings/rust/cargo
++++ /dev/null
+@@ -1,18 +0,0 @@
+-#!/bin/bash
+-# wrapper for cargo that generates Cargo.toml from Cargo.toml.in, filling in git revision as
+-# crate version
+-set -e
+-cd `dirname $0`
+-
+-revision="$(git describe --tags --abbrev=0)"
+-# -dirty only for changes other than the tracked Cargo.lock: builds rewrite
+-# the lock's root-package version entry, and that must not feed back into
+-# the version itself (which would rewrite the lock again on the next run).
+-if git status --porcelain --untracked-files=no | grep -v 'Cargo.lock' | grep -q .; then
+-    revision="${revision}-dirty"
+-fi
+-revision="${revision#v}"  # strip 'v' prefix
+->&2 echo "$revision"
+-
+-sed "s/{{GENOMICSQLITE_VERSION}}/${revision}/" Cargo.toml.in > Cargo.toml
+-cargo "$@"
+diff --git a/test/cargo_smoke_test/.gitignore b/test/cargo_smoke_test/.gitignore
+index 2d7878f6..4cfaae23 100644
+--- a/test/cargo_smoke_test/.gitignore
++++ b/test/cargo_smoke_test/.gitignore
+@@ -10,6 +10,4 @@ Cargo.lock
+ # These are backup files generated by rustfmt
+ **/*.rs.bk
+ 
+-# Cargo.toml is generated from Cargo.toml.in by ./cargo
+-Cargo.toml
+ libgenomicsqlite.*
+diff --git a/test/cargo_smoke_test/Cargo.toml.in b/test/cargo_smoke_test/Cargo.toml
+similarity index 59%
+rename from test/cargo_smoke_test/Cargo.toml.in
+rename to test/cargo_smoke_test/Cargo.toml
+index 6f36d5b6..d13ddad7 100644
+--- a/test/cargo_smoke_test/Cargo.toml.in
++++ b/test/cargo_smoke_test/Cargo.toml
+@@ -5,6 +5,7 @@ authors = ["Mike Lin <dna@mlin.net>"]
+ edition = "2018"
+ 
+ [dependencies]
+-genomicsqlite = "{{GENOMICSQLITE_VERSION}}"
++# Dummy pin — the release-smoke workflow rewrites it to the version under test.
++genomicsqlite = "=0.0.0"
+ rusqlite = "^0.25"
+ json = "^0"
+diff --git a/test/cargo_smoke_test/cargo b/test/cargo_smoke_test/cargo
+deleted file mode 100755
+index e3227b60..00000000
+--- a/test/cargo_smoke_test/cargo
++++ /dev/null
+@@ -1,18 +0,0 @@
+-#!/bin/bash
+-# wrapper for cargo that generates Cargo.toml from Cargo.toml.in, filling in git revision as
+-# crate version
+-set -e
+-cd `dirname $0`
+-
+-revision="$(git describe --tags --abbrev=0)"
+-# -dirty only for changes other than the tracked Cargo.lock: builds rewrite
+-# the lock's root-package version entry, and that must not feed back into
+-# the version itself (which would rewrite the lock again on the next run).
+-if git status --porcelain --untracked-files=no | grep -v 'Cargo.lock' | grep -q .; then
+-    revision="${revision}-dirty"
+-fi
+-revision="${revision#v}"  # strip 'v' prefix
+->&2 echo "$revision"
+-
+-sed "s/{{GENOMICSQLITE_VERSION}}/${revision}/" Cargo.toml.in > Cargo.toml
+-cargo "$@"

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/Clinical-Genomics__BALSAMIC-1673"
+description = "fix: tn cnvkit plots"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "BALSAMIC",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Clinical-Genomics/BALSAMIC"
+ref = "c6fb06648f0089ba84bb98f784fe5a6a53ecf2b0"
+reference = "https://github.com/Clinical-Genomics/BALSAMIC/pull/1673"
+source_access = "auto"
+built_at = "2026-11-13T15:40:14.047586+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:929e9666bad6d78a43274d4fceb9310ab94a393f3785954d6738073af450a10f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-07T11:50:33Z"
+diff_format = "unified"
+context_files = [
+    "BALSAMIC/snakemake_rules/variant_calling/somatic_cnv_tumor_normal_tga.rule",
+    "CHANGELOG.rst",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 16
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

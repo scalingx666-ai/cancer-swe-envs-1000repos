@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/broadinstitute__mutect-4"
+description = "Removing benchmarking related files"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "mutect",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "broadinstitute/mutect"
+ref = "0d8dfd9b6caa7df8f1d7fd8b0109c7ac7c1f3013"
+reference = "https://github.com/broadinstitute/mutect/pull/4"
+source_access = "auto"
+built_at = "2026-11-13T15:36:52.971548+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:437f9b92610acf24682607d5dc1b19ab8739a4fbe0cd7a87f8abb59378c1e059"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2013-07-25T19:24:08Z"
+diff_format = "unified"
+context_files = [
+    "build.xml",
+    "somaticspike.xml",
+    "src/org/broadinstitute/cga/tools/gatk/filters/LibraryReadFilter.java",
+    "src/org/broadinstitute/cga/tools/gatk/walkers/cancer/simulation/SomaticSpike.java",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 241
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

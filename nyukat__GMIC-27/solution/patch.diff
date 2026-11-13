@@ -1,0 +1,13 @@
+diff --git a/example_notebook.ipynb b/example_notebook.ipynb
+index 23aecc7..8257198 100644
+--- a/example_notebook.ipynb
++++ b/example_notebook.ipynb
+@@ -138,6 +138,8 @@
+     "        \"K\": 6,\n",
+     "        \"crop_shape\": (256, 256),\n",
+     "        \"percent_t\":0.02\n",
++    "        \"post_processing_dim\": 256,\n",
++    "        \"num_classes\": 2\n",
+     "    }"
+    ]
+   },

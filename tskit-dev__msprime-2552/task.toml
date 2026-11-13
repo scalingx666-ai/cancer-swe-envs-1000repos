@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/tskit-dev__msprime-2552"
+description = "Fix deprecation warnings"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "msprime",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tskit-dev/msprime"
+ref = "f5d1e339009c864c525a1bf7030f3b1044aeea8c"
+reference = "https://github.com/tskit-dev/msprime/pull/2552"
+source_access = "auto"
+built_at = "2026-11-13T16:09:31.267134+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c917b157bcb32ff2de9f90dac06e779a2da03de6d307b98e10828edab06ffcf2"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-31T08:23:45Z"
+diff_format = "unified"
+context_files = [
+    "docs/development.md",
+    "msprime/cli.py",
+    "tests/test_ancestry.py",
+    "tests/test_cli.py",
+    "tests/test_mutations.py",
+    "tests/test_simulate_from.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 75
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

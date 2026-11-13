@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/cv-lee__BraTs-10"
+description = "Update utils.py"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "BraTs",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "cv-lee/BraTs"
+ref = "45da6889b0ff1a679608a92391f056d72134c9dc"
+reference = "https://github.com/cv-lee/BraTs/pull/10"
+source_access = "auto"
+built_at = "2026-11-13T15:43:02.575554+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0b0c280bd98f7fe7ab5b41f51ceb9f1e16556e9f66f2f973c6332dd33df81128"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-08-24T05:44:21Z"
+diff_format = "unified"
+context_files = [
+    "pytorch/utils.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

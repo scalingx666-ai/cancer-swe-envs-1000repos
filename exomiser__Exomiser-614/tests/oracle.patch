@@ -1,0 +1,208 @@
+diff --git a/exomiser-core/pom.xml b/exomiser-core/pom.xml
+index cd492d5a4..0016e3262 100644
+--- a/exomiser-core/pom.xml
++++ b/exomiser-core/pom.xml
+@@ -74,7 +74,6 @@
+             <groupId>io.github.p2gx.boqa</groupId>
+             <artifactId>boqa-core</artifactId>
+             <version>0.1.0</version>
+-            <scope>compile</scope>
+         </dependency>
+         <!--Phenix dependencies:-->
+         <!-- possibly could be replaced by org.monarchinitiative.phenol. If these artefacts are missing from the
+diff --git a/exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/prioritisers/BoqaPrioritiser.java b/exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/prioritisers/BoqaPrioritiser.java
+index b3699df79..7976a3669 100644
+--- a/exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/prioritisers/BoqaPrioritiser.java
++++ b/exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/prioritisers/BoqaPrioritiser.java
+@@ -7,13 +7,12 @@
+ import org.p2gx.boqa.core.Counter;
+ import org.p2gx.boqa.core.DiseaseData;
+ import org.p2gx.boqa.core.PatientData;
++import org.p2gx.boqa.core.algorithm.AlgorithmParameters;
+ import org.p2gx.boqa.core.analysis.BoqaAnalysisResult;
+ import org.p2gx.boqa.core.analysis.BoqaPatientAnalyzer;
+ import org.p2gx.boqa.core.analysis.BoqaResult;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+-
+-
+ import java.util.*;
+ import java.util.function.Function;
+ import java.util.stream.Stream;
+@@ -26,6 +25,8 @@ public class BoqaPrioritiser implements Prioritiser<BoqaPriorityResult> {
+ 
+     private final PriorityService priorityService;
+     private final Counter counter;
++    private final double alpha;
++    private final double beta;
+ 
+     public BoqaPrioritiser(PriorityService priorityService, Counter counter) {
+         // TODO: add getCounter(): Counter to Priority Service, then initialise the Counter @Lazy in the exomiser-config
+@@ -34,6 +35,8 @@ public BoqaPrioritiser(PriorityService priorityService, Counter counter) {
+         // it. The Counter now takes ~ 300ms to create, but still, it would be best to move it's creation into the config code.
+         this.priorityService = priorityService;
+         this.counter = counter;
++        this.alpha = 1.0/19077; // TODO: Make alpha and beta constructor parameters
++        this.beta = 0.9;
+     }
+ 
+     @Override
+@@ -46,8 +49,9 @@ public Stream<BoqaPriorityResult> prioritise(List<String> hpoIds, List<Gene> gen
+         logger.info("Running BOQA prioritiser...");
+         var observedHpoIds = hpoIds.stream().map(TermId::of).collect(toUnmodifiableSet());
+         PatientData patientData = new ExomiserPatientData(observedHpoIds, Collections.emptySet());
+-        BoqaAnalysisResult boqaAnalysisResult = BoqaPatientAnalyzer.computeBoqaResults(patientData, counter, Integer.MAX_VALUE);
+-        List<BoqaResult> rescaledBoqaResults = softMaxScaledBoqaResultScores(boqaAnalysisResult.boqaResults());
++        AlgorithmParameters params = AlgorithmParameters.create(alpha, beta);
++        BoqaAnalysisResult boqaAnalysisResult = BoqaPatientAnalyzer.computeBoqaResultsRawLog(patientData, counter, params);
++        List<BoqaResult> rescaledBoqaResults = reScaledRawLogBoqaExomiserScores(boqaAnalysisResult.boqaResults());
+         logger.debug("Top 10 BOQA results:");
+         rescaledBoqaResults.stream().sorted(Comparator.comparing(BoqaResult::boqaScore)).limit(10).forEach(b -> logger.debug("BOQA score: {} {} {}", b.counts().diseaseId(), b.boqaScore(), b.counts().diseaseLabel()));
+         Map<String, BoqaResult> boqaResultsByDiseaseId = rescaledBoqaResults.stream()
+@@ -55,63 +59,43 @@ public Stream<BoqaPriorityResult> prioritise(List<String> hpoIds, List<Gene> gen
+         return genes.stream().map(prioritiseGene(boqaResultsByDiseaseId));
+     }
+ 
++
+     /**
+-     * Rescales the BOQA result scores to adjust their range. The method normalizes the scores so that
+-     * the highest scoring result is scaled to 1.0, while preserving the relative differences between
+-     * score values.
++     * Transforms a list of BOQA results by rescaling their raw log scores into the range [0, 1].
++     *
++     * <p>The transformation is done as follows:</p>
++     * <pre>
++     * boqaExomiserScore_i =
++     *     (boqaRawLogScore_i + abs(min(boqaRawLogScore)))
++     *     / (max(boqaRawLogScore) + abs(min(boqaRawLogScore)))
++     * </pre>
+      *
+-     * @return the list of rescaled BOQA results with updated scores
+-     * @param boqaResults
++     * <p>This ensures that the minimum raw score maps to 0, and the maximum maps to 1.</p>
++     *
++     * @param boqaResults the list of BOQA results to rescale
++     * @return a list of BOQA results with rescaled scores
+      */
+-    private static List<BoqaResult> minMaxScaledBoqaResultScores(List<BoqaResult> boqaResults) {
+-        // BoqaResult scores are normalised so that they sum to 1 across all results. This leads to tiny, tiny scores.
+-        // This uses min-max scaling, which doesn't perform well with outliers. It seems like BOQA produces data with
+-        // extreme outliers, so this needs to use a different scaling method.
+-        // Min-max scaled score:
+-        //   scaled_score = (score - min_score) / (max_score - min_score)
+-        // Equivalent to:
+-        //   scale_factor = 1 / (max_score - min_score)
+-        //   scaled_score = (score - min_score) * scale_factor
+-        double minScore = boqaResults.stream().mapToDouble(BoqaResult::boqaScore).min().orElse(0d);
+-        double maxScore = boqaResults.stream().mapToDouble(BoqaResult::boqaScore).max().orElse(0d);
+-        double scaleFactor = 1 / (maxScore - minScore);
+-        return boqaResults.stream()
+-                .map(boqaResult -> new BoqaResult(boqaResult.counts(), (boqaResult.boqaScore() - minScore) * scaleFactor))
+-                .toList();
+-    }
++    private static List<BoqaResult> reScaledRawLogBoqaExomiserScores(List<BoqaResult> boqaResults) {
+ 
+-    // TODO: use softmax?
+-    private static List<BoqaResult> softMaxScaledBoqaResultScores(List<BoqaResult> boqaResults) {
+-        // Apply temperature scaling first
+-        double maxScore = boqaResults.stream()
+-                .mapToDouble(BoqaResult::boqaScore)
+-                .max()
+-                .orElse(0.0);
++        // Extract raw BOQA log scores
++        List<Double> rawLogBoqaScores =
++                boqaResults.stream()
++                        .map(BoqaResult::boqaScore)
++                        .toList();
+ 
+-        double total = boqaResults.stream()
+-                .mapToDouble(b -> Math.exp(b.boqaScore() - maxScore))
+-                .sum();
+-        double scaleFactor = 1 / total;
++        // Compute offset and normalization factor
++        double offset = Math.abs(Collections.min(rawLogBoqaScores));
++        double scale = Collections.max(rawLogBoqaScores) + offset;
+ 
+-//        return (Math.exp(input) / total) == (Math.expt(score) * ( 1 / total))
++        // Rescale
+         return boqaResults.stream()
+-                .map(boqaResult -> new BoqaResult(boqaResult.counts(), Math.exp(boqaResult.boqaScore() - maxScore) * scaleFactor))
++                .map(br -> {
++                    double boqaExomiserScore = (br.boqaScore() + offset) / scale;
++                    return new BoqaResult(br.counts(), boqaExomiserScore);
++                })
+                 .toList();
+     }
+ 
+-    // 1 - ( rank / numTotalDiseases) // rank-scaled score
+-    private static List<BoqaResult> rankScaledBoqaResultScores(List<BoqaResult> boqaResults) {
+-        int numBoqaResults = boqaResults.size();
+-        List<BoqaResult> rankedBoqaResults = boqaResults.stream().sorted(Comparator.comparing(BoqaResult::boqaScore)).toList();
+-        List<BoqaResult> rankScaledResults = new ArrayList<>(numBoqaResults);
+-        for (int i = 0; i < numBoqaResults; i++) {
+-            BoqaResult boqaResult = rankedBoqaResults.get(i);
+-            rankScaledResults.add(new BoqaResult(boqaResult.counts(), 1.0 - (i / (double) numBoqaResults)));
+-        }
+-        return rankScaledResults;
+-    }
+-
+-
+     /**
+      * If the gene is not contained in the database, we return an empty
+      * but initialized RelevanceScore object. Otherwise, we retrieve a list of
+@@ -224,5 +208,4 @@ public Map<String, String> getIdToLabel() {
+             return diseaseIdToLabel;
+         }
+     }
+-
+ }
+diff --git a/exomiser-spring-boot-autoconfigure/src/main/java/org/monarchinitiative/exomiser/autoconfigure/phenotype/PrioritiserAutoConfiguration.java b/exomiser-spring-boot-autoconfigure/src/main/java/org/monarchinitiative/exomiser/autoconfigure/phenotype/PrioritiserAutoConfiguration.java
+index 6b7f620bd..a95d7fdc8 100644
+--- a/exomiser-spring-boot-autoconfigure/src/main/java/org/monarchinitiative/exomiser/autoconfigure/phenotype/PrioritiserAutoConfiguration.java
++++ b/exomiser-spring-boot-autoconfigure/src/main/java/org/monarchinitiative/exomiser/autoconfigure/phenotype/PrioritiserAutoConfiguration.java
+@@ -25,12 +25,17 @@
+ import org.monarchinitiative.exomiser.core.prioritisers.PriorityFactory;
+ import org.monarchinitiative.exomiser.core.prioritisers.util.DataMatrix;
+ import org.monarchinitiative.exomiser.core.prioritisers.util.DataMatrixIO;
++import org.monarchinitiative.phenol.annotations.formats.hpo.HpoDiseases;
++import org.monarchinitiative.phenol.annotations.io.hpo.DiseaseDatabase;
++import org.monarchinitiative.phenol.annotations.io.hpo.HpoDiseaseLoader;
++import org.monarchinitiative.phenol.annotations.io.hpo.HpoDiseaseLoaderOptions;
++import org.monarchinitiative.phenol.annotations.io.hpo.HpoDiseaseLoaders;
+ import org.monarchinitiative.phenol.io.OntologyLoader;
+ import org.monarchinitiative.phenol.ontology.data.Ontology;
+ import org.p2gx.boqa.core.Counter;
+ import org.p2gx.boqa.core.DiseaseData;
+ import org.p2gx.boqa.core.algorithm.BoqaSetCounter;
+-import org.p2gx.boqa.core.diseases.DiseaseDataParser;
++import org.p2gx.boqa.core.diseases.DiseaseDataPhenolIngest;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+@@ -45,6 +50,7 @@
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.util.*;
++import java.util.stream.Collectors;
+ 
+ /**
+  * @author Jules Jacobsen <j.jacobsen@qmul.ac.uk>
+@@ -166,9 +172,16 @@ Counter boqaCounter(Ontology hpoOntology) {
+         // Parse disease-HPO associations into DiseaseData object
+         Path hpoaFilePath = phenotypeDataDirectory().resolve("phenotype.hpoa");
+         logger.debug("Importing disease phenotype associations from file: {} ...", hpoaFilePath);
+-        DiseaseData diseaseData = null;
++        DiseaseData diseaseData;
+         try {
+-            diseaseData = DiseaseDataParser.parseDiseaseDataFromHpoa(hpoaFilePath);
++            //diseaseData = DiseaseDataParser.parseDiseaseDataFromHpoa(hpoaFilePath);
++            Set<DiseaseDatabase> diseaseDatabase = Set.of("OMIM").stream()
++                    .map(DiseaseDatabase::fromString)
++                    .collect(Collectors.toSet());
++            HpoDiseaseLoaderOptions options = HpoDiseaseLoaderOptions.of(diseaseDatabase,false, 100);
++            HpoDiseaseLoader loader = HpoDiseaseLoaders.defaultLoader(hpoOntology(), options);
++            HpoDiseases diseases = loader.load(hpoaFilePath);
++            diseaseData = DiseaseDataPhenolIngest.of(hpoOntology(), diseases);
+         } catch (IOException e) {
+             throw new IllegalStateException(e);
+         }

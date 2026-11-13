@@ -1,0 +1,324 @@
+diff --git a/src/main/scala/com/fulcrumgenomics/umi/CallCodecConsensusReads.scala b/src/main/scala/com/fulcrumgenomics/umi/CallCodecConsensusReads.scala
+index 135030e54..6a9009fb1 100644
+--- a/src/main/scala/com/fulcrumgenomics/umi/CallCodecConsensusReads.scala
++++ b/src/main/scala/com/fulcrumgenomics/umi/CallCodecConsensusReads.scala
+@@ -94,8 +94,9 @@ class CallCodecConsensusReads
+  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
+  @arg(flag='M', doc="The minimum number of codec read pairs to form a consensus read.") val minReadPairs: Int = 1,
+  @arg(doc="""
+-            |The maximum number of reads to use when building a single-strand consensus. If more than this many reads are
+-            |present in a tag family, the family is randomly downsampled to exactly max-reads-pairs reads.
++            |The maximum number of reads to use when building a single-strand consensus. If more than this many read
++            |pairs are present in a tag family, the family is randomly but deterministically downsampled to exactly
++            |max-read-pairs read pairs; the same reads are selected on every run and for any number of threads.
+           """)
+  val maxReadPairs: Option[Int] = None,
+  @arg(flag='d', doc="Minimum length of the duplex region (where R1 and R2 overlap).") val minDuplexLength: Int = 1,
+diff --git a/src/main/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReads.scala b/src/main/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReads.scala
+index 99eb7af90..beb005957 100644
+--- a/src/main/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReads.scala
++++ b/src/main/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReads.scala
+@@ -115,8 +115,9 @@ class CallDuplexConsensusReads
+  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
+  @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1),
+  @arg(doc="""
+-            |The maximum number of reads to use when building a single-strand consensus. If more than this many reads are
+-            |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
++            |The maximum number of reads to use when building a single-strand consensus. If more than this many reads
++            |are present for a strand, that strand is randomly but deterministically downsampled to exactly
++            |max-reads-per-strand reads; the same reads are selected on every run and for any number of threads.
+           """)
+  val maxReadsPerStrand: Option[Int] = None,
+  @arg(flag='c', doc="Tag containing the cell barcode.") val cellTag: Option[String] = Some(SAMTag.CB.name),
+@@ -130,6 +131,7 @@ class CallDuplexConsensusReads
+   stats.foreach(Io.assertCanWriteFile(_))
+   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
+   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
++  validate(maxReadsPerStrand.forall(_ >= 1), "--max-reads-per-strand must be >= 1.")
+ 
+   override def execute(): Unit = {
+     val in = SamSource(input)
+diff --git a/src/main/scala/com/fulcrumgenomics/umi/CallMolecularConsensusReads.scala b/src/main/scala/com/fulcrumgenomics/umi/CallMolecularConsensusReads.scala
+index b4eecec8e..770003301 100644
+--- a/src/main/scala/com/fulcrumgenomics/umi/CallMolecularConsensusReads.scala
++++ b/src/main/scala/com/fulcrumgenomics/umi/CallMolecularConsensusReads.scala
+@@ -124,7 +124,8 @@ class CallMolecularConsensusReads
+  @arg(flag='M', doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
+  @arg(doc="""
+             |The maximum number of reads to use when building a consensus. If more than this many reads are
+-            |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
++            |present in a tag family, the family is randomly but deterministically downsampled to exactly max-reads
++            |reads; the same reads are selected on every run and for any number of threads.
+           """)
+  val maxReads: Option[Int] = None,
+  @arg(flag='B', doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
+diff --git a/src/main/scala/com/fulcrumgenomics/umi/CodecConsensusCaller.scala b/src/main/scala/com/fulcrumgenomics/umi/CodecConsensusCaller.scala
+index 10e821622..8382c56d1 100644
+--- a/src/main/scala/com/fulcrumgenomics/umi/CodecConsensusCaller.scala
++++ b/src/main/scala/com/fulcrumgenomics/umi/CodecConsensusCaller.scala
+@@ -69,7 +69,7 @@ import scala.collection.mutable
+   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
+   * @param minReadsPerStrand the minimum number of reads to form a single strand consensus from R1 or R2
+   * @param maxReadsPerStrand the maximum number of reads to use when building a single strand consensus read before
+-  *                          triggering random downsampling
++  *                          triggering downsampling
+   * @param minDuplexLength the minimum length of the duplex region of a consensus read for the consensus read to be
+   *                        built and emitted
+   * @param singleStrandQual Reduce quality scores in single stranded regions of the consensus read to the given quality
+diff --git a/src/main/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCaller.scala b/src/main/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCaller.scala
+index c40b33527..d423a7c8a 100644
+--- a/src/main/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCaller.scala
++++ b/src/main/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCaller.scala
+@@ -25,7 +25,7 @@
+ 
+ package com.fulcrumgenomics.umi
+ 
+-import com.fulcrumgenomics.FgBioDef.forloop
++import com.fulcrumgenomics.FgBioDef.{forloop, unreachable}
+ import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
+ import com.fulcrumgenomics.commons.util.LazyLogging
+ import com.fulcrumgenomics.umi.ConsensusCaller.Base
+@@ -35,9 +35,9 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
+ import com.fulcrumgenomics.util.NumericTypes._
+ import com.fulcrumgenomics.util.Sequences
+ import htsjdk.samtools.SAMTag
++import htsjdk.samtools.util.Murmur3
+ 
+ import java.util
+-import scala.util.Random
+ 
+ /**
+   * Holds the defaults for consensus caller options.
+@@ -178,7 +178,31 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
+     PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbOne, lnProbTwo))
+   }.toArray
+ 
+-  private val random = new Random(42)
++  /** Hasher used to rank reads when downsampling a family to at most [[VanillaUmiConsensusCallerOptions.maxReads]]. */
++  private val hasher = new Murmur3(42)
++
++  /** Ranks a source read for downsampling.  The rank is derived from the read's name so that a given set of reads
++    * always downsamples to the same subset, independent of how many families this caller has previously downsampled
++    * and therefore independent of how work is divided across threads.  Because both ends of a template share a read
++    * name, they receive the same rank and so are retained or discarded together.
++    *
++    * Every [[SourceRead]] built by fgbio carries its source record, so a read without one cannot be ranked and is
++    * treated as a programming error rather than given a placeholder rank.  A placeholder would tie such reads
++    * together and let the stable sort select them by input order, which is the order dependence this ranking exists
++    * to remove. */
++  private def downsampleRank(read: SourceRead): Int = read.sam
++    .map(rec => this.hasher.hashUnencodedChars(rec.name))
++    .getOrElse(unreachable("Cannot downsample a source read with no source record."))
++
++  /** Downsamples the reads to at most `maxReads` reads, retaining those with the lowest ranks.  The rank is computed
++    * once per read rather than passed to `sortBy`, which would re-hash on every comparison. */
++  private def downsample(reads: Seq[SourceRead], maxReads: Int): Seq[SourceRead] = {
++    if (reads.length <= maxReads) reads else {
++      val ranked = reads.iterator.map(read => (downsampleRank(read), read)).toArray
++      ranked.sortInPlaceBy { case (rank, _) => rank }
++      ranked.iterator.take(maxReads).map { case (_, read) => read }.toIndexedSeq
++    }
++  }
+ 
+   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+     * are set to zero.*/
+@@ -285,7 +309,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
+     }
+     else {
+       // First limit to max reads if necessary
+-      val capped  = if (reads.size <= this.options.maxReads) reads else this.random.shuffle(reads).take(this.options.maxReads)
++      val capped  = downsample(reads, this.options.maxReads)
+       // get the most likely consensus bases and qualities
+       val consensusLength = consensusReadLength(capped, this.options.minReads)
+       val consensusBases  = new Array[Base](consensusLength)
+diff --git a/src/test/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReadsTest.scala b/src/test/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReadsTest.scala
+index b6a500e82..3f981eb5e 100644
+--- a/src/test/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReadsTest.scala
++++ b/src/test/scala/com/fulcrumgenomics/umi/CallDuplexConsensusReadsTest.scala
+@@ -24,7 +24,9 @@
+ 
+ package com.fulcrumgenomics.umi
+ 
+-import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
++import com.fulcrumgenomics.FgBioDef._
++import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource}
++import com.fulcrumgenomics.sopt.cmdline.ValidationException
+ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+ import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+ 
+@@ -55,6 +57,16 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
+     an[Exception] should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, errorRatePostUmi=0.toByte).execute() }
+   }
+ 
++  it should "throw a validation exception if --max-reads-per-strand is less than one" in {
++    val in  = makeTempFile("in.", ".bam")
++    val out = makeTempFile("out.", ".bam")
++    // Validation happens at construction, so this fails only when the validation exists - not because the
++    // empty input file is unreadable.
++    an[ValidationException] should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, maxReadsPerStrand=Some(0)) }
++    an[ValidationException] should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, maxReadsPerStrand=Some(-1)) }
++    noException should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, maxReadsPerStrand=Some(1)) }
++  }
++
+   it should "have working CLP and arg annotations" in {
+     checkClpAnnotations[CallDuplexConsensusReads]
+   }
+@@ -132,4 +144,46 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
+       }
+     }
+   }
++
++  it should "produce identical output with one thread and with many when downsampling strands" in {
++    val readLength     = 10
++    val readsPerStrand = 6
++    val maxPerStrand   = 3
++
++    // Build many molecules, each with more reads per strand than we'll allow, and with a mismatching base at a
++    // different offset in each read so that which reads are retained is visible in the consensus.  The molecule
++    // count exceeds ConsensusCallingIterator's chunk size (threads * 16) so the input spans several chunks rather
++    // than relying on the fork-join pool to split a single chunk across threads.
++    val builder = new SamBuilder(readLength=readLength, sort=Some(SamOrder.TemplateCoordinate))
++    Range.inclusive(1, 300).foreach { mi =>
++      Range.inclusive(1, readsPerStrand).foreach { i =>
++        val bases = ("A" * readLength).updated(i, 'C')
++        builder.addPair(name=f"ab$mi%03d:$i", start1=100, start2=100, attrs=Map(MI -> s"$mi/A"),
++          bases1=bases, bases2=bases)
++        builder.addPair(name=f"ba$mi%03d:$i", start1=100, start2=100, strand1=Minus, strand2=Plus,
++          attrs=Map(MI -> s"$mi/B"), bases1=bases, bases2=bases)
++      }
++    }
++    val in = builder.toTempFile()
++
++    /** Calls duplex consensus reads with the given number of threads and returns the output records. */
++    def callWithThreads(threads: Int): Seq[SamRecord] = {
++      val out = makeTempFile("duplex.", ".bam")
++      new CallDuplexConsensusReads(input=in, output=out, maxReadsPerStrand=Some(maxPerStrand), threads=threads).execute()
++      val source = SamSource(out)
++      yieldAndThen(source.toIndexedSeq) { source.safelyClose() }
++    }
++
++    val singleThreaded = callWithThreads(threads=1)
++    val multiThreaded  = callWithThreads(threads=8)
++
++    // Sanity check that the strands really were downsampled, otherwise there's nothing to be non-deterministic about
++    singleThreaded should have size 600
++    singleThreaded.foreach { rec =>
++      rec[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe maxPerStrand
++      rec[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe maxPerStrand
++    }
++
++    multiThreaded.map(_.asSam.getSAMString) should contain theSameElementsInOrderAs singleThreaded.map(_.asSam.getSAMString)
++  }
+ }
+diff --git a/src/test/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCallerTest.scala b/src/test/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCallerTest.scala
+index 29dcd440e..6d9cab44e 100644
+--- a/src/test/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCallerTest.scala
++++ b/src/test/scala/com/fulcrumgenomics/umi/VanillaUmiConsensusCallerTest.scala
+@@ -62,6 +62,19 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
+     SourceRead(id="x", ("A"*len).getBytes, Array.tabulate(len)(_ => 30.toByte), cigar=cig)
+   }
+ 
++  /** Builds `n` source reads of length `n`, each backed by a [[com.fulcrumgenomics.bam.api.SamRecord]] with a unique
++    * read name, where the read at index `i` carries a single mismatching base at offset `i`.  The `errors` array of a
++    * consensus built from a subset of these reads therefore identifies exactly which reads went into it. */
++  def srcsWithUniqueErrors(n: Int, namePrefix: String): IndexedSeq[SourceRead] = {
++    val builder = new SamBuilder(readLength=n)
++    val caller  = cc()
++    IndexedSeq.tabulate(n) { i =>
++      val bases = ("A" * n).updated(i, 'C')
++      val rec   = builder.addFrag(name=f"$namePrefix$i", start=100, bases=bases, attrs=Map(ConsensusTags.MolecularId -> "1")).value
++      caller.toSourceRead(rec, minBaseQuality=2.toByte, qualityTrim=false).value
++    }
++  }
++
+   /**
+     * Function to calculated the expected quality of a consensus base in non-log math, that should work for
+     * modest values of Q and N.
+@@ -163,10 +176,11 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
+   }
+ 
+   it should "downsample input reads so that each consensus is made from <= max reads" in {
+-    val r = src("AAAAAAAAAA", "##########")
++    // Source reads must carry their source record to be ranked for downsampling, so build them from SamRecords.
++    val reads = srcsWithUniqueErrors(n=10, namePrefix="q")
+ 
+     for (max <- Seq(3, 1000); n <- Range.inclusive(1, 10)) {
+-      val srcs      = Seq.tabulate(n)(_ => r)
++      val srcs      = reads.take(n)
+       val caller    = cc(cco(minReads=1, maxReads=max))
+       val consensus = caller.consensusCall(srcs)
+ 
+@@ -178,6 +192,73 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
+     }
+   }
+ 
++  it should "downsample to the same reads no matter how many families the caller downsampled previously" in {
++    val options = cco(minReads=1, maxReads=3)
++
++    // A caller that has not downsampled anything yet
++    val freshCaller = cc(options)
++    val srcs        = srcsWithUniqueErrors(n=10, namePrefix="q")
++    val expected    = freshCaller.consensusCall(srcs).value
++
++    // A caller that downsampled an unrelated family first
++    val usedCaller  = cc(options)
++    usedCaller.consensusCall(srcsWithUniqueErrors(n=10, namePrefix="p")).value
++    val actual      = usedCaller.consensusCall(srcs).value
++
++    // Sanity check that the family really was downsampled, otherwise there's nothing to be non-deterministic about
++    expected.depths.forall(_ == 3) shouldBe true
++    expected.errors.count(_ > 0) shouldBe 3
++
++    actual.errors shouldBe expected.errors
++    actual.quals  shouldBe expected.quals
++  }
++
++  it should "downsample to the same reads no matter what order the reads are given in" in {
++    val options = cco(minReads=1, maxReads=3)
++    val srcs    = srcsWithUniqueErrors(n=10, namePrefix="q")
++
++    val inOrder  = cc(options).consensusCall(srcs).value
++    val reversed = cc(options).consensusCall(srcs.reverse).value
++
++    inOrder.errors.count(_ > 0) shouldBe 3
++    reversed.errors shouldBe inOrder.errors
++  }
++
++  it should "retain the reads whose names hash lowest when downsampling" in {
++    val srcs      = srcsWithUniqueErrors(n=10, namePrefix="q")
++    val consensus = cc(cco(minReads=1, maxReads=3)).consensusCall(srcs).value
++
++    // Read i carries its only mismatch at offset i, so the offsets with errors name the reads that were retained.
++    // Independently derived from htsjdk's Murmur3(42) hashes of "q0".."q9": q0, q2 and q3 rank lowest.
++    val retained = consensus.errors.toIndexedSeq.zipWithIndex.collect { case (errors, offset) if errors > 0 => offset }
++    retained shouldBe Seq(0, 2, 3)
++  }
++
++  it should "fail rather than silently tie ranks when downsampling a read with no source record" in {
++    // A SourceRead built without a backing SamRecord cannot be ranked.  Ranking it with a placeholder would tie such
++    // reads together and let the stable sort pick by input order, reintroducing the order dependence the hash removes.
++    val srcs = IndexedSeq.tabulate(6) { i => src(("A" * 6).updated(i, 'C'), Seq.fill(6)(30)) }
++    an[IllegalStateException] shouldBe thrownBy { cc(cco(minReads=1, maxReads=3)).consensusCall(srcs) }
++  }
++
++  it should "retain the same templates on both ends of a pair when downsampling" in {
++    val caller  = cc(cco(minReads=1, maxReads=3))
++    val builder = new SamBuilder(readLength=10)
++    // Both ends on the plus strand so that neither is reverse complemented, keeping mismatch offsets comparable.
++    Range.inclusive(0, 9).foreach { i =>
++      val bases = ("A" * 10).updated(i, 'C')
++      builder.addPair(name=f"t$i", start1=100, start2=200, strand1=Plus, strand2=Plus,
++        bases1=bases, bases2=bases, attrs=Map(ConsensusTags.MolecularId -> "1"))
++    }
++    val recs = builder.toSeq
++
++    val read1 = caller.consensusFromSamRecords(recs.filter(_.firstOfPair)).value
++    val read2 = caller.consensusFromSamRecords(recs.filter(_.secondOfPair)).value
++
++    read1.errors.count(_ > 0) shouldBe 3
++    read2.errors shouldBe read1.errors
++  }
++
+   it should "mask bases with too low of a consensus quality" in {
+     val bases = "GATTACA"
+     val quals         = Array(10, 10, 10, 10, 10, 10, 5)

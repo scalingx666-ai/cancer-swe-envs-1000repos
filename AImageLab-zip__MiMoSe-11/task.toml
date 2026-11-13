@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/AImageLab-zip__MiMoSe-11"
+description = "added an almost complete implementation of imfuse "
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MiMoSe",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AImageLab-zip/MiMoSe"
+ref = "fced35f91dd78cae04da8752529a3ddc19fe9928"
+reference = "https://github.com/AImageLab-zip/MiMoSe/pull/11"
+source_access = "auto"
+built_at = "2026-11-13T15:40:48.967178+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:57a8dddcf4717b93776ad4a903f11f36575bd7a1c77b25ab15b36352ac79f160"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-13T10:14:30Z"
+diff_format = "unified"
+context_files = [
+    "legacy/D2Net/datalist/test_18.txt",
+    "legacy/D2Net/datalist/test_23.txt",
+    "legacy/D2Net/datalist/train_18.txt",
+    "legacy/D2Net/datalist/train_23.txt",
+    "legacy/D2Net/datalist/val_18.txt",
+    "legacy/D2Net/datalist/val_23.txt",
+    "legacy/InOutFusion/brats18to23format.py",
+    "legacy/InOutFusion/requirements.txt",
+    "legacy/InOutFusion/train.py",
+    "legacy/LCKD/datalist/test_18.txt",
+    "legacy/LCKD/datalist/train_18.txt",
+    "legacy/LCKD/datalist/val_18.txt",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1950
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

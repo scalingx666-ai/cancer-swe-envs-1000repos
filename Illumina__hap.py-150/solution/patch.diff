@@ -1,0 +1,86 @@
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 00000000..9fb85ec4
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,14 @@
++# Set the default behavior, in case people don't have core.autocrlf set.
++* text=auto
++
++# Explicitly declare text files you want to always be normalized and converted
++# to native line endings on checkout.
++*.c text
++*.h text
++
++# Declare files that will always have CRLF line endings on checkout.
++*.sln text eol=crlf
++
++# Denote all files that are truly binary and should not be modified.
++*.png binary
++*.jpg binary
+\ No newline at end of file
+diff --git a/README.md b/README.md
+index 3e38411c..61884145 100755
+--- a/README.md
++++ b/README.md
+@@ -429,7 +429,7 @@ can be carried out on a desktop system.
+ Hap.py is known to build and run on the following linux distributions (see also the [Dockerfile](Dockerfile)
+ for a list of required packages):
+ 
+-    Ubuntu 12.04,14.04,16.04
++    Ubuntu 12.04,14.04,16.04,18.04
+     CentOS 5,6,7
+ 
+ Hap.py must be compiled with g++ version 4.9.x or later, or with a recent version of Clang (testing is performed
+@@ -481,3 +481,4 @@ export BOOST_ROOT=$HOME/boost_1_55_0_install
+ 
+ The complete list of dependencies / packages to install beforehand can be found
+ in the [Dockerfile](Dockerfile).
++
+diff --git a/RELEASES.md b/RELEASES.md
+index a86c21c6..6128106a 100755
+--- a/RELEASES.md
++++ b/RELEASES.md
+@@ -1,4 +1,12 @@
+ # Hap.py Release Notes / Change Log
++## v0.3.15
++* Updated rtgtools to v3.12.1
++* Defect remains: https://jira.illumina.com/browse/HAP-373. Use stable som.py v0.3.10.
++
++## v0.3.14
++* Fixed issues created by previous change to convert_gvcf arguments
++* Removed redundant truth and query gvcf parameters in pre.py.
++* som.py no longer hangs; fp.filtered SNV counting is incorrect. https://jira.illumina.com/browse/HAP-373. Use stable som.py v0.3.10.
+ 
+ ## v0.3.12
+ 
+diff --git a/external/make_dependencies.sh b/external/make_dependencies.sh
+index fefd3bcb..4e0790b4 100755
+--- a/external/make_dependencies.sh
++++ b/external/make_dependencies.sh
+@@ -115,9 +115,9 @@ if [[ ! -z $BUILD_VCFEVAL ]]; then
+         cd ${TLD}
+         mkdir -p ${TLD}/rtg-tools
+         cd rtg-tools
+-        wget http://github.com/RealTimeGenomics/rtg-tools/archive/3.10.1.tar.gz -O ${TLD}/rtg-tools/rtg-tools.tar.gz
++        wget http://github.com/RealTimeGenomics/rtg-tools/archive/3.12.1.tar.gz -O ${TLD}/rtg-tools/rtg-tools.tar.gz
+         tar xvf rtg-tools.tar.gz
+-        cd rtg-tools-3.10.1
++        cd rtg-tools-3.12.1
+ 
+         if [[ ! -z ${ANT_HOME} ]]; then
+             $ANT_HOME/bin/ant zip-nojre
+@@ -126,7 +126,7 @@ if [[ ! -z $BUILD_VCFEVAL ]]; then
+         fi
+         cd ..
+ 
+-        RTG_ZIPFILE=$(ls rtg-tools-3.10.1/dist/*-nojre.zip | head -1)
++        RTG_ZIPFILE=$(ls rtg-tools-3.12.1/dist/*-nojre.zip | head -1)
+         RTG_BASE=$(basename $RTG_ZIPFILE -nojre.zip)
+         jar xvf $RTG_ZIPFILE
+         mv $RTG_BASE ${ISD}/libexec/rtg-tools-install
+@@ -141,3 +141,4 @@ if [[ ! -z $BUILD_VCFEVAL ]]; then
+         chmod +x ${ISD}/libexec/rtg-tools-install/rtg-wrapper.sh
+     fi
+ fi
++

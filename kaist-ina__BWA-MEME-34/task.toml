@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/kaist-ina__BWA-MEME-34"
+description = "feat: ISA-L accelerated FASTQ reader for -8 mode (BWA-MEME2)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BWA-MEME",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kaist-ina/BWA-MEME"
+ref = "847a429fcfe31c4dd43d53a21cd432a77815b76c"
+reference = "https://github.com/kaist-ina/BWA-MEME/pull/34"
+source_access = "auto"
+built_at = "2026-11-13T16:19:54.789334+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c7fc77085474672114c9d5303ce53072555e3842affde0cdb69121ca11080a66"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-25T12:09:27Z"
+diff_format = "unified"
+context_files = [
+    "Makefile",
+    "src/bwa.cpp",
+    "src/bwa.h",
+    "src/bwamem.cpp",
+    "src/fast_reader.cpp",
+    "src/fast_reader.h",
+    "src/fastmap.cpp",
+    "src/fastmap.h",
+    "src/kseq.h",
+    "src/macro.h",
+    "src/profiling.cpp",
+    "src/utils.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 736
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

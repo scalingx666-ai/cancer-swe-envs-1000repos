@@ -1,0 +1,493 @@
+diff --git a/.github/workflows/check-bioc.yml b/.github/workflows/check-bioc.yml
+index 26ca6d1d..6564ea80 100644
+--- a/.github/workflows/check-bioc.yml
++++ b/.github/workflows/check-bioc.yml
+@@ -53,8 +53,8 @@ jobs:
+       fail-fast: false
+       matrix:
+         config:
+-          - { os: ubuntu-latest, r: '4.3', bioc: '3.17', cont: "bioconductor/bioconductor_docker:RELEASE_3_17", rspm: "https://packagemanager.posit.co/cran/__linux__/jammy/latest" }
+-          - { os: windows-latest, r: '4.3', bioc: '3.17'}
++          - { os: ubuntu-latest, r: '4.3', bioc: '3.18', cont: "bioconductor/bioconductor_docker:RELEASE_3_18", rspm: "https://packagemanager.posit.co/cran/__linux__/jammy/latest" }
++          - { os: windows-latest, r: '4.3', bioc: '3.18'}
+           ## Check https://github.com/r-lib/actions/tree/master/examples
+           ## for examples using the http-user-agent
+     env:
+@@ -106,16 +106,16 @@ jobs:
+         uses: actions/cache@v3
+         with:
+           path: ${{ env.R_LIBS_USER }}
+-          key: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_17-r-4.3-${{ hashFiles('.github/depends.Rds') }}
+-          restore-keys: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_17-r-4.3-
++          key: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_18-r-4.3-${{ hashFiles('.github/depends.Rds') }}
++          restore-keys: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_18-r-4.3-
+ 
+       - name: Cache R packages on Linux
+         if: "!contains(github.event.head_commit.message, '/nocache') && runner.os == 'Linux' "
+         uses: actions/cache@v3
+         with:
+           path: /home/runner/work/_temp/Library
+-          key: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_17-r-4.3-${{ hashFiles('.github/depends.Rds') }}
+-          restore-keys: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_17-r-4.3-
++          key: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_18-r-4.3-${{ hashFiles('.github/depends.Rds') }}
++          restore-keys: ${{ env.cache-version }}-${{ runner.os }}-biocversion-RELEASE_3_18-r-4.3-
+ 
+       - name: Install Linux system dependencies
+         if: runner.os == 'Linux'
+@@ -289,7 +289,7 @@ jobs:
+         if: failure()
+         uses: actions/upload-artifact@master
+         with:
+-          name: ${{ runner.os }}-biocversion-RELEASE_3_17-r-4.3-results
++          name: ${{ runner.os }}-biocversion-RELEASE_3_18-r-4.3-results
+           path: check
+ 
+         ## Note that DOCKER_PASSWORD is really a token for your dockerhub
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 79473ca7..de9208a0 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,6 +1,6 @@
+ Package: clustifyr
+ Title: Classifier for Single-cell RNA-seq Using Cell Clusters
+-Version: 1.13.1
++Version: 1.15.1
+ Description: Package designed to aid in classifying cells from single-cell RNA sequencing data
+     using external reference data (e.g., bulk RNA-seq, scRNA-seq, microarray, gene lists). A 
+     variety of correlation based methods and gene list enrichment methods are provided to assist cell
+@@ -73,7 +73,7 @@ Suggests:
+     BiocManager,
+     remotes,
+     shiny,
+-    Seurat,
++    SeuratObject,
+     gprofiler2,
+     purrr,
+     data.table,
+diff --git a/NAMESPACE b/NAMESPACE
+index 7473115d..c07f854a 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -98,3 +98,4 @@ importFrom(stats,p.adjust)
+ importFrom(stats,prcomp)
+ importFrom(stats,quantile)
+ importFrom(tidyr,gather)
++importFrom(utils,read.csv)
+diff --git a/NEWS b/NEWS
+index dcbd9d02..27b0c73c 100644
+--- a/NEWS
++++ b/NEWS
+@@ -49,4 +49,7 @@ Changes in version 1.5.2 (2021-10-04)
+ 
+ Changes in version 1.7.3 (2022-03-09)
+ + `vec_out` option for directly getting classification results as a vector, to be inserted into other metadata/workflow
+-+ Maintainer change
+\ No newline at end of file
+++ Maintainer change
++
++Changes in version 1.15.1 (2023-10-31)
+++ Replace `Seurat` dependency with `SeuratObject`
+\ No newline at end of file
+diff --git a/R/main.R b/R/main.R
+index 01515f43..ce066faa 100644
+--- a/R/main.R
++++ b/R/main.R
+@@ -426,7 +426,7 @@ clustify.Seurat <- function(input,
+             }
+         }
+         
+-        if ("Seurat" %in% loadedNamespaces()) {
++        if ("SeuratObject" %in% loadedNamespaces()) {
+             s_object <- write_meta(s_object, df_temp_full)
+             return(s_object)
+         } else {
+@@ -917,7 +917,7 @@ clustify_lists.Seurat <- function(input,
+             }
+         }
+         
+-        if ("Seurat" %in% loadedNamespaces()) {
++        if ("SeuratObject" %in% loadedNamespaces()) {
+             s_object <- write_meta(s_object, df_temp_full)
+             return(s_object)
+         } else {
+diff --git a/R/plot.R b/R/plot.R
+index d9905f61..d1902d5d 100644
+--- a/R/plot.R
++++ b/R/plot.R
+@@ -40,13 +40,11 @@ plot_dims <- function(data,
+     do_legend = TRUE,
+     do_repel = TRUE) {
+     # add backticks to allow special characters in column names
+-    x_col <- paste0("`", x, "`")
+-    y_col <- paste0("`", y, "`")
+ 
+     # If feature is not provided return unlabeled plot
+     if (is.null(feature)) {
+-        p <- ggplot2::ggplot(data, ggplot2::aes_string(x_col, y_col)) +
+-            ggplot2::geom_point(size = pt_size) +
++        p <- ggplot(data, aes(.data[[x]], .data[[y]])) +
++            geom_point(size = pt_size) +
+             cowplot::theme_cowplot()
+ 
+         if (!is.null(d_cols)) {
+@@ -79,21 +77,17 @@ plot_dims <- function(data,
+     data <- dplyr::arrange(data, !!dplyr::sym(feature))
+ 
+     if (!is.null(alpha_col)) {
+-        p <- ggplot2::ggplot(data, ggplot2::aes_string(x_col, y_col)) +
+-            geom_point(ggplot2::aes_string(
+-                color = paste0("`", feature, "`"),
+-                alpha = paste0("`", alpha_col, "`")
++        p <- ggplot(data, aes(.data[[x]], .data[[y]])) +
++            geom_point(aes(
++                color = .data[[feature]],
++                alpha = .data[[alpha_col]]
+             ), # backticks protect special character gene names
+             size = pt_size
+             ) +
+             scale_alpha_continuous(range = c(0, 1))
+     } else {
+-        p <- ggplot2::ggplot(data, ggplot2::aes_string(x_col, y_col)) +
+-            ggplot2::geom_point(ggplot2::aes_string(color = paste0(
+-                "`",
+-                feature,
+-                "`"
+-            )),
++        p <- ggplot(data, aes(.data[[x]], .data[[y]])) +
++            geom_point(aes(color = .data[[feature]]),
+             size = pt_size
+             )
+     }
+@@ -177,7 +171,7 @@ plot_dims <- function(data,
+             colnames(alldata) <- colnames(centers)
+             alldata <- rbind(alldata, centers)
+             p <- p +
+-                ggplot2::geom_point(
++                geom_point(
+                     data = alldata,
+                     mapping = aes(
+                         x = !!dplyr::sym("t1"),
+@@ -200,7 +194,7 @@ plot_dims <- function(data,
+                 )
+         } else {
+             p <- p +
+-                ggplot2::geom_text(
++                geom_text(
+                     data = centers,
+                     mapping = aes(
+                         x = !!dplyr::sym("t1"),
+diff --git a/R/seurat_wrapper.R b/R/seurat_wrapper.R
+index 87617dc2..c79a88aa 100644
+--- a/R/seurat_wrapper.R
++++ b/R/seurat_wrapper.R
+@@ -110,12 +110,12 @@ write_meta <- function(object, ...) {
+ write_meta.Seurat <- function(object,
+     meta,
+     ...) {
+-    if ("Seurat" %in% loadedNamespaces()) {
++    if ("SeuratObject" %in% loadedNamespaces()) {
+         object_new <- object
+         object_new@meta.data <- meta
+         return(object_new)
+     } else {
+-        message("Seurat not loaded")
++        message("SeuratObject not loaded")
+     }
+ }
+ 
+diff --git a/R/utils.R b/R/utils.R
+index 0e3cbf3b..88e4dd3b 100644
+--- a/R/utils.R
++++ b/R/utils.R
+@@ -1000,7 +1000,7 @@ clustify_nudge.Seurat <- function(input,
+             rename_prefix = rename_prefix
+         )
+ 
+-        if ("Seurat" %in% loadedNamespaces()) {
++        if ("SeuratObject" %in% loadedNamespaces()) {
+             input <- write_meta(input, df_temp_full)
+             return(input)
+         } else {
+@@ -1359,6 +1359,7 @@ feature_select_PCA <- function(mat = NULL,
+ #'
+ #' gene.lists <- gmt_to_list(path = gmt_file)
+ #' length(gene.lists)
++#' @importFrom utils read.csv
+ #' @export
+ gmt_to_list <- function(path,
+     cutoff = 0,
+diff --git a/README.Rmd b/README.Rmd
+index ade6f73a..b13f099c 100644
+--- a/README.Rmd
++++ b/README.Rmd
+@@ -43,8 +43,7 @@ BiocManager::install("clustifyr")
+ Install the development version with:
+ 
+ ``` r
+-# install.packages("remotes")
+-remotes::install_github("rnabioco/clustifyr")
++BiocManager::install("rnabioco/clustifyr")
+ ```
+  
+ ## Example usage
+diff --git a/README.md b/README.md
+index c3bfad61..728f6726 100644
+--- a/README.md
++++ b/README.md
+@@ -8,7 +8,7 @@
+ coverage](https://codecov.io/gh/rnabioco/clustifyr/branch/devel/graph/badge.svg)](https://app.codecov.io/gh/rnabioco/clustifyr?branch=devel)
+ [![platforms](https://bioconductor.org/shields/availability/release/clustifyr.svg)](https://bioconductor.org/packages/release/bioc/html/clustifyr.html)
+ [![bioc](https://bioconductor.org/shields/years-in-bioc/clustifyr.svg)](https://bioconductor.org/packages/release/bioc/html/clustifyr.html)
+-[![\#downloads](https://img.shields.io/badge/%23%20downloads-7329-brightgreen)](https://bioconductor.org/packages/stats/bioc/clustifyr/clustifyr_stats.tab)
++[![\#downloads](https://img.shields.io/badge/%23%20downloads-8045-brightgreen)](https://bioconductor.org/packages/stats/bioc/clustifyr/clustifyr_stats.tab)
+ <!-- badges: end -->
+ 
+ clustifyr classifies cells and clusters in single-cell RNA sequencing
+@@ -29,8 +29,7 @@ BiocManager::install("clustifyr")
+ Install the development version with:
+ 
+ ``` r
+-# install.packages("remotes")
+-remotes::install_github("rnabioco/clustifyr")
++BiocManager::install("rnabioco/clustifyr")
+ ```
+ 
+ ## Example usage
+diff --git a/tests/testthat/test_cor.R b/tests/testthat/test_cor.R
+index 9cd48a16..72d38f1d 100644
+--- a/tests/testthat/test_cor.R
++++ b/tests/testthat/test_cor.R
+@@ -244,7 +244,7 @@ test_that("clustify reinserts seurat3 metadata correctly", {
+         seurat_out = TRUE,
+         dr = "tsne"
+     )
+-    if ("Seurat" %in% loadedNamespaces()) {
++    if ("SeuratObject" %in% loadedNamespaces()) {
+         expect_true(class(res) %in% c("Seurat"))
+     } else {
+         expect_true(is.matrix(res))
+@@ -392,7 +392,7 @@ test_that("correct error message is displayed for nonexistent cluster_col", {
+ })
+ 
+ test_that("input Seurat metadata columns are not changed (type, r, rn, etc). #259", {
+-    skip_if_not_installed("Seurat")
++    skip_if_not_installed("SeuratObject")
+     tmp <- s_small3
+     tmp@meta.data$type <- 0L
+     tmp@meta.data$rn <- 0L
+diff --git a/tests/testthat/test_gsea.R b/tests/testthat/test_gsea.R
+index 5cea6400..f20973df 100644
+--- a/tests/testthat/test_gsea.R
++++ b/tests/testthat/test_gsea.R
+@@ -1,14 +1,19 @@
+ context("run_gsea")
+ 
++# use capture.output to quiet progress bar from fgsea
++shush <- function(...) {
++  capture.output(..., file = nullfile())
++}
+ test_that("output is correctly formatted", {
+     data("pbmc_vargenes")
+-    res <- run_gsea(
++   
++    shush(res <- run_gsea(
+         pbmc_matrix_small,
+         query_genes = pbmc_vargenes[1:100],
+         n_perm = 10,
+         cluster_ids = pbmc_meta$classified,
+         no_warnings = TRUE
+-    )
++    ))
+ 
+     expect_equal(nrow(res), length(unique(pbmc_meta$classified)))
+     expect_true(all(res$pval >= 0 & res$pval <= 1))
+@@ -30,19 +35,22 @@ test_that("run_gsea checks for matching number of clusters", {
+ test_that("run_gsea warns slow runs", {
+     data("pbmc_vargenes")
+ 
+-    expect_warning(res <- run_gsea(pbmc_matrix_small[, 1:3],
++    expect_warning(
++      shush(res <- run_gsea(pbmc_matrix_small[, 1:3],
+         query_genes = pbmc_vargenes[1:2],
+         n_perm = 10001,
+         per_cell = TRUE,
+         cluster_ids = pbmc_meta$classified,
+         no_warnings = TRUE
+-    ))
++        )
++      ) 
++    )
+ })
+ 
+ test_that("run_gsea warning suppression", {
+     data("pbmc_vargenes")
+     expect_warning(
+-        res <- run_gsea(
++      shush(res <- run_gsea(
+             pbmc_matrix_small[, 1:3],
+             query_genes = pbmc_vargenes[1:2],
+             n_perm = 1,
+@@ -50,6 +58,7 @@ test_that("run_gsea warning suppression", {
+             cluster_ids = pbmc_meta$classified,
+             no_warnings = FALSE
+         )
++      ) 
+     )
+ })
+ 
+@@ -62,7 +71,7 @@ test_that("calculate_pathway_gsea gives appropriate output", {
+         pbmc_meta,
+         cluster_col = "classified"
+     )
+-    res <- calculate_pathway_gsea(pbmc_avg, gl, scale = TRUE)
++    shush(res <- calculate_pathway_gsea(pbmc_avg, gl, scale = TRUE))
+ 
+     expect_equal(nrow(res), length(unique(pbmc_meta$classified)))
+ })
+@@ -76,7 +85,7 @@ test_that("plot_pathway_gsea gives appropriate output", {
+         pbmc_meta,
+         cluster_col = "classified"
+     )
+-    g <- plot_pathway_gsea(pbmc_avg, gl, 5)
++    shush(g <- plot_pathway_gsea(pbmc_avg, gl, 5))
+     expect_equal(length(g), 2)
+ })
+ 
+@@ -89,7 +98,8 @@ test_that("plot_pathway_gsea gives output depending on returning option", {
+         pbmc_meta,
+         cluster_col = "classified"
+     )
+-    g <- plot_pathway_gsea(pbmc_avg, gl, 5, returning = "plot")
+-    g2 <- plot_pathway_gsea(pbmc_avg, gl, 5, returning = "res")
++    shush(g <- plot_pathway_gsea(pbmc_avg, gl, 5, returning = "plot"))
++    shush(g2 <- plot_pathway_gsea(pbmc_avg, gl, 5, returning = "res"))
++    
+     expect_true(is(g, "Heatmap") & is.data.frame(g2))
+ })
+diff --git a/tests/testthat/test_list.R b/tests/testthat/test_list.R
+index bd4ef2d8..9a2cc64e 100644
+--- a/tests/testthat/test_list.R
++++ b/tests/testthat/test_list.R
+@@ -1,4 +1,8 @@
+ context("compare_list")
++# use capture.output to quiet progress bar from fgsea
++shush <- function(...) {
++  capture.output(..., file = nullfile())
++}
+ 
+ test_that("warning if matrix is not binarized", {
+     pbmc_mm <- matrixize_markers(pbmc_markers)
+@@ -8,7 +12,7 @@ test_that("warning if matrix is not binarized", {
+     )
+     pbmc_avgb <- binarize_expr(pbmc_avg)
+     gene_list_methods <- c("hyper")
+-    expect_warning(results <- lapply(
++    expect_warning(shush(results <- lapply(
+         gene_list_methods,
+         function(x) {
+             compare_lists(pbmc_avg,
+@@ -16,7 +20,7 @@ test_that("warning if matrix is not binarized", {
+                 metric = x
+             )
+         }
+-    ))
++    )))
+ })
+ 
+ 
+@@ -28,7 +32,7 @@ test_that("run all gene list functions", {
+     )
+     pbmc_avgb <- binarize_expr(pbmc_avg)
+     gene_list_methods <- c("spearman", "hyper", "jaccard", "gsea")
+-    results <- lapply(
++    shush(results <- lapply(
+         gene_list_methods,
+         function(x) {
+             compare_lists(pbmc_avgb,
+@@ -36,6 +40,7 @@ test_that("run all gene list functions", {
+                 metric = x
+             )
+         }
++      )
+     )
+ 
+     expect_equal(4, length(results))
+@@ -49,7 +54,7 @@ test_that("output intersected genes with details_out option with hyper/jaccard",
+     )
+     pbmc_avgb <- binarize_expr(pbmc_avg)
+     gene_list_methods <- c("hyper", "jaccard")
+-    results <- lapply(
++    shush(results <- lapply(
+         gene_list_methods,
+         function(x) {
+             compare_lists(pbmc_avgb,
+@@ -58,6 +63,7 @@ test_that("output intersected genes with details_out option with hyper/jaccard",
+                           details_out = TRUE
+             )
+         }
++      )
+     )
+     
+     expect_equal(2, length(results))
+@@ -83,7 +89,7 @@ test_that("gene list function options", {
+ 
+ test_that("run all gene list functions in clustify_lists", {
+     gene_list_methods <- c("spearman", "hyper", "jaccard", "gsea")
+-    results <- lapply(
++    shush(results <- lapply(
+         gene_list_methods,
+         function(x) {
+             clustify_lists(
+@@ -96,13 +102,14 @@ test_that("run all gene list functions in clustify_lists", {
+                 metric = x
+             )
+         }
++      )
+     )
+ 
+     expect_equal(4, length(results))
+ })
+ 
+ test_that("gsea outputs in cor matrix format", {
+-    res <- clustify_lists(
++    shush(res <- clustify_lists(
+         pbmc_matrix_small,
+         per_cell = FALSE,
+         metadata = pbmc_meta,
+@@ -110,7 +117,8 @@ test_that("gsea outputs in cor matrix format", {
+         marker = pbmc_markers,
+         marker_inmatrix = FALSE,
+         metric = "gsea"
+-    )
++    ))
++  
+     res2 <- cor_to_call(res)
+ 
+     expect_equal(9, nrow(res2))
+@@ -233,7 +241,7 @@ test_that("clustify_lists inserts seurat3 metadata correctly", {
+         seurat_out = TRUE,
+         dr = "tsne"
+     )
+-    if ("Seurat" %in% loadedNamespaces()) {
++    if ("SeuratObject" %in% loadedNamespaces()) {
+         expect_true(class(res) %in% c("Seurat"))
+     } else {
+         expect_true(is.matrix(res))
+@@ -248,7 +256,7 @@ test_that("run all gene list functions and then use consensus_call", {
+     )
+     pbmc_avgb <- binarize_expr(pbmc_avg)
+     gene_list_methods <- c("spearman", "hyper", "jaccard", "gsea")
+-    results <- lapply(
++    shush(results <- lapply(
+         gene_list_methods,
+         function(x) {
+             compare_lists(pbmc_avgb,
+@@ -256,7 +264,7 @@ test_that("run all gene list functions and then use consensus_call", {
+                 metric = x
+             )
+         }
+-    )
++    ))
+     call_list <- lapply(
+         results,
+         cor_to_call_rank

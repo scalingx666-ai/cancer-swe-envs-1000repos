@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/theislab__single-cell-best-practices-521"
+description = "Fix small errors in the spatial data structures chapter"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "single-cell-best-practices",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "theislab/single-cell-best-practices"
+ref = "4999c3550f669044cf8f5d75e9292c7ca9f537fe"
+reference = "https://github.com/theislab/single-cell-best-practices/pull/521"
+source_access = "auto"
+built_at = "2026-11-13T15:47:28.946237+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:61c1b2d1b30c12d0689a190d27bb03f9c9914fa16051908f6d77fad5f5e38f58"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-30T19:55:08Z"
+diff_format = "unified"
+context_files = [
+    "changelog.d/521.fixed.md",
+    "jupyter-book/spatial/data_structures.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 14
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

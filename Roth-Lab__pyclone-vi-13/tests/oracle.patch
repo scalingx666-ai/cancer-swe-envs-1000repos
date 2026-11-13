@@ -1,0 +1,13 @@
+diff --git a/setup.py b/setup.py
+index 29c496b..e568f35 100644
+--- a/setup.py
++++ b/setup.py
+@@ -2,7 +2,7 @@
+ 
+ setup(
+     name='pyclone-vi',
+-    version='0.1.0',
++    version='0.1.1',
+     description='Fast method for inferring clonal population structure from SNV data.',
+     author='Andrew Roth',
+     author_email='andrewjlroth@gmail.com',

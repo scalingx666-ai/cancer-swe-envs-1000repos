@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/arvados__arvados-528"
+description = "526: Update Webpack and related dependencies"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "arvados",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "arvados/arvados"
+ref = "d93141dbac11de36bbc271438e14abdd5d62bb6f"
+reference = "https://github.com/arvados/arvados/pull/528"
+source_access = "auto"
+built_at = "2026-11-13T15:55:49.363401+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ea5e4fb1b559df2a697f60a3c89277d6a1d85b25c9cf98c19c95d605d0c77719"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-16T13:25:04Z"
+diff_format = "unified"
+context_files = [
+    "services/workbench2/config/getHttpsConfig.js",
+    "services/workbench2/config/webpackDevServer.config.js",
+    "services/workbench2/package.json",
+    "services/workbench2/scripts/start.js",
+    "services/workbench2/yarn.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 3428
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

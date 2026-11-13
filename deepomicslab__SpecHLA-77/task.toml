@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/deepomicslab__SpecHLA-77"
+description = "feat: add fermikit single-thread option"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "SpecHLA",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "deepomicslab/SpecHLA"
+ref = "fccd1dc06aed85096b713dc308f4baae402afb33"
+reference = "https://github.com/deepomicslab/SpecHLA/pull/77"
+source_access = "auto"
+built_at = "2026-11-13T15:39:30.883250+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0f29e1bf4259ccb7248a0437a5d4c5adea84fff23e0fe276ebc63f9f1c046902"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-27T19:13:40Z"
+diff_format = "unified"
+context_files = [
+    "README.MD",
+    "script/run.assembly.realign.sh",
+    "script/whole/SpecHLA.sh",
+    "script/whole/test_SpecHLA.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 27
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

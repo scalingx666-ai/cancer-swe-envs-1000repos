@@ -1,0 +1,363 @@
+diff --git a/build-scripts/start_build.py b/build-scripts/start_build.py
+index d03f2373a3..3807ae8623 100755
+--- a/build-scripts/start_build.py
++++ b/build-scripts/start_build.py
+@@ -237,6 +237,7 @@
+         helm_registry_login(username=registry_user, password=registry_pwd)
+ 
+     container_images_available = Container.collect_containers()
++    print([x.tag for x in container_images_available])
+     BuildUtils.add_container_images_available(container_images_available=container_images_available)
+     charts_available = HelmChart.collect_charts()
+ 
+diff --git a/collections/kaapana-collection/requirements.yaml b/collections/kaapana-collection/requirements.yaml
+index b155d3c590..16628b7900 100644
+--- a/collections/kaapana-collection/requirements.yaml
++++ b/collections/kaapana-collection/requirements.yaml
+@@ -30,6 +30,9 @@ dependencies:
+   - name: mitk-workbench-chart
+     version: 0.0.0
+     repository: file://../../services/applications/mitk-workbench/mitk-workbench-chart
++  - name: slicer-workbench-chart
++    version: 0.0.0
++    repository: file://../../services/applications/slicer-workbench/slicer-workbench-chart
+   - name: mitk-flow-chart
+     version: 0.0.0
+     repository: file://../../services/applications/mitk-workbench/mitk-workbench-chart
+@@ -65,4 +68,4 @@ dependencies:
+     repository: file://../../data-processing/processing-pipelines/rateme/extension/rateme-workflow
+   - name: rateme-chart
+     version: 0.0.0
+-    repository: file://../../services/applications/rateme/rateme-chart
+\ No newline at end of file
++    repository: file://../../services/applications/rateme/rateme-chart
+diff --git a/services/applications/slicer-workbench/docker/Dockerfile b/services/applications/slicer-workbench/docker/Dockerfile
+new file mode 100644
+index 0000000000..ecaa8f6253
+--- /dev/null
++++ b/services/applications/slicer-workbench/docker/Dockerfile
+@@ -0,0 +1,62 @@
++FROM local-only/no-vnc-base:latest
++
++LABEL IMAGE="slicer-workbench"
++LABEL VERSION="0.1.0"
++LABEL CI_IGNORE="False"
++
++WORKDIR /src
++RUN mkdir -p /data
++
++# update required for libpulse-dev
++RUN apt-get update
++RUN apt-get upgrade -y
++RUN apt-get install -y libpulse-dev
++
++# slicer-specific libraries
++RUN apt-get install -y libglu1-mesa
++RUN apt-get install -y libnss3
++RUN apt-get install -y libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
++RUN apt-get install -y libxcb-shape0 libxcb-xinerama0 
++RUN apt-get install -y libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 
++
++# Slicer 4.11.20200930 https://download.slicer.org/bitstream/60add70fae4540bf6a89bfb4
++# Slicer 5.0.2
++RUN SLICER_URL="https://download.slicer.org/bitstream/6286ce04e8408647b39f803a" && \
++  curl -k -v -s -L $SLICER_URL | tar xz -C /tmp && \
++  mv /tmp/Slicer* /opt/slicer
++
++RUN chmod -R a+w /opt/slicer
++
++RUN useradd -m researcher -s /bin/bash && \
++    gpasswd -a researcher sudo && \
++    passwd -d researcher && passwd -u researcher && \
++    rm ~researcher/.bashrc ~researcher/.bash_logout ~researcher/.profile && \
++    sed -i -e '/^PS1/s/^/#/' /etc/bash.bashrc && \
++    sed -i -e '/stdout.*uname/s/^/#/' /etc/pam.d/login && \
++    echo 'source /etc/profile.d/prompt.sh' >> /etc/bash.bashrc
++
++
++# install Slicer extension; extension name hardcoded in install-slicer-extension.py
++COPY files/install-slicer-extension.py /opt/slicer
++# see https://github.com/pieper/SlicerDockers/blob/master/slicer-plus/Dockerfile
++RUN apt-get install -y xvfb
++RUN su researcher -c "xvfb-run --auto-servernum \
++    /opt/slicer/Slicer --python-script /opt/slicer/install-slicer-extension.py --no-splash --no-main-window"
++
++
++#?? from SlicerDockers/blob/master/x11/Dockerfile
++RUN echo "allowed_users=anybody" > /etc/X11/Xwrapper.config
++
++# from SlicerDockers/blob/master/slicer/Dockerfile
++RUN su researcher -c "mkdir /home/researcher/Documents"
++
++#RUN mkdir -p /root/Desktop
++#RUN ln -s /data /root/Desktop/
++#WORKDIR /data
++
++RUN mkdir -p /home/researcher/Desktop
++RUN ln -s /data /home/researcher/Desktop/
++WORKDIR /data
++
++# A supervisord config is used to make the application managed
++COPY files/supervisord.conf /etc/supervisor/conf.d/
+diff --git a/services/applications/slicer-workbench/docker/files/README.md b/services/applications/slicer-workbench/docker/files/README.md
+new file mode 100644
+index 0000000000..d4b36a5120
+--- /dev/null
++++ b/services/applications/slicer-workbench/docker/files/README.md
+@@ -0,0 +1,8 @@
++VNC
++Base image: https://github.com/tostein/docker-ubuntu-vnc-desktop branch: https://github.com/tostein/docker-ubuntu-vnc-desktop/tree/configureable_path
++
++MITK-Segmentation: FlowBench
++./mitk_seg_docker
++
++Flow VNC
++-> VNC and FlowBench as base: flow-vnc dktk-jip-registry.dkfz.de/dcipher-core/mitk-vnc:0.1-alpha
+diff --git a/services/applications/slicer-workbench/docker/files/install-slicer-extension.py b/services/applications/slicer-workbench/docker/files/install-slicer-extension.py
+new file mode 100644
+index 0000000000..f3a350c4e0
+--- /dev/null
++++ b/services/applications/slicer-workbench/docker/files/install-slicer-extension.py
+@@ -0,0 +1,17 @@
++#https://github.com/pieper/SlicerDockers/blob/master/slicer-plus/install-slicer-extension.py
++#import os
++#extensionName = os.environ['EXTENSION_TO_INSTALL']
++
++# order matters!
++for extensionName in ['DCMQI', 'PETDICOMExtension', \
++    'SlicerDevelopmentToolbox', 'DICOMwebBrowser', 'QuantitativeReporting']:
++    print(f"installing {extensionName}")
++    manager = slicer.app.extensionsManagerModel()
++    if not manager.isExtensionInstalled(extensionName):
++      extensionMetaData = manager.retrieveExtensionMetadataByName(extensionName)
++      url = f"{manager.serverUrl().toString()}/api/v1/item/{extensionMetaData['_id']}/download"
++      extensionPackageFilename = slicer.app.temporaryPath+'/'+extensionMetaData['_id']
++      slicer.util.downloadFile(url, extensionPackageFilename)
++      manager.installExtension(extensionPackageFilename)
++exit()
++
+diff --git a/services/applications/slicer-workbench/docker/files/startSlicer.sh b/services/applications/slicer-workbench/docker/files/startSlicer.sh
+new file mode 100644
+index 0000000000..5d9398349e
+--- /dev/null
++++ b/services/applications/slicer-workbench/docker/files/startSlicer.sh
+@@ -0,0 +1,17 @@
++echo '==============================='
++echo 'Run an awesome Slicer Application'
++echo '==============================='
++env QTWEBENGINE_DISABLE_SANDBOX=1 /mitk/MitkWorkbench.sh &
++PID=$!
++# wait until Workbench is ready
++tail -f  /root/Desktop/logfile | while read LOGLINE
++do
++	[[ "${LOGLINE}" == *"BlueBerry Workbench ready"* ]] && pkill -P $$ tail
++done
++echo 'Setting fullscreen mode'
++wmctrl -r 'Research' -b toggle,fullscreen
++# wait for process to end, before starting new process
++wait $PID
++#clear logfile
++> /root/Desktop/logfile
++
+diff --git a/services/applications/slicer-workbench/docker/files/supervisord.conf b/services/applications/slicer-workbench/docker/files/supervisord.conf
+new file mode 100644
+index 0000000000..514ea9350f
+--- /dev/null
++++ b/services/applications/slicer-workbench/docker/files/supervisord.conf
+@@ -0,0 +1,64 @@
++[supervisord]
++redirect_stderr=true
++stopsignal=QUIT
++autorestart=true
++directory=/root
++
++[program:nginx]
++priority=10
++command=nginx -c /etc/nginx/nginx.conf -g 'daemon off;'
++
++[program:web]
++priority=10
++directory=/usr/local/lib/web/backend
++command=/usr/local/lib/web/backend/run.py
++stdout_logfile=/dev/fd/1
++stdout_logfile_maxbytes=0
++stderr_logfile=/dev/fd/1
++stderr_logfile_maxbytes=0
++
++
++[group:x]
++programs=xvfb,wm,lxpanel,pcmanfm,x11vnc,novnc
++
++[program:wm]
++priority=15
++command=/usr/bin/openbox
++environment=DISPLAY=":1",HOME="/root",USER="root"
++
++[program:lxpanel]
++priority=15
++directory=%HOME%
++command=/usr/bin/lxpanel --profile LXDE
++user=%USER%
++environment=DISPLAY=":1",HOME="%HOME%",USER="%USER%"
++
++[program:pcmanfm]
++priority=15
++directory=%HOME%
++command=/usr/bin/pcmanfm --desktop --profile LXDE
++user=%USER%
++stopwaitsecs=3
++environment=DISPLAY=":1",HOME="%HOME%",USER="%USER%"
++
++[program:xvfb]
++priority=10
++command=/usr/local/bin/xvfb.sh
++stopsignal=KILL
++
++[program:x11vnc]
++priority=20
++command=x11vnc -display :1 -xkb -forever -shared -repeat -capslock
++
++[program:novnc]
++priority=25
++directory=/usr/local/lib/web/frontend/static/novnc
++command=bash /usr/local/lib/web/frontend/static/novnc/utils/launch.sh --listen 6081
++stopasgroup=true
++
++[program:slicer]
++priority=50
++process_name=Slicer
++command=x-terminal-emulator -e "/opt/slicer/Slicer" 
++user=researcher
++environment=DISPLAY=":1",HOME="/home/researcher",USER="researcher"
+diff --git a/services/applications/slicer-workbench/slicer-workbench-chart/Chart.yaml b/services/applications/slicer-workbench/slicer-workbench-chart/Chart.yaml
+new file mode 100644
+index 0000000000..298ef84150
+--- /dev/null
++++ b/services/applications/slicer-workbench/slicer-workbench-chart/Chart.yaml
+@@ -0,0 +1,10 @@
++apiVersion: v1
++appVersion: "2021.02"
++description: Launches a Slicer instance to explore files in Minio
++name: slicer-workbench-chart
++version: "0.0.0"
++keywords:
++- kaapanaapplication
++- kaapanaint
++- kaapanamultiinstallable
++- kaapanaexperimental
+diff --git a/services/applications/slicer-workbench/slicer-workbench-chart/templates/deployment.yaml b/services/applications/slicer-workbench/slicer-workbench-chart/templates/deployment.yaml
+new file mode 100644
+index 0000000000..f52666bd8e
+--- /dev/null
++++ b/services/applications/slicer-workbench/slicer-workbench-chart/templates/deployment.yaml
+@@ -0,0 +1,96 @@
++{{- $uuid := uuidv4 | trunc 10 }}
++kind: Deployment
++apiVersion: apps/v1
++metadata:
++  name: slicer-vol-{{ $uuid }}
++  namespace: "{{ .Values.global.services_namespace }}"
++spec:
++  replicas: 1
++  selector:
++    matchLabels:
++      app-name: slicer-vol-{{ $uuid }}
++  template:
++    metadata:
++      labels:
++        app-name: slicer-vol-{{ $uuid }}
++    spec:
++      restartPolicy: Always
++      containers:
++        # ToDo add init-container to wait for db-host
++      - name: slicer
++        image: "{{ .Values.global.registry_url }}/slicer-workbench:{{ .Values.global.kaapana_build_version  }}"
++        imagePullPolicy: {{ .Values.global.pull_policy_pods }}
++        resources:
++          requests:
++            memory: "5Gi"
++          limits:
++            memory: "8Gi"
++        env:
++        - name: INGRESS_PATH
++          value: "slicer-vol-{{ $uuid }}"
++        volumeMounts:
++        - name: slicer-data
++          mountPath: /data
++      volumes:
++      - name: slicer-data
++        hostPath:
++          {{- if .Values.mount_path }}
++          path: {{ .Values.mount_path }}
++          {{- else }}
++          path: {{ .Values.global.slow_data_dir }}/minio
++          {{- end }}
++          type: DirectoryOrCreate
++      imagePullSecrets:
++      - name: registry-secret
++---
++kind: Service
++apiVersion: v1
++metadata:
++  name: slicer-vol-{{ $uuid }}
++  namespace: "{{ .Values.global.services_namespace }}"
++  labels:
++    app: slicer-vol-{{ $uuid }}
++spec:
++  ports:
++    - protocol: TCP
++      port: 80
++      targetPort: 80
++      name: pt-slicer-http
++  type: ClusterIP
++  selector:
++    app-name: slicer-vol-{{ $uuid }}
++---
++apiVersion: traefik.containo.us/v1alpha1
++kind: Middleware
++metadata:
++  name: slicer-vol-{{ $uuid }}-redirect
++  namespace: "{{ .Values.global.services_namespace }}"
++spec:
++  redirectRegex:
++    regex: ^.*/slicer-vol-{{ $uuid }}([^\/]*)$
++    replacement: /slicer-vol-{{ $uuid }}/
++---
++apiVersion: networking.k8s.io/v1 
++kind: Ingress
++metadata:
++  name: slicer-vol-{{ $uuid }}
++  namespace: "{{ .Values.global.services_namespace }}"
++  annotations:
++    traefik.ingress.kubernetes.io/router.entrypoints: websecure
++    traefik.ingress.kubernetes.io/router.middlewares: {{  .Values.global.services_namespace  }}-auth-check@kubernetescrd,{{ .Values.global.services_namespace }}-slicer-vol-{{ $uuid }}-redirect@kubernetescrd
++    kubernetes.io/ingress.global-static-ip-name: "kubernetes-ingress"
++spec:
++  rules:
++  - host:
++    http:
++      paths:
++      - path: /slicer-vol-{{ $uuid }}
++        pathType: ImplementationSpecific
++        backend:
++          service:
++            name: slicer-vol-{{ $uuid }}
++            port:
++              name: pt-slicer-http
++---
++
++          
+diff --git a/services/applications/slicer-workbench/slicer-workbench-chart/values.yaml b/services/applications/slicer-workbench/slicer-workbench-chart/values.yaml
+new file mode 100644
+index 0000000000..70b4e43105
+--- /dev/null
++++ b/services/applications/slicer-workbench/slicer-workbench-chart/values.yaml
+@@ -0,0 +1,8 @@
++---
++global:
++    registry_url: ""
++    pull_policy_pods: ""
++    base_namespace: ""
++    fast_data_dir: ""
++    slow_data_dir: ""
++mount_path: ""

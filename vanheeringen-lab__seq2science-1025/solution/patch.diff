@@ -1,0 +1,81 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9d64687cc..0c9723c71 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,11 @@ All changed fall under either one of these types: `Added`, `Changed`, `Deprecate
+ 
+ ## [Unreleased]
+ 
++### Fixed
++
++- replaced deprecated --split-e flag with --split-3 flag for fastq downloading
++- removed support for GSA as their "API" changed
++
+ ## [1.2.1] - 2023-11-15
+ 
+ ### Fixed
+diff --git a/docs/content/workflows/download_fastq.md b/docs/content/workflows/download_fastq.md
+index aa25577dd..d397c915b 100644
+--- a/docs/content/workflows/download_fastq.md
++++ b/docs/content/workflows/download_fastq.md
+@@ -9,7 +9,7 @@ Downloading public data in bulk from the NCBI, ENA, and DDBJ databases has never
+ 
+ #### Download SRA file
+ 
+-The five most popular databases that store sequencing data are National Center for Biotechnology Information (NCBI), the European Nucleotide Archive (ENA), the DNA Data Bank of Japan (DDBJ), the Genome Sequence Archive (GSA), and the Encode project (ENCODE).
++The five most popular databases that store sequencing data are National Center for Biotechnology Information (NCBI), the European Nucleotide Archive (ENA), the DNA Data Bank of Japan (DDBJ), the Genome Sequence Archive (GSA) (GSA is currently not supported anymore), and the Encode project (ENCODE).
+ ENA, ENCODE, and GSA store the actual fastq files, and DDBJ and NCBI store the raw data (as a sra file) from which a fastq can be derived.
+ For this reason for each sample on DDBJ and NCBI seq2science will first check if it can be downloaded from ENA as a fastq directly.
+ Otherwise we will download the samples in its raw format. To convert this data to a fastq it has to be "*dumped*".
+@@ -22,7 +22,6 @@ As an example, the `samples.tsv` could look something like this:
+ 
+ ```
+ sample
+-CRX123    <-- GSA experiment
+ DRX890    <-- DDBJ experiment
+ DRR098    <-- DDBJ run
+ ENCSR765  <-- ENCODE assay
+diff --git a/seq2science/rules/get_fastq.smk b/seq2science/rules/get_fastq.smk
+index 65c7f5bcd..92cf146ce 100644
+--- a/seq2science/rules/get_fastq.smk
++++ b/seq2science/rules/get_fastq.smk
+@@ -155,7 +155,7 @@ rule sra2fastq_PE:
+ 
+         # dump to tmp dir
+         parallel-fastq-dump -s {input} -O {output.tmpdir} \
+-        --threads {threads} --split-e --skip-technical --dumpbase \
++        --threads {threads} --split-3 --skip-technical --dumpbase \
+         --readids --clip --read-filter pass --defline-seq '@$ac.$si.$sg/$ri' \
+         --defline-qual '+' --gzip >> {log} 2>&1
+         
+diff --git a/seq2science/workflows/download_fastq/samples.tsv b/seq2science/workflows/download_fastq/samples.tsv
+index 8381c0cb2..d7be1b505 100644
+--- a/seq2science/workflows/download_fastq/samples.tsv
++++ b/seq2science/workflows/download_fastq/samples.tsv
+@@ -9,6 +9,6 @@ SRX257149
+ SRR800037
+ DRX029591
+ DRR032791
+-CRX269079
++# CRX269079  # currently not supported
+ ENCSR535GFO
+ ENCFF172MDS
+diff --git a/tests/dag_tests.sh b/tests/dag_tests.sh
+index 03f4f1efb..d658a284f 100644
+--- a/tests/dag_tests.sh
++++ b/tests/dag_tests.sh
+@@ -67,10 +67,10 @@ if [ $1 = "alignment" ]; then
+   assert_rulecount $1 'ena2fastq_PE|sra2fastq_PE' 1
+   assert_rulecount $1 'ena2fastq_PE|sra2fastq_PE' 1
+ 
+-  printf "\ndownload gsa\n"
+-  seq2science run download-fastq -nr --configfile tests/$WF/default_config.yaml --snakemakeOptions quiet=True config={samples:tests/download_fastq/gsa_encode_samples.tsv} | tee tests/local_test_results/${1}_dag
+-  assert_rulecount $1 'gsa_or_encode2fastq_SE' 5
+-  assert_rulecount $1 'gsa_or_encode2fastq_PE' 1
++  # printf "\ndownload gsa\n"
++  # seq2science run download-fastq -nr --configfile tests/$WF/default_config.yaml --snakemakeOptions quiet=True config={samples:tests/download_fastq/gsa_encode_samples.tsv} | tee tests/local_test_results/${1}_dag
++  # assert_rulecount $1 'gsa_or_encode2fastq_SE' 5
++  # assert_rulecount $1 'gsa_or_encode2fastq_PE' 1
+ 
+   # alignment workflow
+   WF=alignment

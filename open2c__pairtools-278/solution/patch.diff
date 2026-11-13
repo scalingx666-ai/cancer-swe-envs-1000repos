@@ -1,0 +1,182 @@
+diff --git a/pairtools/cli/select.py b/pairtools/cli/select.py
+index 53dc7293..4f5848c0 100644
+--- a/pairtools/cli/select.py
++++ b/pairtools/cli/select.py
+@@ -112,7 +112,10 @@ def select(
+     - regex_match(x, regex) - True if variable x matches a Python-flavor regex,
+     e.g. regex_match(chrom1, 'chr\d')
+ 
+-    \b
++    - region_match(chrom, pos, region_chrom, region_start, region_end) - True if the
++    position (chrom, pos) lies within the region defined by
++    (region_chrom, region_start, region_end).
++
+     Examples:
+     pairtools select '(pair_type=="UU") or (pair_type=="UR") or (pair_type=="RU")'
+     pairtools select 'chrom1==chrom2'
+@@ -120,6 +123,7 @@ def select(
+     pairtools select '(chrom1==chrom2) and (abs(pos1 - pos2) < 1e6)'
+     pairtools select '(chrom1=="!") and (chrom2!="!")'
+     pairtools select 'regex_match(chrom1, "chr\d+") and regex_match(chrom2, "chr\d+")'
++    pairtools select 'region_match(chrom1, pos1, "chr1", 100, 500) and region_match(chrom2, pos2, "chr1", 100, 500)'
+ 
+     pairtools select 'True' --chrom-subset mm9.reduced.chromsizes
+ 
+@@ -229,7 +233,7 @@ def select_py(
+     for filter_passed, line in evaluate_stream(
+         body_stream, condition, column_names, type_cast, startup_code
+     ):
+-        COLS = line.rstrip('\n').split(pairsam_format.PAIRSAM_SEP)
++        COLS = line.rstrip("\n").split(pairsam_format.PAIRSAM_SEP)
+ 
+         if remove_columns:
+             COLS = [
+diff --git a/pairtools/lib/select.py b/pairtools/lib/select.py
+index f8fcc047..4ec27416 100644
+--- a/pairtools/lib/select.py
++++ b/pairtools/lib/select.py
+@@ -1,5 +1,6 @@
+ from ..lib import fileio, pairsam_format, headerops
+ import re, fnmatch
++import numpy as np
+ 
+ # Create environment of important functions:
+ wildcard_library = {}
+@@ -32,6 +33,12 @@ def regex_match(x, regex):
+     return regex_library[regex].fullmatch(x)
+ 
+ 
++def region_match(chrom, pos, region_chrom, region_start=-1, region_end=-1):
++    if region_end == -1:
++        region_end = np.inf
++    return chrom == region_chrom and region_start <= pos <= region_end
++
++
+ # Define default data types:
+ TYPES = {"pos1": "int", "pos2": "int", "mapq1": "int", "mapq2": "int"}
+ 
+@@ -66,17 +73,18 @@ def evaluate_stream(
+     for i, col in enumerate(column_names):
+         if col in TYPES:
+             col_type = TYPES[col]
+-            condition = re.sub(r"\b%s\b" % col , "{}(COLS[{}])".format(col_type, i), condition)
+-            #condition.replace(col, "{}(COLS[{}])".format(col_type, i))
++            condition = re.sub(
++                r"\b%s\b" % col, "{}(COLS[{}])".format(col_type, i), condition
++            )
++            # condition.replace(col, "{}(COLS[{}])".format(col_type, i))
+         else:
+             condition = re.sub(r"\b%s\b" % col, "COLS[{}]".format(i), condition)
+-            #condition = condition.replace(col, "COLS[{}]".format(i))
+-
++            # condition = condition.replace(col, "COLS[{}]".format(i))
+     # Compile the filtering expression:
+     match_func = compile(condition, "<string>", "eval")
+ 
+     for line in headerless_stream:
+-        COLS = line.rstrip('\n').split(pairsam_format.PAIRSAM_SEP)
++        COLS = line.rstrip("\n").split(pairsam_format.PAIRSAM_SEP)
+ 
+         # Evaluate filtering expression:
+         filter_passed = eval(match_func)
+@@ -124,7 +132,7 @@ def evaluate_df(df, condition, type_cast=(), startup_code=None, engine="pandas")
+         # Set up the columns indexing
+         for i, col in enumerate(df.columns):
+             condition = re.sub(r"\b%s\b" % col, "COLS[{}]".format(i), condition)
+-            #condition = condition.replace(col, "COLS[{}]".format(i))
++            # condition = condition.replace(col, "COLS[{}]".format(i))
+ 
+         filter_passed_output = []
+         match_func = compile(condition, "<string>", "eval")
+diff --git a/tests/test_select.py b/tests/test_select.py
+index 23b47e96..5c083c30 100644
+--- a/tests/test_select.py
++++ b/tests/test_select.py
+@@ -253,3 +253,87 @@ def test_remove_columns():
+             continue
+ 
+         assert len(l.split(pairsam_format.PAIRSAM_SEP)) == 8
++
++
++def test_region_match():
++    try:
++        result = subprocess.check_output(
++            [
++                "python",
++                "-m",
++                "pairtools",
++                "select",
++                'region_match(chrom1, pos1, "chr1", 0, 50)',
++                mock_pairsam_path,
++            ],
++        ).decode("ascii")
++    except subprocess.CalledProcessError as e:
++        print(e.output)
++        print(sys.exc_info())
++        raise e
++    print(result)
++
++    pairsam_body = [
++        l.strip()
++        for l in open(mock_pairsam_path, "r")
++        if not l.startswith("#") and l.strip()
++    ]
++    output_body = [
++        l.strip() for l in result.split("\n") if not l.startswith("#") and l.strip()
++    ]
++
++    # Verify all output rows have chrom1="chr1" and pos1 within range
++    for l in output_body:
++        fields = l.split("\t")
++        chrom1, pos1 = fields[1], int(fields[2])
++        assert chrom1 == "chr1"
++        assert 0 <= pos1 <= 50
++
++    # Verify all matching rows from input are in output
++    for l in pairsam_body:
++        fields = l.split("\t")
++        chrom1, pos1 = fields[1], int(fields[2])
++        if chrom1 == "chr1" and 0 <= pos1 <= 50:
++            assert l in output_body
++
++
++def test_region_match_no_end():
++    try:
++        result = subprocess.check_output(
++            [
++                "python",
++                "-m",
++                "pairtools",
++                "select",
++                'region_match(chrom1, pos1, "chr1", 50)',
++                mock_pairsam_path,
++            ],
++        ).decode("ascii")
++    except subprocess.CalledProcessError as e:
++        print(e.output)
++        print(sys.exc_info())
++        raise e
++    print(result)
++
++    pairsam_body = [
++        l.strip()
++        for l in open(mock_pairsam_path, "r")
++        if not l.startswith("#") and l.strip()
++    ]
++    output_body = [
++        l.strip() for l in result.split("\n") if not l.startswith("#") and l.strip()
++    ]
++
++    # Verify all output rows have chrom1="chr1" and pos1 >= 50
++    for l in output_body:
++        fields = l.split("	")
++        chrom1, pos1 = fields[1], int(fields[2])
++        assert chrom1 == "chr1"
++        assert pos1 >= 50
++
++    # Verify all matching rows from input are in output
++    for l in pairsam_body:
++        fields = l.split("	")
++        chrom1, pos1 = fields[1], int(fields[2])
++        if chrom1 == "chr1" and pos1 >= 100:
++            assert l in output_body

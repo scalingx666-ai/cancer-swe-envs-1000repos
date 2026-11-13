@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/hall-lab__speedseq-103"
+description = "V0.1.2 cram support"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "speedseq",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "hall-lab/speedseq"
+ref = "75863faaab12df190b938ca49efde1f28c55b51f"
+reference = "https://github.com/hall-lab/speedseq/pull/103"
+source_access = "auto"
+built_at = "2026-11-13T15:41:37.657457+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b1aa61c5389031730c808423a9cbd80bb42a8d4fc2aa1fa4ea45f3470523a05f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2017-03-28T15:21:16Z"
+diff_format = "unified"
+context_files = [
+    ".gitmodules",
+    "Makefile",
+    "bin/speedseq",
+    "src/cnvnator/bin/cnvnator_wrapper.py",
+    "src/lumpy-sv",
+    "src/svtyper",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 555
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

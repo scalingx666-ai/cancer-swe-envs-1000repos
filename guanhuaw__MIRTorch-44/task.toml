@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/guanhuaw__MIRTorch-44"
+description = "fix: keep release checkout on branch"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "MIRTorch",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "guanhuaw/MIRTorch"
+ref = "7339ed2db733799227ee209000f6c91a0fa96110"
+reference = "https://github.com/guanhuaw/MIRTorch/pull/44"
+source_access = "auto"
+built_at = "2026-11-13T16:17:47.815567+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b8f025df8bc3bdca794896cce37b3fa75c0cc531fe7fad5c5a8447a68c376faf"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-28T04:05:56Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/python-release.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 7
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

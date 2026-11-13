@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/tskit-dev__msprime-2553"
+description = "Fix running airspeed velocity"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "msprime",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tskit-dev/msprime"
+ref = "0d2c3be2a7a0f4f8305d16dce4bf961825f21b8f"
+reference = "https://github.com/tskit-dev/msprime/pull/2553"
+source_access = "auto"
+built_at = "2026-11-13T16:09:29.588062+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1be919a93effab1c43aedff0a4071a0b31926b30e12cb747906f4633dcdecaab"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-09T09:56:11Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "asv.conf.json",
+    "docs/development.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 14
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

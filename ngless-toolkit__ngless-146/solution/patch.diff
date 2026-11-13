@@ -1,0 +1,594 @@
+diff --git a/.github/workflows/build_linux.yml b/.github/workflows/build_linux.yml
+new file mode 100644
+index 00000000..8de7e218
+--- /dev/null
++++ b/.github/workflows/build_linux.yml
+@@ -0,0 +1,44 @@
++---
++name: NGLess Linux (Ubuntu) Build
++
++on: [push]
++
++jobs:
++  ngless:
++    name: Build, install and upload NGLess
++    runs-on: ubuntu-latest
++    env:
++      # Force building/installing a static binary
++      STACKOPTS: "--ghc-options '-fPIC' --flag NGLess:embed"
++    steps:
++      - uses: actions/checkout@v2
++      - uses: haskell/actions/setup@v1
++        with:
++          enable-stack: true
++          stack-version: "latest"
++
++      - name: Install GCC8/G++-8
++        run: |
++          sudo apt update
++          sudo apt install -y g++-8
++
++      - name: Setup stack
++        run: stack setup
++
++      - name: Build Static NGLess and dependencies
++        run: make static CXX=g++-8
++
++      - name: Build NGLess modules
++        run: make modules
++
++      - name: Run tests
++        run: make check
++
++      - name: Install NGLess
++        run: make install CXX=g++-8 prefix=ngless_path/ngless
++
++      - name: Upload
++        uses: actions/upload-artifact@v2
++        with:
++          name: ngless_install
++          path: ngless_path/ngless
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+deleted file mode 100644
+index bc9b1563..00000000
+--- a/.gitlab-ci.yml
++++ /dev/null
+@@ -1,247 +0,0 @@
+-variables:
+-    # gitlab only allows caching folders inside the project's directory
+-    # stack keeps part of the cache in ~/.stack so to workaround this
+-    # we tell stack to keep it's cache inside the project's location
+-    STACK_ROOT: "${CI_PROJECT_DIR}/.stack"
+-
+-cache:
+-    paths:
+-        - .stack
+-        - .stack-work
+-        - .stack-work-test
+-        - .stack-work-profile
+-    # CI_JOB_NAME creates one cache per build target (e.g. build-and-test-ubuntu)
+-    key: "$CI_JOB_NAME"
+-
+-build-and-test-ubuntu:
+-    image: registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:old
+-    stage: build
+-
+-    before_script:
+-    - apt update
+-    - apt upgrade -y
+-    - stack upgrade
+-    - mkdir bin
+-    # Workaround gitlab memory limits with a swapfile
+-    - dd if=/dev/zero of=/var/tmp/swapfile bs=1M count=2048 && mkswap /var/tmp/swapfile && chmod 600 /var/tmp/swapfile && swapon /var/tmp/swapfile && free
+-    # Needed for tests that print UTF8 characters such as motus
+-    # Same issue as https://github.com/commercialhaskell/stack/issues/793
+-
+-    variables:
+-        LC_ALL: "C.UTF-8"
+-        STACKOPTS: "--ghc-options '-fPIC' --flag NGLess:embed"
+-
+-    retry: 1
+-
+-    script:
+-    - make static
+-    - make modules
+-    - make check
+-    - make install prefix=${PWD}
+-    - PATH=${PWD}/bin:$PATH ./run-tests.sh
+-
+-    artifacts:
+-        when: on_success
+-        paths:
+-        - bin/ngless
+-        - Modules/packages/
+-        expire_in: 1 month
+-
+-build-and-test-ubuntu-wsl:
+-    image: registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:wsl
+-    stage: build
+-
+-    before_script:
+-    - apt update
+-    - apt upgrade -y
+-    - stack upgrade
+-    - mkdir bin
+-    # Workaround gitlab memory limits with a swapfile
+-    - dd if=/dev/zero of=/var/tmp/swapfile bs=1M count=2048 && mkswap /var/tmp/swapfile && chmod 600 /var/tmp/swapfile && swapon /var/tmp/swapfile && free
+-    # Needed for tests that print UTF8 characters such as motus
+-    # Same issue as https://github.com/commercialhaskell/stack/issues/793
+-
+-    variables:
+-        LC_ALL: "C.UTF-8"
+-        STACKOPTS: "--system-ghc --ghc-options '-fPIC' --flag NGLess:embed"
+-
+-    retry: 1
+-
+-    script:
+-    - make static
+-    - make modules
+-    - make check
+-    - make install prefix=${PWD}
+-    - PATH=${PWD}/bin:$PATH ./run-tests.sh
+-
+-    artifacts:
+-        when: on_success
+-        paths:
+-        - bin/ngless
+-        - Modules/packages/
+-        expire_in: 1 month
+-
+-build-and-test-ubuntu-wsl-profiling:
+-    image: registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:wsl
+-    stage: build
+-
+-    before_script:
+-    - apt update
+-    - apt upgrade -y
+-    - stack upgrade
+-    - mkdir bin
+-    # Workaround gitlab memory limits with a swapfile
+-    - dd if=/dev/zero of=/var/tmp/swapfile bs=1M count=2048 && mkswap /var/tmp/swapfile && chmod 600 /var/tmp/swapfile && swapon /var/tmp/swapfile && free
+-    # Needed for tests that print UTF8 characters such as motus
+-    # Same issue as https://github.com/commercialhaskell/stack/issues/793
+-
+-    variables:
+-        LC_ALL: "C.UTF-8"
+-        STACKOPTS: "--system-ghc --work-dir .stack-work-profile --ghc-options '-fPIC -g -fprof-auto -rtsopts' --flag NGLess:embed --executable-profiling --library-profiling"
+-    retry: 1
+-
+-    script:
+-    - make modules
+-    - make install prefix=${PWD}
+-    - PATH=${PWD}/bin:$PATH ./run-tests.sh
+-
+-    # Allow this to fail without failing the entire commit
+-    allow_failure: true
+-    # Don't run this step automatically, make it a manually triggered build
+-    when: manual
+-    # The profiling build takes considerably longer, so relax the project's 2 hour limit
+-    timeout: 4 hours
+-
+-    artifacts:
+-        when: on_success
+-        paths:
+-        - bin/ngless
+-        - Modules/packages/
+-        expire_in: 1 month
+-
+-build-and-longtests-ubuntu-wsl:
+-    image: registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:wsl
+-    stage: build
+-    tags:
+-    - longjob
+-
+-    before_script:
+-    - apt update
+-    - apt upgrade -y
+-    - stack upgrade
+-    - mkdir bin
+-
+-    variables:
+-        LC_ALL: "C.UTF-8"
+-        STACKOPTS: "--system-ghc --ghc-options '-fPIC' --flag NGLess:embed"
+-    retry: 1
+-
+-    script:
+-    - make modules
+-    - make check
+-    - make install prefix=${PWD}
+-    - PATH=${PWD}/bin:$PATH ./run-tests.sh long-
+-
+-    # Allow this to fail without failing the entire commit
+-    #allow_failure: true
+-    # Don't run this step automatically, make it a manually triggered build
+-    when: manual
+-    # The profiling build takes considerably longer, so relax the project's 2 hour limit
+-    timeout: 24 hours
+-
+-build-and-test-ubuntu-non-static:
+-    image: registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:old
+-    stage: build
+-
+-    before_script:
+-    - apt update
+-    - apt upgrade -y
+-    - stack upgrade
+-    - mkdir prefix-test
+-    # Workaround gitlab memory limits with a swapfile
+-    - dd if=/dev/zero of=/var/tmp/swapfile bs=1M count=2048 && mkswap /var/tmp/swapfile && chmod 600 /var/tmp/swapfile && swapon /var/tmp/swapfile && free
+-    # Needed for tests that print UTF8 characters such as motus
+-    # Same issue as https://github.com/commercialhaskell/stack/issues/793
+-
+-    variables:
+-        LC_ALL: "C.UTF-8"
+-
+-    retry: 1
+-
+-    script:
+-    - make
+-    - make modules
+-    - make check
+-    - make install prefix=${PWD}
+-    - PATH=${PWD}/bin:$PATH ./run-tests.sh
+-
+-
+-build-and-test-ubuntu-devel:
+-    image: registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:devel
+-    stage: build
+-
+-    before_script:
+-    - apt update
+-    - apt upgrade -y
+-    - stack upgrade
+-    - mkdir prefix-test
+-    # Workaround gitlab memory limits with a swapfile
+-    - dd if=/dev/zero of=/var/tmp/swapfile bs=1M count=2048 && mkswap /var/tmp/swapfile && chmod 600 /var/tmp/swapfile && swapon /var/tmp/swapfile && free
+-    # Needed for tests that print UTF8 characters such as motus
+-    # Same issue as https://github.com/commercialhaskell/stack/issues/793
+-
+-    variables:
+-        LC_ALL: "C.UTF-8"
+-        STACKOPTS: "--system-ghc --ghc-options '-fPIC' --flag NGLess:embed"
+-
+-    retry: 1
+-
+-    script:
+-    - make static
+-    - make modules
+-    - make check
+-    - make install prefix=${PWD}
+-    - PATH=${PWD}/bin:$PATH ./run-tests.sh
+-
+-    artifacts:
+-        when: on_success
+-        paths:
+-        - bin/ngless
+-        - Modules/packages/
+-        expire_in: 1 month
+-
+-# Temporarily disable Alpine due to https://github.com/commercialhaskell/stack/issues/2387
+-# build-and-test-alpine:
+-#     image: registry.gitlab.com/ngless/ngless/alpine-ghc-stack:edge
+-#     stage: build
+-#
+-#     before_script:
+-#     - apk update
+-#     - apk upgrade
+-#     - stack upgrade
+-#     # NOTE Workaround to bash hanging when <() is used
+-#     # This has to be set on the parent shell before launching bash
+-#     # More info at: http://www.openwall.com/lists/musl/2017/12/07/13
+-#     - ulimit -u 1000
+-#     # Workaround gitlab memory limits with a swapfile
+-#     - dd if=/dev/zero of=/var/tmp/swapfile bs=1M count=2048 && mkswap /var/tmp/swapfile && chmod 600 /var/tmp/swapfile && swapon /var/tmp/swapfile && free
+-#     - mkdir bin
+-#
+-#     variables:
+-#         STACKOPTS: "--system-ghc --ghc-options '-fPIC' --flag NGLess:embed"
+-#
+-#     retry: 1
+-#
+-#     script:
+-#     - make static
+-#     - make modules
+-#     - make check
+-#     - make install prefix=${PWD}
+-#     - PATH=${PWD}/bin:$PATH ./run-tests.sh
+-#
+-#     artifacts:
+-#         when: on_success
+-#         paths:
+-#         - bin/ngless
+-#         - Modules/packages/
+-#         expire_in: 1 month
+diff --git a/build-scripts/docker_bases/alpine/Dockerfile b/build-scripts/docker_bases/alpine/Dockerfile
+deleted file mode 100644
+index 5d5466a4..00000000
+--- a/build-scripts/docker_bases/alpine/Dockerfile
++++ /dev/null
+@@ -1,40 +0,0 @@
+-FROM alpine:edge
+-
+-LABEL maintainer "alves.rjc+docker@gmail.com"
+-
+-RUN apk --no-cache add \
+-    alpine-sdk \
+-    bash \
+-    bzip2-dev \
+-    ca-certificates \
+-    cabal \
+-    coreutils \
+-    file \
+-    ghc-dev \
+-    ghc \
+-    git \
+-    gmp-dev \
+-    libffi-dev \
+-    libgcc \
+-    linux-headers \
+-    m4 \
+-    make \
+-    py2-pip \
+-    python2 \
+-    python2-dev \
+-    vim \
+-    xz \
+-    xz-dev \
+-    zlib-dev \
+-    zstd && \
+-    wget -qO- https://get.haskellstack.org/ | sh && \
+-    chmod 755 /usr/local/bin/stack && \
+-    pip install tox
+-
+-# Build ngless dependencies to save time during build
+-RUN git clone --depth=2 https://gitlab.com/ngless/ngless && \
+-    cd ngless && \
+-    STACKOPTS="--system-ghc --only-dependencies" make ngless && \
+-    STACKOPTS="--system-ghc --only-dependencies" make tests && \
+-    cd .. && \
+-    rm -rf ngless
+diff --git a/build-scripts/docker_bases/alpine/build.sh b/build-scripts/docker_bases/alpine/build.sh
+deleted file mode 100755
+index 8f76075a..00000000
+--- a/build-scripts/docker_bases/alpine/build.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker build -t registry.gitlab.com/ngless/ngless/alpine-ghc-stack:edge .
+diff --git a/build-scripts/docker_bases/alpine/upload.sh b/build-scripts/docker_bases/alpine/upload.sh
+deleted file mode 100755
+index 9f872b7c..00000000
+--- a/build-scripts/docker_bases/alpine/upload.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker push registry.gitlab.com/ngless/ngless/alpine-ghc-stack:edge
+diff --git a/build-scripts/docker_bases/build_upload_all.sh b/build-scripts/docker_bases/build_upload_all.sh
+deleted file mode 100755
+index 6e306d29..00000000
+--- a/build-scripts/docker_bases/build_upload_all.sh
++++ /dev/null
+@@ -1,21 +0,0 @@
+-#!/usr/bin/env bash
+-
+-echo "Building alpine"
+-( cd alpine && ./build.sh ) &> alpine-build.log
+-echo "Uploading alpine"
+-( cd alpine && ./upload.sh ) &> alpine-upload.log
+-
+-echo "Building ubuntu-devel"
+-( cd ubuntu-devel && ./build.sh ) &> ubuntu-devel-build.log
+-echo "Uploading ubuntu-devel"
+-( cd ubuntu-devel && ./upload.sh ) &> ubuntu-devel-upload.log
+-
+-echo "Building ubuntu-old"
+-( cd ubuntu-old && ./build.sh ) &> ubuntu-old-build.log
+-echo "Uploading ubuntu-old"
+-( cd ubuntu-old && ./upload.sh ) &> ubuntu-old-upload.log
+-
+-echo "Building ubuntu-ghc-wsl"
+-( cd ubuntu-ghc-wsl && ./build.sh ) &> ubuntu-ghc-wsl-build.log
+-echo "Uploading ubuntu-ghc-wsl"
+-( cd ubuntu-ghc-wsl && ./upload.sh ) &> ubuntu-ghc-wsl-upload.log
+diff --git a/build-scripts/docker_bases/ubuntu-devel/Dockerfile b/build-scripts/docker_bases/ubuntu-devel/Dockerfile
+deleted file mode 100644
+index 21d5bb73..00000000
+--- a/build-scripts/docker_bases/ubuntu-devel/Dockerfile
++++ /dev/null
+@@ -1,39 +0,0 @@
+-FROM ubuntu:devel
+-
+-LABEL maintainer "alves.rjc+docker@gmail.com"
+-
+-RUN apt update && \
+-    apt install -y \
+-    build-essential \
+-    cabal-install \
+-    coreutils \
+-    curl \
+-    ghc \
+-    git \
+-    libbz2-dev \
+-    libcairo2-dev \
+-    libgif-dev \
+-    libjpeg-dev \
+-    liblzma-dev \
+-    m4 \
+-    pkg-config \
+-    python-dev \
+-    python-pip \
+-    wget \
+-    xxd \
+-    xz-utils \
+-    zlib1g-dev \
+-    zstd && \
+-    apt clean && \
+-    rm -rf /var/lib/apt/lists && \
+-    wget -qO- https://get.haskellstack.org/ | sh && \
+-    chmod 755 /usr/local/bin/stack && \
+-    pip install tox
+-
+-# Build ngless dependencies to save time during build
+-RUN git clone --depth=2 https://gitlab.com/ngless/ngless && \
+-    cd ngless && \
+-    STACKOPTS="--system-ghc --only-dependencies" make ngless && \
+-    STACKOPTS="--system-ghc --only-dependencies" make tests && \
+-    cd .. && \
+-    rm -rf ngless
+diff --git a/build-scripts/docker_bases/ubuntu-devel/build.sh b/build-scripts/docker_bases/ubuntu-devel/build.sh
+deleted file mode 100755
+index 796d6360..00000000
+--- a/build-scripts/docker_bases/ubuntu-devel/build.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker build -t registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:devel .
+diff --git a/build-scripts/docker_bases/ubuntu-devel/upload.sh b/build-scripts/docker_bases/ubuntu-devel/upload.sh
+deleted file mode 100755
+index 695b9c9c..00000000
+--- a/build-scripts/docker_bases/ubuntu-devel/upload.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker push registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:devel
+diff --git a/build-scripts/docker_bases/ubuntu-ghc-wsl/Dockerfile b/build-scripts/docker_bases/ubuntu-ghc-wsl/Dockerfile
+deleted file mode 100644
+index 3deaaf7e..00000000
+--- a/build-scripts/docker_bases/ubuntu-ghc-wsl/Dockerfile
++++ /dev/null
+@@ -1,56 +0,0 @@
+-FROM ubuntu:xenial
+-
+-LABEL maintainer "alves.rjc+docker@gmail.com"
+-
+-ARG GHC_VERSION=8.6.4
+-
+-RUN apt update && \
+-    apt install -y \
+-    build-essential \
+-    cabal-install \
+-    coreutils \
+-    curl \
+-    git \
+-    libbz2-dev \
+-    libcairo2-dev \
+-    libgif-dev \
+-    libjpeg-dev \
+-    software-properties-common \
+-    liblzma-dev \
+-    m4 \
+-    pkg-config \
+-    python-dev \
+-    python-pip \
+-    vim \
+-    wget \
+-    xz-utils \
+-    zlib1g-dev \
+-    zstd && \
+-    apt clean && \
+-    rm -rf /var/lib/apt/lists
+-
+-# add-apt-repository is installed by software-properties-common above
+-RUN add-apt-repository ppa:hvr/ghc-wsl -y
+-RUN apt-get update && \
+-    apt-get install -y ghc-${GHC_VERSION} && \
+-    apt clean && \
+-    rm -rf /var/lib/apt/lists
+-
+-RUN wget -qO- https://get.haskellstack.org/ | sh && \
+-    chmod 755 /usr/local/bin/stack
+-
+-# Set encoding to UTF-8 and PATH to find GHC and cabal/stack-installed binaries.
+-#
+-
+-ENV LANG=C.UTF-8 \
+-    LC_ALL=C.UTF-8 \
+-    PATH=/root/.cabal/bin:/root/.local/bin:/opt/ghc/$GHC_VERSION/bin:$PATH
+-
+-# Build ngless dependencies to save time during build
+-RUN git clone --depth=2 https://gitlab.com/ngless/ngless && \
+-    cd ngless && \
+-    stack setup --system-ghc && \
+-    STACKOPTS="--system-ghc --only-dependencies" make ngless && \
+-    STACKOPTS="--system-ghc --only-dependencies" make tests && \
+-    cd .. && \
+-    rm -rf ngless
+diff --git a/build-scripts/docker_bases/ubuntu-ghc-wsl/build.sh b/build-scripts/docker_bases/ubuntu-ghc-wsl/build.sh
+deleted file mode 100755
+index 3f282ba9..00000000
+--- a/build-scripts/docker_bases/ubuntu-ghc-wsl/build.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker build -t registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:wsl .
+diff --git a/build-scripts/docker_bases/ubuntu-ghc-wsl/upload.sh b/build-scripts/docker_bases/ubuntu-ghc-wsl/upload.sh
+deleted file mode 100755
+index 6505f861..00000000
+--- a/build-scripts/docker_bases/ubuntu-ghc-wsl/upload.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker push registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:wsl
+diff --git a/build-scripts/docker_bases/ubuntu-old/Dockerfile b/build-scripts/docker_bases/ubuntu-old/Dockerfile
+deleted file mode 100644
+index 3d128dce..00000000
+--- a/build-scripts/docker_bases/ubuntu-old/Dockerfile
++++ /dev/null
+@@ -1,41 +0,0 @@
+-FROM ubuntu:xenial
+-
+-LABEL maintainer "alves.rjc+docker@gmail.com"
+-
+-RUN apt update && \
+-    apt install -y \
+-    build-essential \
+-    cabal-install \
+-    coreutils \
+-    curl \
+-    ghc \
+-    git \
+-    libbz2-dev \
+-    libcairo2-dev \
+-    libgif-dev \
+-    libjpeg-dev \
+-    liblzma-dev \
+-    m4 \
+-    pkg-config \
+-    python-dev \
+-    python-pip \
+-    vim \
+-    wget \
+-    xz-utils \
+-    zlib1g-dev \
+-    zstd && \
+-    apt clean && \
+-    rm -rf /var/lib/apt/lists && \
+-    wget -qO- https://get.haskellstack.org/ | sh && \
+-    chmod 755 /usr/local/bin/stack && \
+-    pip install tox
+-
+-# Build ngless dependencies to save time during build
+-# We need to use GHC from stack here because ubuntu:latest ships with GHC-7
+-RUN git clone --depth=2 https://gitlab.com/ngless/ngless && \
+-    cd ngless && \
+-    stack setup && \
+-    STACKOPTS="--only-dependencies" make ngless && \
+-    STACKOPTS="--only-dependencies" make tests && \
+-    cd .. && \
+-    rm -rf ngless
+diff --git a/build-scripts/docker_bases/ubuntu-old/build.sh b/build-scripts/docker_bases/ubuntu-old/build.sh
+deleted file mode 100755
+index 845a51a1..00000000
+--- a/build-scripts/docker_bases/ubuntu-old/build.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker build -t registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:old .
+diff --git a/build-scripts/docker_bases/ubuntu-old/upload.sh b/build-scripts/docker_bases/ubuntu-old/upload.sh
+deleted file mode 100755
+index d918d086..00000000
+--- a/build-scripts/docker_bases/ubuntu-old/upload.sh
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/sh
+-docker push registry.gitlab.com/ngless/ngless/ubuntu-ghc-stack:old

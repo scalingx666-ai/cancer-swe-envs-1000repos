@@ -1,0 +1,73 @@
+diff --git a/run_gnomix.py b/run_gnomix.py
+index 233148e..7a9889a 100644
+--- a/run_gnomix.py
++++ b/run_gnomix.py
+@@ -197,7 +197,13 @@ def train_model(config, data_path, verbose):
+     # train it
+     if verbose:
+         print("Building model...")
+-    model.train(data=data, retrain_base=retrain_base, evaluate=True, verbose=verbose)
++    model.train(data=data, retrain_base=False, evaluate=True, verbose=verbose)
++    if retrain_base:
++        generations_0 = {"train1":[0],"train2":[0]}
++        if validate:
++            generations_0["val"] = [0]
++        all_founders, _ = get_data(data_path, generations_0, window_size_cM)
++        model.retrain_base(data=all_founders,verbose=verbose)
+     # write gentic map df
+     model.write_gen_map_df(load_dict(os.path.join(data_path,"gen_map_df.pkl")))
+ 
+@@ -296,11 +302,19 @@ def simulate_splits(base_args,config,data_path):
+         if not os.path.exists(split_path):
+             os.makedirs(split_path)
+         for gen in split_generations[split]:
++            if gen == 0:
++                continue
+             laidataset.simulate(num_outs[split],
+                                 split=split,
+                                 gen=gen,
+                                 outdir=os.path.join(split_path,"gen_"+str(gen)),
+                                 return_out=False)
++        # Simulate gen_0 for every split
++        laidataset.simulate(num_outs[split], # this param makes no diff
++                            split=split,
++                            gen=0,
++                            outdir=os.path.join(split_path,"gen_0"),
++                            return_out=False)
+ 
+     return
+ 
+@@ -382,7 +396,7 @@ def simulate_splits(base_args,config,data_path):
+             gens_with_zero = list(set(generations + [0]))
+             gens_without_zero = [generation for generation in generations if generation != 0]
+             config["simulation"]["splits"]["gens"] = {
+-            "train1": gens_with_zero,
++            "train1": [0],
+             "train2": generations,
+             "val": gens_without_zero
+             }
+diff --git a/src/gnomix/model/model.py b/src/gnomix/model/model.py
+index 7715366..a81f55c 100644
+--- a/src/gnomix/model/model.py
++++ b/src/gnomix/model/model.py
+@@ -166,6 +166,20 @@ def train(self,data,retrain_base=True,evaluate=True,verbose=True):
+ 
+         self.time["training"] = round(time() - train_time_begin,2)
+ 
++    def retrain_base(self,data,verbose):
++        (X_t1,y_t1), (X_t2,y_t2), (X_v,y_v) = data
++        if X_v is not None:
++            X_t, y_t = np.concatenate([X_t1, X_t2, X_v]), np.concatenate([y_t1, y_t2, y_v])
++        else:
++            X_t, y_t = np.concatenate([X_t1, X_t2]), np.concatenate([y_t1, y_t2])
++        
++        # Re-using all the data to re-train the base models
++        if verbose:
++            print("Re-training base models...")
++        self.base.train(X_t, y_t)
++
++        self.save()
++
+     def predict(self,X):
+ 
+         B = self.base.predict_proba(X)

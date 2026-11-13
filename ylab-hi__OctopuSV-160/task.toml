@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/ylab-hi__OctopuSV-160"
+description = "Bump pytest from 8.3.5 to 9.0.2"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "OctopuSV",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ylab-hi/OctopuSV"
+ref = "8ad23cde9c0e9265b0beb9644b93afeec2299620"
+reference = "https://github.com/ylab-hi/OctopuSV/pull/160"
+source_access = "auto"
+built_at = "2026-11-13T15:40:59.543349+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d34a8144f1f4bc630005cfed72aad39d3e8ac8265a68fda279bac0ebb7861767"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-20T02:26:28Z"
+diff_format = "unified"
+context_files = [
+    "poetry.lock",
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 111
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

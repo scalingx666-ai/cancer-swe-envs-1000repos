@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/google__deepvariant-1109"
+description = "Add blog post: Improving DeepVariant Accuracy by Providing Chemistry Priors"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "deepvariant",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "google/deepvariant"
+ref = "451fd2f9dad8155f32a3bc276fb91dd9a1baeb45"
+reference = "https://github.com/google/deepvariant/pull/1109"
+source_access = "auto"
+built_at = "2026-11-13T15:45:38.516900+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8aa46086492146859391e02e30a9c3a38e062556972b761996184684a86c2e21"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-26T22:57:18Z"
+diff_format = "unified"
+context_files = [
+    "_data/authors.yml",
+    "_posts/2026-10-26-improving-deepvariant-accuracy-by-providing-chemistry-priors.markdown",
+    "assets/images/2026-10-26-chemistry-priors/figure1-architecture.png",
+    "assets/images/2026-10-26-chemistry-priors/figure2-f1.png",
+    "assets/images/2026-10-26-chemistry-priors/figure3-precision-recall.png",
+    "assets/images/2026-10-26-chemistry-priors/figure4-errors.png",
+    "assets/images/2026-10-26-chemistry-priors/figure5-negative-control.png",
+    "assets/images/authors/kmuret.jpg",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 151
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

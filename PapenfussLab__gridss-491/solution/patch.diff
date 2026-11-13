@@ -1,0 +1,13 @@
+diff --git a/pom.xml b/pom.xml
+index 0d6bb3bc..9aac1d12 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -143,7 +143,7 @@
+ 		<dependency>
+ 			<groupId>commons-io</groupId>
+ 			<artifactId>commons-io</artifactId>
+-			<version>2.5</version>
++			<version>2.7</version>
+ 		</dependency>
+ 		<dependency>
+ 			<groupId>commons-configuration</groupId>

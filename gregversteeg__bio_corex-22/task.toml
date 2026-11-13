@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/gregversteeg__bio_corex-22"
+description = "change of sim_ml clip to 0.25"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "bio_corex",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "gregversteeg/bio_corex"
+ref = "ad2f58772d27e999dbcb100d8254c5dc90c43fb7"
+reference = "https://github.com/gregversteeg/bio_corex/pull/22"
+source_access = "auto"
+built_at = "2026-11-13T15:43:35.990488+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0ef2e5ba7fce4091ec26c77579ec6dca8a6c9f8b12b5a791040181e02e65f354"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-09-02T17:31:33Z"
+diff_format = "unified"
+context_files = [
+    "corex.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,13 @@
+diff --git a/main.c b/main.c
+index 4d1f71de..ba7b46ac 100644
+--- a/main.c
++++ b/main.c
+@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
+ 			fprintf(stderr, " %s", argv[i]);
+ 		fprintf(stderr, "\n[M::%s] Real time: %.3f sec; CPU: %.3f sec; Peak RSS: %.3f GB\n", __func__, kom_realtime(), kom_cputime(), kom_peakrss() / 1024.0 / 1024.0 / 1024.0);
+ 	}
+-	return 0;
++	return ret;
+ }
+ 
+ static int usage_getref(FILE *fp)

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/UMCUGenetics__sturgeon-13"
+description = "Update pyproject.toml"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "sturgeon",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "UMCUGenetics/sturgeon"
+ref = "e204d52248e4a0d2419a5efef9d7826ec119044c"
+reference = "https://github.com/UMCUGenetics/sturgeon/pull/13"
+source_access = "auto"
+built_at = "2026-11-13T15:41:02.094016+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a27e7ce05256ca05a62271feb3907ee2ba0eba3c821ad1e8e5145a9a180353e5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-07-25T13:40:57Z"
+diff_format = "unified"
+context_files = [
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

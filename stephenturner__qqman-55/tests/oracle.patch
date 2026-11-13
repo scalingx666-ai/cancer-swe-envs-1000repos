@@ -1,0 +1,31 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 06de757..533e812 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -14,3 +14,5 @@ License: GPL-3
+ LazyData: true
+ VignetteBuilder: knitr
+ RoxygenNote: 6.0.1
++URL: https://github.com/stephenturner/qqman
++BugReports: https://github.com/stephenturner/qqman/issues
+diff --git a/inst/CITATION b/inst/CITATION
+new file mode 100644
+index 0000000..ffc2fee
+--- /dev/null
++++ b/inst/CITATION
+@@ -0,0 +1,15 @@
++bibentry(bibtype = "Article",
++  title        = "qqman: an R package for visualizing GWAS results using Q-Q and manhattan plots",
++  author       = c(person(given = "Stephen",
++                          family = "Turner")),
++  journal      = "bioRxiv",
++  year         = "2014",
++  doi          = "10.1101/005165",
++
++  header       = "To cite qqman in publications use:",
++  textVersion  =
++  paste("Stephen D. Turner (2014).",
++        "qqman: an R package for visualizing GWAS results using Q-Q and manhattan plots.",
++        "bioRxiv",
++        "doi:10.1101/005165")
++)

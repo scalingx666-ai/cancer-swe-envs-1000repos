@@ -1,0 +1,183 @@
+diff --git a/R/tagMatrix.R b/R/tagMatrix.R
+index 732fdd6..a669726 100644
+--- a/R/tagMatrix.R
++++ b/R/tagMatrix.R
+@@ -533,7 +533,7 @@ getTagMatrix.internal <- function(peak,
+   
+   ## get the index of windows, that are reorganized by as(windows, "IntegerRangesList")
+   idx.list <- split(1:length(windows),  as.factor(seqnames(windows)))
+-  idx <- do.call("c", idx.list)
++  idx <- unlist(idx.list[chr.idx], use.names=FALSE)
+   
+   rownames(tagMatrix) <- idx
+   tagMatrix <- tagMatrix[order(idx),]
+@@ -679,6 +679,9 @@ getTagMatrix.binning.internal <- function(peak,
+   
+   chr.idx <- intersect(names(peak.cov),
+                        unique(as.character(seqnames(windows))))
++
++  idx.list <- split(seq_len(length(windows)), as.factor(seqnames(windows)))
++  idx.list <- idx.list[chr.idx]
+   
+   windows <- as(windows, "IntegerRangesList")[chr.idx]
+   attr(windows,'type') <- type
+@@ -692,6 +695,7 @@ getTagMatrix.binning.internal <- function(peak,
+     index <- viewSums(peakView[[i]])!= 0
+     peakView[[i]] <- peakView[[i]][index]
+     windows[[i]] <- windows[[i]][index]
++    idx.list[[i]] <- idx.list[[i]][index]
+   } 
+   
+   tagMatrixList <- lapply(peakView, function(x) viewApply(x, as.vector))
+@@ -704,6 +708,7 @@ getTagMatrix.binning.internal <- function(peak,
+     index <- vapply(tagMatrixList, function(x) length(x)>0, FUN.VALUE = logical(1))
+     tagMatrixList <- tagMatrixList[index]
+     windows <- windows[index]
++    idx.list <- idx.list[index]
+     
+     ## create a matrix to receive binning results
+     tagMatrix <- list()
+@@ -772,6 +777,7 @@ getTagMatrix.binning.internal <- function(peak,
+       index <- vapply(tagMatrixList, function(x) length(x)>0, FUN.VALUE = logical(1))
+       tagMatrixList <- tagMatrixList[index]
+       windows <- windows[index]
++      idx.list <- idx.list[index]
+       
+       ## count the amount before filtering
+       pre_amount <- 0
+@@ -784,6 +790,7 @@ getTagMatrix.binning.internal <- function(peak,
+         index <- vapply(tagMatrixList[[i]], function(y) length(y)>min_body_length,FUN.VALUE = logical(1))
+         tagMatrixList[[i]] <- tagMatrixList[[i]][index]
+         windows[[i]] <- windows[[i]][index]
++        idx.list[[i]] <- idx.list[[i]][index]
+       }
+       
+       ## count the amount after filtering
+@@ -908,6 +915,7 @@ getTagMatrix.binning.internal <- function(peak,
+       index <- vapply(tagMatrixList, function(x) length(x)>0, FUN.VALUE = logical(1))
+       tagMatrixList <- tagMatrixList[index]
+       windows <- windows[index]
++      idx.list <- idx.list[index]
+       
+       ## count the amount before filtering
+       pre_amount <- 0
+@@ -920,6 +928,7 @@ getTagMatrix.binning.internal <- function(peak,
+         index <- vapply(tagMatrixList[[i]], function(y) length(y)>min_body_length,FUN.VALUE = logical(1))
+         tagMatrixList[[i]] <- tagMatrixList[[i]][index]
+         windows[[i]] <- windows[[i]][index]
++        idx.list[[i]] <- idx.list[[i]][index]
+       }
+       
+       ## count the amount after filtering
+@@ -977,6 +986,8 @@ getTagMatrix.binning.internal <- function(peak,
+   
+   ## combine the results
+   tagMatrix <- do.call("rbind",tagMatrix)
++  idx <- unlist(idx.list, use.names=FALSE)
++  tagMatrix <- tagMatrix[order(idx),,drop=FALSE]
+   
+   return(tagMatrix)
+ }
+@@ -1198,4 +1209,4 @@ getTagMatrix2.binning.internal <- function(peak,
+   
+   return(mt_list)
+   
+-}
+\ No newline at end of file
++}
+diff --git a/tests/testthat/test-getTagMatrix.R b/tests/testthat/test-getTagMatrix.R
+index 67d2a02..c01529c 100644
+--- a/tests/testthat/test-getTagMatrix.R
++++ b/tests/testthat/test-getTagMatrix.R
+@@ -200,3 +200,91 @@ test_that("getTagMatrix function for single peak file",{
+   expect_is(mt5_3, "matrix")
+   
+ })
++
++make_issue236_case <- function(type = c("site", "body")) {
++  type <- match.arg(type)
++  peak_seqlevels <- c("chr1", "chr2", "chr10")
++  peak_starts <- c(101L, 201L, 301L)
++
++  if (type == "site") {
++    peak <- GenomicRanges::GRanges(
++      seqnames = S4Vectors::Rle(factor(peak_seqlevels,
++                                      levels = peak_seqlevels)),
++      ranges = IRanges::IRanges(peak_starts, width = 5L),
++      strand = "*"
++    )
++    S4Vectors::mcols(peak)$weight <- c(1, 2, 10)
++
++    window_index <- c(1L, 3L, 2L)
++    window_seqlevels <- peak_seqlevels[window_index]
++    windows <- GenomicRanges::GRanges(
++      seqnames = S4Vectors::Rle(factor(window_seqlevels,
++                                      levels = window_seqlevels)),
++      ranges = IRanges::IRanges(peak_starts[window_index], width = 5L),
++      strand = "+"
++    )
++    attr(windows, "type") <- "start_site"
++    attr(windows, "upstream") <- 2
++    attr(windows, "downstream") <- 2
++    attr(windows, "label") <- "center"
++  } else {
++    peak <- GenomicRanges::GRanges(
++      seqnames = S4Vectors::Rle(factor(peak_seqlevels,
++                                      levels = peak_seqlevels)),
++      ranges = IRanges::IRanges(peak_starts, width = 20L),
++      strand = "*"
++    )
++    S4Vectors::mcols(peak)$weight <- c(1, 2, 10)
++
++    window_index <- rep(c(1L, 3L, 2L), each = 2L)
++    window_seqlevels <- peak_seqlevels[window_index]
++    windows <- GenomicRanges::GRanges(
++      seqnames = S4Vectors::Rle(factor(window_seqlevels,
++                                      levels = unique(window_seqlevels))),
++      ranges = IRanges::IRanges(
++        peak_starts[window_index] + rep(c(0L, 10L), 3L),
++        width = 10L
++      ),
++      strand = "+"
++    )
++    attr(windows, "type") <- "body"
++    attr(windows, "upstream") <- 0
++    attr(windows, "downstream") <- 0
++    attr(windows, "label") <- c("SS", "TS")
++  }
++
++  attr(windows, "by") <- "issue236_demo"
++  list(peak = peak, windows = windows)
++}
++
++test_that("getTagMatrix keeps site windows aligned across seqlevel orders", {
++  case <- make_issue236_case("site")
++
++  tag_matrix <- getTagMatrix(
++    peak = case$peak,
++    windows = case$windows,
++    weightCol = "weight",
++    verbose = FALSE,
++    ignore_strand = TRUE
++  )
++
++  expect_equal(unname(rowSums(tag_matrix)), c(5, 50, 10))
++})
++
++test_that("getTagMatrix keeps body windows aligned across seqlevel orders", {
++  case <- make_issue236_case("body")
++
++  tag_matrix <- getTagMatrix(
++    peak = case$peak,
++    windows = case$windows,
++    weightCol = "weight",
++    nbin = 5,
++    verbose = FALSE,
++    ignore_strand = TRUE
++  )
++
++  expect_equal(
++    unname(rowSums(tag_matrix)),
++    c(5, 5, 50, 50, 10, 10)
++  )
++})

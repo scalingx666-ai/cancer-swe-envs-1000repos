@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/MannLabs__alphadia-931"
+description = "Drop NG vocabulary"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "alphadia",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "MannLabs/alphadia"
+ref = "bbee520e7cd593f2448f6f6058f3f7d07316a163"
+reference = "https://github.com/MannLabs/alphadia/pull/931"
+source_access = "auto"
+built_at = "2026-11-13T16:23:54.826099+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b6a31b6c04dadd6176eb60638e8fef3172b5a518d74a353eeabd4c2b8f35706b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-10T19:01:09Z"
+diff_format = "unified"
+context_files = [
+    "alphadia/search_step.py",
+    "alphadia/workflow/base.py",
+    "alphadia/workflow/peptidecentric/extraction_handler.py",
+    "alphadia/workflow/peptidecentric/optimization_handler.py",
+    "alphadia/workflow/peptidecentric/python/extraction_handler.py",
+    "alphadia/workflow/peptidecentric/rust/extraction_handler.py",
+    "alphadia/workflow/peptidecentric/rust/mapper.py",
+    "alphadia/workflow/peptidecentric/rust/workflow.py",
+    "tests/unit_tests/test_search_step.py",
+    "tests/unit_tests/workflow/test_backend_workflows.py",
+    "tests/unit_tests/workflow/test_extraction_handler.py",
+    "tests/unit_tests/workflow/test_rust_mapper.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 184
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

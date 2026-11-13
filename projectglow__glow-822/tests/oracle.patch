@@ -1,0 +1,47 @@
+diff --git a/.github/workflows/production-release.yml b/.github/workflows/production-release.yml
+index 2adb59e9..5528d464 100644
+--- a/.github/workflows/production-release.yml
++++ b/.github/workflows/production-release.yml
+@@ -16,7 +16,7 @@ on:
+ jobs:
+     publish:
+         runs-on: ubuntu-latest
+-        environment: Production
++        environment: Production # NOTE: this environment = PYPI publishing (OIDC trusted publishing). The name is legacy; see RELEASE.md.
+         permissions:
+           id-token: write # Necessary to fetch a token for PyPI publishing
+         defaults:
+diff --git a/.github/workflows/staging-release.yml b/.github/workflows/staging-release.yml
+index 3e20a446..4a31e10d 100644
+--- a/.github/workflows/staging-release.yml
++++ b/.github/workflows/staging-release.yml
+@@ -18,7 +18,7 @@ on:
+ jobs:
+   publish:
+     runs-on: ubuntu-latest
+-    environment: Staging
++    environment: Staging # NOTE: this environment = MAVEN CENTRAL publishing (holds the Sonatype token + GPG key). The name is legacy; see RELEASE.md.
+     env:
+       SPARK_VERSION: ${{ inputs.spark-version }}
+       SCALA_VERSION: ${{ inputs.scala-version }}
+diff --git a/RELEASE.md b/RELEASE.md
+index b75454e0..0890e721 100644
+--- a/RELEASE.md
++++ b/RELEASE.md
+@@ -1,5 +1,16 @@
+ # Releasing Glow
+ 
++> **Release workflows & environments.** The release runs via two GitHub Actions workflows, each publishing to one target. The GitHub *environment* names are legacy and do **not** match the targets — this mapping is what matters:
++>
++> | Workflow (Actions tab) | File | GitHub environment | Publishes to |
++> |---|---|---|---|
++> | **Publish to Maven Central** | `staging-release.yml` | **`Staging`** | Maven Central (Scala artifacts, via the Sonatype Central Portal) |
++> | **Publish to PyPI** | `production-release.yml` | **`Production`** | PyPI (the `glow.py` package) |
++>
++> In short: **environment `Staging` = Maven Central**, **environment `Production` = PyPI**. The Sonatype token + GPG key live in `Staging`; PyPI uses OIDC trusted publishing in `Production`.
++>
++> _Note: the sections below still describe the older OSSRH `staging → promote` flow and are pending an update._
++
+ ## High level workflow
+ 
+ The Glow release process is simple. We release by snapshotting the `main` branch rather than using release branches. So, the high level steps are:

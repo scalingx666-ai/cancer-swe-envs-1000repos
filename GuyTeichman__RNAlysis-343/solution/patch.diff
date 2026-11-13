@@ -1,0 +1,395 @@
+diff --git a/HISTORY.rst b/HISTORY.rst
+index 18dc6e4a..2b0d036f 100644
+--- a/HISTORY.rst
++++ b/HISTORY.rst
+@@ -23,6 +23,8 @@ Fixed
+ * DESeq2 and limma-voom differential expression (``differential_expression_deseq2``, ``differential_expression_limma_voom``, and their simplified modes) now check the requested comparisons, covariates, and likelihood-ratio-test factors against the design matrix before R is started. Previously a typo — such as a comparison of ``('condition', 'Ko', 'WT')`` when the design matrix says ``KO``, a trailing space, a misspelled factor or covariate, a non-numeric covariate, or a comparison between values of an all-numeric column (which R treats as a continuous variable rather than as groups) — was only discovered after R had run the entire model fit (which can take minutes), and then failed with an R error message that was hard to understand. Such mistakes now fail immediately with a plain-language error that names the problematic value and lists the valid alternatives. Valid inputs run exactly as before, and their results are unchanged.
+ * DESeq2 and limma-voom differential expression no longer fail at the very end of the analysis when a design-matrix value contains a character that cannot be used in a file name. The names of the output tables are built from the factor and value names (for example ``DESeq2_condition_KO_vs_WT.csv``), so a value such as ``KO/1`` (a folder separator), ``10:30`` (illegal on Windows), or one containing a double quote previously made R fail to save the results after the whole model fit had run. **Output file names change for such values:** the characters ``< > : " / \ | ? *``, control characters, and line/paragraph separators are now replaced with ``_`` (so ``KO/1`` is saved as ``..._KO_1_vs_...``). All other characters — letters, digits, spaces, the remaining ASCII punctuation ``!#$%&'()+,-.;=@[]^_`{}~``, and any printable non-ASCII character such as ``ü`` or ``°`` — are kept, so names that were already valid are unchanged, including the established spelling of interaction terms in likelihood-ratio-test file names (``factor1_x_factor2`` for DESeq2, ``factor1Xfactor2`` for limma). If two different comparisons would end up with the same file name (for example the values ``KO/1`` and ``KO:1``, or values that differ only in upper/lower case, which Windows and macOS treat as the same file name), *RNAlysis* now reports this immediately instead of letting one table silently overwrite the other. Note that this check is applied on every operating system so that an analysis behaves the same everywhere: comparisons whose values differ only in case (such as ``KO`` and ``ko``) previously produced two files on Linux, and now need one of the values to be renamed. Values containing quotes or backslashes are now also passed to R safely, and limma-voom comparisons of values that R renames internally (such as ``KO-1``), or of factors whose names contain a dot (such as ``cell.type``), now work. Finally, the R scripts now read the count matrix without renaming its sample columns (R previously renamed e.g. ``24h-1`` to ``X24h.1`` internally) and verify inside R that the design matrix and the count matrix list the same samples in the same order. Results for all analyses that previously succeeded are unchanged (verified to be byte-identical on the test data).
+ * GO enrichment now correctly rejects the ``'all.m'`` annotation-propagation method when it is combined with a statistical test other than Fisher's exact test, with a clear warning ("The 'all.m' propagation method is only compatible with Fisher's Exact test.") and an empty result, exactly as the ``'weight'`` method already did. ``'all.m'`` runs the ``'weight'`` algorithm internally, which only supports Fisher's exact test, but a typo in the check (``'allm'`` instead of ``'all.m'``) meant it never fired. As a result, single-set GO enrichment (XL-mHG) with ``'all.m'`` crashed with an uninformative ``TypeError``, and ``'all.m'`` with the hypergeometric or randomization test silently computed its ``'weight'`` component with Fisher's exact test instead of the chosen test. Runs that use ``'all.m'`` with Fisher's exact test (the default test) are unaffected and their results are unchanged. The same check also no longer ignores the general statistical-test checks: GO enrichment with an invalid statistical test, or single-set GO enrichment when the ``xlmhglite`` package is not installed, now stops with its warning and an empty result instead of carrying on to fail later. The documentation of the ``propagate_annotations`` parameter also now names the method ``'all.m'`` (the value you must actually pass) instead of ``'allm'``.
++* The help text (the "?" button and label tooltips) was silently missing from the GUI dialogs for about a hundred parameters, and now appears. The docstring reader that builds this help skipped any parameter description containing a character it did not expect (most often a semicolon, but also braces, ``|``, ``&`` and non-English characters), as well as the last parameter in a section, parameters listed after a blank line, and parameters whose line was accidentally indented. Affected parameters included ``power_transform`` on the PCA and clustering functions, ``non_unique_mode`` on the ortholog-mapping functions, ``propagate_annotations`` on GO enrichment and GO filtering, most options of ``plot_expression`` and ``scatter_sample_vs_sample``, and ``comparisons`` in limma-voom differential expression. Help text that was already displayed is unchanged. Missing help text was also written for ``go_ids`` (``filter_by_go_annotations``) and for ``mate_orientations``, ``allow_individual_alignment`` and ``allow_disconcordant_alignment`` (``bowtie2_align_paired_end``), and the help text of the ``organism`` parameter of ``filter_by_go_annotations`` and ``filter_by_kegg_annotations``, which used to be appended to the help of the ``mode`` parameter, now appears on its own.
++* Fixed ``bowtie2_align_paired_end`` with ``allow_disconcordant_alignment=False``: RNAlysis passed bowtie2 a misspelled option (``--no-discorcordant`` instead of ``--no-discordant``), so this setting did not work as intended. It now correctly tells bowtie2 not to report discordant alignments. Runs that kept the default (``allow_disconcordant_alignment=True``) are unaffected.
+ 
+ 4.3.0 (2026-08-26)
+ -------------------
+diff --git a/rnalysis/enrichment.py b/rnalysis/enrichment.py
+index ea642492..47ed05d0 100644
+--- a/rnalysis/enrichment.py
++++ b/rnalysis/enrichment.py
+@@ -219,7 +219,7 @@ def filter_by_kegg_annotations(
+         :param mode: If 'union', filters out every genomic feature that does not belong to one or more \
+         of the indicated attributes. If 'intersection', \
+         filters out every genomic feature that does not belong to ALL of the indicated attributes.
+-        param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
++        :param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
+         :type organism: str or int
+         :param gene_id_type: the identifier type of the genes/features in the FeatureSet object \
+         (for example: 'UniProtKB', 'WormBase', 'RNACentral', 'Entrez Gene ID'). \
+@@ -264,13 +264,14 @@ def filter_by_go_annotations(
+         (where genes that belong to at least one GO term are not filtered out), or in 'intersection' mode \
+         (where only genes that belong to ALL GO terms are not filtered out).
+ 
+-        :param go_ids:
++        :param go_ids: the GO term IDs according to which the table will be filtered. \
++        An example for a legal GO term ID would be 'GO:0006396' for the 'RNA processing' GO term.
+         :type go_ids: str or list of str
+         :type mode: 'union' or 'intersection'.
+         :param mode: If 'union', filters out every genomic feature that does not belong to one or more \
+         of the indicated attributes. If 'intersection', \
+         filters out every genomic feature that does not belong to ALL of the indicated attributes.
+-        param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
++        :param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
+         :type organism: str or int
+         :param gene_id_type: the identifier type of the genes/features in the FeatureSet object \
+         (for example: 'UniProtKB', 'WormBase', 'RNACentral', 'Entrez Gene ID'). \
+diff --git a/rnalysis/fastq.py b/rnalysis/fastq.py
+index 044e4838..e43260f4 100644
+--- a/rnalysis/fastq.py
++++ b/rnalysis/fastq.py
+@@ -1856,16 +1856,28 @@ def bowtie2_align_paired_end(
+     :param quality_score_type: determines the encoding type of the read quality scores. \
+     Most modern sequencing setups use phred+33.
+     :type quality_score_type: 'phred33', 'phred64', 'solexa-quals', or 'int-quals' (default='phred33')
+-    :param mate_orientations:
++    :param mate_orientations: the expected relative orientation of the two mates of a valid paired-end alignment. \
++    'fwd-rev' means that if Read#1 appears upstream of Read#2, Read#1 aligns to the forward strand \
++    and Read#2 aligns to the reverse-complement strand (and vice versa if Read#2 appears upstream). \
++    This is the orientation of standard Illumina paired-end libraries. \
++    'rev-fwd' means that if Read#1 appears upstream, Read#1 aligns to the reverse-complement strand \
++    and Read#2 aligns to the forward strand. 'fwd-fwd' means both mates align to the same strand. \
++    'rev-fwd' and 'fwd-fwd' are used for other library types (for example, some mate-pair libraries).
+     :type mate_orientations: 'fwd-rev', 'rev-fwd', or 'fwd-fwd' (default='fwd-rev')
+     :param min_fragment_length: The minimum fragment length for valid paired-end alignments.
+     :type min_fragment_length: int >= 0 (default=0)
+     :param max_fragment_length: The maximum fragment length for valid paired-end alignments.
+     :type max_fragment_length: int > 0 (default=500)
+-    :param allow_individual_alignment:
+-    :type allow_individual_alignment: bool (default=
+-    :param allow_disconcordant_alignment:
+-    :type allow_disconcordant_alignment: bool (default=
++    :param allow_individual_alignment: if True, when bowtie2 cannot find a valid paired-end alignment \
++    for a pair of mates, it will try to find alignments for each of the mates individually. \
++    If False, only paired-end alignments will be reported.
++    :type allow_individual_alignment: bool (default=True)
++    :param allow_disconcordant_alignment: if True, when bowtie2 cannot find a concordant alignment for a pair of mates \
++    (an alignment that matches the expected mate orientation and fragment length constraints), \
++    it will look for discordant alignments (where both mates align uniquely, but not concordantly). \
++    If False, discordant paired-end alignments will not be reported \
++    (individual alignments of each mate may still be reported, depending on 'allow_individual_alignment').
++    :type allow_disconcordant_alignment: bool (default=True)
+     :param random_seed:  determines the seed for pseudo-random number generator.
+     :type random_seed: int >=0 (default=0)
+     :param threads: number of threads to run bowtie2-build on. More threads will generally make index building faster.
+@@ -1907,7 +1919,7 @@ def bowtie2_align_paired_end(
+     call.extend(['-X', str(max_fragment_length)])
+ 
+     if not allow_disconcordant_alignment:
+-        call.append('--no-discorcordant')
++        call.append('--no-discordant')
+     if not allow_individual_alignment:
+         call.append('--no-mixed')
+ 
+diff --git a/rnalysis/filtering.py b/rnalysis/filtering.py
+index f437f7ad..01487a80 100644
+--- a/rnalysis/filtering.py
++++ b/rnalysis/filtering.py
+@@ -1367,13 +1367,14 @@ def filter_by_go_annotations(
+         (where genes that belong to at least one GO term are not filtered out), or in 'intersection' mode \
+         (where only genes that belong to ALL GO terms are not filtered out).
+ 
+-        :param go_ids:
++        :param go_ids: the GO term IDs according to which the table will be filtered. \
++        An example for a legal GO term ID would be 'GO:0006396' for the 'RNA processing' GO term.
+         :type go_ids: str or list of str
+         :type mode: 'union' or 'intersection'.
+         :param mode: If 'union', filters out every genomic feature that does not belong to one or more \
+         of the indicated attributes. If 'intersection', \
+         filters out every genomic feature that does not belong to ALL of the indicated attributes.
+-        param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
++        :param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
+         :type organism: str or int
+         :param gene_id_type: the identifier type of the genes/features in the FeatureSet object \
+         (for example: 'UniProtKB', 'WormBase', 'RNACentral', 'Entrez Gene ID'). \
+@@ -1552,7 +1553,7 @@ def filter_by_kegg_annotations(
+         :param mode: If 'union', filters out every genomic feature that does not belong to one or more \
+         of the indicated attributes. If 'intersection', \
+         filters out every genomic feature that does not belong to ALL of the indicated attributes.
+-        param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
++        :param organism: organism name or NCBI taxon ID for which the function will fetch GO annotations.
+         :type organism: str or int
+         :param gene_id_type: the identifier type of the genes/features in the FeatureSet object \
+         (for example: 'UniProtKB', 'WormBase', 'RNACentral', 'Entrez Gene ID'). \
+@@ -6063,6 +6064,7 @@ def plot_expression(
+     ) -> plt.Figure:
+         """
+         Plot the average expression and spread of the specified features under the specified conditions.
++
+         :type features: str or list of strings
+         :param features: the feature/features to plot expression for.
+         :param samples: A list of the sample names and/or grouped sample names to be plotted. \
+diff --git a/rnalysis/utils/parsing.py b/rnalysis/utils/parsing.py
+index 3c3d5ec5..2c796c3b 100644
+--- a/rnalysis/utils/parsing.py
++++ b/rnalysis/utils/parsing.py
+@@ -341,12 +341,12 @@ def parse_docstring(docstring: str) -> Tuple[str, Dict[str, str]]:
+     :return: a string matching the description, and a dictionary containing the parameter descriptions
+     """
+     docstring = re.sub(' +', ' ', docstring)
+-    split = docstring.split('\n\n')
+-    desc = split[0]
+-    params_str = split[1]
+-    free_text_match = r'["#\w\s\.\(\)\-\:%\*=@!\?\+\_,/`><\[\]' + "'" + ']'
+-    params_matches = list(
+-        re.finditer(r'^:param ([a-zA-Z_0-9]+):(' + free_text_match + r'+?)(?=^:.*:)', params_str, re.MULTILINE)
++    desc, _, params_str = docstring.partition('\n\n')
++    # a parameter's description is any text (non-greedy) up to the next reST field line (':type x:', ':return:', \
++    # ':Examples:', etc.), the end of its paragraph, or the end of the docstring.
++    # Field lines may be indented by stray whitespace (a common docstring typo), so that is tolerated too.
++    params_matches = re.finditer(
++        r'^[ \t]*:param ([a-zA-Z_0-9]+):([\s\S]*?)(?=^[ \t]*:.*:|\n\n|\Z)', params_str, re.MULTILINE
+     )
+     params = {match.group(1): match.group(2).replace('. ', '. \n') for match in params_matches}
+     return desc, params
+diff --git a/tests/test_fastq.py b/tests/test_fastq.py
+index 9f3ebeb9..e3c86109 100644
+--- a/tests/test_fastq.py
++++ b/tests/test_fastq.py
+@@ -330,7 +330,7 @@ def mock_run_subprocess(args, print_stdout=True, print_stderr=True, log_filename
+                 '50',
+                 '-X',
+                 '500',
+-                '--no-discorcordant',
++                '--no-discordant',
+                 '--fr',
+                 '-1',
+                 'tests/test_files/kallisto_tests/reads_1.fastq',
+@@ -373,7 +373,7 @@ def mock_run_subprocess(args, print_stdout=True, print_stderr=True, log_filename
+                 '50',
+                 '-X',
+                 '500',
+-                '--no-discorcordant',
++                '--no-discordant',
+                 '--fr',
+                 '-1',
+                 'tests/test_files/kallisto_tests/reads_1.fastq',
+diff --git a/tests/test_parsing.py b/tests/test_parsing.py
+index 7ff0d1fc..a90ac6c9 100644
+--- a/tests/test_parsing.py
++++ b/tests/test_parsing.py
+@@ -1,3 +1,6 @@
++import inspect
++import re
++
+ import pytest
+ 
+ from rnalysis.exceptions import InternalError
+@@ -705,3 +708,210 @@ def test_r_quote_non_string(self):
+ )
+ def test_make_group_names(sample_grouping, mode, expected_output):
+     assert make_group_names(sample_grouping, mode) == expected_output
++
++
++def _legacy_parse_docstring(docstring: str):
++    # verbatim copy of parse_docstring() before the fix for issue #339, kept as a back-compat reference
++    docstring = re.sub(' +', ' ', docstring)
++    split = docstring.split('\n\n')
++    desc = split[0]
++    params_str = split[1]
++    free_text_match = r'["#\w\s\.\(\)\-\:%\*=@!\?\+\_,/`><\[\]' + "'" + ']'
++    params_matches = list(
++        re.finditer(r'^:param ([a-zA-Z_0-9]+):(' + free_text_match + r'+?)(?=^:.*:)', params_str, re.MULTILINE)
++    )
++    params = {match.group(1): match.group(2).replace('. ', '. \n') for match in params_matches}
++    return desc, params
++
++
++def _gui_exposed_functions():
++    from rnalysis import enrichment, fastq, filtering
++
++    funcs = {}
++    for cls in (
++        filtering.Filter,
++        filtering.CountFilter,
++        filtering.DESeqFilter,
++        filtering.FoldChangeFilter,
++        enrichment.FeatureSet,
++        enrichment.RankedSet,
++    ):
++        # mirror gui.TabPage.get_all_actions(): every public callable attribute of the class.
++        # EXCLUDED_FUNCS are deliberately kept (a stricter superset, and avoids importing Qt here).
++        # Methods inherited from builtins (e.g. set.update) are not RNAlysis functions and have no reST params.
++        for name in dir(cls):
++            if name.startswith('_') or not callable(getattr(cls, name)):
++                continue
++            func = getattr(cls, name)
++            if not getattr(func, '__module__', None) or not func.__module__.startswith('rnalysis'):
++                continue
++            funcs[f'{cls.__name__}.{name}'] = func
++    # the GUI also reads parameter help from the table constructors and from Pipeline.apply_to
++    for cls in (filtering.Filter, filtering.CountFilter, filtering.DESeqFilter, filtering.FoldChangeFilter):
++        funcs[f'{cls.__name__}.__init__'] = cls.__init__
++    funcs['Pipeline.apply_to'] = filtering.Pipeline.apply_to
++    for module in (fastq, enrichment):
++        for name, func in inspect.getmembers(module, inspect.isfunction):
++            if not name.startswith('_') and func.__module__ == module.__name__:
++                funcs[f'{module.__name__}.{name}'] = func
++    return funcs
++
++
++def _raw_docstring(func):
++    # the same preprocessing io.get_method_docstring() applies before calling parse_docstring()
++    return inspect.cleandoc(inspect.getdoc(func) or '')
++
++
++def test_parse_docstring_basic():
++    docstring = (
++        'Short description of the function.\n\n'
++        ':param a: first param. It has two sentences.\n'
++        ':type a: int\n'
++        ':param b: second param\n'
++        ':type b: str\n'
++        ':return: something\n'
++        ':rtype: int'
++    )
++    desc, params = parse_docstring(docstring)
++    assert desc == 'Short description of the function.'
++    assert params == {'a': ' first param. \nIt has two sentences.\n', 'b': ' second param\n'}
++
++
++@pytest.mark.parametrize(
++    'text',
++    [
++        "If 'first', puts NaNs at the beginning; if 'last', puts NaNs at the end",
++        "for example {'method':'k-medoids', 'n_clusters':[3,5]}",
++        'either a | b',
++        'approximately ~5 reads',
++        'x^2 + y^2',
++        'costs $5',
++        'concentration in µM — roughly',
++        'a & b',
++        'path\\to\\file',
++        'semicolon; at the end;',
++        'p < 0.05 and q > 0.1',
++    ],
++)
++def test_parse_docstring_special_characters(text):
++    docstring = f'Description.\n\n:param a: {text}\n:type a: str\n:param b: plain text\n:type b: int'
++    _, params = parse_docstring(docstring)
++    assert params == {'a': f' {text}\n', 'b': ' plain text\n'}
++
++
++def test_parse_docstring_multiline_param():
++    docstring = (
++        'Description.\n\n'
++        ':param a: first line; \n'
++        'second line, continued. Third sentence.\n'
++        'a real new line\n'
++        ':type a: str\n'
++        ':return: nothing'
++    )
++    _, params = parse_docstring(docstring)
++    assert params == {'a': ' first line; \nsecond line, continued. \nThird sentence.\na real new line\n'}
++
++
++class _BackslashContinuationDocstring:
++    def method(self, a):
++        """
++        Description.
++
++        :param a: first line; \
++        second line
++        :type a: str
++        :return: nothing
++        """
++
++
++def test_parse_docstring_backslash_continuation():
++    # the way real RNAlysis docstrings continue a line: Python consumes the trailing backslash and newline
++    _, params = parse_docstring(_raw_docstring(_BackslashContinuationDocstring.method))
++    assert params == {'a': ' first line; second line\n'}
++
++
++@pytest.mark.parametrize(
++    'tail,expected',
++    [
++        ('\n:return: a value', ' last; param\n'),
++        ('\n:rtype: int', ' last; param\n'),
++        ('\n:Examples:\n>>> f()', ' last; param\n'),
++        ('', ' last; param'),
++        ('\n\n:Examples:\n>>> f(a=1)\n1', ' last; param'),
++        ('\n\n.. figure:: /figures/fig.png\n :align: center', ' last; param'),
++    ],
++)
++def test_parse_docstring_last_param(tail, expected):
++    docstring = 'Description.\n\n:type a: str\n:param a: last; param' + tail
++    _, params = parse_docstring(docstring)
++    assert params == {'a': expected}
++
++
++def test_parse_docstring_params_in_later_paragraph():
++    docstring = (
++        'Description.\n\n'
++        ':param a: first\n'
++        ':type a: int\n\n'
++        ':param b: second; after a blank line\n'
++        ':type b: int\n'
++        ':return: nothing'
++    )
++    desc, params = parse_docstring(docstring)
++    assert desc == 'Description.'
++    assert params == {'a': ' first\n', 'b': ' second; after a blank line\n'}
++
++
++@pytest.mark.parametrize('docstring', ['Only a description.', 'Return self|value.', ''])
++def test_parse_docstring_no_params_section(docstring):
++    assert parse_docstring(docstring) == (docstring, {})
++
++
++@pytest.mark.parametrize(
++    'func_name,param_name,expected',
++    [
++        (
++            'CountFilter.filter_low_reads',
++            'threshold',
++            ' The minimal number of reads (counts, rpm, rpkm, tpm, etc) a feature should have in at least '
++            '`n_samples` samples in order not to be filtered out.\n',
++        ),
++        ('CountFilter.split_kmeans', 'n_clusters', ' The number of clusters the algorithm will seek.\n'),
++        (
++            'FeatureSet.go_enrichment',
++            'organism',
++            ' organism name or NCBI taxon ID for which the function will fetch GO annotations.\n',
++        ),
++    ],
++)
++def test_parse_docstring_real_snapshot(func_name, param_name, expected):
++    _, params = parse_docstring(_raw_docstring(_gui_exposed_functions()[func_name]))
++    assert params[param_name] == expected
++
++
++def test_parse_docstring_backwards_compatible():
++    # every parameter description that parsed before the fix for issue #339 must stay byte-identical
++    n_compared = 0
++    for qualname, func in _gui_exposed_functions().items():
++        raw = _raw_docstring(func)
++        if '\n\n' not in raw:
++            continue
++        legacy_desc, legacy_params = _legacy_parse_docstring(raw)
++        desc, params = parse_docstring(raw)
++        assert desc == legacy_desc, qualname
++        for name, text in legacy_params.items():
++            assert params.get(name) == text, f'{qualname}: {name}'
++            n_compared += 1
++    assert n_compared > 1000
++
++
++def test_parse_docstring_covers_every_gui_param():
++    # contract test (issue #339): every ':param name:' in a GUI-exposed function's docstring
++    # must reach the GUI with non-empty help text
++    missing = []
++    for qualname, func in _gui_exposed_functions().items():
++        raw = _raw_docstring(func)
++        _, params = parse_docstring(raw)
++        for name in re.findall(r'^[ \t]*:param ([a-zA-Z_0-9]+):', raw, re.MULTILINE):
++            if not params.get(name, '').strip():
++                missing.append(f'{qualname}: {name}')
++    assert not missing, f'{len(missing)} parameters have no help text:\n' + '\n'.join(missing)

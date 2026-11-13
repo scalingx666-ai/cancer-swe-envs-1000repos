@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/LooseLab__readfish-418"
+description = "Update CI.yml"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "readfish",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "LooseLab/readfish"
+ref = "5f8a95ceb0d76b7b771dd129b6b5479553824d20"
+reference = "https://github.com/LooseLab/readfish/pull/418"
+source_access = "auto"
+built_at = "2026-11-13T16:10:51.003680+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f86ad3a4a499e291cee1681247ebd6acd6c65c4805ea9946cc33a58396d96a0e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-28T17:39:36Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/CI.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 11
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

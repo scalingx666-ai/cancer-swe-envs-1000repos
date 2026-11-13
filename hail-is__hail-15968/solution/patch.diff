@@ -1,0 +1,946 @@
+diff --git a/auth/test/test_system_permissions.py b/auth/test/test_system_permissions.py
+index 3d781ff3eba..dc3a26811f9 100644
+--- a/auth/test/test_system_permissions.py
++++ b/auth/test/test_system_permissions.py
+@@ -98,6 +98,8 @@ def reset_test_user_roles():
+     ],
+     'manage_ci': [
+         ('ci', 'POST', '/api/v1alpha/update'),
++        # Batch 0 never exists, so a permitted caller gets 404 and nothing happens.
++        ('ci', 'POST', '/api/v1alpha/batch_callback/0'),
+     ],
+     # Monitoring service — AuthServiceAuthenticator, 10s TTL cache
+     'view_monitoring_dashboards': [
+@@ -156,6 +158,11 @@ def _endpoints_for_role(role: str, granted: bool) -> list[tuple[str, str, str]]:
+     },
+ }
+ 
++# Exact status expected when permission is granted, for endpoints where "not 401" would hide a failure
++_GRANTED_STATUS: dict[tuple[str, str, str], int] = {
++    ('ci', 'POST', '/api/v1alpha/batch_callback/0'): 404,
++}
++
+ 
+ def _request(session, service: str, method: str, path: str):
+     url = deploy_config.url(service, path)
+@@ -171,6 +178,9 @@ def _assert_denied(session, service: str, method: str, path: str):
+ def _assert_granted(session, service: str, method: str, path: str):
+     r = _request(session, service, method, path)
+     assert r.status_code != 401, f"{method} {service}{path}: expected not-401 (permission granted), got {r.status_code}"
++    expected = _GRANTED_STATUS.get((service, method, path))
++    if expected is not None:
++        assert r.status_code == expected, f"{method} {service}{path}: expected {expected}, got {r.status_code}"
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/batch/batch/driver/job.py b/batch/batch/driver/job.py
+index c6d129eef18..7307793f5b4 100644
+--- a/batch/batch/driver/job.py
++++ b/batch/batch/driver/job.py
+@@ -5,17 +5,18 @@
+ import logging
+ import os
+ import traceback
+-from typing import TYPE_CHECKING, Dict, List
++from typing import TYPE_CHECKING, Dict, List, Optional
+ 
+ import aiohttp
+ 
+ from gear import CommonAiohttpAppKeys, Database, K8sCache
+ from hailtop import httpx
+ from hailtop.aiotools import BackgroundTaskManager
+-from hailtop.batch_client.globals import ROOT_JOB_GROUP_ID
++from hailtop.auth import hail_credentials
++from hailtop.auth.auth import HailCredentials
++from hailtop.config import get_deploy_config
+ from hailtop.utils import Notice, retry_transient_errors, time_msecs
+ 
+-from ..batch import batch_record_to_dict, job_group_record_to_dict
+ from ..batch_configuration import KUBERNETES_SERVER_URL
+ from ..batch_format_version import BatchFormatVersion
+ from ..file_store import FileStore
+@@ -29,137 +30,53 @@
+ 
+ log = logging.getLogger('job')
+ 
++deploy_config = get_deploy_config()
+ 
+-async def notify_batch_job_complete(db: Database, client_session: httpx.ClientSession, batch_id: int):
++
++class LazyHailCredentials:
++    """The driver's own Hail credentials, created on first use.
++
++    Creating credentials can fail (e.g. on a cloud without a Google key), and only the CI
++    notification needs them, so that failure must not stop the driver from starting.
++    """
++
++    def __init__(self):
++        self._credentials: Optional[HailCredentials] = None
++
++    async def auth_headers(self) -> Dict[str, str]:
++        if self._credentials is None:
++            self._credentials = hail_credentials()
++        return await self._credentials.auth_headers()
++
++    async def close(self):
++        if self._credentials is not None:
++            await self._credentials.close()
++
++
++async def notify_ci_of_batch_complete(app, db: Database, batch_id: int):
++    # CI polls for batch state anyway; this just lets it react to its own batches sooner.
+     record = await db.select_and_fetchone(
+         """
+-SELECT batches.*,
+-  cost_t.cost,
+-  cost_t.cost_breakdown,
+-  job_groups_cancelled.id IS NOT NULL AS cancelled,
+-  job_groups_n_jobs_in_complete_states.n_completed,
+-  job_groups_n_jobs_in_complete_states.n_succeeded,
+-  job_groups_n_jobs_in_complete_states.n_failed,
+-  job_groups_n_jobs_in_complete_states.n_cancelled
+-FROM batches
+-LEFT JOIN job_groups_n_jobs_in_complete_states
+-  ON batches.id = job_groups_n_jobs_in_complete_states.id
+-LEFT JOIN LATERAL (
+-  SELECT COALESCE(SUM(`usage` * rate), 0) AS cost, JSON_OBJECTAGG(resources.resource, COALESCE(`usage` * rate, 0)) AS cost_breakdown
+-  FROM (
+-    SELECT batch_id, resource_id, CAST(COALESCE(SUM(`usage`), 0) AS SIGNED) AS `usage`
+-    FROM aggregated_job_group_resources_v3
+-    WHERE batches.id = aggregated_job_group_resources_v3.batch_id
+-    GROUP BY batch_id, resource_id
+-  ) AS usage_t
+-  LEFT JOIN resources ON usage_t.resource_id = resources.resource_id
+-  GROUP BY batch_id
+-) AS cost_t ON TRUE
+-LEFT JOIN job_groups_cancelled
+-  ON batches.id = job_groups_cancelled.id
+-WHERE batches.id = %s AND NOT deleted AND callback IS NOT NULL AND
+-   batches.`state` = 'complete';
++SELECT 1 FROM batches
++WHERE id = %s AND `user` = 'ci' AND NOT deleted AND `state` = 'complete';
+ """,
+         (batch_id,),
+-        'notify_batch_job_complete',
++        'notify_ci_of_batch_complete',
+     )
+-
+     if not record:
+         return
+-    callback = record['callback']
+-
+-    log.info(f'making callback for batch {batch_id}: {callback}')
+-
+-    async def request(session):
+-        await session.post(callback, json=batch_record_to_dict(record))
+-        log.info(f'callback for batch {batch_id} successful')
+ 
++    client_session: httpx.ClientSession = app[CommonAiohttpAppKeys.CLIENT_SESSION]
++    url = deploy_config.url('ci', f'/api/v1alpha/batch_callback/{batch_id}')
+     try:
+-        if record['user'] == 'ci':
+-            # only jobs from CI may use batch's TLS identity
+-            await request(client_session)
+-        else:
+-            async with httpx.client_session() as session:
+-                await request(session)
++        headers = await app['hail_credentials'].auth_headers()
++        async with client_session.post(url, headers=headers):
++            pass
++        log.info(f'notified ci of completed batch {batch_id}')
+     except asyncio.CancelledError:
+         raise
+     except Exception:
+-        log.info(f'callback for batch {batch_id} failed, will not retry.')
+-
+-
+-async def notify_job_group_on_job_complete(
+-    db: Database, client_session: httpx.ClientSession, batch_id: int, job_group_id: int
+-):
+-    records = db.select_and_fetchall(
+-        """
+-SELECT job_groups.*,
+-  ancestor_id,
+-  cost_t.cost,
+-  cost_t.cost_breakdown,
+-  t.cancelled IS NOT NULL AS cancelled,
+-  job_groups_n_jobs_in_complete_states.n_completed,
+-  job_groups_n_jobs_in_complete_states.n_succeeded,
+-  job_groups_n_jobs_in_complete_states.n_failed,
+-  job_groups_n_jobs_in_complete_states.n_cancelled
+-FROM job_group_self_and_ancestors
+-LEFT JOIN job_groups ON job_groups.batch_id = job_group_self_and_ancestors.batch_id AND
+-  job_groups.job_group_id = job_group_self_and_ancestors.ancestor_id
+-LEFT JOIN batches ON job_group_self_and_ancestors.batch_id = batches.id
+-LEFT JOIN job_groups_n_jobs_in_complete_states
+-  ON job_group_self_and_ancestors.batch_id = job_groups_n_jobs_in_complete_states.id AND
+-     job_group_self_and_ancestors.ancestor_id = job_groups_n_jobs_in_complete_states.job_group_id
+-LEFT JOIN LATERAL (
+-  SELECT COALESCE(SUM(`usage` * rate), 0) AS cost, JSON_OBJECTAGG(resources.resource, COALESCE(`usage` * rate, 0)) AS cost_breakdown
+-  FROM (
+-    SELECT resource_id, CAST(COALESCE(SUM(`usage`), 0) AS SIGNED) AS `usage`
+-    FROM aggregated_job_group_resources_v3
+-    WHERE job_group_self_and_ancestors.batch_id = aggregated_job_group_resources_v3.batch_id AND
+-          job_group_self_and_ancestors.ancestor_id = aggregated_job_group_resources_v3.job_group_id
+-    GROUP BY resource_id
+-  ) AS usage_t
+-  LEFT JOIN resources ON usage_t.resource_id = resources.resource_id
+-) AS cost_t ON TRUE
+-LEFT JOIN LATERAL (
+-  SELECT 1 AS cancelled
+-  FROM job_group_self_and_ancestors AS self_and_ancestors
+-  INNER JOIN job_groups_cancelled
+-    ON self_and_ancestors.batch_id = job_groups_cancelled.id AND
+-       self_and_ancestors.ancestor_id = job_groups_cancelled.job_group_id
+-  WHERE self_and_ancestors.batch_id = job_group_self_and_ancestors.batch_id AND
+-    self_and_ancestors.job_group_id = job_group_self_and_ancestors.ancestor_id
+-) AS t ON TRUE
+-WHERE job_group_self_and_ancestors.batch_id = %s AND
+-  job_group_self_and_ancestors.job_group_id = %s AND
+-  job_group_self_and_ancestors.ancestor_id != %s AND
+-  NOT deleted AND
+-  job_groups.callback IS NOT NULL AND
+-  job_groups.`state` = 'complete';
+-""",
+-        (batch_id, job_group_id, ROOT_JOB_GROUP_ID),
+-        'notify_job_group_on_job_complete',
+-    )
+-
+-    async for record in records:
+-        ancestor_job_group_id = record['ancestor_id']
+-        callback = record['callback']
+-
+-        log.info(f'making callback for batch {batch_id} job group {ancestor_job_group_id}: {callback}')
+-
+-        async def request(session, record, callback, batch_id, ancestor_job_group_id):
+-            await session.post(callback, json=job_group_record_to_dict(record))
+-            log.info(f'callback for batch {batch_id} job group {ancestor_job_group_id} successful')
+-
+-        try:
+-            if record['user'] == 'ci':
+-                # only jobs from CI may use batch's TLS identity
+-                await request(client_session, record, callback, batch_id, ancestor_job_group_id)
+-            else:
+-                async with httpx.client_session() as session:
+-                    await request(session, record, callback, batch_id, ancestor_job_group_id)
+-        except asyncio.CancelledError:
+-            raise
+-        except Exception:
+-            log.info(f'callback for batch {batch_id} job group {ancestor_job_group_id} failed, will not retry.')
++        log.info(f'notifying ci of completed batch {batch_id} failed, will not retry.', exc_info=True)
+ 
+ 
+ async def add_attempt_resources(app, db, batch_id, job_id, attempt_id, resources: List[QuantifiedResource]):
+@@ -204,7 +121,7 @@ async def mark_job_complete(
+     batch_id,
+     job_id,
+     attempt_id,
+-    job_group_id,
++    job_group_id,  # pylint: disable=unused-argument
+     instance_name,
+     new_state,
+     status,
+@@ -218,7 +135,6 @@ async def mark_job_complete(
+     scheduler_state_changed: Notice = app['scheduler_state_changed']
+     cancel_ready_state_changed: asyncio.Event = app['cancel_ready_state_changed']
+     db: Database = app['db']
+-    client_session = app[CommonAiohttpAppKeys.CLIENT_SESSION]
+ 
+     inst_coll_manager: 'InstanceCollectionManager' = app['driver'].inst_coll_manager
+     task_manager: BackgroundTaskManager = app['task_manager']
+@@ -277,8 +193,7 @@ async def mark_job_complete(
+         # already complete, do nothing
+         return
+ 
+-    await notify_batch_job_complete(db, client_session, batch_id)
+-    await notify_job_group_on_job_complete(db, client_session, batch_id, job_group_id)
++    await notify_ci_of_batch_complete(app, db, batch_id)
+ 
+     if instance and not instance.inst_coll.is_pool and instance.state == 'active':
+         task_manager.ensure_future(instance.kill())
+diff --git a/batch/batch/driver/main.py b/batch/batch/driver/main.py
+index 07372e23cf3..b0a271ee7fc 100644
+--- a/batch/batch/driver/main.py
++++ b/batch/batch/driver/main.py
+@@ -89,7 +89,7 @@
+ from .driver import CloudDriver
+ from .instance import Instance
+ from .instance_collection import InstanceCollectionManager, JobPrivateInstanceManager, Pool
+-from .job import mark_job_complete, mark_job_started
++from .job import LazyHailCredentials, mark_job_complete, mark_job_started
+ 
+ uvloopx.install()
+ 
+@@ -2217,6 +2217,9 @@ async def close_and_wait():
+     app[CommonAiohttpAppKeys.CLIENT_SESSION] = httpx.client_session()
+     exit_stack.push_async_callback(app[CommonAiohttpAppKeys.CLIENT_SESSION].close)
+ 
++    app['hail_credentials'] = LazyHailCredentials()
++    exit_stack.push_async_callback(app['hail_credentials'].close)
++
+     app['driver'] = await get_cloud_driver(app, db, MACHINE_NAME_PREFIX, DEFAULT_NAMESPACE, inst_coll_configs)
+     exit_stack.push_async_callback(app['driver'].shutdown)
+ 
+diff --git a/batch/batch/front_end/front_end.py b/batch/batch/front_end/front_end.py
+index 396ef8b4a38..355470ef876 100644
+--- a/batch/batch/front_end/front_end.py
++++ b/batch/batch/front_end/front_end.py
+@@ -985,7 +985,6 @@ async def _create_job_group(
+     user: str,
+     attributes: Optional[Dict[str, str]],
+     cancel_after_n_failures: Optional[int],
+-    callback: Optional[str],
+     timestamp: int,
+     parent_job_group_id: int,
+ ):
+@@ -1005,8 +1004,8 @@ async def _create_job_group(
+ 
+     await tx.execute_insertone(
+         """
+-INSERT INTO job_groups (batch_id, job_group_id, `user`, attributes, cancel_after_n_failures, state, n_jobs, time_created, time_completed, callback, update_id)
+-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
++INSERT INTO job_groups (batch_id, job_group_id, `user`, attributes, cancel_after_n_failures, state, n_jobs, time_created, time_completed, update_id)
++VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+ """,
+         (
+             batch_id,
+@@ -1018,7 +1017,6 @@ async def _create_job_group(
+             0,
+             timestamp,
+             timestamp,
+-            callback,
+             update_id,
+         ),
+         query_name='insert_job_group',
+@@ -1149,7 +1147,6 @@ async def insert(tx):
+                     user=user,
+                     attributes=spec.get('attributes'),
+                     cancel_after_n_failures=spec.get('cancel_after_n_failures'),
+-                    callback=spec.get('callback'),
+                     timestamp=now,
+                     parent_job_group_id=parent_job_group_id,
+                 )
+@@ -1838,15 +1835,14 @@ async def insert(tx):
+         now = time_msecs()
+         id = await tx.execute_insertone(
+             """
+-INSERT INTO batches (userdata, user, billing_project, attributes, callback, n_jobs, time_created, time_completed, token, state, format_version, cancel_after_n_failures, migrated_batch)
+-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
++INSERT INTO batches (userdata, user, billing_project, attributes, n_jobs, time_created, time_completed, token, state, format_version, cancel_after_n_failures, migrated_batch)
++VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+ """,
+             (
+                 json.dumps(userdata),
+                 user,
+                 billing_project,
+                 json.dumps(attributes),
+-                batch_spec.get('callback'),
+                 0,
+                 now,
+                 now,
+@@ -1867,7 +1863,6 @@ async def insert(tx):
+             user=user,
+             attributes=attributes,
+             cancel_after_n_failures=batch_spec.get('cancel_after_n_failures'),
+-            callback=batch_spec.get('callback'),
+             timestamp=now,
+             parent_job_group_id=ROOT_JOB_GROUP_ID,
+         )
+diff --git a/batch/batch/front_end/templates/openapi.yaml b/batch/batch/front_end/templates/openapi.yaml
+index 57de9a1b43d..26320afb99d 100644
+--- a/batch/batch/front_end/templates/openapi.yaml
++++ b/batch/batch/front_end/templates/openapi.yaml
+@@ -1860,9 +1860,6 @@ components:
+           description: "Key-value pairs of attributes for the batch"
+           additionalProperties:
+             type: string
+-        callback:
+-          type: string
+-          description: "Optional callback URL to notify when batch completes"
+         token:
+           type: string
+           description: "Optional token for batch identification"
+@@ -2165,9 +2162,6 @@ components:
+           type: integer
+           description: "Optional number of failures after which to cancel the job group"
+           minimum: 1
+-        callback:
+-          type: string
+-          description: "Optional callback URL to notify when job group completes"
+ 
+     BatchFastUpdateRequest:
+       type: object
+@@ -2204,9 +2198,6 @@ components:
+           description: "Key-value pairs of attributes for the batch"
+           additionalProperties:
+             type: string
+-        callback:
+-          type: string
+-          description: "Optional callback URL to notify when batch completes"
+         cancel_after_n_failures:
+           type: integer
+           description: "Optional number of failures after which to cancel the batch"
+diff --git a/batch/batch/front_end/validate.py b/batch/batch/front_end/validate.py
+index 89d01571b89..f291b9e32fc 100644
+--- a/batch/batch/front_end/validate.py
++++ b/batch/batch/front_end/validate.py
+@@ -107,7 +107,7 @@
+ batch_validator = keyed({
+     'attributes': nullable(dictof(str_type)),
+     required('billing_project'): str_type,
+-    'callback': nullable(str_type),
++    'callback': nullable(str_type),  # no longer supported; accepted and ignored so older clients still work
+     required('n_jobs'): int_type,
+     'n_job_groups': int_type,
+     required('token'): str_type,
+@@ -124,7 +124,7 @@
+ job_group_validator = keyed({
+     required('job_group_id'): int_type,
+     'attributes': nullable(dictof(str_type)),
+-    'callback': nullable(str_type),
++    'callback': nullable(str_type),  # no longer supported; accepted and ignored so older clients still work
+     'cancel_after_n_failures': nullable(numeric(**{"x > 0": lambda x: isinstance(x, int) and x > 0})),
+     'absolute_parent_id': nullable(int_type),
+     'in_update_parent_id': nullable(int_type),
+diff --git a/batch/deployment.yaml b/batch/deployment.yaml
+index 1f59e355be7..7f65746ca91 100644
+--- a/batch/deployment.yaml
++++ b/batch/deployment.yaml
+@@ -180,6 +180,10 @@ spec:
+            value: "5000"
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /gsa-key/key.json
++{% if global.cloud == "gcp" %}
++         - name: HAIL_IDENTITY_PROVIDER_JSON
++           value: '{"idp": "Google"}'
++{% endif %}
+          - name: HAIL_DEPLOY_CONFIG_FILE
+            value: /deploy-config/deploy-config.json
+          - name: HAIL_BATCH_WORKER_IMAGE
+diff --git a/batch/test/test_dag.py b/batch/test/test_dag.py
+index e5558f8a27e..7e4d343528b 100644
+--- a/batch/test/test_dag.py
++++ b/batch/test/test_dag.py
+@@ -1,10 +1,6 @@
+-import asyncio
+-import os
+ import re
+-import secrets
+ 
+ import pytest
+-from aiohttp import web
+ 
+ from hailtop.batch_client import aioclient
+ from hailtop.batch_client.client import BatchClient, Job
+@@ -19,13 +15,6 @@ def client():
+     client.close()
+ 
+ 
+-@pytest.fixture
+-async def async_client():
+-    client = await aioclient.BatchClient.create('test')
+-    yield client
+-    await client.close()
+-
+-
+ def test_simple(client):
+     batch = create_batch(client)
+     head = batch.create_job(DOCKER_ROOT_IMAGE, command=['echo', 'head'])
+@@ -123,149 +112,6 @@ def test_cancel_left_after_tail(client):
+         assert node_status['state'] == 'Cancelled', str((node_status, batch.debug_info()))
+ 
+ 
+-async def test_batch_callback(async_client: aioclient.BatchClient):
+-    app = web.Application()
+-    callback_bodies = []
+-    callback_event = asyncio.Event()
+-
+-    def url_for(uri):
+-        host = os.environ['HAIL_BATCH_WORKER_IP']
+-        port = os.environ['HAIL_BATCH_WORKER_PORT']
+-        return f'http://{host}:{port}{uri}'
+-
+-    async def callback(request):
+-        body = await request.json()
+-        callback_bodies.append(body)
+-        callback_event.set()
+-        return web.Response()
+-
+-    app.add_routes([web.post('/test', callback)])
+-    runner = web.AppRunner(app)
+-    await runner.setup()
+-    site = web.TCPSite(runner, '0.0.0.0', 5000)
+-    await site.start()
+-
+-    try:
+-        token = secrets.token_urlsafe(32)
+-        b = create_batch(
+-            async_client, callback=url_for('/test'), attributes={'foo': 'bar', 'name': 'test_callback'}, token=token
+-        )
+-        head = b.create_job('alpine:3.8', command=['echo', 'head'])
+-        b.create_job('alpine:3.8', command=['echo', 'tail'], parents=[head])
+-        await b.submit()
+-        await asyncio.wait_for(callback_event.wait(), 5 * 60)
+-        callback_body = callback_bodies[0]
+-
+-        # verify required fields present
+-        callback_body.pop('cost')
+-        callback_body.pop('msec_mcpu')
+-        callback_body.pop('time_created')
+-        callback_body.pop('time_closed')
+-        callback_body.pop('time_completed')
+-        callback_body.pop('duration')
+-        callback_body.pop('duration_ms')
+-        callback_body.pop('cost_breakdown')
+-        callback_body['attributes'].pop('client_job')
+-        assert callback_body == {
+-            'id': b.id,
+-            'user': 'test',
+-            'billing_project': 'test',
+-            'token': token,
+-            'state': 'success',
+-            'complete': True,
+-            'closed': True,
+-            'n_jobs': 2,
+-            'n_completed': 2,
+-            'n_succeeded': 2,
+-            'n_failed': 0,
+-            'n_cancelled': 0,
+-            'attributes': {'foo': 'bar', 'name': 'test_callback'},
+-        }, callback_body
+-    finally:
+-        await runner.cleanup()
+-
+-
+-async def test_job_group_callback(async_client: aioclient.BatchClient):
+-    app = web.Application()
+-    callback_bodies = []
+-    callback_event = asyncio.Event()
+-
+-    def url_for(uri):
+-        host = os.environ['HAIL_BATCH_WORKER_IP']
+-        port = os.environ['HAIL_BATCH_WORKER_PORT']
+-        return f'http://{host}:{port}{uri}'
+-
+-    async def callback(request):
+-        body = await request.json()
+-        callback_bodies.append(body)
+-        callback_event.set()
+-        return web.Response()
+-
+-    app.add_routes([web.post('/test', callback)])
+-    runner = web.AppRunner(app)
+-    await runner.setup()
+-    site = web.TCPSite(runner, '0.0.0.0', 5000)
+-    await site.start()
+-
+-    try:
+-        token = secrets.token_urlsafe(32)
+-        b = create_batch(async_client, token=token)
+-        jg = b.create_job_group(callback=url_for('/test'), attributes={'name': 'test_callback_1'})
+-        jg.create_job(DOCKER_ROOT_IMAGE, ['sleep', '300'])
+-        jg2 = jg.create_job_group(callback=url_for('/test'), attributes={'name': 'test_callback_2'})
+-        jg2.create_job('alpine:3.8', command=['true'])
+-        await b.submit()
+-        await asyncio.wait_for(callback_event.wait(), 5 * 60)
+-        callback_event.clear()
+-        callback_body = callback_bodies[0]
+-
+-        # verify required fields present
+-        callback_body.pop('cost')
+-        callback_body.pop('time_created')
+-        callback_body.pop('time_completed')
+-        callback_body.pop('duration')
+-        callback_body.pop('cost_breakdown')
+-        assert callback_body == {
+-            'batch_id': jg2.batch_id,
+-            'job_group_id': jg2.job_group_id,
+-            'state': 'success',
+-            'complete': True,
+-            'n_jobs': 1,
+-            'n_completed': 1,
+-            'n_succeeded': 1,
+-            'n_failed': 0,
+-            'n_cancelled': 0,
+-            'attributes': {'name': 'test_callback_2'},
+-        }, callback_body
+-
+-        await b.cancel()
+-
+-        await asyncio.wait_for(callback_event.wait(), 5 * 60)
+-
+-        callback_body = callback_bodies[1]
+-
+-        # verify required fields present
+-        callback_body.pop('cost')
+-        callback_body.pop('time_created')
+-        callback_body.pop('time_completed')
+-        callback_body.pop('duration')
+-        callback_body.pop('cost_breakdown')
+-        assert callback_body == {
+-            'batch_id': jg.batch_id,
+-            'job_group_id': jg.job_group_id,
+-            'state': 'cancelled',
+-            'complete': True,
+-            'n_jobs': 2,
+-            'n_completed': 2,
+-            'n_succeeded': 1,
+-            'n_failed': 0,
+-            'n_cancelled': 1,
+-            'attributes': {'name': 'test_callback_1'},
+-        }, callback_body
+-    finally:
+-        await runner.cleanup()
+-
+-
+ def test_no_parents_allowed_in_other_batches(client):
+     b1 = create_batch(client)
+     b2 = create_batch(client)
+diff --git a/ci/bootstrap.py b/ci/bootstrap.py
+index bfef7bc62f6..3438a0fa46c 100644
+--- a/ci/bootstrap.py
++++ b/ci/bootstrap.py
+@@ -76,19 +76,14 @@ async def docker_run(*args: str):
+ 
+ 
+ class LocalBatchBuilder:
+-    def __init__(self, attributes: Dict[str, str], callback: Optional[str]):
++    def __init__(self, attributes: Dict[str, str]):
+         self._attributes = attributes
+-        self._callback = callback
+         self._jobs: List[LocalJob] = []
+ 
+     @property
+     def attributes(self) -> Dict[str, str]:
+         return self._attributes
+ 
+-    @property
+-    def callback(self) -> Optional[str]:
+-        return self._callback
+-
+     def create_job(self, image: str, command: List[str], **kwargs):
+         index = len(self._jobs)
+         job = LocalJob(index, image, command, **kwargs)
+@@ -385,7 +380,7 @@ async def main():
+         config = BuildConfiguration(code, f.read(), scope, requested_step_names=steps)
+ 
+     token = generate_token()
+-    batch = LocalBatchBuilder(attributes={'token': token}, callback=None)
++    batch = LocalBatchBuilder(attributes={'token': token})
+     config.build(batch, code, scope)
+ 
+     await batch.run()
+diff --git a/ci/ci/ci.py b/ci/ci/ci.py
+index cf626c79741..a9f3750745b 100644
+--- a/ci/ci/ci.py
++++ b/ci/ci/ci.py
+@@ -674,29 +674,39 @@ async def remove_namespace_from_db(db: Database, namespace: str):
+     )
+ 
+ 
+-async def batch_callback_handler(request: web.Request):
+-    app = request.app
++async def batch_callback_handler(app: web.Application, batch_id: int):
+     db = app[AppKeys.DB]
+-    params = await json_request(request)
+-    log.info(f'batch callback {params}')
+-    attrs = params.get('attributes')
+-    if attrs:
+-        target_branch = attrs.get('target_branch')
+-        if target_branch:
+-            for wb in watched_branches:
+-                if wb.branch.short_str() == target_branch:
+-                    log.info(f'watched_branch {wb.branch.short_str()} notify batch changed')
++    batch_client = app[AppKeys.BATCH_CLIENT]
++    log.info(f'batch callback for batch {batch_id}')
++
++    # What to do depends on the batch's attributes, so read them from Batch rather than trusting the caller.
++    try:
++        batch = await retry_transient_errors(batch_client.get_batch, batch_id)
++    except httpx.ClientResponseError as e:
++        if e.status in (403, 404):
++            raise web.HTTPNotFound() from e
++        raise
++    status = await batch.last_known_status()
++    if status['user'] != 'ci':
++        log.info(f'ignoring batch callback for batch {batch_id} owned by {status["user"]}')
++        return
++
++    attrs = batch.attributes
++    target_branch = attrs.get('target_branch')
++    if not target_branch:
++        return
++    for wb in watched_branches:
++        if wb.branch.short_str() == target_branch:
++            log.info(f'watched_branch {wb.branch.short_str()} notify batch changed')
+ 
+-                    if 'test' in attrs and params['complete']:
+-                        assert 'deploy' not in attrs
+-                        assert 'dev' not in attrs
+-                        namespace = attrs['namespace']
+-                        if DEFAULT_NAMESPACE == 'default':
+-                            await remove_namespace_from_db(db, namespace)
++            if 'test' in attrs and status['complete']:
++                assert 'deploy' not in attrs
++                assert 'dev' not in attrs
++                namespace = attrs['namespace']
++                if DEFAULT_NAMESPACE == 'default':
++                    await remove_namespace_from_db(db, namespace)
+ 
+-                    await wb.notify_batch_changed(
+-                        db, app[AppKeys.BATCH_CLIENT], app[AppKeys.GH_CLIENT], app[AppKeys.FROZEN_MERGE_DEPLOY]
+-                    )
++            await wb.notify_batch_changed(db, batch_client, app[AppKeys.GH_CLIENT], app[AppKeys.FROZEN_MERGE_DEPLOY])
+ 
+ 
+ @routes.get('/api/v1alpha/version')
+@@ -822,9 +832,14 @@ async def dev_deploy_branch(request: web.Request, userdata: UserData) -> web.Res
+     return json_response({'sha': sha, 'batch_id': batch_id})
+ 
+ 
+-@routes.post('/api/v1alpha/batch_callback')
+-async def batch_callback(request: web.Request):
+-    await asyncio.shield(batch_callback_handler(request))
++@routes.post(r'/api/v1alpha/batch_callback/{batch_id:\d+}')
++@auth.authenticated_users_only(redirect=False)
++async def batch_callback(request: web.Request, userdata: UserData) -> web.Response:
++    # The batch driver calls this when a ci batch completes; developers may also nudge CI by hand.
++    if userdata['username'] != 'batch' and not userdata['system_permissions'].get(SystemPermission.MANAGE_CI, False):
++        raise web.HTTPUnauthorized()
++    batch_id = int(request.match_info['batch_id'])
++    await asyncio.shield(batch_callback_handler(request.app, batch_id))
+     return web.Response(status=200)
+ 
+ 
+diff --git a/ci/ci/github.py b/ci/ci/github.py
+index c5a6bc1421c..7ba57c72c01 100644
+--- a/ci/ci/github.py
++++ b/ci/ci/github.py
+@@ -53,8 +53,6 @@
+ 
+ deploy_config = get_deploy_config()
+ 
+-CALLBACK_URL = deploy_config.url('ci', '/api/v1alpha/batch_callback')
+-
+ zulip_client: Optional[zulip.Client] = None
+ if os.path.exists("/zulip-config/.zuliprc"):
+     zulip_client = zulip.Client(config_file="/zulip-config/.zuliprc")
+@@ -758,8 +756,7 @@ async def _start_build(self, db: Database, batch_client: BatchClient):
+                     'name': f'PR test #{self.number}: {self.source_branch.name} @ {self.source_sha[:8]} -> {self.target_branch.branch.name} @ {(self.target_branch.sha or "unknown")[:8]}',
+                     'batch_type': 'ci/test/pr',
+                     'reason': reason,
+-                },
+-                callback=CALLBACK_URL,
++                }
+             )
+             if tactical_skipped:
+                 # A step removed from requested_step_names may still run if it's a transitive
+@@ -1577,8 +1574,7 @@ async def _start_deploy(self, db: Database, batch_client: BatchClient):
+                     'sha': self.sha,
+                     'name': batch_name,
+                     'batch_type': 'ci/release/prod' if is_release else 'ci/deploy/prod',
+-                },
+-                callback=CALLBACK_URL,
++                }
+             )
+             try:
+                 config.build(deploy_batch, self, scope='deploy')
+diff --git a/ci/ci/templates/openapi.yaml b/ci/ci/templates/openapi.yaml
+index 39ad1db5557..359e3dfcad9 100644
+--- a/ci/ci/templates/openapi.yaml
++++ b/ci/ci/templates/openapi.yaml
+@@ -763,20 +763,27 @@ paths:
+         '403':
+           description: Forbidden - requires developer privileges
+ 
+-  /api/v1alpha/batch_callback:
++  /api/v1alpha/batch_callback/{batch_id}:
+     post:
+-      summary: Batch callback
+-      description: Callback endpoint for batch operations
++      summary: Batch completion callback (internal)
++      description: |
++        Internal API, not for external use. The batch driver calls this when a batch owned by ci
++        completes, so CI can re-check it without waiting for its next poll. Only the batch service
++        and users with the manage_ci permission may call it. The request body is ignored.
+       tags: [Builds]
+-      requestBody:
+-        required: true
+-        content:
+-          application/json:
+-            schema:
+-              type: object
++      parameters:
++        - name: batch_id
++          in: path
++          required: true
++          schema:
++            type: integer
+       responses:
+         '200':
+-          description: Callback processed successfully
++          description: Callback processed (non-ci batches are ignored)
++        '401':
++          description: Unauthorized - requires the batch service or manage_ci permission
++        '404':
++          description: Batch not found
+ 
+   /api/v1alpha/builds:
+     get:
+diff --git a/hail/python/hailtop/batch/backend.py b/hail/python/hailtop/batch/backend.py
+index c217584dff3..ed324f9636f 100644
+--- a/hail/python/hailtop/batch/backend.py
++++ b/hail/python/hailtop/batch/backend.py
+@@ -694,7 +694,6 @@ async def _async_run(
+         wait: bool = True,
+         open: bool = False,
+         disable_progress_bar: bool = False,
+-        callback: Optional[str] = None,
+         token: Optional[str] = None,
+         **backend_kwargs,
+     ) -> Optional[bc.Batch]:  # pylint: disable-msg=too-many-statements
+@@ -721,9 +720,6 @@ async def _async_run(
+             If `True`, open the UI page for the batch.
+         disable_progress_bar:
+             If `True`, disable the progress bar.
+-        callback:
+-            If not `None`, a URL that will receive at most one POST request
+-            after the entire batch completes.
+         token:
+             If not `None`, a string used for idempotency of batch submission.
+         """
+@@ -745,7 +741,6 @@ async def _async_run(
+         if batch._async_batch is None:
+             batch._async_batch = (await self._batch_client()).create_batch(
+                 attributes=attributes,
+-                callback=callback,
+                 token=token,
+                 cancel_after_n_failures=batch._cancel_after_n_failures,
+             )
+diff --git a/hail/python/hailtop/batch_client/aioclient.py b/hail/python/hailtop/batch_client/aioclient.py
+index 1b8f4b98c84..378bec52d42 100644
+--- a/hail/python/hailtop/batch_client/aioclient.py
++++ b/hail/python/hailtop/batch_client/aioclient.py
+@@ -496,13 +496,11 @@ def create_job_group(
+         self,
+         *,
+         attributes: Optional[Dict[str, str]] = None,
+-        callback: Optional[str] = None,
+         cancel_after_n_failures: Optional[int] = None,
+     ) -> 'JobGroup':
+         return self._batch._create_job_group(
+             self,
+             attributes=attributes,
+-            callback=callback,
+             cancel_after_n_failures=cancel_after_n_failures,
+         )
+ 
+@@ -626,7 +624,6 @@ def __init__(
+         id: Optional[int],
+         *,
+         attributes: Optional[Dict[str, str]] = None,
+-        callback: Optional[str] = None,
+         token: Optional[str] = None,
+         cancel_after_n_failures: Optional[int] = None,
+         last_known_status: Optional[Dict[str, Any]] = None,
+@@ -634,7 +631,6 @@ def __init__(
+         self._client = client
+         self._id = id
+         self.attributes: Dict[str, str] = attributes or {}
+-        self._callback = callback
+ 
+         if token is None:
+             token = secrets.token_urlsafe(32)
+@@ -825,13 +821,11 @@ def create_job_group(
+         self,
+         *,
+         attributes: Optional[Dict[str, str]] = None,
+-        callback: Optional[str] = None,
+         cancel_after_n_failures: Optional[int] = None,
+     ) -> JobGroup:
+         return self._create_job_group(
+             self._root_job_group,
+             attributes=attributes,
+-            callback=callback,
+             cancel_after_n_failures=cancel_after_n_failures,
+         )
+ 
+@@ -962,15 +956,12 @@ def _create_job_group(
+         parent_job_group: JobGroup,
+         *,
+         attributes: Optional[Dict[str, str]] = None,
+-        callback: Optional[str] = None,
+         cancel_after_n_failures: Optional[int] = None,
+     ) -> JobGroup:
+         self._in_update_job_group_id += 1
+         spec: Dict[str, Any] = {'job_group_id': self._in_update_job_group_id}
+         if attributes is not None:
+             spec['attributes'] = attributes
+-        if callback is not None:
+-            spec['callback'] = callback
+         if cancel_after_n_failures is not None:
+             spec['cancel_after_n_failures'] = cancel_after_n_failures
+ 
+@@ -1148,8 +1139,6 @@ def _batch_spec(self):
+         }
+         if self.attributes:
+             batch_spec['attributes'] = self.attributes
+-        if self._callback:
+-            batch_spec['callback'] = self._callback
+         if self._cancel_after_n_failures is not None:
+             batch_spec['cancel_after_n_failures'] = self._cancel_after_n_failures
+         return batch_spec
+@@ -1435,12 +1424,11 @@ async def get_batch(self, id) -> Batch:
+         assert attributes is None or isinstance(attributes, dict), attributes
+         return Batch(self, id=b['id'], attributes=attributes, token=b['token'], last_known_status=b)
+ 
+-    def create_batch(self, attributes=None, callback=None, token=None, cancel_after_n_failures=None) -> Batch:
++    def create_batch(self, attributes=None, *, token=None, cancel_after_n_failures=None) -> Batch:
+         return Batch(
+             self,
+             id=None,
+             attributes=attributes,
+-            callback=callback,
+             token=token,
+             cancel_after_n_failures=cancel_after_n_failures,
+         )
+diff --git a/hail/python/hailtop/batch_client/client.py b/hail/python/hailtop/batch_client/client.py
+index 4ca262e316c..ca706cf1590 100644
+--- a/hail/python/hailtop/batch_client/client.py
++++ b/hail/python/hailtop/batch_client/client.py
+@@ -153,9 +153,9 @@ def wait(self, *args, **kwargs) -> GetJobGroupResponseV1Alpha:
+     def last_known_status(self) -> GetJobGroupResponseV1Alpha:
+         return async_to_blocking(self._async_job_group.last_known_status())
+ 
+-    def create_job_group(self, *, attributes=None, callback=None, cancel_after_n_failures=None) -> 'JobGroup':
++    def create_job_group(self, *, attributes=None, cancel_after_n_failures=None) -> 'JobGroup':
+         async_job_group = self._async_job_group.create_job_group(
+-            attributes=attributes, callback=callback, cancel_after_n_failures=cancel_after_n_failures
++            attributes=attributes, cancel_after_n_failures=cancel_after_n_failures
+         )
+         return JobGroup(async_job_group)
+ 
+@@ -295,9 +295,9 @@ def debug_info(self):
+     def delete(self):
+         async_to_blocking(self._async_batch.delete())
+ 
+-    def create_job_group(self, *, attributes=None, callback=None, cancel_after_n_failures=None) -> JobGroup:
++    def create_job_group(self, *, attributes=None, cancel_after_n_failures=None) -> JobGroup:
+         async_job_group = self._async_batch.create_job_group(
+-            attributes=attributes, callback=callback, cancel_after_n_failures=cancel_after_n_failures
++            attributes=attributes, cancel_after_n_failures=cancel_after_n_failures
+         )
+         return JobGroup(async_job_group)
+ 
+@@ -420,9 +420,9 @@ def get_batch(self, id):
+         b = async_to_blocking(self._async_client.get_batch(id))
+         return Batch(b)
+ 
+-    def create_batch(self, attributes=None, callback=None, token=None, cancel_after_n_failures=None) -> 'Batch':
++    def create_batch(self, attributes=None, *, token=None, cancel_after_n_failures=None) -> 'Batch':
+         batch = self._async_client.create_batch(
+-            attributes=attributes, callback=callback, token=token, cancel_after_n_failures=cancel_after_n_failures
++            attributes=attributes, token=token, cancel_after_n_failures=cancel_after_n_failures
+         )
+         return Batch(batch)
+ 

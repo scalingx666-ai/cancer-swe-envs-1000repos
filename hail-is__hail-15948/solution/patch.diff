@@ -1,0 +1,134 @@
+diff --git a/hail/hail/src/is/hail/expr/ir/streams/EmitStream.scala b/hail/hail/src/is/hail/expr/ir/streams/EmitStream.scala
+index 8e4b29d5a76..d88f6da0348 100644
+--- a/hail/hail/src/is/hail/expr/ir/streams/EmitStream.scala
++++ b/hail/hail/src/is/hail/expr/ir/streams/EmitStream.scala
+@@ -1702,6 +1702,14 @@ object EmitStream {
+                     },
+                   )
+                 },
++                /* The previous element came from the current inner stream. Clear the inner element
++                 * region only now, not when that element was produced: the inner element may be
++                 * computed lazily (e.g. a StreamMap body) and allocate into
++                 * innerProducer.elementRegion when the consumer evaluates it. Clearing before that
++                 * would put the allocation in memory resultElementRegion does not reference, which
++                 * is freed when the inner stream ends. */
++                if (innerProducer.requiresMemoryManagementPerElement)
++                  cb += innerProducer.elementRegion.clearRegion(),
+               )
+ 
+               cb.define(LnextInner)
+@@ -1715,13 +1723,11 @@ object EmitStream {
+ 
+                 // if outer requires memory management and inner doesn't,
+                 // then innerProducer.elementRegion is outerProducer.elementRegion
+-                // and we shouldn't clear it.
+-                if (innerProducer.requiresMemoryManagementPerElement) {
++                // and must not be cleared per element.
++                if (innerProducer.requiresMemoryManagementPerElement)
+                   cb += resultElementRegion.trackAndIncrementReferenceCountOf(
+                     outerProducer.elementRegion
+                   )
+-                  cb += innerProducer.elementRegion.clearRegion()
+-                }
+               }
+               cb.goto(LproduceElementDone)
+             }
+diff --git a/hail/hail/test/src/is/hail/expr/ir/EmitStreamSuite.scala b/hail/hail/test/src/is/hail/expr/ir/EmitStreamSuite.scala
+index 9971af8ff99..fd34d6b48b4 100644
+--- a/hail/hail/test/src/is/hail/expr/ir/EmitStreamSuite.scala
++++ b/hail/hail/test/src/is/hail/expr/ir/EmitStreamSuite.scala
+@@ -1208,6 +1208,40 @@ class EmitStreamSuite {
+     }
+   }
+ 
++  /* The inner element is computed lazily (the ToArray in the outer map of the inner stream), so it
++   * is allocated only when the consumer evaluates it, after StreamFlatMap has produced it.
++   * StreamZipJoin holds each input's current element while pulling the next one, so the last
++   * element of each inner stream is read after StreamFlatMap has moved on to the next outer
++   * element. The takeWhile evaluates each element as it is produced, allocating in the inner
++   * element region the way a partition reader does, so memory freed too early is overwritten. */
++  @Test def testStreamFlatMapLazyInnerElementOutlivesInnerStream(implicit ctx: ExecuteContext)
++    : Unit = {
++    val nCols = 5
++    val parts = FastSeq(FastSeq(0, 1, 2), FastSeq(3, 4, 5))
++
++    def input: IR =
++      flatMapIR(ToStream(Literal(TArray(TArray(TInt32)), parts), true)) { part =>
++        val produced = takeWhile(mapIR(ToStream(part, true)) { k =>
++          makestruct("k" -> k, "a" -> ToArray(mapIR(rangeIR(nCols))(j => k * 100 + j)))
++        })(_ => True())
++        mapIR(produced) { row =>
++          makestruct(
++            "k" -> GetField(row, "k"),
++            "a" -> ToArray(mapIR(ToStream(GetField(row, "a")))(x => x + 0)),
++          )
++        }
++      }
++
++    val joined = zipJoin2IR(FastSeq(input, input), FastSeq("k")) { (key, vals) =>
++      InsertFields(key, FastSeq("as" -> mapArray(vals)(GetField(_, "a"))))
++    }
++
++    val expected = parts.flatten.map { k =>
++      RowSeq(k, ArraySeq.fill(2)(ArraySeq.tabulate(nCols)(k * 100 + _)))
++    }
++    assert(evalStream(joined) == expected)
++  }
++
+   @Test def testGroupedFlatMapMemManagementMismatch(implicit ctx: ExecuteContext): Unit =
+     assertMemoryDoesNotScaleWithStreamSize() { size =>
+       foldLength(flatMapIR(mapIR(StreamGrouped(rangeStructs(size), 16))(x => ToArray(x))) { a =>
+diff --git a/hail/python/test/hail/table/test_table.py b/hail/python/test/hail/table/test_table.py
+index 8a816a53b68..cfd2c370e33 100644
+--- a/hail/python/test/hail/table/test_table.py
++++ b/hail/python/test/hail/table/test_table.py
+@@ -699,6 +699,49 @@ def import_vcf(file: str, partitions: int):
+             'new_globals',
+         ).write(new_temp_file(extension='ht'))
+ 
++    def test_multi_way_zip_join_of_repartitioned_matrix_reads(self):
++        n_inputs, n_rows, n_cols = 3, 1000, 5
++        paths = []
++        for k in range(n_inputs):
++            mt = hl.utils.range_matrix_table(n_rows, n_cols, n_partitions=4)
++            mt = mt.filter_rows(hl.rand_bool(0.6, seed=k * 7919 + 1))
++            mt = mt.key_rows_by(locus=hl.locus('chr1', mt.row_idx * 10 + 1, reference_genome='GRCh38'))
++            mt = mt.drop('row_idx')
++            mt = mt.key_cols_by(s=f'b{k}_' + hl.str(mt.col_idx)).drop('col_idx')
++            h = hl.rand_int32(0, 100, seed=k)
++            mt = mt.select_entries(DP=h, GQ=h % 60, LGT=hl.call(0, 0), LEN=hl.int32(1 + h % 9))
++            mt = mt.filter_entries(h % 3 != 0)
++            path = new_temp_file(extension='mt')
++            mt.write(path)
++            paths.append(path)
++
++        def interval(start, end):
++            return hl.Interval(
++                hl.Struct(locus=hl.Locus('chr1', start, reference_genome='GRCh38')),
++                hl.Struct(locus=hl.Locus('chr1', end, reference_genome='GRCh38')),
++                True,
++                True,
++            )
++
++        # The second interval extends past the last row, so the reader's partitioning (requested
++        # intervals intersected with the on-disk partitioning) differs from the requested intervals
++        # and the reader repartitions back to the requested intervals.
++        intervals = [interval(621, 1870), interval(8751, 10000)]
++
++        def read(path):
++            mt = hl.read_matrix_table(path, _intervals=intervals)
++            mt = mt.annotate_entries(f=hl.missing(hl.tset(hl.tstr)))
++            return mt._localize_entries('__entries', '__cols')
++
++        j = hl.Table.multi_way_zip_join([read(p) for p in paths], 'data', 'globals')
++        bad = j.aggregate(
++            hl.agg.filter(
++                hl.any(lambda d: hl.is_defined(d) & (hl.len(d['__entries']) != n_cols), j.data),
++                hl.agg.collect(j.locus),
++            )
++        )
++        assert bad == []
++
+     def test_index_maintains_count(self):
+         t1 = hl.Table.parallelize(
+             [{'a': 'foo', 'b': 1}, {'a': 'bar', 'b': 2}, {'a': 'bar', 'b': 2}],

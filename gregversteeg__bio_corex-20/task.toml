@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/gregversteeg__bio_corex-20"
+description = "Implement clip of sig_ml to avoid divide by zero bug"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "bio_corex",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "gregversteeg/bio_corex"
+ref = "86bb7e03f2706a20cff016edf327504520a6d5db"
+reference = "https://github.com/gregversteeg/bio_corex/pull/20"
+source_access = "auto"
+built_at = "2026-11-13T15:43:38.348497+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:40a46d6f03448d41bbe3d86d616015de469990afd1e8729620a66938ec044426"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-09-01T16:33:20Z"
+diff_format = "unified"
+context_files = [
+    "Changelog.md",
+    "corex.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

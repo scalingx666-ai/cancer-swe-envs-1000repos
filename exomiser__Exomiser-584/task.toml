@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/exomiser__Exomiser-584"
+description = "Enhancement/html report"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Exomiser",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "exomiser/Exomiser"
+ref = "d8b8eff9505006ba23f62278ff89f6e15d6f867f"
+reference = "https://github.com/exomiser/Exomiser/pull/584"
+source_access = "auto"
+built_at = "2026-11-13T16:04:37.179074+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d38fdc6243eae42bb439704a887a9a1764fa355ab73c799da963146bc8f8e415"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-04-10T14:58:22Z"
+diff_format = "unified"
+context_files = [
+    "exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/filters/FilterReport.java",
+    "exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/filters/FilterType.java",
+    "exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/prioritisers/HiPhivePriorityResult.java",
+    "exomiser-core/src/main/java/org/monarchinitiative/exomiser/core/writers/HtmlResultsWriter.java",
+    "exomiser-core/src/main/resources/templates/results.html",
+    "exomiser-core/src/test/java/org/monarchinitiative/exomiser/core/filters/FilterReportTest.java",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1597
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Huang-lab__fastVEP-183"
+description = "chore(conda): point the recipe at the v0.5.0 tarball"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "fastVEP",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Huang-lab/fastVEP"
+ref = "9216575aeb14d467b520e2b0e1c8fc38f6ef77d7"
+reference = "https://github.com/Huang-lab/fastVEP/pull/183"
+source_access = "auto"
+built_at = "2026-11-13T15:34:45.231745+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b7421ab0e18c26324544ef983016aeca5538119a826126e5cf484dd12f7c00eb"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-11T15:30:31Z"
+diff_format = "unified"
+context_files = [
+    "conda/recipe/meta.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

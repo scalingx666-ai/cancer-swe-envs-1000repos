@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/ShixiangWang__sigminer-482"
+description = "P1: rust NMF backend -- isolated-process bridge to the certified msuiter KL-MU kernel (parity plan P1)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "sigminer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ShixiangWang/sigminer"
+ref = "e5975f139e1f78f27db76ca4f0b435fafc6c64cb"
+reference = "https://github.com/ShixiangWang/sigminer/pull/482"
+source_access = "auto"
+built_at = "2026-11-13T15:34:37.018559+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f18fcb2dbc98a6170d78f8aed25a808ac695d0dec1930224d119769d5ea290fd"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-14T16:31:07Z"
+diff_format = "unified"
+context_files = [
+    "NEWS.md",
+    "R/best_practice.R",
+    "R/rust_backend.R",
+    "R/sig_estimate.R",
+    "R/sig_extract.R",
+    "man/bp.Rd",
+    "man/sig_estimate.Rd",
+    "man/sig_extract.Rd",
+    "tests/testthat/fixtures/rust-backend/rpath-baseline.rds",
+    "tests/testthat/test-roxytest-testexamples-best_practice.R",
+    "tests/testthat/test-roxytest-testexamples-sig_estimate.R",
+    "tests/testthat/test-roxytest-testexamples-sig_extract.R",
+    "tests/testthat/test-rust-backend.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2042
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/linsalrob__ComputationalGenomicsManual-4"
+description = "Heatmaps for the win"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ComputationalGenomicsManual",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "linsalrob/ComputationalGenomicsManual"
+ref = "4c7c9103be0012edd3a182d0ff994590019fe941"
+reference = "https://github.com/linsalrob/ComputationalGenomicsManual/pull/4"
+source_access = "auto"
+built_at = "2026-11-13T16:03:59.173891+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5ae35a6b03e01aec251e7c1e36e999c2dd0d5432323fda1320e244da06d4fe7f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-06-18T08:24:07Z"
+diff_format = "unified"
+context_files = [
+    "Python/Python_Lesson_0.ipynb",
+    "Python/Python_Lesson_12.ipynb",
+    "Python/README.md",
+    "Python/phylum.tsv.gz",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2230
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

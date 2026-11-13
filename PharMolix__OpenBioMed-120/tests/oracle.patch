@@ -1,0 +1,527 @@
+diff --git a/.gitignore b/.gitignore
+index 0796a20..59e7196 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -159,3 +159,5 @@ cython_debug/
+ *.txt
+ !requirements.txt
+ *.pth
++.claude
++*.conf
+diff --git a/configs/visualization/molecule/3D.yaml b/configs/visualization/molecule/3D.yaml
+new file mode 100644
+index 0000000..f8f6b92
+--- /dev/null
++++ b/configs/visualization/molecule/3D.yaml
+@@ -0,0 +1,2 @@
++molecule:
++  mode: 3D
+\ No newline at end of file
+diff --git a/open_biomed/scripts/run_server.py b/open_biomed/scripts/run_server.py
+index 4d66251..e57639a 100644
+--- a/open_biomed/scripts/run_server.py
++++ b/open_biomed/scripts/run_server.py
+@@ -184,7 +184,7 @@ def handle_visualize_molecule(request: TaskRequest, pipeline):
+     #ligand = Molecule.from_binary_file(request.molecule)
+     #outputs = pipeline.run(ligand, config="ball_and_stick", rotate=False)
+     vis_process = [
+-                    "python3", "./open_biomed/core/visualize.py", 
++                    "python3", "./open_biomed/tools/visualization_tools.py",
+                     "--task", "visualize_molecule",
+                     "--molecule_config", request.visualize,
+                     "--save_output_filename", "./tmp/molecule_visualization_file.txt",
+@@ -201,7 +201,7 @@ def handle_visualize_complex(request: TaskRequest, pipeline):
+     #protein = Protein.from_pdb_file(request.protein)
+     #outputs = pipeline.run(molecule=ligand, protein=protein, rotate=True)
+     vis_process = [
+-                    "python3", "./open_biomed/core/visualize.py", 
++                    "python3", "./open_biomed/tools/visualization_tools.py",
+                     "--task", "visualize_complex",
+                     "--save_output_filename", "./tmp/complex_visualization_file.txt",
+                     "--molecule", request.molecule,
+@@ -240,7 +240,7 @@ def handle_protein_folding(request: TaskRequest, pipeline):
+ 
+ # Handlers for web_search
+ async def handle_molecule_name_request(request: SearchRequest, requester):
+-    outputs = await requester.run(request.query)
++    outputs = await requester.run_async(request.query)
+     smiles = outputs[0][0].smiles
+     output = outputs[1][0]
+     return {"task": request.task, "molecule": output, "molecule_preview": smiles}
+@@ -253,7 +253,7 @@ def handle_web_search(request: SearchRequest, requester):
+ async def handle_molecule_structure_request(request: SearchRequest, requester):
+     molecule = IO_Reader.get_molecule(request.molecule)
+     threshold = request.threshold
+-    outputs = await requester.run(molecule, threshold=float(threshold), max_records=1)
++    outputs = await requester.run_async(molecule, threshold=float(threshold), max_records=1)
+     # Pick a random molecule
+     index = random.randint(0, len(outputs[1])-1)
+     molecule = outputs[1][index]
+@@ -262,7 +262,7 @@ async def handle_molecule_structure_request(request: SearchRequest, requester):
+ 
+ 
+ async def handle_protein_uniprot_request(request: SearchRequest, requester):
+-    outputs = await requester.run(request.query)
++    outputs = await requester.run_async(request.query)
+     outputs = outputs[1][0]
+     protein = IO_Reader.get_protein(outputs)
+     protein_preview = str(protein)
+@@ -270,7 +270,7 @@ async def handle_protein_uniprot_request(request: SearchRequest, requester):
+ 
+ 
+ async def handle_protein_pdb_request(request: SearchRequest, requester):
+-    outputs = await requester.run(request.query)
++    outputs = await requester.run_async(request.query)
+     outputs = outputs[1][0]
+     protein = IO_Reader.get_protein(outputs)
+     protein_preview = str(protein)
+@@ -322,7 +322,7 @@ def handle_visualize_protein(request: TaskRequest, pipeline):
+     required_inputs = ["protein"]
+     protein = IO_Reader.get_protein(request.protein)
+     vis_process = [
+-                    "python3", "./open_biomed/core/visualize.py", 
++                    "python3", "./open_biomed/tools/visualization_tools.py",
+                     "--task", "visualize_protein",
+                     "--protein_config", request.visualize,
+                     "--save_output_filename", "./tmp/protein_visualization_file.txt",
+@@ -339,7 +339,7 @@ def handle_visualize_protein_pocket(request: TaskRequest, pipeline):
+     protein = IO_Reader.get_protein(request.protein)
+     pocket = IO_Reader.get_pocket(request.pocket)
+     vis_process = [
+-                    "python3", "./open_biomed/core/visualize.py", 
++                    "python3", "./open_biomed/tools/visualization_tools.py",
+                     "--task", "visualize_protein_pocket",
+                     "--save_output_filename", "./tmp/protein_pocket_visualization_file.txt",
+                     "--protein", request.protein,
+@@ -621,11 +621,9 @@ async def web_search(request: SearchRequest):
+         print(e)
+         raise HTTPException(status_code=500, detail=str(e))
+ 
+-"""
+ @app.get("/healthz")
+ def ping():
+     return "Service available"
+-"""
+ 
+ if __name__ == "__main__":
+     uvicorn.run(app, host="0.0.0.0", port=8082)
+diff --git a/open_biomed/tools/third_party_tools.py b/open_biomed/tools/third_party_tools.py
+index bd20d72..eb478a5 100644
+--- a/open_biomed/tools/third_party_tools.py
++++ b/open_biomed/tools/third_party_tools.py
+@@ -5,7 +5,6 @@
+ import glob
+ import logging
+ import random
+-import pandas as pd
+ import sys
+ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+ 
+@@ -58,22 +57,51 @@ def run(self, protein: Protein, threads: int=8) -> Tuple[List[Pocket], List[str]
+ 
+             
+             file = output_path + "/" + pdb_name + ".pdb_predictions.csv"
+-            pocket_df = pd.read_csv(file)
+-            
++            # 手动读取CSV，避免pandas版本兼容性问题
++            with open(file, 'r') as f:
++                lines = f.readlines()
++
+             pocket_residues = []
+-            for index, row in pocket_df.iterrows():
+-                pocket_name = row['name     ']
+-                residue_ids = row[' residue_ids'].split()  # Split a string into a list by space
+-                pocket_residues.append([int(i.split("_")[1]) for i in residue_ids])
++            for line in lines[1:]:  # 跳过header
++                values = line.strip().split(',')
++                if len(values) >= 10:
++                    residue_ids_str = values[9]  # residue_ids列
++                    residue_ids = residue_ids_str.split()
++                    parsed_residues = []
++                    for i in residue_ids:
++                        try:
++                            parts = i.split("_")
++                            if len(parts) >= 2:
++                                parsed_residues.append(int(parts[1]))
++                        except (ValueError, IndexError):
++                            pass
++                    if parsed_residues:
++                        pocket_residues.append(parsed_residues)
+ 
+             
+             protein = Protein.from_pdb_file(pdb_file)
+-            random.shuffle(pocket_residues)
++            # 创建PDB编号到residue索引的映射
++            res_id_to_idx = {res.res_id: i for i, res in enumerate(protein.residues)}
++
++            # 将PDB原始编号转换为protein.residues的索引
++            pocket_indices = []
++            for pdb_ids in pocket_residues:
++                indices = []
++                for pdb_id in pdb_ids:
++                    idx = res_id_to_idx.get(pdb_id)
++                    if idx is not None:
++                        indices.append(idx)
++                    else:
++                        logging.warning(f"Residue {pdb_id} not found in protein")
++                if indices:
++                    pocket_indices.append(indices)
++
++            random.shuffle(pocket_indices)
+ 
+             pockets, pocket_paths = [], []
+-            for pocket_residue in pocket_residues:
++            for pocket_idx in pocket_indices:
+                 try:
+-                    pocket = Pocket.from_protein_subseq(protein, pocket_residue)
++                    pocket = Pocket.from_protein_subseq(protein, pocket_idx)
+                     pocket_path = pocket.save_binary()
+                     pockets.append(pocket)
+                     pocket_paths.append(pocket_path)
+diff --git a/open_biomed/tools/visualization_tools.py b/open_biomed/tools/visualization_tools.py
+index f72e30b..82b07db 100644
+--- a/open_biomed/tools/visualization_tools.py
++++ b/open_biomed/tools/visualization_tools.py
+@@ -42,8 +42,10 @@ def visualize_complex_3D(
+         
+         if ligand_file is not None:
+             cmd.load(ligand_file, "ligand")
+-            for elem in config.molecule.show:
+-                cmd.show(elem, "ligand")
++            # 防御性编程：检查 molecule.show 属性是否存在
++            if hasattr(config.molecule, 'show'):
++                for elem in config.molecule.show:
++                    cmd.show(elem, "ligand")
+             for elem in config.molecule.__dict__.keys():
+                 if elem not in ["show", "mode"]:
+                     cmd.set(elem, config.molecule.__dict__[elem], "ligand")
+@@ -51,8 +53,10 @@ def visualize_complex_3D(
+         if protein_file is not None:
+             cmd.load(protein_file, "protein")
+             cmd.hide("everything", "protein")
+-            for elem in config.protein.show:
+-                cmd.show(elem, "protein")
++            # 防御性编程：检查 protein.show 属性是否存在
++            if hasattr(config.protein, 'show'):
++                for elem in config.protein.show:
++                    cmd.show(elem, "protein")
+             for elem in config.protein.__dict__.keys():
+                 if elem not in ["color", "show", "cnc"]:
+                     cmd.set(elem, config.protein.__dict__[elem], "protein")
+diff --git a/test/api_test.py b/test/api_test.py
+new file mode 100644
+index 0000000..0bb582d
+--- /dev/null
++++ b/test/api_test.py
+@@ -0,0 +1,310 @@
++import subprocess
++import logging
++import argparse
++
++# 配置日志
++logging.basicConfig(
++    filename="test_log.log",
++    level=logging.INFO,
++    format="%(asctime)s - %(levelname)s - %(message)s"
++)
++
++# 默认服务地址
++DEFAULT_BASE_URL = "http://127.0.0.1:8090"
++
++def get_curl_commands(base_url):
++    """生成 curl 命令列表，使用指定的 base_url"""
++    return [
++        {
++            "task": "healthz",
++            "command": f"curl -s '{base_url}/healthz'"
++        },
++        {
++            "task": "text_based_molecule_editing",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "text_based_molecule_editing", "model": "molt5", "molecule":"Nc1[nH]c(C(=O)c2ccccc2)c(-c2ccccn2)c1C(=O)c1c[nH]c2ccc(Br)cc12", "text": "This molecule can bind with recombinant human 15-LOX-1"}}'
++            """
++        },
++        {
++            "task": "structure_based_drug_design",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "structure_based_drug_design", "model": "pharmolix_fm", "pocket": "./checkpoints/server/test_data/4xli_B_ref_pocket.pkl"}}'
++            """
++        },
++        {
++            "task": "molecule_question_answering",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "molecule_question_answering", "model": "molt5", "molecule": "C[C@@H]1CCCCO[C@@H](CN(C)C(=O)Cc2ccccc2)[C@@H](C)CN([C@@H](C)CO)C(=O)c2cc(NS(C)(=O)=O)ccc2O1", "text": "Please identify if this molecule has a role as a conjugate acid, and if so, what is its paired conjugate base?"}}'
++            """
++        },
++        {
++            "task": "visualize_molecule",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "visualize_molecule", "visualize": "3D", "molecule": "CC(=O)Oc1ccccc1C(=O)O"}}'
++            """
++        },
++        {
++            "task": "visualize_complex",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "visualize_complex", "molecule": "CC(=O)Oc1ccccc1C(=O)O", "protein": "./checkpoints/server/test_data/4xli_B.pdb"}}'
++            """
++        },
++        {
++            "task": "molecule_name_request",
++            "command": f"""
++            curl -X 'POST' '{base_url}/web_search/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "molecule_name_request", "query": "aspirin"}}'
++            """
++        },
++        {
++            "task": "molecule_property_prediction",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "molecule_property_prediction", "model": "graphmvp", "dataset": "BBBP", "molecule":"CC(=O)Oc1ccccc1C(=O)O"}}'
++            """
++        },
++        {
++            "task": "web_search",
++            "command": f"""
++            curl -X 'POST' '{base_url}/web_search/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "web_search", "query": "糖尿病"}}'
++            """
++        },
++        {
++            "task": "protein_binding_site_prediction",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "protein_binding_site_prediction", "model": "p2pocket", "protein": "./checkpoints/server/test_data/4xli_B.pdb"}}'
++            """
++        },
++        {
++            "task": "protein_question_answering",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "protein_question_answering", "model": "biot5", "protein": "MRVGVIRFPGSNCDRDVHHVLELAGAEPEYVWWNQRNLDHLDAVVIPGGFSYGDYLRAGAIAAITPVMDAVRELVREEKPVLGICNGAQILAEVGLVPGVFTVNEHPKFNCQWTELRVKTTRTPFTGLFKKDEVIRMPVAHAEGRYYHDNISEVWENDQVVLQFHGENPNGSLDGITGVCDESGLVCAVMPHPERASEEILGSVDGFKFFRGILKFRG", "text": "Inspect the protein sequence and offer a concise description of its properties."}}'
++            """
++        },
++        {
++            "task": "mutation_explanation",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "mutation_explanation", "model": "mutaplm", "mutation": "H163A", "protein": "MTLENVLEAARHLHQTLPALSEFGNWPTDLTATGLQPRAIPATPLVQALDQPGSPRTTGLVQAIRSAAHLAHWKRTYTEAEVGADFRNRYGYFELFGPTGHFHSTQLRGYVAYWGAGLDYDWHSHQAEELYLTLAGGAVFKVDGERAFVGAEGTRLHASWQSAAMSTGDQPILTFVLWRGEGLNALPRMDAA"}}'
++            """
++        },
++        {
++            "task": "mutation_engineering",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "mutation_engineering", "model": "mutaplm", "text": "Strongly enhanced InsP6 kinase activity.", "protein": "MASDAAAEPSSGVTHPPRYVIGYALAPKKQQSFIQPSLVAQAASRGMDLVPVDASQPLAEQGPFHLLIHALYGDDWRAQLVAFAARHPAVPIVDPPHAIDRLHNRISMLQVVSELDHAADQDSTFGIPSQVVVYDAAALADFGLLAALRFPLIAKPLVADGTAKSHKMSLVYHREGLGKLRPPLVLQEFVNHGGVIFKVYVVGGHVTCVKRRSLPDVSPEDDASAQGSVSFSQVSNLPTERTAEEYYGEKSLEDAVVPPAAFINQIAGGLRRALGLQLFNFDMIRDVRAGDRYLVIDINYFPGYAKMPGYETVLTDFFWEMVHKDGVGNQQEEKGANHVVVK"}}'
++            """
++        },
++        {
++            "task": "pocket_molecule_docking",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "pocket_molecule_docking", "model": "pharmolix_fm", "molecule": "./checkpoints/server/test_data/4xli_B_ref.sdf", "pocket": "./checkpoints/server/test_data/4xli_B_ref_pocket.pkl"}}'
++            """
++        },
++        {
++            "task": "protein_molecule_docking_score",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "protein_molecule_docking_score", "model": "vina", "molecule": "./checkpoints/server/test_data/4xli_B_ref.sdf", "protein": "./checkpoints/server/test_data/4xli_B.pdb"}}'
++            """
++        },
++        {
++            "task": "protein_folding",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "protein_folding", "model": "esmfold", "protein": "MASDAAAEPSSGVTHPPRYVIGYALAPKKQQSFIQPSLVAQAASRGMDLVPVDASQPLAEQGPFHLLIHALYGDDWRAQLVAFAARHPAVPIVDPPHAIDRLHNRISMLQVVSELDHAADQDSTFGIPSQVVVYDAAALADFGLLAALRFPLIAKPLVADGTAKSHKMSLVYHREGLGKLRPPLVLQEFVNHGGVIFKVYVVGGHVTCVKRRSLPDVSPEDDASAQGSVSFSQVSNLPTERTAEEYYGEKSLEDAVVPPAAFINQIAGGLRRALGLQLFNFDMIRDVRAGDRYLVIDINYFPGYAKMPGYETVLTDFFWEMVHKDGVGNQQEEKGANHVVVK"}}'
++            """
++        },
++        {
++            "task": "visualize_protein",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "visualize_protein", "visualize": "cartoon", "protein": "./checkpoints/server/test_data/4xli_B.pdb"}}'
++            """
++        },
++        {
++            "task": "visualize_protein_pocket",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "visualize_protein_pocket", "protein": "./checkpoints/server/test_data/4xli_B.pdb", "pocket": "./checkpoints/server/test_data/4xli_B_ref_pocket.pkl"}}'
++            """
++        },
++        {
++            "task": "molecule_structure_request",
++            "command": f"""
++            curl -X 'POST' '{base_url}/web_search/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "molecule_structure_request", "threshold": "0.95", "molecule": "C=C(O)C1CC(C)C23CC4OC(C)COC4C(C)C4CC(O2)C(O)C4C32CC12"}}'
++            """
++        },
++        {
++            "task": "protein_uniprot_request",
++            "command": f"""
++            curl -X 'POST' '{base_url}/web_search/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "protein_uniprot_request", "query": "P0DTC2"}}'
++            """
++        },
++        {
++            "task": "protein_pdb_request",
++            "command": f"""
++            curl -X 'POST' '{base_url}/web_search/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "protein_pdb_request", "query": "6LVN"}}'
++            """
++        },
++        {
++            "task": "export_molecule",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "export_molecule", "molecule": "./checkpoints/server/test_data/4xli_B_ref.sdf"}}'
++            """
++        },
++        {
++            "task": "export_protein",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "export_protein", "protein": "./checkpoints/server/test_data/4xli_B.pdb"}}'
++            """
++        },
++        {
++            "task": "import_pocket",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "import_pocket", "protein": "./checkpoints/server/test_data/4xli_B.pdb", "indices": "76;77;78;79;80"}}'
++            """
++        },
++        {
++            "task": "molecule_similarity",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "molecule_similarity", "model": "rdkit", "molecule_1": "CC(=O)Oc1ccccc1C(=O)O", "molecule_2": "CC(=O)Oc1ccccc1C(=O)O"}}'
++            """
++        },
++        {
++            "task": "molecule_property_calculation",
++            "command": f"""
++            curl -X 'POST' '{base_url}/run_pipeline/' \
++            -H 'accept: application/json' \
++            -H 'Content-Type: application/json' \
++            -d '{{"task": "molecule_property_calculation", "model": "rdkit", "molecule": "CC(=O)Oc1ccccc1C(=O)O", "property": "QED"}}'
++            """
++        },
++    ]
++
++
++def run_tests(base_url, test_filter=None):
++    """执行测试"""
++    curl_commands = get_curl_commands(base_url)
++
++    results = {"success": [], "failed": []}
++
++    for test in curl_commands:
++        task = test["task"]
++
++        # 如果指定了测试过滤器，只运行匹配的测试
++        if test_filter and test_filter.lower() not in task.lower():
++            continue
++
++        command = test["command"].strip()
++
++        try:
++            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True, timeout=120)
++            output = result.stdout.strip()
++            logging.info(f"Task: {task} - Success: {output}")
++            print(f"[PASS] Task: {task}")
++            print(f"       Output: {output[:100]}...")
++            results["success"].append(task)
++        except subprocess.CalledProcessError as e:
++            error_message = e.stderr.strip() or e.stdout.strip()
++            logging.error(f"Task: {task} - Error: {error_message}")
++            print(f"[FAIL] Task: {task}")
++            print(f"       Error: {error_message[:200]}")
++            results["failed"].append({"task": task, "error": error_message})
++        except subprocess.TimeoutExpired:
++            logging.error(f"Task: {task} - Timeout")
++            print(f"[TIMEOUT] Task: {task}")
++            results["failed"].append({"task": task, "error": "Timeout"})
++        except Exception as e:
++            logging.error(f"Task: {task} - Unexpected error: {str(e)}")
++            print(f"[ERROR] Task: {task} - {str(e)}")
++            results["failed"].append({"task": task, "error": str(e)})
++
++    # 打印总结
++    print("\n" + "=" * 50)
++    print(f"测试总结 (base_url: {base_url})")
++    print("=" * 50)
++    print(f"成功: {len(results['success'])}")
++    print(f"失败: {len(results['failed'])}")
++    if results['failed']:
++        print("\n失败的接口:")
++        for f in results['failed']:
++            print(f"  - {f['task']}: {f['error'][:100]}")
++
++    return results
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(description="OpenBioMed API 测试脚本")
++    parser.add_argument("--url", type=str, default=DEFAULT_BASE_URL, help="服务地址 (默认: http://127.0.0.1:8090)")
++    parser.add_argument("--test", type=str, default=None, help="只运行指定的测试 (如: healthz, molecule)")
++    args = parser.parse_args()
++
++    print(f"测试服务地址: {args.url}")
++    print("=" * 50)
++
++    run_tests(args.url, args.test)
+\ No newline at end of file

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/AmpliconSuite__AmpliconSuite-pipeline-111"
+description = "Post-1.6.2: Apptainer note and Conda recipe update"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "AmpliconSuite-pipeline",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "AmpliconSuite/AmpliconSuite-pipeline"
+ref = "9b6cf5696ddc7e6d9bb8bea3ee15dd11cd04ce94"
+reference = "https://github.com/AmpliconSuite/AmpliconSuite-pipeline/pull/111"
+source_access = "auto"
+built_at = "2026-11-13T15:37:42.930696+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6b766d48867746278d8ff247692d96c18f455359b6bfcf80946621bb057b099d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-06T20:13:32Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "conda-recipe/meta.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

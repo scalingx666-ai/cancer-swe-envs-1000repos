@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/zaneveld__full_spectrum_bioinformatics-199"
+description = "Bio intro"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "full_spectrum_bioinformatics",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zaneveld/full_spectrum_bioinformatics"
+ref = "632f7fefe718fc073733390a025df7daa06d9fc6"
+reference = "https://github.com/zaneveld/full_spectrum_bioinformatics/pull/199"
+source_access = "auto"
+built_at = "2026-11-13T16:20:04.234943+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b4f0f002e6b8a0585afa96e1ffd16bb8617491d5cbaa581ca7d793b7eab56744"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-17T17:09:00Z"
+diff_format = "unified"
+context_files = [
+    "content/02_introduction/a_short_intro_to_biology.ipynb",
+    "content/08_phylogenetic_trees/parsing_newick_files.ipynb",
+    "content/09_visualization/basic_data_visualizations_backup.ipynb",
+    "content/11_statistics/monte_carlo_vs_analytical_probability_grimes_dice.py",
+    "content/14_appendix_data_sources/resources/ArrayExpress_logo.jpeg",
+    "content/14_appendix_data_sources/resources/clinvar_logo.svg",
+    "content/vignettes/vignette_shirin_maki/resources/Shirin_Maki_Vignette_Photo.jpg",
+    "content/vignettes/vignette_shirin_maki/resources/Shirin_Maki_Vignette_Photo_Cropped.jpeg",
+    "content/vignettes/vignette_shirin_maki/vignette_shirin_maki.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1495
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/bioconvert__bioconvert-382"
+description = "Add 3D genome Hi-C format converters: HIC2COOL and COOL2HIC"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "bioconvert",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "bioconvert/bioconvert"
+ref = "307907547acaa75c00dfff9119807588cf779a51"
+reference = "https://github.com/bioconvert/bioconvert/pull/382"
+source_access = "auto"
+built_at = "2026-11-13T15:56:51.968032+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:bed92751c7739227f5d810673672ac47f79a6ce3d6e36bd2c2a32b136b2854af"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-04-04T20:27:58Z"
+diff_format = "unified"
+context_files = [
+    "bioconvert/cool2hic.py",
+    "bioconvert/core/extensions.py",
+    "bioconvert/hic2cool.py",
+    "pyproject.toml",
+    "requirements.txt",
+    "test/test_cool2hic.py",
+    "test/test_hic2cool.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 195
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

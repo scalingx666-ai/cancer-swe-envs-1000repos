@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Gabaldonlab__redundans-119"
+description = "Bugfix minimap2scaffold minimap2 compatibility through bioconda"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "redundans",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Gabaldonlab/redundans"
+ref = "dd1343932aadec4eddf48120f74b511ba1f1c7ca"
+reference = "https://github.com/Gabaldonlab/redundans/pull/119"
+source_access = "auto"
+built_at = "2026-11-13T16:12:14.677353+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7e1433315ffe3a9da9f344002846fb6ecda3cf9f683b7dbddbb0efabe0cfe645"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-28T10:25:00Z"
+diff_format = "unified"
+context_files = [
+    "bin/fasta2scaffold.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 68
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

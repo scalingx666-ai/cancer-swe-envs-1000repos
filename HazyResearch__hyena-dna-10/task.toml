@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/HazyResearch__hyena-dna-10"
+description = "Speed-up Genomic Benchmarks dataloader"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "hyena-dna",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "HazyResearch/hyena-dna"
+ref = "7016972bf8e155457598b717472ada2f5295a8a1"
+reference = "https://github.com/HazyResearch/hyena-dna/pull/10"
+source_access = "auto"
+built_at = "2026-11-13T15:49:59.547349+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ae19e7be5343a9fc44725a029c6d6a2bdf7f0560ab9ea3d45075600059516854"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-10-17T01:15:43Z"
+diff_format = "unified"
+context_files = [
+    "src/dataloaders/datasets/genomic_bench_dataset.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 17
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

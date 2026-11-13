@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/NVIDIA-Genomics-Research__GenomeWorks-659"
+description = "[cudaaligner] Fixed bug in memory requirement estimation and misc improvements"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "GenomeWorks",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "NVIDIA-Genomics-Research/GenomeWorks"
+ref = "ff91970d2ba3eb6d268d4c18bf392d6fee849180"
+reference = "https://github.com/NVIDIA-Genomics-Research/GenomeWorks/pull/659"
+source_access = "auto"
+built_at = "2026-11-13T16:00:59.174897+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c361e1f62866d1a12f3c32207379252e9bce170df9b210a4351a66d90867d694"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-08-12T14:34:14Z"
+diff_format = "unified"
+context_files = [
+    "cudaaligner/include/claraparabricks/genomeworks/cudaaligner/aligner.hpp",
+    "cudaaligner/src/aligner.cpp",
+    "cudaaligner/src/aligner_global.hpp",
+    "cudaaligner/src/aligner_global_myers_banded.cpp",
+    "cudaaligner/src/aligner_global_myers_banded.hpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 107
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

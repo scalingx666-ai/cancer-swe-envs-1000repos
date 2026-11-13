@@ -1,0 +1,130 @@
+diff --git a/bioconda-recipe/README.md b/bioconda-recipe/README.md
+index eab2da4e..26dcbeae 100644
+--- a/bioconda-recipe/README.md
++++ b/bioconda-recipe/README.md
+@@ -8,7 +8,7 @@ before being copied there.
+ 
+ | Path | Target repository | Purpose |
+ | --- | --- | --- |
+-| `meta.yaml`, `build.sh`, `test_overlap.py` | `bioconda/bioconda-recipes` → `recipes/polars-bio/` | The polars-bio package |
++| `meta.yaml`, `build.sh` | `bioconda/bioconda-recipes` → `recipes/polars-bio/` | The polars-bio package |
+ | `conda-forge-recipes/polars-config-meta/recipe.yaml` | `conda-forge/staged-recipes` → `recipes/polars-config-meta/` | Historical standalone plugin recipe; no longer a polars-bio dependency |
+ 
+ The two recipes deliberately use different formats. conda-forge deprecated the
+@@ -75,10 +75,12 @@ bioconda-utils build --docker --mulled-test --packages polars-bio
+ 
+ Bioconda builds `linux-64` and `osx-64` by default; `osx-arm64` and
+ `linux-aarch64` require an explicit `extra: additional-platforms:` entry. The
+-recipe opts in to both ARM targets. polars-bio's own CI builds macOS arm64
+-and Linux arm64 wheels and runs the Python suite on a native Linux arm64 runner.
+-Bioconda does not build Windows packages at all; Windows users continue to
+-install from PyPI.
++recipe opts in to `osx-arm64` only. polars-bio's own CI builds macOS arm64
++and Linux arm64 wheels and runs the Python suite on a native Linux arm64 runner,
++but bioconda has never built the recipe for `linux-aarch64`. Enable it in a
++recipe-only PR rather than alongside a version bump, so a failure there cannot
++block a release. Bioconda does not build Windows packages at all; Windows users
++continue to install from PyPI.
+ 
+ ## Release automation
+ 
+@@ -97,28 +99,21 @@ dependencies. If a release changes the pins in `pyproject.toml`, the `run:`
+ section here and in the upstream Bioconda recipe has to be updated by hand —
+ the bot only rewrites version, sha256 and build number.
+ 
+-### 0.37.0 handoff
+-
+-The runtime requirements and license entry in `meta.yaml` are already staged for
+-0.37.0. Once its sdist is published, update the
+-[upstream Bioconda recipe](https://github.com/bioconda/bioconda-recipes/blob/master/recipes/polars-bio/meta.yaml)
+-in the same PR as the source bump:
+-
+-1. Set `version` to `0.37.0`, use the published sdist's SHA256, and reset the
+-   build number to `0`. Update the local source version and checksum together too.
+-2. Remove `polars-config-meta` from `requirements.run`. Older released sdists
+-   still require it, so apply the removal together with the new source artifact.
+-3. Set the Polars runtime requirement to `>=1.40.0,<2.2` and remove the obsolete
+-   comment that Polars 2 is unsupported.
+-4. Add `polars_bio/licenses/polars-config-meta/LICENSE` to `about.license_file`
+-   to retain attribution for the adapted metadata provider.
+-5. Run the recipe's `pip check` and overlap smoke test in a fresh build/test
+-   environment without `polars-config-meta`.
+-
+-No `build.sh` change or removal of the standalone conda-forge package is needed.
+-The local version and SHA256 remain paired with a published sdist until the
+-0.37.0 artifact is available; this staged recipe must not be built against that
+-older source.
++When the run dependencies change, the bot's bump PR still opens with the old
++pins and Mergify will merge it once it builds. Open a replacement PR from a fork
++that carries the version, sha256 and dependency changes together, and comment on
++the bot's PR that it is superseded. The bot closes its own PR once the
++replacement merges. 0.37.0 went this way: bioconda-recipes#71352 replaced
++autobump #71351, allowing `polars >=1.40.0,<2.2` and dropping
++`polars-config-meta`.
++
++A quick check before opening such a PR, without a full build: install the
++published wheel in a fresh venv at each end of the new dependency range, run
++`pip check`, and run each rendered `test/commands` entry through
++`bash -c <shlex.quote(cmd)>` to reproduce the mulled-container re-quoting.
++
++`meta.yaml` here matches the upstream recipe except for comment wording. Sync
++it after each manual upstream change.
+ 
+ ## Maintainers
+ 
+diff --git a/bioconda-recipe/meta.yaml b/bioconda-recipe/meta.yaml
+index cf1b2555..c1403dc2 100644
+--- a/bioconda-recipe/meta.yaml
++++ b/bioconda-recipe/meta.yaml
+@@ -1,8 +1,5 @@
+ {% set name = "polars-bio" %}
+-{% set version = "0.33.1" %}
+-
+-# Runtime requirements and licenses below are staged for 0.37.0.
+-# Update the source version and SHA256 together after its sdist is published.
++{% set version = "0.37.0" %}
+ 
+ package:
+   name: {{ name|lower }}
+@@ -10,7 +7,7 @@ package:
+ 
+ source:
+   url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/polars_bio-{{ version }}.tar.gz
+-  sha256: 341b2e2821cee55efa428836b102769d6b31eb7c6d6c6444593cc9cddedd5ecd
++  sha256: 693b5cfc4e8620d7edd8ce193624a1404dcd4467d492f8a96d11412f0b9326d6
+ 
+ build:
+   number: 0
+@@ -41,10 +38,14 @@ requirements:
+     - maturin >=1.0,<2.0
+   run:
+     - python
++    # polars-bio 0.37.0 supports polars 1.x and 2.0/2.1 (tested on 1.40,
++    # 1.44 and 2.x). polars < 1.40 returns wrong counts for cool/mcool scans.
+     - polars >=1.40.0,<2.2
+     - pyarrow >=23.0.1,<25
+     - datafusion >=53.0.0,<54
+     - tqdm >=4.67.0,<5
++    # polars-config-meta is no longer a dependency: since 0.37.0 polars-bio
++    # ships its own frame-metadata implementation (MIT notice retained below).
+ 
+ test:
+   imports:
+@@ -97,11 +98,13 @@ about:
+   dev_url: https://github.com/biodatageeks/polars-bio
+ 
+ extra:
+-  # polars-bio's own CI builds macOS aarch64 and Linux aarch64 wheels (and runs
+-  # the test suite on a native Linux arm64 runner) from this same crate graph,
+-  # so the Rust build is known to work on both.
++  # osx-arm64 only. Bioconda builds it natively on an Apple Silicon runner, and
++  # polars-bio's own CI already builds macOS aarch64 wheels from this same crate
++  # graph, so the Rust build is known to work there. linux-aarch64 is not
++  # enabled yet: polars-bio's CI builds and tests Linux arm64 wheels, but
++  # bioconda has never built this recipe for it, and a failing new platform
++  # would block every release bump.
+   additional-platforms:
+-    - linux-aarch64
+     - osx-arm64
+   recipe-maintainers:
+     - mwiewior

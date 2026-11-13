@@ -1,0 +1,925 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d12fa7f..eb3459d 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -14,6 +14,17 @@
+ 
+ ---
+ 
++## Unreleased
++
++### Added
++
++- **Primer checks now support a Benchling-compatible Tm profile and pair-level
++  analysis.** `check-primer` and the simple `design-primers` modes can use
++  the opt-in profile. The new read-only `check-primer-pair` endpoint checks the
++  annealing arms against a template while evaluating hairpins and dimers on the
++  complete oligos, including cloning tails. Responses mark truncated site and
++  amplicon searches. They also report dU-to-T normalization.
++
+ ## [1.3.5] — 2026-09-29
+ 
+ ### Bug fixes
+diff --git a/README.md b/README.md
+index ff6ea3b..2c32b98 100644
+--- a/README.md
++++ b/README.md
+@@ -404,6 +404,9 @@ A 260+ endpoint localhost JSON API (`splicecraft --agent`, or `--headless` for
+ a no-UI server with a `/healthz` probe) and a stdlib-only CLI
+ (`splicecraft-cli`, including a `call` passthrough to every endpoint) drive
+ every workflow. `/tools` self-describes each endpoint's request schema.
++Primer workflows include pair-level binding, amplicon and secondary-structure
++checks, plus an opt-in Benchling-compatible Tm profile for single-primer and
++simple cloning/generic primer design.
+ `--agent --read-only` attaches **alongside a running GUI** — every read answers,
+ every write returns 409 naming the process holding the lock, and nothing on
+ disk changes. See [`docs/agent-api.md`](docs/agent-api.md) and
+diff --git a/docs/agent-api.md b/docs/agent-api.md
+index 82802d1..9a9eba0 100644
+--- a/docs/agent-api.md
++++ b/docs/agent-api.md
+@@ -383,7 +383,17 @@ curl -s -H "Authorization: Bearer $TOKEN" \
+   is never silent. A degenerate oligo gets a real nearest-neighbour `tm` —
+   its WEAKEST variant, which is what sets the anneal — plus `tm_range`
+   spanning the mix. Sites come back ranked, and `truncated` says whether
+-  `max_sites` cut the list short), optimize-protein
++  `max_sites` cut the list short. Set `tm_profile` to
++  `"benchling_compatible"` to use the same SantaLucia conditions as the
++  Benchling-compatible design modes), check-primer-pair
++  (a complete forward/reverse PCR-primer pair against one template. Optional
++  `forward_binding` and `reverse_binding` identify the annealing 3' suffixes,
++  while hairpin and dimer checks use each complete oligo, including its 5'
++  cloning tail. The response reports binding sites, Tm difference,
++  homo/heterodimer energies and candidate amplicons. `truncated` on either
++  primer or `amplicons_truncated` on the pair means the capped search was not
++  exhaustive, so uniqueness is not established. A dU base is read as T and
++  reported with `read_u_as_t`), optimize-protein
+   (codon-optimise an AA sequence to a chosen table — `table` is a taxid
+   (integer or string) OR a table NAME, and one it cannot resolve is a `404`,
+   never a quiet fall-back to the E. coli default; optional `stops`
+@@ -938,7 +948,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
+   primer-collection, parts-bin, experiment-project, enzyme-collection,
+   hmm-database) has a matching `get-active-*` so a client can read the
+   current selection before changing it.
+-- **Utility** — check-primer-duplicates, capture-snapshot.
++- **Primer Tm profiles** — `design-primers` accepts
++  `tm_profile: "benchling_compatible"` in `cloning` and `generic` modes.
++  Detection mode accepts only `primer3_default` because Primer3 calculates Tm
++  during pair design.
++- **Utility** — check-primer-pair, check-primer-duplicates, capture-snapshot.
+ - **OT-2 / Opentrons** (liquid-handler control) — `ot2-compile` turns a
+   plate-transfer plan (a pipette, labware on deck slots, and `from → to` well
+   transfers with µL volumes) into an Opentrons Protocol API v2 `.py` text,
+diff --git a/docs/agent-endpoints.md b/docs/agent-endpoints.md
+index 79859d0..52fff81 100644
+--- a/docs/agent-endpoints.md
++++ b/docs/agent-endpoints.md
+@@ -32,6 +32,7 @@ Regenerate with `python3 scripts/gen_agent_endpoint_index.py`.
+ | `capture-snapshot` | W | Write a Markdown UI snapshot (same content as Alt+D) and return the file path. Useful for an agent assembling a bug report: snapshot first, then… |
+ | `check-primer` | R | Check ONE primer against a template: melting temp, GC%, and every 3'-anchored binding site (both strands, wrap-aware on a circular template).… |
+ | `check-primer-duplicates` | R | Scan the primer library for duplicate sequences. Returns a list of groups where multiple entries share the same canonical primer sequence — useful… |
++| `check-primer-pair` | R | Analyse one PCR-primer pair. Body: `{forward_primer, reverse_primer, template, forward_binding?, reverse_binding?, circular?: bool = true,… |
+ | `classify-part` | R | Classify a candidate part by digest-overhang matching, without persisting. Body: `{sequence, circular?: bool = true, features?: list}` — same… |
+ | `clear-entry-vectors-for-grammar` | W | Drop every entry-vector binding for one grammar id. Body: `{grammar_id: str}`. Used by grammar-delete flows; agents rarely need this directly but… |
+ | `cofold-rna` | R | Bound-state heterodimer ΔG of two strands. Body: `{seq_a, seq_b}`. Returns `{ok, dg}` — the free energy (kcal/mol) of strand B bound to strand A… |
+@@ -76,7 +77,7 @@ Regenerate with `python3 scripts/gen_agent_endpoint_index.py`.
+ | `design-gb-part` | R | Design Golden Braid / MoClo domestication primers. Body: `{template, start, end, part_type, grammar?, target_tm?, codon_taxid?,… |
+ | `design-guides` | R | CRISPR guide design over the loaded plasmid or a supplied sequence. |
+ | `design-mutagenesis` | R | Design SOE-PCR primers for a single-site mutation. Body: `{cds_dna, mutation, codon_taxid?}`. `mutation` is a string like `"W140F"` (WT-aa,… |
+-| `design-primers` | R | Primer-pair design over a target region. Body: `{template, start, end, mode?: "detection"\|"cloning"\|"generic", target_tm?: float, site_5?: str,… |
++| `design-primers` | R | Primer-pair design over a target region. Body: `{template, start?, end?, mode?: "detection"\|"cloning"\|"generic"\| "allele_specific", target_tm?:… |
+ | `design-rbs` | R | Reverse-design a 5'UTR (Shine-Dalgarno + spacer) for a target relative RBS strength. Body: `{cds, target}` — `cds` begins with the start codon,… |
+ | `design-synthesis-fragment` | R | Wrap a sequence in the correct nested overhangs so the directly- SYNTHESISED fragment (order it as a gBlock — no PCR) becomes a Level-0 part once… |
+ | `diff-plasmid` | R | Pairwise alignment of the loaded record against another plasmid in the library. Body: `{target_id, mode?, circular?}`. |
+diff --git a/splicecraft.py b/splicecraft.py
+index bcb2c16..cee4569 100644
+--- a/splicecraft.py
++++ b/splicecraft.py
+@@ -9907,6 +9907,7 @@ def _stamp_history_root_date(hist_xml: "str | None",
+     _fuse_overhang_body as _fuse_overhang_body,
+     _build_pupd2_backbone_stub as _build_pupd2_backbone_stub,
+     _PUPD2_BACKBONE_STUB as _PUPD2_BACKBONE_STUB,
++    _insilico_pcr_amplicons as _insilico_pcr_amplicons,
+     _simulate_primed_amplicon as _simulate_primed_amplicon,
+     _simulate_cloned_plasmid as _simulate_cloned_plasmid,
+     _cloned_plasmid_regenerated_sites as _cloned_plasmid_regenerated_sites,
+@@ -98308,82 +98309,6 @@ def _simulate_pcr(
+ _PRIMER_CHECK_MAX_ROWS  = 1000   # results-table row cap across the whole library
+ 
+ 
+-def _insilico_pcr_amplicons(
+-    sites_a: "list[dict]", sites_b: "list[dict]", total: int, *,
+-    circular: bool = True,
+-    max_amplicon: int = _PCR_DEFAULT_MAX_AMPLICON,
+-    min_amplicon: int = 1,
+-    max_amplicons: int = _PCR_MAX_AMPLICONS,
+-) -> "list[dict]":
+-    """Pair forward + reverse binding sites (POOLED across both primers) into
+-    amplicons. Geometry mirrors `_simulate_pcr`: a product runs from a forward
+-    site's foot_start to a reverse site's foot_start+length, the reverse site
+-    downstream (clockwise on a circle). `sites_a`/`sites_b` are the
+-    `_primer_binding_sites` lists for primer 1 / primer 2; `fwd_primer`
+-    /`rev_primer` in each result record which primer (0 or 1) plays each role
+-    (so hetero P1×P2 and homo P1×P1 products are both surfaced honestly).
+-
+-    Returns amplicons sorted by certainty (min of the two site identities)
+-    desc, then length asc::
+-
+-        {"start": int,        # amplicon 5' on the top strand, canonical [0,total)
+-         "length": int, "wraps": bool,
+-         "fwd_ident": float, "rev_ident": float, "certainty": float,
+-         "fwd_primer": 0|1, "rev_primer": 0|1,
+-         "rev_3p": int}       # reverse primer 3' end (canonical)
+-    """
+-    if total <= 0:
+-        return []
+-    fwd = [(s, idx) for idx, lst in ((0, sites_a), (1, sites_b))
+-           for s in (lst or []) if s["strand"] == 1]
+-    rev = [(s, idx) for idx, lst in ((0, sites_a), (1, sites_b))
+-           for s in (lst or []) if s["strand"] == -1]
+-    max_amp = max(1, min(int(max_amplicon), _PCR_AMPLICON_HARD_CAP))
+-    amps: "list[dict]" = []
+-    seen: "set[tuple[int, int, int]]" = set()
+-    for fs, fidx in fwd:
+-        f_left = fs["foot_start"]
+-        for rs, ridx in rev:
+-            r_left = rs["foot_start"]            # reverse primer 3' end
+-            lr = rs["length"]
+-            if circular:
+-                length = ((r_left - f_left) % total) + lr
+-            else:
+-                if r_left < f_left or r_left + lr > total:
+-                    continue
+-                length = (r_left + lr) - f_left
+-            # Floor at fwd_len + rev_len (matching `_simulate_pcr`'s `min_amp`)
+-            # so an overlapping / primer-dimer geometry — where the product
+-            # would be shorter than the two primers laid end to end — is never
+-            # reported as a real amplicon.
+-            lo = max(int(min_amplicon), fs["length"] + lr)
+-            if length < lo or length > max_amp:
+-                continue
+-            start = f_left % total
+-            end_canon = (f_left + length) % total
+-            key = (start, end_canon, length)
+-            if key in seen:
+-                continue
+-            seen.add(key)
+-            amps.append({
+-                "start":      start,
+-                "length":     length,
+-                "wraps":      bool(circular and (f_left + length) > total),
+-                "fwd_ident":  fs["ident_pct"],
+-                "rev_ident":  rs["ident_pct"],
+-                "certainty":  min(fs["ident_pct"], rs["ident_pct"]),
+-                "fwd_primer": fidx,
+-                "rev_primer": ridx,
+-                "rev_3p":     r_left,
+-            })
+-            if len(amps) >= max_amplicons:
+-                break
+-        if len(amps) >= max_amplicons:
+-            break
+-    amps.sort(key=lambda a: (-a["certainty"], a["length"], a["start"]))
+-    return amps
+-
+-
+ def _arc_intervals(start: int, length: int, total: int) -> "list[tuple[int, int]]":
+     """Split the arc [start, start+length) on a circle of size `total` into
+     1–2 linear [s, e) intervals within [0, total)."""
+@@ -102823,6 +102748,7 @@ def action_cancel(self) -> None:
+     _h_design_synthesis_fragment as _h_design_synthesis_fragment,
+     _h_design_primers as _h_design_primers,
+     _h_check_primer as _h_check_primer,
++    _h_check_primer_pair as _h_check_primer_pair,
+     _h_list_experiments as _h_list_experiments,
+     _h_delete_experiment as _h_delete_experiment,
+     _h_list_experiment_projects as _h_list_experiment_projects,
+diff --git a/splicecraft_agent.py b/splicecraft_agent.py
+index 2ba5fa8..df789a3 100644
+--- a/splicecraft_agent.py
++++ b/splicecraft_agent.py
+@@ -68,13 +68,13 @@
+ from splicecraft_widgets import (_PLASMID_STATUS_COLORS)
+ from splicecraft_backup import (_AGENT_BACKUP_LABELS, _PRE_UPDATE_NAME_RE, _export_migrate_archive, _list_recoverable_backups, _resolve_backup_label, _restore_from_backup, _restore_pre_update_snapshot)
+ from splicecraft_biology import (_covered_identity, _read_extent_for, _read_is_clipped, _digest_with_enzymes, _enzyme_aliases, _enzyme_site_methylation_targets, _methylated_base_positions, _enzyme_cuts, _enzyme_resolve_one, _enzyme_signature, _resolve_enzyme_names, _scan_restriction_sites)
+-from splicecraft_cloning import (_PCR_AMPLICON_HARD_CAP, _PCR_DEFAULT_MAX_AMPLICON, _PCR_MAX_AMPLICONS, _PCR_MAX_PRIMER_LEN, _PCR_MAX_TEMPLATE_BP, _PCR_MIN_PRIMER_LEN, _build_synthesis_l0_fragment, _design_gb_primers, _entry_vector_acceptor_overhangs, _grammar_position_by_type, _l0_part_from_syn_fragment)
++from splicecraft_cloning import (_PCR_AMPLICON_HARD_CAP, _PCR_DEFAULT_MAX_AMPLICON, _PCR_MAX_AMPLICONS, _PCR_MAX_PRIMER_LEN, _PCR_MAX_TEMPLATE_BP, _PCR_MIN_PRIMER_LEN, _build_synthesis_l0_fragment, _design_gb_primers, _entry_vector_acceptor_overhangs, _grammar_position_by_type, _insilico_pcr_amplicons, _l0_part_from_syn_fragment)
+ from splicecraft_dataaccess import (_active_enzyme_resolution, _agent_scan_library_for_key, _find_enzyme_collection, _find_library_entry_by_name, _find_parts_bin, _find_project, _get_active_enzyme_collection_name, _get_active_parts_bin_name, _get_active_project_name, _load_parts_bin_collections, _set_active_enzyme_collection_name, _set_active_parts_bin_name, _set_active_project_name)
+ from splicecraft_fileio import (_export_fasta_to_path, _export_genbank_to_path, _export_gff_to_path, _extract_gbk_member, _fastq_count_reads, _fastq_path_to_records)
+ from splicecraft_gels import (_AGAROSE_CHOICES, _GEL_HEIGHT_MAX, _GEL_HEIGHT_MIN, _GEL_LANE_WIDTH_MAX, _GEL_LANE_WIDTH_MIN, _GEL_MAX_LANES, _agarose_mobility, _gel_bands_for_lane, _gel_resolve_enzymes, _render_gel_image)
+ from splicecraft_persistence import (_safe_save_json_mirror)
+ from splicecraft_regulatory import (_PROMOTER_MIN_SCORE, _TERM_MAX_STEM, _TERM_MIN_STEM, _TERM_MIN_U_TRACT, _TERM_U_TRACT_WINDOW, _scan_promoters, _scan_terminators)
+-from splicecraft_primer import (_AS_MIN_LEN, _design_allele_specific_primer, _design_cloning_primers_raw, _design_detection_primers, _design_generic_primers, _primer_binding_sites, _primer_check_confidence, _primer_tm)
++from splicecraft_primer import (_AS_MIN_LEN, _TM_PROFILES, _design_allele_specific_primer, _design_cloning_primers_raw, _design_detection_primers, _design_generic_primers, _mut_hairpin_dg, _mut_homodimer_dg, _primer_binding_sites, _primer_check_confidence, _primer_heterodimer_dg, _primer_tm, _tm_profile_kwargs)
+ 
+ 
+ def _custom_enzyme_meta(name: str) -> "dict | None":
+@@ -5482,7 +5482,8 @@ def _h_check_primer(app, payload):
+     """Check ONE primer against a template: melting temp, GC%, and every
+     3'-anchored binding site (both strands, wrap-aware on a circular
+     template). Body: ``{primer, template?, circular?: bool = true,
+-    min_identity?: float = 0, max_sites?: int = 50}``.
++    min_identity?: float = 0, max_sites?: int = 50,
++    tm_profile?: "primer3_default"|"benchling_compatible"}``.
+ 
+     `template` defaults to the LOADED plasmid (with its own topology). With
+     no template and nothing loaded, the melting temperature and GC% are
+@@ -5509,6 +5510,10 @@ def _h_check_primer(app, payload):
+     length, ident_pct, mismatches, confidence}]}`` — `foot_start` is the
+     0-based footprint start on the cleaned template; sites are
+     best-first (highest identity)."""
++    tm_profile = payload.get("tm_profile", "primer3_default")
++    if not isinstance(tm_profile, str) or tm_profile not in _TM_PROFILES:
++        return ({"error": "'tm_profile' must be 'primer3_default' or "
++                          "'benchling_compatible'"}, 400)
+     primer_raw = payload.get("primer")
+     template_raw = payload.get("template")
+     seq_raw = payload.get("sequence")
+@@ -5540,6 +5545,14 @@ def _h_check_primer(app, payload):
+         return ({"error": "no IUPAC bases in 'primer'"}, 400)
+     if len(primer) > 1000:
+         return ({"error": "'primer' too long (max 1000 bp)"}, 413)
++    # For a degenerate oligo, `tm` is the minimum member Tm and `tm_range`
++    # contains the minimum and maximum. Use the selected profile for both.
++    bracket = _degenerate_tm_bracket(
++        primer, **_tm_profile_kwargs(tm_profile))
++    tm_extra = ({"tm_range": [round(bracket[0], 1), round(bracket[1], 1)],
++                 "tm_note": "degenerate oligo: tm is the weakest member's "
++                            "nearest-neighbour Tm. tm_range spans the mix"}
++                if bracket is not None else {})
+     loaded_default = False
+     if template_raw is None or not template_raw.strip():
+         rec = getattr(app, "_current_record", None)
+@@ -5548,7 +5561,9 @@ def _h_check_primer(app, payload):
+             gc = sum(1 for c in primer if c in "GCS")
+             return {
+                 "ok": True, "primer": primer, "length": len(primer),
+-                "tm": _primer_tm(primer),
++                "tm": _primer_tm(primer, tm_profile),
++                "tm_profile": tm_profile,
++                **tm_extra,
+                 "gc_pct": round(100.0 * gc / len(primer), 1),
+                 "binds": None, "n_sites": 0, "sites": [],
+                 "note": "no template given and no plasmid loaded — melting "
+@@ -5609,18 +5624,12 @@ def _h_check_primer(app, payload):
+     gc = sum(1 for c in primer if c in "GCS")
+     gc_pct = round(100.0 * gc / len(primer), 1)
+     best = max((s["ident_pct"] for s in out_sites), default=None)
+-    # A degenerate oligo is a mix: `tm` is its WEAKEST member's Tm (what the
+-    # anneal must respect) and `tm_range` says how far the mix spreads.
+-    bracket = _degenerate_tm_bracket(primer)
+-    tm_extra = ({"tm_range": [round(bracket[0], 1), round(bracket[1], 1)],
+-                 "tm_note": "degenerate oligo: tm is the weakest member's "
+-                            "nearest-neighbour Tm; tm_range spans the mix"}
+-                if bracket is not None else {})
+     return {
+         "ok":            True,
+         "primer":        primer,
+         "length":        len(primer),
+-        "tm":            _primer_tm(primer),
++        "tm":            _primer_tm(primer, tm_profile),
++        "tm_profile":    tm_profile,
+         **tm_extra,
+         "gc_pct":        gc_pct,
+         "circular":      circular,
+@@ -5637,6 +5646,162 @@ def _h_check_primer(app, payload):
+     }
+ 
+ 
++@_agent_endpoint("check-primer-pair")
++def _h_check_primer_pair(app, payload):
++    """Analyse one PCR-primer pair. Body: ``{forward_primer,
++    reverse_primer, template, forward_binding?, reverse_binding?,
++    circular?: bool = true, tm_profile?: "primer3_default"|
++    "benchling_compatible", max_amplicon?: int = 20000}``.
++
++    Tm and template binding use the annealing sequence (the explicit
++    ``*_binding`` value, or the whole primer when omitted). Hairpin,
++    homodimer and heterodimer calculations use the complete ordered oligos,
++    including cloning tails. An explicit binding sequence must be a 3' suffix
++    of its full primer. This excludes bases from the non-annealing 5' tail.
++
++    ``tm_profile`` affects Tm only. Secondary-structure checks use the standard
++    Primer3 reaction conditions. Candidate amplicons include hetero-primer and
++    homo-primer products.
++
++    Read-only. ΔG values are in kcal/mol. A ``None`` value has a corresponding
++    warning. Each primer reports ``truncated`` and optional ``read_u_as_t``.
++    The pair reports ``amplicons_truncated`` when the search reaches its limit.
++    """
++    tm_profile = payload.get("tm_profile", "primer3_default")
++    if not isinstance(tm_profile, str) or tm_profile not in _TM_PROFILES:
++        return ({"error": "'tm_profile' must be 'primer3_default' or "
++                          "'benchling_compatible'"}, 400)
++    template_raw = payload.get("template") or payload.get("sequence")
++    if not isinstance(template_raw, str) or not template_raw.strip():
++        return ({"error": "missing or non-string 'template'"}, 400)
++    template, bad = _check_primer_bases(template_raw, "template")
++    if bad:
++        return ({"error": bad}, 400)
++    if not template:
++        return ({"error": "no IUPAC bases in 'template'"}, 400)
++    if len(template) > _PAIRWISE_MAX_LEN:
++        return ({"error": f"'template' exceeds {_PAIRWISE_MAX_LEN:,} bp cap"},
++                413)
++
++    primers: "dict[str, str]" = {}
++    bindings: "dict[str, str]" = {}
++    read_u_as_t: "dict[str, bool]" = {}
++    for role in ("forward", "reverse"):
++        full_raw = payload.get(f"{role}_primer")
++        if not isinstance(full_raw, str) or not full_raw.strip():
++            return ({"error": f"missing or non-string '{role}_primer'"}, 400)
++        full, bad = _check_primer_bases(full_raw,
++                                         f"{role}_primer")
++        if bad or not full:
++            return ({"error": bad or f"empty '{role}_primer'"}, 400)
++        if len(full) > 1000:
++            return ({"error": f"'{role}_primer' too long (max 1000 bp)"}, 413)
++        binding_raw = payload.get(f"{role}_binding")
++        if binding_raw is None:
++            binding = full
++        else:
++            if not isinstance(binding_raw, str) or not binding_raw.strip():
++                return ({"error": f"'{role}_binding' must be a non-empty "
++                                  "string"}, 400)
++            binding, bad = _check_primer_bases(binding_raw, f"{role}_binding")
++            if bad or not binding:
++                return ({"error": bad or f"empty '{role}_binding'"}, 400)
++            if not full.endswith(binding):
++                return ({"error": f"'{role}_binding' must be a 3' suffix of "
++                                  f"'{role}_primer'"}, 400)
++        primers[role] = full
++        bindings[role] = binding
++        read_u_as_t[role] = (
++            "U" in full_raw.upper()
++            or (isinstance(binding_raw, str) and "U" in binding_raw.upper())
++        )
++
++    max_amplicon = _coerce_int(payload.get("max_amplicon", 20_000),
++                               name="max_amplicon")
++    if isinstance(max_amplicon, str):
++        return ({"error": max_amplicon}, 400)
++    if not (1 <= max_amplicon <= _PCR_AMPLICON_HARD_CAP):
++        return ({"error": f"'max_amplicon' must be in [1, "
++                          f"{_PCR_AMPLICON_HARD_CAP}]"}, 400)
++    circular = _payload_bool(payload, "circular", True)
++
++    checked: "dict[str, dict]" = {}
++    for role in ("forward", "reverse"):
++        result = _h_check_primer(app, {
++            "primer": bindings[role], "template": template,
++            "circular": circular, "tm_profile": tm_profile,
++        })
++        if isinstance(result, tuple):
++            return result
++        checked[role] = result
++
++    amps = _insilico_pcr_amplicons(
++        checked["forward"]["sites"], checked["reverse"]["sites"],
++        len(template), circular=circular, max_amplicon=max_amplicon,
++        max_amplicons=_PCR_MAX_AMPLICONS + 1,
++    )
++    amplicons_truncated = len(amps) > _PCR_MAX_AMPLICONS
++    amps = amps[:_PCR_MAX_AMPLICONS]
++    warnings: "list[str]" = []
++    if amplicons_truncated:
++        warnings.append(
++            f"candidate amplicons were truncated at {_PCR_MAX_AMPLICONS}. "
++            "amplicon uniqueness is not established")
++
++    def _primer_result(role: str) -> dict:
++        full = primers[role]
++        hp = _mut_hairpin_dg(full)
++        hd = _mut_homodimer_dg(full)
++        if hp is None or hd is None:
++            warnings.append(
++                f"{role} hairpin/self-dimer ΔG could not be computed. "
++                "That primer is not fully secondary-structure checked")
++        check = checked[role]
++        if check["truncated"]:
++            warnings.append(
++                f"{role} binding sites were truncated at {check['n_sites']}. "
++                "amplicon uniqueness is not established")
++        return {
++            "primer": full,
++            "binding": bindings[role],
++            "tm": check["tm"],
++            "gc_pct": check["gc_pct"],
++            "hairpin_dg": None if hp is None else round(hp, 2),
++            "homodimer_dg": None if hd is None else round(hd, 2),
++            "n_sites": check["n_sites"],
++            "sites": check["sites"],
++            "truncated": check["truncated"],
++            **({"read_u_as_t": True,
++                "note_u": "deoxyuridine (U) read as T for primer analysis"}
++               if read_u_as_t[role] else {}),
++        }
++
++    fwd = _primer_result("forward")
++    rev = _primer_result("reverse")
++    hetero = _primer_heterodimer_dg(
++        primers["forward"], primers["reverse"])
++    if hetero is None:
++        warnings.append(
++            "pair heterodimer ΔG could not be computed. The pair is not "
++            "fully secondary-structure checked")
++    return {
++        "ok": True,
++        "forward": fwd,
++        "reverse": rev,
++        "pair": {
++            "tm_delta": (None if fwd["tm"] is None or rev["tm"] is None
++                         else round(abs(fwd["tm"] - rev["tm"]), 1)),
++            "heterodimer_dg": (None if hetero is None else round(hetero, 2)),
++            "n_amplicons": len(amps),
++            "amplicons": amps,
++            "amplicons_truncated": amplicons_truncated,
++        },
++        "tm_profile": tm_profile,
++        "dg_units": "kcal/mol",
++        "warnings": warnings,
++    }
++
++
+ @_agent_endpoint("check-primer-duplicates")
+ def _h_check_primer_duplicates(app, payload):
+     """Scan the primer library for duplicate sequences. Returns a
+@@ -12023,8 +12188,9 @@ def _covers(site, pos, total):
+ @_agent_endpoint("design-primers")
+ def _h_design_primers(app, payload):
+     """Primer-pair design over a target region. Body:
+-    ``{template, start, end, mode?: "detection"|"cloning"|"generic",
+-        target_tm?: float, site_5?: str, site_3?: str}``.
++    ``{template, start?, end?, mode?: "detection"|"cloning"|"generic"|
++        "allele_specific", target_tm?: float, site_5?: str, site_3?: str,
++        tm_profile?: "primer3_default"|"benchling_compatible"}``.
+ 
+     Wraps `_design_detection_primers`, `_design_cloning_primers_raw`,
+     and `_design_generic_primers`:
+@@ -12043,8 +12209,11 @@ def _h_design_primers(app, payload):
+         the selected region. Returns `fwd_seq`/`rev_seq` +
+         `fwd_pos`/`rev_pos`. Needs ≥ 18 bp.
+ 
+-    All modes return `fwd_tm`/`rev_tm`. The primer dict is under the
+-    `result` key, with `mode` echoed alongside.
++    All modes return `fwd_tm` and `rev_tm`. ``primer3_default`` is the default
++    Tm profile. Cloning and generic modes also accept
++    ``benchling_compatible``. Detection mode accepts only ``primer3_default``
++    because Primer3 calculates Tm during pair design. The response contains
++    the primer data under `result` and repeats the selected `mode`.
+     """
+     template = payload.get("template") or payload.get("sequence")  # SC-G alias
+     if not isinstance(template, str) or not template.strip():
+@@ -12084,6 +12253,14 @@ def _h_design_primers(app, payload):
+         return ({"error": "'target_tm' must be a number"}, 400)
+     if not (40.0 <= target_tm <= 90.0):
+         return ({"error": "'target_tm' must be in [40, 90] °C"}, 400)
++    tm_profile = payload.get("tm_profile", "primer3_default")
++    if not isinstance(tm_profile, str) or tm_profile not in _TM_PROFILES:
++        return ({"error": "'tm_profile' must be 'primer3_default' or "
++                          "'benchling_compatible'"}, 400)
++    if mode == "detection" and tm_profile != "primer3_default":
++        return ({"error": "'benchling_compatible' is supported only for "
++                          "cloning and generic modes because detection mode "
++                          "uses Primer3 pair selection"}, 400)
+     try:
+         if mode == "detection":
+             result = _design_detection_primers(
+@@ -12094,6 +12271,7 @@ def _h_design_primers(app, payload):
+             # forward anneals at the region start, the reverse at the end.
+             result = _design_generic_primers(
+                 template_clean, start, end, target_tm=target_tm,
++                tm_profile=tm_profile,
+             )
+         else:
+             site_5 = payload.get("site_5", "")
+@@ -12104,14 +12282,15 @@ def _h_design_primers(app, payload):
+             result = _design_cloning_primers_raw(
+                 template_clean, start, end,
+                 site_5=site_5.upper(), site_3=site_3.upper(),
+-                target_tm=target_tm,
++                target_tm=target_tm, tm_profile=tm_profile,
+             )
+     except Exception as exc:
+         _log.exception("agent design-primers: design failed")
+         return ({"error": f"design failed: {_scrub_path(str(exc))}"}, 500)
+     if isinstance(result, dict) and result.get("error"):
+         return ({"error": result["error"]}, 422)
+-    return {"ok": True, "mode": mode, "result": result}
++    return {"ok": True, "mode": mode, "tm_profile": tm_profile,
++            "result": result}
+ 
+ 
+ def _agent_project_experiments_list(project):
+diff --git a/splicecraft_cloning.py b/splicecraft_cloning.py
+index 971c62b..38db4cb 100644
+--- a/splicecraft_cloning.py
++++ b/splicecraft_cloning.py
+@@ -1,7 +1,8 @@
+ """splicecraft_cloning — construction simulation (Phase D, layer L3).
+ 
+-The "simulate the real steps" construction helpers ([INV-127]): build real
+-amplicons (`_simulate_primed_amplicon`), assemble real cloned plasmids via
++The "simulate the real steps" construction helpers ([INV-127]): identify PCR
++products (`_insilico_pcr_amplicons`), build real amplicons
++(`_simulate_primed_amplicon`), assemble real cloned plasmids via
+ digest+ligation (`_simulate_cloned_plasmid`), the pUPD2 backbone stub, overhang
+ fusion, the Commercial-SaaS `.dna` history serialisation, and the **Gibson assembly
+ simulator** ([INV-85/86]): `_simulate_gibson_assembly` + its `_gibson_*` helpers
+@@ -5073,3 +5074,77 @@ def _grammar_position_overhangs(grammar: dict,
+ # either side at this many positions and refuse — surfacing a clearer error
+ # than a multi-second UI freeze on a pure-A primer.
+ _PCR_MAX_PRIMER_HITS    = 5_000
++
++
++def _insilico_pcr_amplicons(
++    sites_a: "list[dict]", sites_b: "list[dict]", total: int, *,
++    circular: bool = True,
++    max_amplicon: int = _PCR_DEFAULT_MAX_AMPLICON,
++    min_amplicon: int = 1,
++    max_amplicons: int = _PCR_MAX_AMPLICONS,
++) -> "list[dict]":
++    """Build amplicons from forward and reverse sites in both primer lists.
++
++    Geometry matches `_simulate_pcr`. A product starts at the forward site's
++    `foot_start` and ends after the downstream reverse site. On a circular
++    template, downstream follows the clockwise direction. `fwd_primer` and
++    `rev_primer` identify which primer list supplies each site. The results
++    include hetero-primer and homo-primer products.
++
++    Returns amplicons sorted by certainty (min of the two site identities)
++    desc, then length asc::
++
++        {"start": int,        # amplicon 5' on the top strand, canonical [0,total)
++         "length": int, "wraps": bool,
++         "fwd_ident": float, "rev_ident": float, "certainty": float,
++         "fwd_primer": 0|1, "rev_primer": 0|1,
++         "rev_3p": int}       # reverse primer 3' end (canonical)
++    """
++    if total <= 0:
++        return []
++    fwd = [(s, idx) for idx, lst in ((0, sites_a), (1, sites_b))
++           for s in (lst or []) if s["strand"] == 1]
++    rev = [(s, idx) for idx, lst in ((0, sites_a), (1, sites_b))
++           for s in (lst or []) if s["strand"] == -1]
++    max_amp = max(1, min(int(max_amplicon), _PCR_AMPLICON_HARD_CAP))
++    amps: "list[dict]" = []
++    seen: "set[tuple[int, int, int]]" = set()
++    for fs, fidx in fwd:
++        f_left = fs["foot_start"]
++        for rs, ridx in rev:
++            r_left = rs["foot_start"]            # reverse primer 3' end
++            r_len = rs["length"]
++            if circular:
++                length = ((r_left - f_left) % total) + r_len
++            else:
++                if r_left < f_left or r_left + r_len > total:
++                    continue
++                length = (r_left + r_len) - f_left
++            # Match `_simulate_pcr`: exclude products shorter than the combined
++            # primer lengths because those sites form an overlap geometry.
++            lo = max(int(min_amplicon), fs["length"] + r_len)
++            if length < lo or length > max_amp:
++                continue
++            start = f_left % total
++            end_canon = (f_left + length) % total
++            key = (start, end_canon, length)
++            if key in seen:
++                continue
++            seen.add(key)
++            amps.append({
++                "start": start,
++                "length": length,
++                "wraps": bool(circular and (f_left + length) > total),
++                "fwd_ident": fs["ident_pct"],
++                "rev_ident": rs["ident_pct"],
++                "certainty": min(fs["ident_pct"], rs["ident_pct"]),
++                "fwd_primer": fidx,
++                "rev_primer": ridx,
++                "rev_3p": r_left,
++            })
++            if len(amps) >= max_amplicons:
++                break
++        if len(amps) >= max_amplicons:
++            break
++    amps.sort(key=lambda a: (-a["certainty"], a["length"], a["start"]))
++    return amps
+diff --git a/splicecraft_primer.py b/splicecraft_primer.py
+index e49529b..1f38769 100644
+--- a/splicecraft_primer.py
++++ b/splicecraft_primer.py
+@@ -122,6 +122,33 @@ def _mut_aa_to_codons() -> dict:
+ _MUT_P3 = dict(mv_conc=50.0, dv_conc=1.5, dntp_conc=0.6, dna_conc=50.0)
+ 
+ 
++# Tm conditions for primer-check and simple primer-design endpoints.
++# `primer3_default` uses Primer3 defaults. `benchling_compatible` specifies
++# SantaLucia conditions for comparison with Benchling results.
++_TM_PROFILES = {
++    "primer3_default": {},
++    "benchling_compatible": {
++        "mv_conc": 50.0,
++        "dv_conc": 0.0,
++        "dntp_conc": 0.0,
++        "dna_conc": 250.0,
++        "tm_method": "santalucia",
++        "salt_corrections_method": "santalucia",
++        "max_nn_length": 60,
++    },
++}
++
++
++def _tm_profile_kwargs(name: str = "primer3_default") -> dict:
++    """Return a copy of Primer3 kwargs for a supported Tm profile."""
++    if name not in _TM_PROFILES:
++        raise ValueError(
++            f"unknown tm_profile {name!r}. Expected one of "
++            f"{', '.join(_TM_PROFILES)}"
++        )
++    return dict(_TM_PROFILES[name])
++
++
+ def _mut_parse(s: str) -> tuple:
+     """Parse a mutation string like 'W140F'. Returns (wt_aa, pos_1based, mut_aa)."""
+     m = re.fullmatch(r"([A-Za-z\*])(\d+)([A-Za-z\*])", s.strip())
+@@ -266,6 +293,22 @@ def _mut_homodimer_dg(seq: str) -> "float | None":
+     return val
+ 
+ 
++def _primer_heterodimer_dg(seq1: str, seq2: str) -> "float | None":
++    """Pair heterodimer ΔG in kcal/mol, or ``None`` when unmeasured."""
++    try:
++        import primer3
++        return (primer3.calc_heterodimer(
++            seq1, seq2,
++            mv_conc=_MUT_P3["mv_conc"], dv_conc=_MUT_P3["dv_conc"],
++            dntp_conc=_MUT_P3["dntp_conc"], dna_conc=_MUT_P3["dna_conc"],
++        ).dg / _CAL_PER_KCAL)
++    except Exception:
++        _log.exception(
++            "_primer_heterodimer_dg: primer3.calc_heterodimer raised on "
++            "%d/%d-mers. Reporting None (not measured)", len(seq1), len(seq2))
++        return None
++
++
+ def _mut_gc_pct(seq: str) -> float:
+     s = seq.upper()
+     return (s.count("G") + s.count("C")) / len(s) * 100 if seq else 0.0
+@@ -555,7 +598,7 @@ def _primer_check_confidence(pct: "float | int | None") -> "tuple[str, str]":
+ # designers (primer3 thermodynamics; enzyme catalog via _state._all_enzymes_hook).
+ # Verified by the real-plasmid design golden (byte-identical output). The GB /
+ # domestication-scrub designers (_design_gb_primers / _scrub_*) stay hub-side.
+-def _primer_tm(seq: str) -> "float | None":
++def _primer_tm(seq: str, tm_profile: str = "primer3_default") -> "float | None":
+     """Melting temperature (°C, 1 dp) of an oligo — primer3's nearest-neighbour
+     model when available, else the 2(A+T)+4(G+C) rule. Module-level so the CSV
+     import (and any caller) can compute a Tm without the local ``_calc_tm``
+@@ -563,13 +606,14 @@ def _primer_tm(seq: str) -> "float | None":
+     s = (seq or "").strip().upper()
+     if not s:
+         return None
++    conditions = _tm_profile_kwargs(tm_profile)
+     try:
+         import primer3
+-        return round(float(primer3.calc_tm(s)), 1)
++        return round(float(primer3.calc_tm(s, **conditions)), 1)
+     except Exception:
+         # Degenerate oligo → its weakest member's NN Tm (what the anneal must
+         # respect), not the 2+4 rule, which runs ~8-12 °C away from it.
+-        bracket = _degenerate_tm_bracket(s)
++        bracket = _degenerate_tm_bracket(s, **conditions)
+         if bracket is not None:
+             return round(bracket[0], 1)
+         gc = sum(1 for c in s if c in "GC")
+@@ -604,7 +648,8 @@ def _binding_max_len(tail_len: int, min_len: int = 18) -> int:
+ 
+ 
+ def _pick_binding_region(seq: str, target_tm: float = 60.0,
+-                         min_len: int = 18, max_len: int = 25) -> tuple[str, float]:
++                         min_len: int = 18, max_len: int = 25,
++                         tm_profile: str = "primer3_default") -> tuple[str, float]:
+     """Return the prefix of `seq` (length min_len..max_len) whose Tm is
+     closest to `target_tm`. Uses primer3-py's SantaLucia Tm calculation.
+ 
+@@ -625,6 +670,7 @@ def _tm_fallback(s: str) -> float:
+         # (mirrors `_primer_tm` / `_mut_tm`).
+         return float(2 * at + 4 * gc + 3 * (len(u) - gc - at))
+     _tm: "_Callable[..., float]"
++    conditions = _tm_profile_kwargs(tm_profile)
+     try:
+         import primer3
+         _p3_tm = primer3.calc_tm
+@@ -656,7 +702,8 @@ def _tm_fallback(s: str) -> float:
+         # longer drops the whole design onto the 2+4 rule.
+         def _tm_nn(s: str) -> float:
+             try:
+-                return float(_p3_tm(s.upper().translate(_IUPAC_WEAKEST_BASE)))
++                return float(_p3_tm(
++                    s.upper().translate(_IUPAC_WEAKEST_BASE), **conditions))
+             except (ValueError, OSError, RuntimeError, TypeError):
+                 return _tm_fallback(s)
+         _window = seq[:max_len].upper()
+@@ -823,6 +870,7 @@ def _design_cloning_primers_raw(
+     name_3: str = "3'site",
+     target_tm: float = 60.0,
+     padding: str = "GCGC",
++    tm_profile: str = "primer3_default",
+ ) -> dict:
+     """Design cloning primers with arbitrary recognition-site tails + padding.
+ 
+@@ -853,10 +901,12 @@ def _design_cloning_primers_raw(
+     # Cap each binding so the TOTAL oligo (tail + binding) stays within
+     # `_PRIMER_MAX_OLIGO_LEN`; tail = padding + RE site.
+     fwd_bind, fwd_tm = _pick_binding_region(
+-        insert, target_tm, max_len=_binding_max_len(len(padding) + len(site_5)))
++        insert, target_tm, max_len=_binding_max_len(len(padding) + len(site_5)),
++        tm_profile=tm_profile)
+     rev_bind, rev_tm = _pick_binding_region(
+         _rc(insert), target_tm,
+-        max_len=_binding_max_len(len(padding) + len(site_3)))
++        max_len=_binding_max_len(len(padding) + len(site_3)),
++        tm_profile=tm_profile)
+ 
+     fwd_full = padding + site_5 + fwd_bind
+     rev_full = padding + _rc(site_3) + rev_bind
+@@ -893,6 +943,7 @@ def _design_cloning_primers(
+     re_3prime: str,
+     target_tm: float = 60.0,
+     padding: str = "GCGC",
++    tm_profile: str = "primer3_default",
+ ) -> dict:
+     """Design cloning primers using enzyme names from the combined
+     catalog (built-in NEB ∪ user-added custom). Delegates to
+@@ -907,7 +958,7 @@ def _design_cloning_primers(
+     return _design_cloning_primers_raw(
+         template_seq, start, end, site_5, site_3,
+         name_5=re_5prime, name_3=re_3prime,
+-        target_tm=target_tm, padding=padding,
++        target_tm=target_tm, padding=padding, tm_profile=tm_profile,
+     )
+ 
+ 
+@@ -917,6 +968,7 @@ def _design_generic_primers(
+     start: int,
+     end: int,
+     target_tm: float = 60.0,
++    tm_profile: str = "primer3_default",
+ ) -> dict:
+     """Design simple binding primers (no tails, no RE sites, no overhangs).
+ 
+@@ -931,9 +983,10 @@ def _design_generic_primers(
+     # No tail (binding-only primers) → the whole oligo IS the binding, so it
+     # may grow up to the full `_PRIMER_MAX_OLIGO_LEN`.
+     fwd_bind, fwd_tm = _pick_binding_region(
+-        insert, target_tm, max_len=_binding_max_len(0))
++        insert, target_tm, max_len=_binding_max_len(0), tm_profile=tm_profile)
+     rev_bind, rev_tm = _pick_binding_region(
+-        _rc(insert), target_tm, max_len=_binding_max_len(0))
++        _rc(insert), target_tm, max_len=_binding_max_len(0),
++        tm_profile=tm_profile)
+     if wraps:
+         fwd_pos = (start, (start + len(fwd_bind)) % total)
+         rev_pos = ((end - len(rev_bind)) % total, end)
+diff --git a/tests/test_agent_api.py b/tests/test_agent_api.py
+index fb53ff1..37057a3 100644
+--- a/tests/test_agent_api.py
++++ b/tests/test_agent_api.py
+@@ -6124,6 +6124,23 @@ def test_generic_binding_only(self):
+         # No tail keys leak in from the other modes.
+         assert "fwd_full" not in res
+ 
++    def test_generic_accepts_benchling_compatible_tm_profile(self):
++        n = len(_PRIMER_TMPL)
++        r = sc._h_design_primers(None, {
++            "template": _PRIMER_TMPL, "start": 0, "end": n,
++            "mode": "generic", "tm_profile": "benchling_compatible",
++        })
++        assert r["ok"] and r["tm_profile"] == "benchling_compatible"
++        assert r["result"]["fwd_tm"] == sc._primer_tm(
++            r["result"]["fwd_seq"], "benchling_compatible")
++
++    def test_detection_rejects_unapplied_tm_profile(self):
++        err, code = sc._h_design_primers(None, {
++            "template": _PRIMER_TMPL, "start": 0, "end": len(_PRIMER_TMPL),
++            "mode": "detection", "tm_profile": "benchling_compatible",
++        })
++        assert code == 400 and "detection mode" in err["error"]
++
+     def test_generic_region_too_short_422(self):
+         r = sc._h_design_primers(None, {"template": _PRIMER_TMPL, "start": 0,
+                                         "end": 10, "mode": "generic"})
+@@ -6158,6 +6175,40 @@ def test_no_template_and_nothing_loaded_still_gives_tm(self):
+         assert r["tm"] == sc._primer_tm("ACGTACGTTTGGCCAAGTGA")
+         assert r["gc_pct"] == 50.0 and r["binds"] is None and "note" in r
+ 
++    @pytest.mark.parametrize(("sequence", "expected"), [
++        ("tactgtttctccatacccgtttttttggg", 59.4),
++        ("TGGCCTTTTTGCGTTTCTACAAACT", 58.2),
++        ("CTCAGTTCGGTGTAGGTCGTTCGCTCCAAGCTGGGCTGTGTGCACGAACCCCCCGTTCAGCC"
++         "CGACCGCTGCGCCTTATCCGGTAACTATCGTCTTGAGTCCAACCCGGTAAGACACGACTTAT"
++         "CGCCACTGGCAGCAGCCACTGGTAACAGGATTAGCAGAGCGAGGTATGTAGG", 80.3),
++    ])
++    def test_benchling_compatible_reference_values(self, sequence, expected):
++        r = sc._h_check_primer(None, {
++            "primer": sequence, "tm_profile": "benchling_compatible",
++        })
++        assert r["tm"] == pytest.approx(expected, abs=0.1)
++        assert r["tm_profile"] == "benchling_compatible"
++
++    def test_tm_profile_is_opt_in_and_validated(self):
++        seq = "TACTGTTTCTCCATACCCGTTTTTTTGGG"
++        default = sc._h_check_primer(None, {"primer": seq})
++        assert default["tm"] == sc._primer_tm(seq)
++        assert default["tm_profile"] == "primer3_default"
++        err, code = sc._h_check_primer(None, {
++            "primer": seq, "tm_profile": "snapgene",
++        })
++        assert code == 400 and "tm_profile" in err["error"]
++
++    def test_degenerate_tm_range_uses_selected_profile(self):
++        primer = "TACTGTTTCTCCATACCCGTTTTTTTGGN"
++        template = "AAAA" + primer[:-1] + "A" + "CCCC"
++        r = sc._h_check_primer(None, {
++            "primer": primer, "template": template, "circular": False,
++            "tm_profile": "benchling_compatible",
++        })
++        assert r["tm_range"] == pytest.approx([58.7, 59.4], abs=0.1)
++        assert r["tm"] == pytest.approx(r["tm_range"][0], abs=0.1)
++
+     def test_a_lone_sequence_is_the_primer_otherwise_the_template(self):
+         # The Babs bench: asked a primer's Tm, a 7B sent the oligo as
+         # `sequence` — which had only ever meant the TEMPLATE, so the call
+@@ -6280,6 +6331,72 @@ def test_circular_wrap(self):
+                        for s in lin["sites"] if s["orientation"] == "forward")
+ 
+ 
++class TestCheckPrimerPair:
++    def test_full_oligos_are_structured_but_binding_arms_set_tm_and_sites(self):
++        fwd_binding = _PRIMER_TMPL[40:62]
++        rev_binding = sc._rc(_PRIMER_TMPL[200:222])
++        fwd = "CGGTCACCTGCCCTGGGAG" + fwd_binding
++        rev = "CGGTCACCTGCCCTGAGTA" + rev_binding
++        r = sc._h_check_primer_pair(None, {
++            "forward_primer": fwd,
++            "reverse_primer": rev,
++            "forward_binding": fwd_binding,
++            "reverse_binding": rev_binding,
++            "template": _PRIMER_TMPL,
++            "circular": False,
++            "tm_profile": "benchling_compatible",
++        })
++        assert r["ok"] and r["tm_profile"] == "benchling_compatible"
++        assert r["forward"]["primer"] == fwd
++        assert r["forward"]["tm"] == sc._primer_tm(
++            fwd_binding, "benchling_compatible")
++        assert r["reverse"]["tm"] == sc._primer_tm(
++            rev_binding, "benchling_compatible")
++        assert r["forward"]["n_sites"] == r["reverse"]["n_sites"] == 1
++        assert r["pair"]["n_amplicons"] == 1
++        assert r["pair"]["amplicons"][0]["start"] == 40
++        assert r["pair"]["amplicons"][0]["length"] == 182
++        assert r["dg_units"] == "kcal/mol"
++        assert r["pair"]["heterodimer_dg"] is not None
++
++    def test_binding_arm_must_be_the_three_prime_suffix(self):
++        err, code = sc._h_check_primer_pair(None, {
++            "forward_primer": "AAAAACGTACGTACGTACGTACGT",
++            "reverse_primer": "TTTTACGTACGTACGTACGTACGT",
++            "forward_binding": "AAAAACGTACGT",
++            "template": _PRIMER_TMPL,
++        })
++        assert code == 400 and "3' suffix" in err["error"]
++
++    def test_deoxyuridine_conversion_is_reported(self):
++        template = "ACGTTGCA" * 5
++        r = sc._h_check_primer_pair(None, {
++            "forward_primer": "ACGUUGCAACGTTGCA",
++            "reverse_primer": "TGCAACGUUGCAACGT",
++            "template": template,
++            "circular": False,
++        })
++        assert r["forward"]["primer"] == "ACGTTGCAACGTTGCA"
++        assert r["reverse"]["primer"] == "TGCAACGTTGCAACGT"
++        assert r["forward"]["read_u_as_t"] is True
++        assert r["reverse"]["read_u_as_t"] is True
++
++    def test_binding_and_amplicon_caps_are_disclosed(self):
++        template = "ACGT" * 1000
++        primer = "ACGTACGTACGTACGTACGT"
++        r = sc._h_check_primer_pair(None, {
++            "forward_primer": primer,
++            "reverse_primer": primer,
++            "template": template,
++            "circular": False,
++        })
++        assert r["forward"]["truncated"] is True
++        assert r["reverse"]["truncated"] is True
++        assert r["pair"]["amplicons_truncated"] is True
++        assert r["pair"]["n_amplicons"] == sc._PCR_MAX_AMPLICONS
++        assert any("uniqueness is not established" in w for w in r["warnings"])
++
++
+ class TestBatchMoveCopyPlasmids:
+     """`copy-plasmids` / `move-plasmids` — bulk move/copy in ONE locked save
+     (agent-API feedback P1-6). Per-item results; [INV-83] mirror re-stage on

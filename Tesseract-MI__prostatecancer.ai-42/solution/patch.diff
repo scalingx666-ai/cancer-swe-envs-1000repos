@@ -1,0 +1,13 @@
+diff --git a/packages/ohif-core/client/components/bootstrap/dialog/ai.js b/packages/ohif-core/client/components/bootstrap/dialog/ai.js
+index 07d96ac..27ba805 100644
+--- a/packages/ohif-core/client/components/bootstrap/dialog/ai.js
++++ b/packages/ohif-core/client/components/bootstrap/dialog/ai.js
+@@ -13,7 +13,7 @@ function precise(x) {
+ function askAi(data) {
+     $("#ai-prediction").text("Calculating...");
+     $.ajax({
+-        url: 'http://127.0.0.1:5000/predict',
++        url: 'http://206.189.232.24:5000/predict',
+         type: 'POST',
+         contentType: 'application/json',
+         data: JSON.stringify(data),

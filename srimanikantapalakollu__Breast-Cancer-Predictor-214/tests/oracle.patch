@@ -1,0 +1,128 @@
+diff --git a/__pycache__/implementation.cpython-38.pyc b/__pycache__/implementation.cpython-38.pyc
+new file mode 100644
+index 0000000..be5c887
+Binary files /dev/null and b/__pycache__/implementation.cpython-38.pyc differ
+diff --git a/__pycache__/random_forest.cpython-38.pyc b/__pycache__/random_forest.cpython-38.pyc
+new file mode 100644
+index 0000000..dfb8ee4
+Binary files /dev/null and b/__pycache__/random_forest.cpython-38.pyc differ
+diff --git a/app.py b/app.py
+index ec23c6b..f2c9f1d 100644
+--- a/app.py
++++ b/app.py
+@@ -7,27 +7,44 @@
+ from random_forest import accuracy
+ from sklearn.metrics import accuracy_score
+ from time import time
+-
++import logging
++import os
+ 
+ app = Flask(__name__)
+ app.url_map.strict_slashes = False
+ 
++logging_str = "[%(asctime)s: %(levelname)s: %(module)s] %(message)s"
++log_dir="applicationLogs"
++general_logs = "logs"
++general_log_path_dir=os.path.join(log_dir,general_logs)
++
++os.makedirs(general_log_path_dir, exist_ok=True)
++general_logs_name = "general_logs.log"
++general_log_path = os.path.join(general_log_path_dir,general_logs_name)
++print(general_log_path)
++logging.basicConfig(filename = general_log_path, level=logging.INFO, format=logging_str)
++logging.info("Application started")
++
+ @app.route('/')
+ def index():
++	logging.info("Index page loaded")
+ 	return render_template('home.html')
+ 
+ @app.route('/redirect', methods=['POST']) 
+ def redirectionform():
++	logging.info("Redirection form loaded")
+ 	return render_template('form.html')
+ 
+ @app.route('/backtohome', methods=['POST']) 
+ def a():
++	logging.info("Redirection to home page")
+ 	return render_template('home.html')
+ 
+ @app.route('/predict', methods=['POST']) 
+ def login_user():
+-
++	logging.info("Prediction form loaded")
+ 	data_points = list()
++	logging.info("Data points list created")
+ 	data = []
+ 	string = 'value'
+ 	for i in range(1,31):
+@@ -37,10 +54,13 @@ def login_user():
+ 		data_points.append(data[i])
+ 		
+ 	print(data_points)
+-
++	logging.info("Data points list appended")
+ 	data_np = np.asarray(data, dtype = float)
++	logging.info("Data points list converted to numpy array")
+ 	data_np = data_np.reshape(1,-1)
++	logging.info("Data points list reshaped")
+ 	out, acc, t = random_forest_predict(clf, data_np)
++	logging.info("Prediction done")
+ 
+ 	if(out==1):
+ 		output = 'Malignant'
+diff --git a/applicationLogs/logs/general_logs.log b/applicationLogs/logs/general_logs.log
+new file mode 100644
+index 0000000..4e713d7
+--- /dev/null
++++ b/applicationLogs/logs/general_logs.log
+@@ -0,0 +1,8 @@
++[2022-03-25 18:03:56,728: INFO: app] Application started
++[2022-03-25 18:03:57,350: INFO: _internal]  * Restarting with stat
++[2022-03-25 18:04:04,701: INFO: app] Application started
++[2022-03-25 18:04:05,074: WARNING: _internal]  * Debugger is active!
++[2022-03-25 18:04:05,099: INFO: _internal]  * Debugger PIN: 182-094-750
++[2022-03-25 18:04:05,125: INFO: _internal]  * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
++[2022-03-25 18:04:56,302: INFO: _internal]  * Detected change in 'C:\\Users\\umang\\Desktop\\Ineuron\\opensource\\New folder\\Breast-Cancer-Predictor\\random_forest.py', reloading
++[2022-03-25 18:04:56,914: INFO: _internal]  * Restarting with stat
+diff --git a/random_forest.py b/random_forest.py
+index 24edc8d..3dfd251 100644
+--- a/random_forest.py
++++ b/random_forest.py
+@@ -5,21 +5,22 @@
+ import numpy as np
+ import matplotlib.pyplot as plt
+ import pandas as pd
++import logging
+ 
+ # Importing the dataset
+ dataset = pd.read_csv('Breast Cancer Data.csv')
+ X = dataset.iloc[:, 2:32].values
+ y = dataset.iloc[:, 1].values
+-
++logging.info("Dataset imported")
+ # Encoding categorical data
+ from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+ labelencoder_X_1 = LabelEncoder()
+ y = labelencoder_X_1.fit_transform(y)
+-
++logging.info("Categorical data encoded")
+ # Splitting the dataset into the Training set and Test set
+ from sklearn.model_selection import train_test_split
+ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 0)
+-
++logging.info("Dataset split into training and test sets")
+ 
+ # Feature Scaling
+ from sklearn.preprocessing import StandardScaler
+@@ -36,5 +37,5 @@
+ clf.fit(X_train, y_train)
+ output = clf.predict(X_test)
+ accuracy = accuracy_score(y_test, output) 
+-print("The accuracy of testing data: ",accuracy)
+-print("The running time: ",time()-t)
+\ No newline at end of file
++logging.info("The accuracy of testing data: ",accuracy)
++logging.info("The running time: ",time()-t)
+\ No newline at end of file

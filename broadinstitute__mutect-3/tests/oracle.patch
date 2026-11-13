@@ -1,0 +1,62 @@
+diff --git a/somaticspike.xml b/somaticspike.xml
+index 0febdaf..d7a9fa5 100644
+--- a/somaticspike.xml
++++ b/somaticspike.xml
+@@ -1,9 +1,18 @@
+-<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+-<html><head>
+-<title>404 Not Found</title>
+-</head><body>
+-<h1>Not Found</h1>
+-<p>The requested URL /CancerGenomeAnalysis/trunk/analysis_pipeline/gatk/walkers/somaticspike.xml was not found on this server.</p>
+-<hr>
+-<address>Apache/2.2.16 (Ubuntu) Server at vc Port 443</address>
+-</body></html>
++<?xml version="1.0" encoding="UTF-8"?>
++<package name="SomaticSpike">
++  <version file="StingText.properties" property="org.broadinstitute.sting.gatk.version" />
++  <executable name="SomaticSpike">
++    <main-class name="org.broadinstitute.sting.gatk.CommandLineGATK" />
++    <resource-bundle file="StingText.properties" />
++    <dependencies>
++      <!-- Walkers in this package -->
++      <class name="org.broadinstitute.cga.tools.gatk.walkers.cancer.simulation.SomaticSpike" />
++      <!-- Some additional dependencies that bcel is unable to find on its own -->
++      <package name="org.broad.tribble.*" />
++      <package name="org.broadinstitute.cga.tools.gatk.filters" />
++      <package name="org.broadinstitute.sting.commandline" />
++      <package name="org.broadinstitute.sting.gatk.filters" />
++      <package name="org.apache.commons.logging.impl" />
++    </dependencies>
++  </executable>
++</package>
+diff --git a/src/org/broadinstitute/cga/tools/gatk/filters/LibraryReadFilter.java b/src/org/broadinstitute/cga/tools/gatk/filters/LibraryReadFilter.java
+new file mode 100644
+index 0000000..7abd205
+--- /dev/null
++++ b/src/org/broadinstitute/cga/tools/gatk/filters/LibraryReadFilter.java
+@@ -0,0 +1,24 @@
++package org.broadinstitute.cga.tools.gatk.filters;
++
++import net.sf.samtools.SAMReadGroupRecord;
++import net.sf.samtools.SAMRecord;
++import org.broadinstitute.sting.commandline.Argument;
++import org.broadinstitute.sting.gatk.filters.ReadFilter;
++
++/**
++ * Only use reads from the specified library
++ *
++ * @author kcibul
++ * @since Aug 15, 2012
++ *
++ */
++
++public class LibraryReadFilter extends ReadFilter {
++    @Argument(fullName = "library", shortName = "library", doc="The name of the library to keep, filtering out all others", required=true)
++    private String LIBRARY_TO_KEEP = null;
++
++    public boolean filterOut( final SAMRecord read ) {
++        final SAMReadGroupRecord readGroup = read.getReadGroup();
++        return ( readGroup == null || !readGroup.getLibrary().equals( LIBRARY_TO_KEEP ) );
++    }
++}
